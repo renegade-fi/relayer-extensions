@@ -5083,6 +5083,8 @@ dependencies = [
  "futures-util",
  "hyper 1.2.0",
  "price-reporter",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.21.0",
