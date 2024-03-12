@@ -1,0 +1,25 @@
+[package]
+name = "renegade-price-reporter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# === Networking === #
+hyper = "1"
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-tungstenite = "0.21"
+tungstenite = "0.21"
+
+# === Runtime === #
+tokio = "1"
+async-trait = "0.1"
+futures-util = "0.3"
+
+# === Renegade === #
+price-reporter = { path = "../renegade/workers/price-reporter" }
+external-api = { path = "../renegade/external-api" }
+arbitrum-client = { path = "../renegade/arbitrum-client" }
+config = { path = "../renegade/config" }
+common = { path = "../renegade/common" }
+util = { path = "../renegade/util" }
+
