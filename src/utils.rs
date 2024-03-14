@@ -5,10 +5,7 @@ use std::str::FromStr;
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
 use serde::{Deserialize, Serialize};
-use tokio::{
-    net::TcpStream,
-    sync::broadcast::{Receiver, Sender},
-};
+use tokio::{net::TcpStream, sync::broadcast::Sender};
 use tokio_stream::{wrappers::BroadcastStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
@@ -25,9 +22,6 @@ pub type PairInfo = (Exchange, Token, Token);
 
 /// A type alias for the sender end of a price channel
 pub type PriceSender = Sender<Price>;
-
-/// A type alias for the receiver end of a price channel
-pub type PriceReceiver = Receiver<Price>;
 
 /// A type alias for a price stream
 pub type PriceStream = BroadcastStream<Price>;

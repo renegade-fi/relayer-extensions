@@ -45,14 +45,30 @@ async fn main() -> Result<(), ServerError> {
     let listener =
         TcpListener::bind(addr).await.map_err(err_str!(ServerError::WebsocketConnection))?;
 
-    // Await incoming websocket connections
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_connection(
-            stream,
-            server.global_price_streams.clone(),
-            server.config.clone(),
-        ));
+    loop {
+        tokio::select! {
+            // Handle incoming connections
+            Ok((stream, _)) = listener.accept() => {
+                tokio::spawn(handle_connection(
+                    stream,
+                    server.global_price_streams.clone(),
+                    server.config.clone(),
+                ));
+            }
+            // Handle stream failures
+            Some(res) = listen_for_stream_failures(&server) => {
+                if res.is_err() {
+                    server.global_price_streams.stream_handles.write().await.shutdown().await;
+                    return res;
+                }
+            }
+        }
     }
+}
 
-    Ok(())
+/// Await the next stream task to be joined, which only happens
+/// in the case of a failure
+async fn listen_for_stream_failures(server: &Server) -> Option<Result<(), ServerError>> {
+    let mut stream_handles = server.global_price_streams.stream_handles.write().await;
+    stream_handles.join_next().await.map(|r| r.map_err(ServerError::JoinError).and_then(|r| r))
 }

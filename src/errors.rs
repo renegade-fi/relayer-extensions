@@ -7,6 +7,7 @@ use std::{
 
 use price_reporter::errors::ExchangeConnectionError;
 use serde_json::Error as SerdeError;
+use tokio::task::JoinError;
 
 /// An error that can occur in the price reporter server.
 #[derive(Debug)]
@@ -28,6 +29,8 @@ pub enum ServerError {
     WebsocketReceive(String),
     /// An error during de/serialization
     Serde(SerdeError),
+    /// An error joining a task
+    JoinError(JoinError),
 }
 
 impl Display for ServerError {

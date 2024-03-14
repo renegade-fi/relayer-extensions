@@ -11,7 +11,7 @@ use price_reporter::{
 use tokio::{
     net::TcpStream,
     sync::{broadcast::channel, RwLock},
-    task::JoinHandle,
+    task::JoinSet,
     time::Instant,
 };
 use tokio_stream::StreamMap;
@@ -23,7 +23,7 @@ use crate::{
     errors::ServerError,
     utils::{
         get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, PairInfo,
-        PriceMessage, PriceReceiver, PriceSender, PriceStream, PriceStreamMap, WsWriteStream,
+        PriceMessage, PriceSender, PriceStream, PriceStreamMap, WsWriteStream,
     },
 };
 
@@ -38,12 +38,15 @@ pub struct GlobalPriceStreams {
     /// A thread-safe map of price streams, indexed by the (source, base, quote)
     /// tuple
     pub price_streams: Arc<RwLock<HashMap<PairInfo, PriceSender>>>,
+    /// A set of handles to the price stream tasks, to allow for graceful
+    /// shutdown
+    pub stream_handles: Arc<RwLock<JoinSet<Result<(), ServerError>>>>,
 }
 
 impl GlobalPriceStreams {
     /// Initialize a price stream for the given pair info
     pub async fn init_price_stream(
-        &self,
+        &mut self,
         pair_info: PairInfo,
         config: &ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
@@ -64,8 +67,8 @@ impl GlobalPriceStreams {
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
-        // TODO: If/when this task fails, the price reporter should shut down
-        let _handle: JoinHandle<Result<(), ServerError>> = tokio::spawn(async move {
+        let mut stream_handles = self.stream_handles.write().await;
+        stream_handles.spawn(async move {
             let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
             tokio::pin!(delay);
 
@@ -98,7 +101,7 @@ impl GlobalPriceStreams {
 
     /// Fetch a price stream for the given pair info from the global map
     pub async fn get_or_create_price_stream(
-        &self,
+        &mut self,
         pair_info: PairInfo,
         config: &ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
@@ -126,22 +129,17 @@ pub struct Server {
     pub config: ExchangeConnectionsConfig,
     /// The global map of price streams, shared across all connections
     pub global_price_streams: GlobalPriceStreams,
-    /// The receivers of the channels for the default price streams,
-    /// kept so that the channels are not dropped
-    pub default_receivers: Vec<PriceReceiver>,
 }
 
 impl Server {
     /// Initialize the price reporter server
     pub async fn new(config: ExchangeConnectionsConfig) -> Result<Self, ServerError> {
-        let global_price_streams =
-            GlobalPriceStreams { price_streams: Arc::new(RwLock::new(HashMap::new())) };
-        let default_receivers = Vec::new();
+        let global_price_streams = GlobalPriceStreams {
+            price_streams: Arc::new(RwLock::new(HashMap::new())),
+            stream_handles: Arc::new(RwLock::new(JoinSet::new())),
+        };
 
-        // TODO: Connect to `DEFAULT_PAIRS` and store the receivers in
-        // `default_receivers``
-
-        Ok(Server { config, global_price_streams, default_receivers })
+        Ok(Server { config, global_price_streams })
     }
 }
 
@@ -243,7 +241,7 @@ async fn handle_ws_message(
 async fn handle_subscription_message(
     message: WebsocketMessage,
     subscriptions: &mut PriceStreamMap,
-    global_price_streams: GlobalPriceStreams,
+    mut global_price_streams: GlobalPriceStreams,
     config: &ExchangeConnectionsConfig,
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
