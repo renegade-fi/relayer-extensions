@@ -5,7 +5,10 @@ use std::str::FromStr;
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpStream, sync::broadcast::Sender};
+use tokio::{
+    net::TcpStream,
+    sync::{broadcast::Sender, mpsc::UnboundedSender},
+};
 use tokio_stream::{wrappers::BroadcastStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
@@ -32,6 +35,9 @@ pub type PriceStreamMap = StreamMap<PairInfo, PriceStream>;
 
 /// A type alias for a websocket write stream
 pub type WsWriteStream = SplitSink<WebSocketStream<TcpStream>, Message>;
+
+/// A type alias for the sender end of a price stream closure channel
+pub type ClosureSender = UnboundedSender<Result<(), ServerError>>;
 
 /// A message that is sent by the price reporter to the client indicating
 /// a price udpate for the given topic

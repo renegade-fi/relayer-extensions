@@ -13,8 +13,8 @@ use arbitrum_client::constants::Chain;
 use config::setup_token_remaps;
 use errors::ServerError;
 use price_reporter::worker::ExchangeConnectionsConfig;
-use server::{handle_connection, Server};
-use tokio::net::TcpListener;
+use server::{handle_connection, GlobalPriceStreams};
+use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use util::err_str;
 
 mod errors;
@@ -37,7 +37,9 @@ async fn main() -> Result<(), ServerError> {
     .await
     .unwrap()?;
 
-    let server = Server::new(ExchangeConnectionsConfig::default()).await?;
+    let (closure_tx, mut closure_rx) = unbounded_channel();
+    let global_price_streams = GlobalPriceStreams::new(closure_tx);
+    let config = ExchangeConnectionsConfig::default();
 
     // Bind the server to the given port
     let addr: SocketAddr = format!("0.0.0.0:{:?}", PORT).parse().unwrap();
@@ -51,24 +53,14 @@ async fn main() -> Result<(), ServerError> {
             Ok((stream, _)) = listener.accept() => {
                 tokio::spawn(handle_connection(
                     stream,
-                    server.global_price_streams.clone(),
-                    server.config.clone(),
+                    global_price_streams.clone(),
+                    config.clone(),
                 ));
             }
-            // Handle stream failures
-            Some(res) = listen_for_stream_failures(&server) => {
-                if res.is_err() {
-                    server.global_price_streams.stream_handles.write().await.shutdown().await;
-                    return res;
-                }
+            // Handle price stream closure
+            Some(res) = closure_rx.recv() => {
+                res?;
             }
         }
     }
-}
-
-/// Await the next stream task to be joined, which only happens
-/// in the case of a failure
-async fn listen_for_stream_failures(server: &Server) -> Option<Result<(), ServerError>> {
-    let mut stream_handles = server.global_price_streams.stream_handles.write().await;
-    stream_handles.join_next().await.map(|r| r.map_err(ServerError::JoinError).and_then(|r| r))
 }

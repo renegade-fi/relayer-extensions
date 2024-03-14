@@ -6,12 +6,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use external_api::websocket::{SubscriptionResponse, WebsocketMessage};
 use futures_util::{SinkExt, StreamExt};
 use price_reporter::{
-    exchange::connect_exchange, reporter::KEEPALIVE_INTERVAL_MS, worker::ExchangeConnectionsConfig,
+    exchange::{connect_exchange, ExchangeConnection},
+    reporter::KEEPALIVE_INTERVAL_MS,
+    worker::ExchangeConnectionsConfig,
 };
 use tokio::{
     net::TcpStream,
     sync::{broadcast::channel, RwLock},
-    task::JoinSet,
     time::Instant,
 };
 use tokio_stream::StreamMap;
@@ -22,8 +23,8 @@ use util::err_str;
 use crate::{
     errors::ServerError,
     utils::{
-        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, PairInfo,
-        PriceMessage, PriceSender, PriceStream, PriceStreamMap, WsWriteStream,
+        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender,
+        PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, WsWriteStream,
     },
 };
 
@@ -38,12 +39,16 @@ pub struct GlobalPriceStreams {
     /// A thread-safe map of price streams, indexed by the (source, base, quote)
     /// tuple
     pub price_streams: Arc<RwLock<HashMap<PairInfo, PriceSender>>>,
-    /// A set of handles to the price stream tasks, to allow for graceful
-    /// shutdown
-    pub stream_handles: Arc<RwLock<JoinSet<Result<(), ServerError>>>>,
+    /// A channel to send closure signals from the price stream tasks
+    pub closure_channel: ClosureSender,
 }
 
 impl GlobalPriceStreams {
+    /// Instantiate a new global price streams map
+    pub fn new(closure_channel: ClosureSender) -> Self {
+        Self { price_streams: Arc::new(RwLock::new(HashMap::new())), closure_channel }
+    }
+
     /// Initialize a price stream for the given pair info
     pub async fn init_price_stream(
         &mut self,
@@ -53,7 +58,7 @@ impl GlobalPriceStreams {
         let (exchange, base, quote) = pair_info.clone();
 
         // Connect to the pair on the specified exchange
-        let mut conn = connect_exchange(&base, &quote, config, exchange)
+        let conn = connect_exchange(&base, &quote, config, exchange)
             .await
             .map_err(ServerError::ExchangeConnection)?;
 
@@ -65,38 +70,44 @@ impl GlobalPriceStreams {
             self.price_streams.write().await.insert(pair_info, tx.clone());
         }
 
+        // Clone the closure channel so the server can be notified when the stream is
+        // closed
+        let closure_channel = self.closure_channel.clone();
+
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
-        let mut stream_handles = self.stream_handles.write().await;
-        stream_handles.spawn(async move {
-            let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
-            tokio::pin!(delay);
-
-            loop {
-                let res = tokio::select! {
-                    // Send a keepalive message to the exchange
-                    _ = &mut delay => {
-                        conn.send_keepalive().await.map_err(ServerError::ExchangeConnection)?;
-                        delay.as_mut().reset(Instant::now() + Duration::from_millis(KEEPALIVE_INTERVAL_MS));
-                        Result::<(), ServerError>::Ok(())
-                    }
-
-                    // Forward the next price into the broadcast channel
-                    Some(price_res) = conn.next() => {
-                        let price = price_res.map_err(ServerError::ExchangeConnection)?;
-                        let _num_listeners = tx.send(price).map_err(err_str!(ServerError::PriceStreaming))?;
-                        Result::<(), ServerError>::Ok(())
-                    }
-                };
-
-                if res.is_err() {
-                    break res;
-                }
-            }
+        tokio::spawn(async move {
+            let res = Self::price_stream_task(conn, tx).await;
+            closure_channel.send(res).unwrap()
         });
 
         // Return a handle to the broadcast channel stream
         Ok(PriceStream::new(rx))
+    }
+
+    /// The task responsible for streaming prices from the exchange
+    async fn price_stream_task(
+        mut conn: Box<dyn ExchangeConnection>,
+        price_tx: PriceSender,
+    ) -> Result<(), ServerError> {
+        let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
+        tokio::pin!(delay);
+
+        loop {
+            tokio::select! {
+                // Send a keepalive message to the exchange
+                _ = &mut delay => {
+                    conn.send_keepalive().await.map_err(ServerError::ExchangeConnection)?;
+                    delay.as_mut().reset(Instant::now() + Duration::from_millis(KEEPALIVE_INTERVAL_MS));
+                }
+
+                // Forward the next price into the broadcast channel
+                Some(price_res) = conn.next() => {
+                    let price = price_res.map_err(ServerError::ExchangeConnection)?;
+                    let _num_listeners = price_tx.send(price).map_err(err_str!(ServerError::PriceStreaming))?;
+                }
+            }
+        }
     }
 
     /// Fetch a price stream for the given pair info from the global map
@@ -122,26 +133,6 @@ impl GlobalPriceStreams {
 // ----------
 // | SERVER |
 // ----------
-
-/// The price reporter server
-pub struct Server {
-    /// The configuration for the exchange connections
-    pub config: ExchangeConnectionsConfig,
-    /// The global map of price streams, shared across all connections
-    pub global_price_streams: GlobalPriceStreams,
-}
-
-impl Server {
-    /// Initialize the price reporter server
-    pub async fn new(config: ExchangeConnectionsConfig) -> Result<Self, ServerError> {
-        let global_price_streams = GlobalPriceStreams {
-            price_streams: Arc::new(RwLock::new(HashMap::new())),
-            stream_handles: Arc::new(RwLock::new(JoinSet::new())),
-        };
-
-        Ok(Server { config, global_price_streams })
-    }
-}
 
 /// Handles an incoming websocket connection,
 /// establishing a listener loop for subscription requests
