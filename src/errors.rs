@@ -1,8 +1,11 @@
 //! Definitions of errors that can occur in the price reporter server.
 
-use std::fmt::{self, Display};
+use std::{
+    error::Error,
+    fmt::{self, Display},
+};
 
-use price_reporter::errors::PriceReporterError;
+use price_reporter::errors::ExchangeConnectionError;
 use serde_json::Error as SerdeError;
 
 /// An error that can occur in the price reporter server.
@@ -10,10 +13,13 @@ use serde_json::Error as SerdeError;
 pub enum ServerError {
     /// An error setting up the token remapping
     TokenRemap(String),
-    /// An error fetching a price stream when the global map is uninitialized
-    PriceStreamsUninitialized,
-    /// An error with the price reporter
-    _PriceReporter(PriceReporterError),
+    /// An error attempting to subscribe to a price stream
+    /// from an invalid exchange
+    InvalidExchange(String),
+    /// An error establishing a connection to an exchange
+    ExchangeConnection(ExchangeConnectionError),
+    /// An error streaming prices from an exchange
+    PriceStreaming(String),
     /// An error establishing a websocket connection
     WebsocketConnection(String),
     /// An error sending a message over a websocket
@@ -29,3 +35,5 @@ impl Display for ServerError {
         write!(f, "{:?}", self)
     }
 }
+
+impl Error for ServerError {}

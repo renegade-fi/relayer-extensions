@@ -10,11 +10,12 @@
 use std::net::SocketAddr;
 
 use arbitrum_client::constants::Chain;
+use config::setup_token_remaps;
 use errors::ServerError;
-use server::{handle_connection, init_price_streams};
+use price_reporter::worker::ExchangeConnectionsConfig;
+use server::{handle_connection, Server};
 use tokio::net::TcpListener;
 use util::err_str;
-use config::setup_token_remaps;
 
 mod errors;
 mod server;
@@ -30,10 +31,13 @@ async fn main() -> Result<(), ServerError> {
     tokio::task::spawn_blocking(|| {
         // TODO: Accept some minimal config that either allows for a
         // remap file, or specifiying which chain to use
-        setup_token_remaps(None /* remap_file */, Chain::Testnet).map_err(err_str!(ServerError::TokenRemap))
-    }).await.unwrap()?;
+        setup_token_remaps(None /* remap_file */, Chain::Testnet)
+            .map_err(err_str!(ServerError::TokenRemap))
+    })
+    .await
+    .unwrap()?;
 
-    init_price_streams();
+    let server = Server::new(ExchangeConnectionsConfig::default()).await?;
 
     // Bind the server to the given port
     let addr: SocketAddr = format!("0.0.0.0:{:?}", PORT).parse().unwrap();
@@ -43,7 +47,11 @@ async fn main() -> Result<(), ServerError> {
 
     // Await incoming websocket connections
     while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_connection(stream));
+        tokio::spawn(handle_connection(
+            stream,
+            server.global_price_streams.clone(),
+            server.config.clone(),
+        ));
     }
 
     Ok(())
