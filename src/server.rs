@@ -1,7 +1,7 @@
 //! The core websocket server of the price reporter, handling subscriptions to
 //! price streams
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use external_api::websocket::{SubscriptionResponse, WebsocketMessage};
 use futures_util::{SinkExt, StreamExt};
@@ -17,6 +17,7 @@ use tokio::{
 };
 use tokio_stream::StreamMap;
 use tokio_tungstenite::accept_async;
+use tracing::{debug, error, info, warn};
 use tungstenite::Message;
 use util::err_str;
 
@@ -57,6 +58,8 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
+        info!("Initializing price stream for {}", get_pair_info_topic(&pair_info));
+
         // Create a shared channel into which we forward streamed prices
         let (price_tx, price_rx) = channel(32 /* capacity */);
 
@@ -117,6 +120,7 @@ impl GlobalPriceStreams {
                             // clientz are subscribed to this price stream. In this case, we remove
                             // the stream from the global map, and complete the task.
                             if price_tx.send(price).is_err() {
+                                info!("No more subscribers for {}, closing price stream", get_pair_info_topic(&pair_info));
                                 price_streams.write().await.remove(&pair_info);
                                 return Ok(());
                             }
@@ -162,11 +166,10 @@ impl GlobalPriceStreams {
             prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
                 Ok(conn) => return Ok(conn),
                 Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
-                    _exchange,
+                    exchange,
                 ))) => {
-                    // TODO: logging
-
                     // Return the original error if we've exhausted retries
+                    error!("Exhausted retries for {}", exchange);
                     return Err(prev_err);
                 },
                 Err(e) => e,
@@ -182,6 +185,8 @@ impl GlobalPriceStreams {
         config: &ExchangeConnectionsConfig,
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
+        warn!("Retrying connection for {}", get_pair_info_topic(pair_info));
+
         let (exchange, base, quote) = pair_info;
 
         // Increment the retry count and filter out old requests
@@ -238,6 +243,10 @@ pub async fn handle_connection(
     global_price_streams: GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
+    let peer_addr = stream.peer_addr().map_err(ServerError::GetPeerAddr)?;
+
+    debug!("Accepting websocket connection from: {}", peer_addr);
+
     let websocket_stream =
         accept_async(stream).await.map_err(err_str!(ServerError::WebsocketConnection))?;
     let (mut write_stream, mut read_stream) = websocket_stream.split();
@@ -270,7 +279,14 @@ pub async fn handle_connection(
                         match msg_inner {
                             Message::Close(_) => break,
                             _ => {
-                                handle_ws_message(msg_inner, &mut subscriptions, &mut write_stream, global_price_streams.clone(), config.clone()).await?;
+                                handle_ws_message(
+                                    msg_inner,
+                                    &mut subscriptions,
+                                    &mut write_stream,
+                                    global_price_streams.clone(),
+                                    config.clone(),
+                                    peer_addr,
+                                ).await?;
                             }
                         }
                     }
@@ -283,6 +299,8 @@ pub async fn handle_connection(
         }
     }
 
+    debug!("Closing websocket connection from: {}", peer_addr);
+
     Ok(())
 }
 
@@ -293,6 +311,7 @@ async fn handle_ws_message(
     write_stream: &mut WsWriteStream,
     global_price_streams: GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
+    peer_addr: SocketAddr,
 ) -> Result<(), ServerError> {
     if let Message::Text(msg_text) = message {
         let msg_deser: Result<WebsocketMessage, _> = serde_json::from_str(&msg_text);
@@ -304,6 +323,7 @@ async fn handle_ws_message(
                     subscriptions,
                     global_price_streams,
                     config,
+                    peer_addr,
                 )
                 .await
                 {
@@ -331,15 +351,18 @@ async fn handle_subscription_message(
     subscriptions: &mut PriceStreamMap,
     mut global_price_streams: GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
+    peer_addr: SocketAddr,
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
+            info!("Subscribing {} to {}", peer_addr, &topic);
             let pair_info = parse_pair_info_from_topic(&topic)?;
             let price_stream =
                 global_price_streams.get_or_create_price_stream(pair_info.clone(), config).await?;
             subscriptions.insert(pair_info, price_stream);
         },
         WebsocketMessage::Unsubscribe { topic } => {
+            info!("Unsubscribing {} from {}", peer_addr, &topic);
             let pair_info = parse_pair_info_from_topic(&topic)?;
             subscriptions.remove(&pair_info);
         },

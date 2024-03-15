@@ -18,6 +18,10 @@ futures-util = "0.3"
 serde = "1"
 serde_json = "1"
 
+# === Telemetry === #
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"]}
+
 # === Renegade === #
 price-reporter = { git = "https://github.com/renegade-fi/renegade.git" }
 external-api = { git = "https://github.com/renegade-fi/renegade.git" }

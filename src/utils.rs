@@ -13,6 +13,12 @@ use tokio::{
 };
 use tokio_stream::{wrappers::BroadcastStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
+use tracing_subscriber::{
+    filter::{EnvFilter, LevelFilter},
+    fmt,
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
+};
 use tungstenite::Message;
 use util::err_str;
 
@@ -109,6 +115,16 @@ pub struct PriceReporterConfig {
 // -----------
 // | HELPERS |
 // -----------
+
+/// Configure the logging subscriber
+pub fn setup_logging() {
+    tracing_subscriber::registry()
+        .with(
+            EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy(),
+        )
+        .with(fmt::layer().with_file(true).with_line_number(true).json())
+        .init();
+}
 
 /// Parse the configuration options from environment variables
 pub fn parse_config_env_vars() -> PriceReporterConfig {

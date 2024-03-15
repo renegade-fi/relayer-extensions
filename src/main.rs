@@ -13,8 +13,9 @@ use config::setup_token_remaps;
 use errors::ServerError;
 use server::{handle_connection, GlobalPriceStreams};
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
+use tracing::{error, info};
 use util::err_str;
-use utils::{parse_config_env_vars, PriceReporterConfig};
+use utils::{parse_config_env_vars, setup_logging, PriceReporterConfig};
 
 mod errors;
 mod server;
@@ -22,6 +23,9 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
+    // Set up logging
+    setup_logging();
+
     // Parse configuration env vars
     let PriceReporterConfig { port, token_remap_path, remap_chain, exchange_conn_config } =
         parse_config_env_vars();
@@ -42,6 +46,8 @@ async fn main() -> Result<(), ServerError> {
     let listener =
         TcpListener::bind(addr).await.map_err(err_str!(ServerError::WebsocketConnection))?;
 
+    info!("Listening on: {}", addr);
+
     loop {
         tokio::select! {
             // Handle incoming connections
@@ -54,7 +60,10 @@ async fn main() -> Result<(), ServerError> {
             }
             // Handle price stream closure
             Some(res) = closure_rx.recv() => {
-                res?;
+                if let Err(e) = res {
+                    error!("Shutting down server due to error: {}", e);
+                    break Ok(());
+                }
             }
         }
     }

@@ -3,6 +3,7 @@
 use std::{
     error::Error,
     fmt::{self, Display},
+    io,
 };
 
 use price_reporter::errors::ExchangeConnectionError;
@@ -18,6 +19,8 @@ pub enum ServerError {
     InvalidExchange(String),
     /// An error establishing a connection to an exchange
     ExchangeConnection(ExchangeConnectionError),
+    /// An error getting the peer address of a websocket connection
+    GetPeerAddr(io::Error),
     /// An error establishing a websocket connection
     WebsocketConnection(String),
     /// An error sending a message over a websocket
