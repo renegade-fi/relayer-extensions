@@ -6,8 +6,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use external_api::websocket::{SubscriptionResponse, WebsocketMessage};
 use futures_util::{SinkExt, StreamExt};
 use price_reporter::{
+    errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
-    reporter::KEEPALIVE_INTERVAL_MS,
+    reporter::{
+        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+    },
     worker::ExchangeConnectionsConfig,
 };
 use tokio::{
@@ -23,7 +26,9 @@ use util::err_str;
 use crate::{
     errors::ServerError,
     utils::{
-        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender, PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream
+        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender,
+        PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
+        WsWriteStream,
     },
 };
 
@@ -52,14 +57,14 @@ impl GlobalPriceStreams {
     pub async fn init_price_stream(
         &mut self,
         pair_info: PairInfo,
-        config: &ExchangeConnectionsConfig,
+        config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
         let (exchange, base, quote) = pair_info.clone();
 
         // Connect to the pair on the specified exchange
-        let conn = connect_exchange(&base, &quote, config, exchange)
+        let conn = connect_exchange(&base, &quote, &config, exchange)
             .await
-            .map_err(ServerError::ExchangeConnection)?;
+            .map_err(ServerError::ExchangeConnection);
 
         // Create a shared channel into which we forward streamed prices
         let (price_tx, price_rx) = channel(32 /* capacity */);
@@ -70,8 +75,14 @@ impl GlobalPriceStreams {
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
         tokio::spawn(async move {
-            let res =
-                Self::price_stream_task(pair_info, &global_price_streams.price_streams, conn, price_tx).await;
+            let res = Self::price_stream_task(
+                config,
+                pair_info,
+                &global_price_streams.price_streams,
+                conn,
+                price_tx,
+            )
+            .await;
             global_price_streams.closure_channel.send(res).unwrap()
         });
 
@@ -81,23 +92,30 @@ impl GlobalPriceStreams {
 
     /// The task responsible for streaming prices from the exchange
     async fn price_stream_task(
+        config: ExchangeConnectionsConfig,
         pair_info: PairInfo,
         price_streams: &SharedPriceStreams,
-        mut conn: Box<dyn ExchangeConnection>,
+        mut maybe_conn: Result<Box<dyn ExchangeConnection>, ServerError>,
         price_tx: PriceSender,
     ) -> Result<(), ServerError> {
         // Add the channel to the map of price streams
         {
-            price_streams
-                .write()
-                .await
-                .insert(pair_info.clone(), price_tx.clone());
+            price_streams.write().await.insert(pair_info.clone(), price_tx.clone());
         }
 
         let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
         tokio::pin!(delay);
 
+        let mut retry_timestamps = Vec::new();
+
         loop {
+            // If the connection is erroring, attempt to re-establish it
+            let mut conn = if let Ok(conn) = maybe_conn {
+                conn
+            } else {
+                Self::retry_connection(&pair_info, &config, &mut retry_timestamps).await?
+            };
+
             tokio::select! {
                 // Send a keepalive message to the exchange
                 _ = &mut delay => {
@@ -107,24 +125,68 @@ impl GlobalPriceStreams {
 
                 // Forward the next price into the broadcast channel
                 Some(price_res) = conn.next() => {
-                    let price = price_res.map_err(ServerError::ExchangeConnection)?;
-                    // `send` only errors if there are no more receivers, meaning no more clients
-                    // are subscribed to this price stream. In this case, we remove the stream from
-                    // the global map, and complete the task.
-                    if price_tx.send(price).is_err() {
-                        price_streams.write().await.remove(&pair_info);
-                        return Ok(());
+                    match price_res {
+                        Ok(price) => {
+                            // `send` only errors if there are no more receivers, meaning no more clients
+                            // are subscribed to this price stream. In this case, we remove the stream from
+                            // the global map, and complete the task.
+                            if price_tx.send(price).is_err() {
+                                price_streams.write().await.remove(&pair_info);
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            // We failed to stream a price, indicate the failure and attempt
+                            // to reconnect in the next loop
+                            maybe_conn = Err(ServerError::ExchangeConnection(e));
+                            continue;
+                        }
                     }
                 }
             }
+
+            maybe_conn = Ok(conn);
         }
+    }
+
+    /// Retries an exchange connection after it has failed.
+    ///
+    /// Mirrors https://github.com/renegade-fi/renegade/blob/main/workers/price-reporter/src/reporter.rs#L470
+    async fn retry_connection(
+        pair_info: &PairInfo,
+        config: &ExchangeConnectionsConfig,
+        retry_timestamps: &mut Vec<Instant>,
+    ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
+        let (exchange, base, quote) = pair_info;
+
+        // Increment the retry count and filter out old requests
+        let now = Instant::now();
+        retry_timestamps
+            .retain(|ts| now.duration_since(*ts) < Duration::from_millis(MAX_CONN_RETRY_WINDOW_MS));
+
+        // Add the current timestamp to the set of retries
+        retry_timestamps.push(now);
+
+        if retry_timestamps.len() >= MAX_CONN_RETRIES {
+            return Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
+                *exchange,
+            )));
+        }
+
+        // Add delay before retrying
+        tokio::time::sleep(Duration::from_millis(CONN_RETRY_DELAY_MS)).await;
+
+        // Reconnect
+        connect_exchange(base, quote, config, *exchange)
+            .await
+            .map_err(ServerError::ExchangeConnection)
     }
 
     /// Fetch a price stream for the given pair info from the global map
     pub async fn get_or_create_price_stream(
         &mut self,
         pair_info: PairInfo,
-        config: &ExchangeConnectionsConfig,
+        config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
         let maybe_stream_tx = {
             let price_streams = self.price_streams.read().await;
@@ -183,7 +245,7 @@ pub async fn handle_connection(
                         match msg_inner {
                             Message::Close(_) => break,
                             _ => {
-                                handle_ws_message(msg_inner, &mut subscriptions, &mut write_stream, global_price_streams.clone(), &config).await?;
+                                handle_ws_message(msg_inner, &mut subscriptions, &mut write_stream, global_price_streams.clone(), config.clone()).await?;
                             }
                         }
                     }
@@ -205,7 +267,7 @@ async fn handle_ws_message(
     subscriptions: &mut PriceStreamMap,
     write_stream: &mut WsWriteStream,
     global_price_streams: GlobalPriceStreams,
-    config: &ExchangeConnectionsConfig,
+    config: ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
     if let Message::Text(msg_text) = message {
         let msg_deser: Result<WebsocketMessage, _> = serde_json::from_str(&msg_text);
@@ -243,7 +305,7 @@ async fn handle_subscription_message(
     message: WebsocketMessage,
     subscriptions: &mut PriceStreamMap,
     mut global_price_streams: GlobalPriceStreams,
-    config: &ExchangeConnectionsConfig,
+    config: ExchangeConnectionsConfig,
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
