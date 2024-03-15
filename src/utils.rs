@@ -16,6 +16,21 @@ use util::err_str;
 
 use crate::errors::ServerError;
 
+// ----------
+// | CONSTS |
+// ----------
+
+/// The number of milliseconds to wait in between sending keepalive messages to
+/// the connections
+pub const KEEPALIVE_INTERVAL_MS: u64 = 15_000; // 15 seconds
+/// The number of milliseconds to wait in between retrying connections
+pub const CONN_RETRY_DELAY_MS: u64 = 2_000; // 2 seconds
+/// The number of milliseconds in which `MAX_CONN_RETRIES` failures will cause a
+/// failure of the price reporter
+pub const MAX_CONN_RETRY_WINDOW_MS: u64 = 60_000; // 1 minute
+/// The maximum number of retries to attempt before giving up on a connection
+pub const MAX_CONN_RETRIES: usize = 5;
+
 // ---------
 // | TYPES |
 // ---------

@@ -8,9 +8,6 @@ use futures_util::{SinkExt, StreamExt};
 use price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
-    reporter::{
-        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
-    },
     worker::ExchangeConnectionsConfig,
 };
 use tokio::{
@@ -28,7 +25,8 @@ use crate::{
     utils::{
         get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender,
         PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
-        WsWriteStream,
+        WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES,
+        MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -59,13 +57,6 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
-        let (exchange, base, quote) = pair_info.clone();
-
-        // Connect to the pair on the specified exchange
-        let conn = connect_exchange(&base, &quote, &config, exchange)
-            .await
-            .map_err(ServerError::ExchangeConnection);
-
         // Create a shared channel into which we forward streamed prices
         let (price_tx, price_rx) = channel(32 /* capacity */);
 
@@ -79,7 +70,6 @@ impl GlobalPriceStreams {
                 config,
                 pair_info,
                 &global_price_streams.price_streams,
-                conn,
                 price_tx,
             )
             .await;
@@ -95,9 +85,14 @@ impl GlobalPriceStreams {
         config: ExchangeConnectionsConfig,
         pair_info: PairInfo,
         price_streams: &SharedPriceStreams,
-        mut maybe_conn: Result<Box<dyn ExchangeConnection>, ServerError>,
         price_tx: PriceSender,
     ) -> Result<(), ServerError> {
+        let mut retry_timestamps = Vec::new();
+
+        // Connect to the pair on the specified exchange
+        let mut conn =
+            Self::connect_with_retries(&pair_info, &config, &mut retry_timestamps).await?;
+
         // Add the channel to the map of price streams
         {
             price_streams.write().await.insert(pair_info.clone(), price_tx.clone());
@@ -106,16 +101,7 @@ impl GlobalPriceStreams {
         let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
         tokio::pin!(delay);
 
-        let mut retry_timestamps = Vec::new();
-
         loop {
-            // If the connection is erroring, attempt to re-establish it
-            let mut conn = if let Ok(conn) = maybe_conn {
-                conn
-            } else {
-                Self::retry_connection(&pair_info, &config, &mut retry_timestamps).await?
-            };
-
             tokio::select! {
                 // Send a keepalive message to the exchange
                 _ = &mut delay => {
@@ -125,27 +111,66 @@ impl GlobalPriceStreams {
 
                 // Forward the next price into the broadcast channel
                 Some(price_res) = conn.next() => {
-                    match price_res {
+                    match price_res.map_err(ServerError::ExchangeConnection) {
                         Ok(price) => {
-                            // `send` only errors if there are no more receivers, meaning no more clients
-                            // are subscribed to this price stream. In this case, we remove the stream from
-                            // the global map, and complete the task.
+                            // `send` only errors if there are no more receivers, meaning no more
+                            // clientz are subscribed to this price stream. In this case, we remove
+                            // the stream from the global map, and complete the task.
                             if price_tx.send(price).is_err() {
                                 price_streams.write().await.remove(&pair_info);
                                 return Ok(());
                             }
                         }
                         Err(e) => {
-                            // We failed to stream a price, indicate the failure and attempt
-                            // to reconnect in the next loop
-                            maybe_conn = Err(ServerError::ExchangeConnection(e));
-                            continue;
+                            // We failed to stream a price, attempt to
+                            // re-establish the connection
+                            conn = Self::exhaust_retries(e, &pair_info, &config, &mut retry_timestamps).await?;
                         }
                     }
                 }
             }
+        }
+    }
 
-            maybe_conn = Ok(conn);
+    /// Initialize an exchange connection, retrying if necessary
+    async fn connect_with_retries(
+        pair_info: &PairInfo,
+        config: &ExchangeConnectionsConfig,
+        retry_timestamps: &mut Vec<Instant>,
+    ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
+        let (exchange, base, quote) = pair_info;
+
+        // Attempt to connect to the pair on the specified exchange
+        match connect_exchange(base, quote, config, *exchange)
+            .await
+            .map_err(ServerError::ExchangeConnection)
+        {
+            Ok(conn) => Ok(conn),
+            Err(e) => Self::exhaust_retries(e, pair_info, config, retry_timestamps).await,
+        }
+    }
+
+    /// Attempt to re-establish an erroring exchange connection, exhausting
+    /// retries if necessary
+    async fn exhaust_retries(
+        mut prev_err: ServerError,
+        pair_info: &PairInfo,
+        config: &ExchangeConnectionsConfig,
+        retry_timestamps: &mut Vec<Instant>,
+    ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
+        loop {
+            prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
+                Ok(conn) => return Ok(conn),
+                Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
+                    _exchange,
+                ))) => {
+                    // TODO: logging
+
+                    // Return the original error if we've exhausted retries
+                    return Err(prev_err);
+                },
+                Err(e) => e,
+            };
         }
     }
 
@@ -161,8 +186,8 @@ impl GlobalPriceStreams {
 
         // Increment the retry count and filter out old requests
         let now = Instant::now();
-        retry_timestamps
-            .retain(|ts| now.duration_since(*ts) < Duration::from_millis(MAX_CONN_RETRY_WINDOW_MS));
+        let retry_window = Duration::from_millis(MAX_CONN_RETRY_WINDOW_MS);
+        retry_timestamps.retain(|ts| now.duration_since(*ts) < retry_window);
 
         // Add the current timestamp to the set of retries
         retry_timestamps.push(now);
