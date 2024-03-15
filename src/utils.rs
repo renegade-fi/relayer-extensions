@@ -1,13 +1,13 @@
 //! Miscellaneous utility types and helper functions.
 
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
-    sync::{broadcast::Sender, mpsc::UnboundedSender},
+    sync::{broadcast::Sender, mpsc::UnboundedSender, RwLock},
 };
 use tokio_stream::{wrappers::BroadcastStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
@@ -26,10 +26,14 @@ pub type PairInfo = (Exchange, Token, Token);
 /// A type alias for the sender end of a price channel
 pub type PriceSender = Sender<Price>;
 
+/// A type alias for a shareable map of price streams, indexed by the (source,
+/// base, quote) tuple
+pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceSender>>>;
+
 /// A type alias for a price stream
 pub type PriceStream = BroadcastStream<Price>;
 
-/// A type alias for a map of price streams, indexed by the (source, base,
+/// A type alias for a mapped stream prices, indexed by the (source, base,
 /// quote) tuple
 pub type PriceStreamMap = StreamMap<PairInfo, PriceStream>;
 

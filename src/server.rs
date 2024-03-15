@@ -23,8 +23,7 @@ use util::err_str;
 use crate::{
     errors::ServerError,
     utils::{
-        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender,
-        PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, WsWriteStream,
+        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender, PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream
     },
 };
 
@@ -38,7 +37,7 @@ use crate::{
 pub struct GlobalPriceStreams {
     /// A thread-safe map of price streams, indexed by the (source, base, quote)
     /// tuple
-    pub price_streams: Arc<RwLock<HashMap<PairInfo, PriceSender>>>,
+    pub price_streams: SharedPriceStreams,
     /// A channel to send closure signals from the price stream tasks
     pub closure_channel: ClosureSender,
 }
@@ -63,33 +62,38 @@ impl GlobalPriceStreams {
             .map_err(ServerError::ExchangeConnection)?;
 
         // Create a shared channel into which we forward streamed prices
-        let (tx, rx) = channel(32 /* capacity */);
+        let (price_tx, price_rx) = channel(32 /* capacity */);
 
-        // Add the channel to the map of price streams
-        {
-            self.price_streams.write().await.insert(pair_info, tx.clone());
-        }
-
-        // Clone the closure channel so the server can be notified when the stream is
-        // closed
-        let closure_channel = self.closure_channel.clone();
+        // Clone the global map of price streams for the task to have access to it
+        let global_price_streams = self.clone();
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
         tokio::spawn(async move {
-            let res = Self::price_stream_task(conn, tx).await;
-            closure_channel.send(res).unwrap()
+            let res =
+                Self::price_stream_task(pair_info, &global_price_streams.price_streams, conn, price_tx).await;
+            global_price_streams.closure_channel.send(res).unwrap()
         });
 
         // Return a handle to the broadcast channel stream
-        Ok(PriceStream::new(rx))
+        Ok(PriceStream::new(price_rx))
     }
 
     /// The task responsible for streaming prices from the exchange
     async fn price_stream_task(
+        pair_info: PairInfo,
+        price_streams: &SharedPriceStreams,
         mut conn: Box<dyn ExchangeConnection>,
         price_tx: PriceSender,
     ) -> Result<(), ServerError> {
+        // Add the channel to the map of price streams
+        {
+            price_streams
+                .write()
+                .await
+                .insert(pair_info.clone(), price_tx.clone());
+        }
+
         let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
         tokio::pin!(delay);
 
@@ -104,7 +108,13 @@ impl GlobalPriceStreams {
                 // Forward the next price into the broadcast channel
                 Some(price_res) = conn.next() => {
                     let price = price_res.map_err(ServerError::ExchangeConnection)?;
-                    let _num_listeners = price_tx.send(price).map_err(err_str!(ServerError::PriceStreaming))?;
+                    // `send` only errors if there are no more receivers, meaning no more clients
+                    // are subscribed to this price stream. In this case, we remove the stream from
+                    // the global map, and complete the task.
+                    if price_tx.send(price).is_err() {
+                        price_streams.write().await.remove(&pair_info);
+                        return Ok(());
+                    }
                 }
             }
         }
