@@ -1,9 +1,11 @@
 //! Miscellaneous utility types and helper functions.
 
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 
+use arbitrum_client::constants::Chain;
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
+use price_reporter::worker::ExchangeConnectionsConfig;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -30,6 +32,30 @@ pub const CONN_RETRY_DELAY_MS: u64 = 2_000; // 2 seconds
 pub const MAX_CONN_RETRY_WINDOW_MS: u64 = 60_000; // 1 minute
 /// The maximum number of retries to attempt before giving up on a connection
 pub const MAX_CONN_RETRIES: usize = 5;
+
+/// The name of the environment variable specifying the port on which the
+/// server listens for incoming websocket connections
+const PORT_ENV_VAR: &str = "PORT";
+/// The default port on which the server listens for incoming websocket
+/// connections
+const DEFAULT_PORT: u16 = 4000;
+/// The name of the environment variable specifying the path to the token
+/// remap file
+const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
+/// The name of the environment variable specifying the chain to use
+/// for token remapping
+const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
+/// The default chain to use for token remapping
+const DEFAULT_CHAIN: Chain = Chain::Testnet;
+/// The name of the environment variable specifying the Coinbase
+/// API key
+const CB_API_KEY_ENV_VAR: &str = "CB_API_KEY";
+/// The name of the environment variable specifying the Coinbase
+/// API secret
+const CB_API_SECRET_ENV_VAR: &str = "CB_API_SECRET";
+/// The name of the environment variable specifying the Ethereum
+/// RPC node websocket address
+const ETH_WS_ADDR_ENV_VAR: &str = "ETH_WS_ADDR";
 
 // ---------
 // | TYPES |
@@ -68,9 +94,43 @@ pub struct PriceMessage {
     pub price: Price,
 }
 
+/// The configuration options for the price reporter server
+pub struct PriceReporterConfig {
+    /// The port on which the server listens for incoming websocket connections
+    pub port: u16,
+    /// The path to the token remap file
+    pub token_remap_path: Option<String>,
+    /// The chain to use for token remapping
+    pub remap_chain: Chain,
+    /// The configuration options that may be used by exchange connections
+    pub exchange_conn_config: ExchangeConnectionsConfig,
+}
+
 // -----------
 // | HELPERS |
 // -----------
+
+/// Parse the configuration options from environment variables
+pub fn parse_config_env_vars() -> PriceReporterConfig {
+    let port = env::var(PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_PORT);
+    let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
+    let remap_chain =
+        env::var(CHAIN_ID_ENV_VAR).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_CHAIN);
+    let coinbase_api_key = env::var(CB_API_KEY_ENV_VAR).ok();
+    let coinbase_api_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
+    let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
+
+    PriceReporterConfig {
+        port,
+        token_remap_path,
+        remap_chain,
+        exchange_conn_config: ExchangeConnectionsConfig {
+            coinbase_api_key,
+            coinbase_api_secret,
+            eth_websocket_addr,
+        },
+    }
+}
 
 /// Get the topic name for a given pair info
 pub fn get_pair_info_topic(pair_info: &PairInfo) -> String {

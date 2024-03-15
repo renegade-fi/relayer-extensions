@@ -341,9 +341,6 @@ async fn handle_subscription_message(
         },
         WebsocketMessage::Unsubscribe { topic } => {
             let pair_info = parse_pair_info_from_topic(&topic)?;
-            // TODO: We should keep track of the # of listeners for a given pair info &
-            // remove the associated stream from the global map if that reaches 0
-            // (provided that it is not one of the `DEFAULT_PAIRS`)
             subscriptions.remove(&pair_info);
         },
     };

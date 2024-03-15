@@ -9,40 +9,35 @@
 
 use std::net::SocketAddr;
 
-use arbitrum_client::constants::Chain;
 use config::setup_token_remaps;
 use errors::ServerError;
-use price_reporter::worker::ExchangeConnectionsConfig;
 use server::{handle_connection, GlobalPriceStreams};
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use util::err_str;
+use utils::{parse_config_env_vars, PriceReporterConfig};
 
 mod errors;
 mod server;
 mod utils;
 
-/// The port on which the server listens for
-/// incoming connections
-const PORT: u16 = 4000;
-
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
+    // Parse configuration env vars
+    let PriceReporterConfig { port, token_remap_path, remap_chain, exchange_conn_config } =
+        parse_config_env_vars();
+
     // Set up the token remapping
-    tokio::task::spawn_blocking(|| {
-        // TODO: Accept some minimal config that either allows for a
-        // remap file, or specifiying which chain to use
-        setup_token_remaps(None /* remap_file */, Chain::Testnet)
-            .map_err(err_str!(ServerError::TokenRemap))
+    tokio::task::spawn_blocking(move || {
+        setup_token_remaps(token_remap_path, remap_chain).map_err(err_str!(ServerError::TokenRemap))
     })
     .await
     .unwrap()?;
 
     let (closure_tx, mut closure_rx) = unbounded_channel();
     let global_price_streams = GlobalPriceStreams::new(closure_tx);
-    let config = ExchangeConnectionsConfig::default();
 
     // Bind the server to the given port
-    let addr: SocketAddr = format!("0.0.0.0:{:?}", PORT).parse().unwrap();
+    let addr: SocketAddr = format!("0.0.0.0:{:?}", port).parse().unwrap();
 
     let listener =
         TcpListener::bind(addr).await.map_err(err_str!(ServerError::WebsocketConnection))?;
@@ -54,7 +49,7 @@ async fn main() -> Result<(), ServerError> {
                 tokio::spawn(handle_connection(
                     stream,
                     global_price_streams.clone(),
-                    config.clone(),
+                    exchange_conn_config.clone(),
                 ));
             }
             // Handle price stream closure
