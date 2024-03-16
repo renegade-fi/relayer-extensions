@@ -15,8 +15,8 @@ pub enum ServerError {
     /// An error setting up the token remapping
     TokenRemap(String),
     /// An error attempting to subscribe to a price stream
-    /// from an invalid exchange
-    InvalidExchange(String),
+    /// for an invalid (exchange, base, quote) tuple
+    InvalidPairInfo(String),
     /// An error establishing a connection to an exchange
     ExchangeConnection(ExchangeConnectionError),
     /// An error getting the peer address of a websocket connection

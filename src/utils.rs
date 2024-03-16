@@ -156,7 +156,7 @@ pub fn get_pair_info_topic(pair_info: &PairInfo) -> String {
 /// Parse the pair info from a given topic
 pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
     let parts: Vec<&str> = topic.split('-').collect();
-    let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidExchange))?;
+    let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
     let base = Token::from_addr(parts[1]);
     let quote = Token::from_addr(parts[2]);
 
@@ -166,4 +166,23 @@ pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> 
 /// Get all the topics that are subscribed to in a `PriceStreamMap`
 pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
     subscriptions.keys().map(get_pair_info_topic).collect()
+}
+
+/// Validate a pair info tuple, checking that the exchange supports the base
+/// and quote tokens
+pub fn validate_subscription(topic: &str) -> Result<PairInfo, ServerError> {
+    let (exchange, base, quote) = parse_pair_info_from_topic(topic)?;
+    let base_exchanges = base.supported_exchanges();
+    let quote_exchanges = quote.supported_exchanges();
+
+    if !(base_exchanges.contains(&exchange) && quote_exchanges.contains(&exchange)) {
+        return Err(ServerError::InvalidPairInfo(format!(
+            "{} does not support the pair ({}, {})",
+            exchange, base, quote
+        )));
+    }
+
+    // TODO: Subscription auth - API key?
+
+    Ok((exchange, base, quote))
 }

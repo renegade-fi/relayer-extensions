@@ -24,10 +24,10 @@ use util::err_str;
 use crate::{
     errors::ServerError,
     utils::{
-        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic, ClosureSender,
-        PairInfo, PriceMessage, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
-        WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES,
-        MAX_CONN_RETRY_WINDOW_MS,
+        get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic,
+        validate_subscription, ClosureSender, PairInfo, PriceMessage, PriceSender, PriceStream,
+        PriceStreamMap, SharedPriceStreams, WsWriteStream, CONN_RETRY_DELAY_MS,
+        KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -355,8 +355,10 @@ async fn handle_subscription_message(
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
+            let pair_info = validate_subscription(&topic)?;
+
             info!("Subscribing {} to {}", peer_addr, &topic);
-            let pair_info = parse_pair_info_from_topic(&topic)?;
+
             let price_stream =
                 global_price_streams.get_or_create_price_stream(pair_info.clone(), config).await?;
             subscriptions.insert(pair_info, price_stream);
