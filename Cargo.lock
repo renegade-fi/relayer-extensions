@@ -5066,6 +5066,7 @@ dependencies = [
  "config",
  "external-api",
  "futures-util",
+ "hyper",
  "price-reporter",
  "serde",
  "serde_json",

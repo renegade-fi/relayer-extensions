@@ -41,10 +41,15 @@ pub const MAX_CONN_RETRIES: usize = 5;
 
 /// The name of the environment variable specifying the port on which the
 /// server listens for incoming websocket connections
-const PORT_ENV_VAR: &str = "PORT";
+const WS_PORT_ENV_VAR: &str = "WS_PORT";
 /// The default port on which the server listens for incoming websocket
 /// connections
-const DEFAULT_PORT: u16 = 4000;
+const DEFAULT_WS_PORT: u16 = 4000;
+/// The name of the environment variable specifying the port on which the
+/// server listens for http requests
+const HTTP_PORT_ENV_VAR: &str = "HTTP_PORT";
+/// The default port on which the server listens for http requests
+const DEFAULT_HTTP_PORT: u16 = 3000;
 /// The name of the environment variable specifying the path to the token
 /// remap file
 const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
@@ -103,7 +108,9 @@ pub struct PriceMessage {
 /// The configuration options for the price reporter server
 pub struct PriceReporterConfig {
     /// The port on which the server listens for incoming websocket connections
-    pub port: u16,
+    pub ws_port: u16,
+    /// The port on which the server listens for incoming http requests
+    pub http_port: u16,
     /// The path to the token remap file
     pub token_remap_path: Option<String>,
     /// The chain to use for token remapping
@@ -128,7 +135,9 @@ pub fn setup_logging() {
 
 /// Parse the configuration options from environment variables
 pub fn parse_config_env_vars() -> PriceReporterConfig {
-    let port = env::var(PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_PORT);
+    let ws_port = env::var(WS_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_WS_PORT);
+    let http_port =
+        env::var(HTTP_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_HTTP_PORT);
     let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
     let remap_chain =
         env::var(CHAIN_ID_ENV_VAR).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_CHAIN);
@@ -137,7 +146,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
 
     PriceReporterConfig {
-        port,
+        ws_port,
+        http_port,
         token_remap_path,
         remap_chain,
         exchange_conn_config: ExchangeConnectionsConfig {
