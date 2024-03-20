@@ -129,7 +129,7 @@ pub fn setup_logging() {
         .with(
             EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy(),
         )
-        .with(fmt::layer().with_file(true).with_line_number(true).json())
+        .with(fmt::layer().with_file(true).with_line_number(true).json().flatten_event(true))
         .init();
 }
 
