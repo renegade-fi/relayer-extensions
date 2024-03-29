@@ -5,6 +5,7 @@ use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 use arbitrum_client::constants::Chain;
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
+use matchit::Router;
 use price_reporter::worker::ExchangeConnectionsConfig;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -22,7 +23,7 @@ use tracing_subscriber::{
 use tungstenite::Message;
 use util::err_str;
 
-use crate::errors::ServerError;
+use crate::{errors::ServerError, http_server::Handler};
 
 // ----------
 // | CONSTS |
@@ -94,6 +95,12 @@ pub type WsWriteStream = SplitSink<WebSocketStream<TcpStream>, Message>;
 
 /// A type alias for the sender end of a price stream closure channel
 pub type ClosureSender = UnboundedSender<Result<(), ServerError>>;
+
+/// A type alias for URL parameters
+pub type UrlParams = HashMap<String, String>;
+
+/// A type alias for a router which matches URLs to handlers
+pub type HttpRouter = Router<Box<dyn Handler>>;
 
 /// A message that is sent by the price reporter to the client indicating
 /// a price udpate for the given topic

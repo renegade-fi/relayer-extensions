@@ -29,6 +29,8 @@ pub enum ServerError {
     WebsocketReceive(String),
     /// An error during de/serialization
     Serde(SerdeError),
+    /// An error in the HTTP server execution
+    HttpServer(String),
 }
 
 impl Display for ServerError {

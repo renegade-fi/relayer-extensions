@@ -7,26 +7,21 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 
-use std::{convert::Infallible, net::SocketAddr};
+use std::net::SocketAddr;
 
 use config::setup_token_remaps;
 use errors::ServerError;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Response, Server, StatusCode};
-use server::{handle_connection, GlobalPriceStreams};
+use http_server::HttpServer;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
 use util::err_str;
 use utils::{parse_config_env_vars, setup_logging, PriceReporterConfig};
+use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
-mod server;
+mod http_server;
 mod utils;
-
-/// A health check handler for the server
-async fn health_check(_: hyper::Request<Body>) -> Result<Response<Body>, Infallible> {
-    Ok(Response::builder().status(StatusCode::OK).body(Body::from("OK")).unwrap())
-}
+mod ws_server;
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
@@ -60,12 +55,9 @@ async fn main() -> Result<(), ServerError> {
 
     info!("Listening on: {}", addr);
 
-    // Set up the health check server
-    let make_svc = make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(health_check)) });
-    let health_server_addr: SocketAddr = format!("0.0.0.0:{:?}", http_port).parse().unwrap();
-    // The health check service is infallible so we don't worry about joining /
-    // awaiting it
-    tokio::spawn(Server::bind(&health_server_addr).serve(make_svc));
+    let http_server = HttpServer::new(http_port, global_price_streams.clone());
+    tokio::spawn(http_server.execution_loop());
+    // TODO: Handle shutdown of the HTTP server
 
     loop {
         tokio::select! {

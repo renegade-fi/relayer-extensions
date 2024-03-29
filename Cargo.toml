@@ -9,6 +9,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-tungstenite = { version = "0.18", features = ["native-tls"]}
 tungstenite = "0.18"
 hyper = { version = "0.14", features = ["http1", "http2", "server", "tcp"] }
+matchit = "0.7"
 
 # === Runtime === #
 tokio = "1"
