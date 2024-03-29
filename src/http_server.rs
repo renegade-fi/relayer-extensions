@@ -2,40 +2,19 @@
 
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
-use async_trait::async_trait;
 use hyper::{
     server::conn::AddrStream,
     service::{make_service_fn, service_fn},
     Body, Error as HyperError, Request, Response, Server, StatusCode,
 };
 use matchit::Router;
+use price_reporter::worker::ExchangeConnectionsConfig;
 
-use crate::{
-    errors::ServerError,
-    utils::{HttpRouter, UrlParams},
-    ws_server::GlobalPriceStreams,
-};
+use crate::{errors::ServerError, utils::HttpRouter, ws_server::GlobalPriceStreams};
 
-/// A handler is attached to a route and handles the process of translating an
-/// abstract request type into a response
-#[async_trait]
-pub trait Handler: Send + Sync {
-    /// The handler method for the request/response on the handler's route
-    async fn handle(&self, req: Request<Body>, url_params: UrlParams) -> Response<Body>;
-}
+use self::routes::{Handler, HealthCheckHandler, PriceHandler, HEALTH_CHECK_ROUTE, PRICE_ROUTE};
 
-/// The route for the health check endpoint
-const HEALTH_CHECK_ROUTE: &str = "/health";
-
-/// The handler for the health check endpoint
-pub struct HealthCheckHandler;
-
-#[async_trait]
-impl Handler for HealthCheckHandler {
-    async fn handle(&self, _: Request<Body>, _: UrlParams) -> Response<Body> {
-        Response::builder().status(StatusCode::OK).body(Body::from("OK")).unwrap()
-    }
-}
+pub mod routes;
 
 /// The HTTP server for the price reporter
 #[derive(Clone)]
@@ -44,23 +23,28 @@ pub struct HttpServer {
     port: u16,
     /// The router for the HTTP server, used to match routes
     router: Arc<HttpRouter>,
-    /// A handle to the global map of price streams, used to read serve prices
-    /// over HTTP
-    price_streams: GlobalPriceStreams,
 }
 
 impl HttpServer {
     /// Create a new HTTP server with the given port and global price streams
-    pub fn new(port: u16, price_streams: GlobalPriceStreams) -> Self {
-        let router = Self::build_router();
-        Self { port, router: Arc::new(router), price_streams }
+    pub fn new(
+        port: u16,
+        config: ExchangeConnectionsConfig,
+        price_streams: GlobalPriceStreams,
+    ) -> Self {
+        let router = Self::build_router(config, price_streams);
+        Self { port, router: Arc::new(router) }
     }
 
     /// Build the router for the HTTP server
-    fn build_router() -> HttpRouter {
+    fn build_router(
+        config: ExchangeConnectionsConfig,
+        price_streams: GlobalPriceStreams,
+    ) -> HttpRouter {
         let mut router: Router<Box<dyn Handler>> = Router::new();
 
-        router.insert(HEALTH_CHECK_ROUTE, Box::new(HealthCheckHandler)).unwrap();
+        router.insert(HEALTH_CHECK_ROUTE, Box::new(HealthCheckHandler::new())).unwrap();
+        router.insert(PRICE_ROUTE, Box::new(PriceHandler::new(config, price_streams))).unwrap();
 
         router
     }
@@ -94,7 +78,7 @@ impl HttpServer {
             }
         });
 
-        // Build the http server and enter its execution loop
+        // Build the http server and enter its execution loopx
         let addr: SocketAddr = format!("0.0.0.0:{}", self.port).parse().unwrap();
         Server::bind(&addr)
             .serve(make_service)

@@ -23,7 +23,7 @@ use tracing_subscriber::{
 use tungstenite::Message;
 use util::err_str;
 
-use crate::{errors::ServerError, http_server::Handler};
+use crate::{errors::ServerError, http_server::routes::Handler};
 
 // ----------
 // | CONSTS |
@@ -189,6 +189,17 @@ pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
 /// and quote tokens
 pub fn validate_subscription(topic: &str) -> Result<PairInfo, ServerError> {
     let (exchange, base, quote) = parse_pair_info_from_topic(topic)?;
+
+    if base == quote {
+        return Err(ServerError::InvalidPairInfo(
+            "Base and quote tokens must be different".to_string(),
+        ));
+    }
+
+    if exchange == Exchange::UniswapV3 {
+        return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
+    }
+
     let base_exchanges = base.supported_exchanges();
     let quote_exchanges = quote.supported_exchanges();
 
