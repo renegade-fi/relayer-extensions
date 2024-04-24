@@ -2,6 +2,7 @@ on:
   push:
     branches:
       - 'staging'
+      - 'dev'
       - 'testnet'
       - 'mainnet'
 
@@ -20,7 +21,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ca-central-1
+          aws-region: ${{ github.ref_name == 'dev' && 'us-east-2' || 'ca-central-1' }}
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -54,7 +55,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ca-central-1
+          aws-region: ${{ github.ref_name == 'dev' && 'us-east-2' || 'ca-central-1' }}
 
       - name: Get the existing task definitions
         id: fetch-task-def
