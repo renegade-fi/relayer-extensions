@@ -355,7 +355,7 @@ async fn handle_subscription_message(
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
-            let pair_info = validate_subscription(&topic)?;
+            let pair_info = validate_subscription(&topic).await?;
 
             info!("Subscribing {} to {}", peer_addr, &topic);
 

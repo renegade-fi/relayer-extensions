@@ -6,7 +6,7 @@ use arbitrum_client::constants::Chain;
 use common::types::{exchange::Exchange, token::Token, Price};
 use futures_util::stream::SplitSink;
 use matchit::Router;
-use price_reporter::worker::ExchangeConnectionsConfig;
+use price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -187,30 +187,19 @@ pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
 
 /// Validate a pair info tuple, checking that the exchange supports the base
 /// and quote tokens
-pub fn validate_subscription(topic: &str) -> Result<PairInfo, ServerError> {
+pub async fn validate_subscription(topic: &str) -> Result<PairInfo, ServerError> {
     let (exchange, base, quote) = parse_pair_info_from_topic(topic)?;
-
-    if base == quote {
-        return Err(ServerError::InvalidPairInfo(
-            "Base and quote tokens must be different".to_string(),
-        ));
-    }
 
     if exchange == Exchange::UniswapV3 {
         return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
     }
 
-    let base_exchanges = base.supported_exchanges();
-    let quote_exchanges = quote.supported_exchanges();
-
-    if !(base_exchanges.contains(&exchange) && quote_exchanges.contains(&exchange)) {
+    if !supports_pair(&exchange, &base, &quote).await.map_err(ServerError::ExchangeConnection)? {
         return Err(ServerError::InvalidPairInfo(format!(
             "{} does not support the pair ({}, {})",
             exchange, base, quote
         )));
     }
-
-    // TODO: Subscription auth - API key?
 
     Ok((exchange, base, quote))
 }
