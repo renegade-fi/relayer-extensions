@@ -187,19 +187,19 @@ pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
 
 /// Validate a pair info tuple, checking that the exchange supports the base
 /// and quote tokens
-pub async fn validate_subscription(topic: &str) -> Result<PairInfo, ServerError> {
-    let (exchange, base, quote) = parse_pair_info_from_topic(topic)?;
+pub async fn validate_subscription(pair_info: &PairInfo) -> Result<(), ServerError> {
+    let (exchange, base, quote) = pair_info;
 
-    if exchange == Exchange::UniswapV3 {
+    if exchange == &Exchange::UniswapV3 {
         return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
     }
 
-    if !supports_pair(&exchange, &base, &quote).await.map_err(ServerError::ExchangeConnection)? {
+    if !supports_pair(exchange, base, quote).await.map_err(ServerError::ExchangeConnection)? {
         return Err(ServerError::InvalidPairInfo(format!(
             "{} does not support the pair ({}, {})",
             exchange, base, quote
         )));
     }
 
-    Ok((exchange, base, quote))
+    Ok(())
 }

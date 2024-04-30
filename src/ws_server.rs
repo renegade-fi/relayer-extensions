@@ -58,6 +58,8 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
+        validate_subscription(&pair_info).await?;
+
         info!("Initializing price stream for {}", get_pair_info_topic(&pair_info));
 
         // Create a shared channel into which we forward streamed prices
@@ -355,7 +357,7 @@ async fn handle_subscription_message(
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
-            let pair_info = validate_subscription(&topic).await?;
+            let pair_info = parse_pair_info_from_topic(&topic)?;
 
             info!("Subscribing {} to {}", peer_addr, &topic);
 
