@@ -25,10 +25,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"]}
 
 # === Renegade === #
-price-reporter = { git = "https://github.com/renegade-fi/renegade.git" }
-external-api = { git = "https://github.com/renegade-fi/renegade.git" }
-arbitrum-client = { git = "https://github.com/renegade-fi/renegade.git" }
-config = { git = "https://github.com/renegade-fi/renegade.git" }
-common = { git = "https://github.com/renegade-fi/renegade.git" }
-util = { git = "https://github.com/renegade-fi/renegade.git" }
+price-reporter = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
+external-api = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
+arbitrum-client = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
+config = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
+common = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
+util = { git = "https://github.com/renegade-fi/renegade.git", branch = "dev" }
 
