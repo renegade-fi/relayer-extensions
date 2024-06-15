@@ -12,6 +12,7 @@ pub mod schema;
 
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
+use models::Metadata;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::telemetry::{setup_system_logger, LevelFilter};
 

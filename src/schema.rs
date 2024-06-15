@@ -19,4 +19,16 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(fees, indexing_metadata,);
+diesel::table! {
+    wallets (id) {
+        id -> Uuid,
+        mints -> Nullable<Array<Nullable<Text>>>,
+        secret_id -> Nullable<Text>,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(
+    fees,
+    indexing_metadata,
+    wallets,
+);
