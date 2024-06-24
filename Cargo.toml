@@ -8,6 +8,9 @@ edition = "2021"
 clap = { version = "4.5.3", features = ["derive", "env"] }
 tokio = { version = "1.10", features = ["full"] }
 
+# === DB === #
+diesel = { version = "2.1", features = ["postgres", "numeric"] }
+
 # === Blockchain Interaction === #
 alloy-sol-types = "0.3.1"
 ethers = "2"
@@ -22,4 +25,7 @@ renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Misc Dependencies === #
+bigdecimal = { version = "0.3", features = ["serde"] }
 futures = "0.3"
+num-bigint = "0.4"
+tracing = "0.1"
