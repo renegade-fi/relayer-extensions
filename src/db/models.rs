@@ -7,6 +7,7 @@ use num_bigint::BigInt;
 use renegade_circuit_types::note::Note;
 use renegade_crypto::fields::scalar_to_bigint;
 use renegade_util::hex::{biguint_to_hex_addr, jubjub_to_hex_string};
+use uuid::Uuid;
 
 use crate::db::schema::fees;
 
@@ -62,4 +63,15 @@ impl NewFee {
 pub struct Metadata {
     pub key: String,
     pub value: String,
+}
+
+/// A metadata entry for a wallet managed by the indexer
+#[derive(Clone, Queryable, Selectable)]
+#[diesel(table_name = crate::db::schema::wallets)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
+pub struct WalletMetadata {
+    pub id: Uuid,
+    pub mints: Vec<Option<String>>,
+    pub secret_id: String,
 }

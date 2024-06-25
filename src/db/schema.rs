@@ -22,13 +22,9 @@ diesel::table! {
 diesel::table! {
     wallets (id) {
         id -> Uuid,
-        mints -> Nullable<Array<Nullable<Text>>>,
-        secret_id -> Nullable<Text>,
+        mints -> Array<Nullable<Text>>,
+        secret_id -> Text,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    fees,
-    indexing_metadata,
-    wallets,
-);
+diesel::allow_tables_to_appear_in_same_query!(fees, indexing_metadata, wallets,);
