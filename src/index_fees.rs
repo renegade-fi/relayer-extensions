@@ -18,8 +18,8 @@ use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128, u256_to_scalar}
 use renegade_util::raw_err_str;
 use tracing::info;
 
-use crate::models::{Metadata, NewFee};
-use crate::schema::{
+use crate::db::models::{Metadata, NewFee};
+use crate::db::schema::{
     fees::dsl::fees as fees_table,
     indexing_metadata::dsl::{
         indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
@@ -83,13 +83,15 @@ impl Indexer {
 
         // Decrypt the note and check that the commitment matches the expected value; if not we are not the receiver
         let note = self.decrypt_note(&encryption);
+        let tx = format!("{:#x}", meta.transaction_hash);
         if note.commitment() != note_comm {
             info!("not receiver, skipping");
             return Ok(());
+        } else {
+            info!("indexing note from tx: {tx}");
         }
 
         // Otherwise, index the note
-        let tx = format!("{:#x}", meta.transaction_hash);
         let fee = NewFee::new_from_note(&note, tx);
         diesel::insert_into(fees_table)
             .values(vec![fee])

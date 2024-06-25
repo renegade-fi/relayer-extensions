@@ -5,14 +5,13 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+pub mod db;
+pub mod helpers;
 pub mod index_fees;
-pub mod models;
-#[allow(missing_docs)]
-pub mod schema;
+pub mod redeem_fees;
 
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
-use models::Metadata;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::telemetry::{setup_system_logger, LevelFilter};
 
@@ -32,6 +31,9 @@ pub(crate) const LAST_INDEXED_BLOCK_KEY: &str = "latest_block";
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]
 struct Cli {
+    /// The URL of the relayer to use
+    #[clap(long)]
+    relayer_url: String,
     /// The Arbitrum RPC url to use
     #[clap(short, long)]
     rpc_url: String,
@@ -50,6 +52,9 @@ struct Cli {
     /// The database url
     #[clap(long)]
     db_url: String,
+    /// The token address of the USDC token, used to get prices for fee redemption
+    #[clap(long)]
+    usdc_mint: String,
 }
 
 impl Cli {
@@ -61,6 +66,10 @@ impl Cli {
 
 /// Stores the dependencies needed to index the chain
 pub(crate) struct Indexer {
+    /// The token address of the USDC token, used to get prices for fee redemption
+    pub usdc_mint: String,
+    /// The relayer URL
+    pub relayer_url: String,
     /// The Arbitrum client
     pub client: ArbitrumClient,
     /// The decryption key
@@ -75,11 +84,15 @@ impl Indexer {
         client: ArbitrumClient,
         decryption_key: DecryptionKey,
         db_conn: PgConnection,
+        usdc_mint: String,
+        relayer_url: String,
     ) -> Self {
         Indexer {
             client,
             decryption_key,
             db_conn,
+            usdc_mint,
+            relayer_url,
         }
     }
 }
@@ -104,13 +117,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build the indexer
     let key = DecryptionKey::from_hex_str(&cli.decryption_key)?;
-    let mut indexer = Indexer::new(client, key, db_conn);
+    let mut indexer = Indexer::new(client, key, db_conn, cli.usdc_mint, cli.relayer_url);
 
     // 1. Index all new fees in the DB
     indexer.index_fees().await?;
-
     // 2. Redeem fees according to the redemption policy
-    // TODO: Implement this
+    indexer.redeem_fees().await?;
 
     Ok(())
 }
