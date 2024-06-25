@@ -6,13 +6,13 @@ use diesel::prelude::*;
 use num_bigint::BigInt;
 use renegade_circuit_types::note::Note;
 use renegade_crypto::fields::scalar_to_bigint;
-use renegade_util::hex::{biguint_to_hex_string, jubjub_to_hex_string};
+use renegade_util::hex::{biguint_to_hex_addr, jubjub_to_hex_string};
 
-use crate::schema::fees;
+use crate::db::schema::fees;
 
 /// A fee that has been indexed by the indexer
 #[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::schema::fees)]
+#[diesel(table_name = crate::db::schema::fees)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub struct Fee {
@@ -39,7 +39,7 @@ pub struct NewFee {
 impl NewFee {
     /// Construct a fee from a note
     pub fn new_from_note(note: &Note, tx_hash: String) -> Self {
-        let mint = biguint_to_hex_string(&note.mint);
+        let mint = biguint_to_hex_addr(&note.mint);
         let amount = BigInt::from(note.amount).into();
         let blinder = scalar_to_bigint(&note.blinder).into();
         let receiver = jubjub_to_hex_string(&note.receiver);
@@ -56,7 +56,7 @@ impl NewFee {
 
 /// Metadata information maintained by the indexer
 #[derive(Clone, Queryable, Selectable)]
-#[diesel(table_name = crate::schema::indexing_metadata)]
+#[diesel(table_name = crate::db::schema::indexing_metadata)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub struct Metadata {
