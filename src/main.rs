@@ -9,6 +9,7 @@ pub mod db;
 pub mod helpers;
 pub mod indexer;
 
+use aws_config::{BehaviorVersion, Region, SdkConfig as AwsConfig};
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
 use renegade_circuit_types::elgamal::DecryptionKey;
@@ -22,8 +23,18 @@ use arbitrum_client::{
 };
 use clap::Parser;
 
+// -------------
+// | Constants |
+// -------------
+
 /// The block polling interval for the Arbitrum client
 const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
+/// The default region in which to provision secrets manager secrets
+const DEFAULT_REGION: &str = "us-east-2";
+
+// -------
+// | Cli |
+// -------
 
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]
@@ -73,11 +84,14 @@ pub(crate) struct Indexer {
     pub decryption_key: DecryptionKey,
     /// A connection to the DB
     pub db_conn: PgConnection,
+    /// The AWS config
+    pub aws_config: AwsConfig,
 }
 
 impl Indexer {
     /// Constructor
     pub fn new(
+        aws_config: AwsConfig,
         client: ArbitrumClient,
         decryption_key: DecryptionKey,
         db_conn: PgConnection,
@@ -90,6 +104,7 @@ impl Indexer {
             db_conn,
             usdc_mint,
             relayer_url,
+            aws_config,
         }
     }
 }
@@ -100,6 +115,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     setup_system_logger(LevelFilter::INFO);
     let cli = Cli::parse();
     let db_conn = cli.build_db_conn()?;
+
+    // Parse an AWS config
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .region(Region::new(DEFAULT_REGION))
+        .load()
+        .await;
 
     // Build an Arbitrum client
     let wallet = LocalWallet::from_str(&cli.arbitrum_private_key)?;
@@ -114,7 +135,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build the indexer
     let key = DecryptionKey::from_hex_str(&cli.decryption_key)?;
-    let mut indexer = Indexer::new(client, key, db_conn, cli.usdc_mint, cli.relayer_url);
+    let mut indexer = Indexer::new(config, client, key, db_conn, cli.usdc_mint, cli.relayer_url);
 
     // 1. Index all new fees in the DB
     indexer.index_fees().await?;

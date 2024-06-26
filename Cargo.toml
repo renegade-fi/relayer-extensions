@@ -8,7 +8,9 @@ edition = "2021"
 clap = { version = "4.5.3", features = ["derive", "env"] }
 tokio = { version = "1.10", features = ["full"] }
 
-# === DB === #
+# === Infra === #
+aws-sdk-secretsmanager = "1.37"
+aws-config = "1.5"
 diesel = { version = "2.1", features = ["postgres", "numeric", "uuid"] }
 
 # === Blockchain Interaction === #
@@ -31,5 +33,6 @@ bigdecimal = { version = "0.3", features = ["serde"] }
 futures = "0.3"
 num-bigint = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
+serde = "1.0"
 tracing = "0.1"
 uuid = "1.8"

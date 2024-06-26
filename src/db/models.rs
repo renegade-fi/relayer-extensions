@@ -66,7 +66,7 @@ pub struct Metadata {
 }
 
 /// A metadata entry for a wallet managed by the indexer
-#[derive(Clone, Queryable, Selectable)]
+#[derive(Clone, Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::db::schema::wallets)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
@@ -74,4 +74,15 @@ pub struct WalletMetadata {
     pub id: Uuid,
     pub mints: Vec<Option<String>>,
     pub secret_id: String,
+}
+
+impl WalletMetadata {
+    /// Construct a new wallet metadata entry
+    pub fn empty(id: Uuid, secret_id: String) -> Self {
+        WalletMetadata {
+            id,
+            mints: vec![],
+            secret_id,
+        }
+    }
 }
