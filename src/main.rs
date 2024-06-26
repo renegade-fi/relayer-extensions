@@ -7,8 +7,7 @@
 
 pub mod db;
 pub mod helpers;
-pub mod index_fees;
-pub mod redeem_fees;
+pub mod indexer;
 
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
@@ -25,8 +24,6 @@ use clap::Parser;
 
 /// The block polling interval for the Arbitrum client
 const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
-/// The metadata key for the last indexed block
-pub(crate) const LAST_INDEXED_BLOCK_KEY: &str = "latest_block";
 
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]

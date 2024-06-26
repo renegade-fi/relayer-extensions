@@ -9,7 +9,7 @@ clap = { version = "4.5.3", features = ["derive", "env"] }
 tokio = { version = "1.10", features = ["full"] }
 
 # === DB === #
-diesel = { version = "2.1", features = ["postgres", "numeric"] }
+diesel = { version = "2.1", features = ["postgres", "numeric", "uuid"] }
 
 # === Blockchain Interaction === #
 alloy-sol-types = "0.3.1"
@@ -32,3 +32,4 @@ futures = "0.3"
 num-bigint = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
 tracing = "0.1"
+uuid = "1.8"

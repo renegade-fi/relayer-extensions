@@ -6,7 +6,6 @@ use arbitrum_client::{
     abi::NotePostedFilter, constants::SELECTOR_LEN,
     helpers::parse_note_ciphertext_from_settle_offline_fee,
 };
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use ethers::contract::LogMeta;
 use ethers::middleware::Middleware;
 use renegade_circuit_types::elgamal::ElGamalCiphertext;
@@ -18,14 +17,8 @@ use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128, u256_to_scalar}
 use renegade_util::raw_err_str;
 use tracing::info;
 
-use crate::db::models::{Metadata, NewFee};
-use crate::db::schema::{
-    fees::dsl::fees as fees_table,
-    indexing_metadata::dsl::{
-        indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
-    },
-};
-use crate::{Indexer, LAST_INDEXED_BLOCK_KEY};
+use crate::db::models::NewFee;
+use crate::Indexer;
 
 impl Indexer {
     /// Index all fees since the given block
@@ -93,12 +86,7 @@ impl Indexer {
 
         // Otherwise, index the note
         let fee = NewFee::new_from_note(&note, tx);
-        diesel::insert_into(fees_table)
-            .values(vec![fee])
-            .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to insert fee: {}"))?;
-
-        Ok(())
+        self.insert_fee(fee)
     }
 
     /// Decrypt a note using the decryption key
@@ -113,30 +101,5 @@ impl Indexer {
             receiver: self.decryption_key.public_key(),
             blinder: cleartext_values[2],
         }
-    }
-
-    /// Update the latest block number
-    fn update_latest_block(&mut self, block_number: u64) -> Result<(), String> {
-        let block_string = block_number.to_string();
-        diesel::update(metadata_table.find(LAST_INDEXED_BLOCK_KEY))
-            .set(metadata_value.eq(block_string))
-            .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to update latest block: {}"))
-            .map(|_| ())
-    }
-
-    /// Get the latest block number
-    fn get_latest_block(&mut self) -> Result<u64, String> {
-        let entry = metadata_table
-            .filter(metadata_key.eq(LAST_INDEXED_BLOCK_KEY))
-            .limit(1)
-            .load(&mut self.db_conn)
-            .map(|res: Vec<Metadata>| res[0].clone())
-            .map_err(raw_err_str!("failed to query latest block: {}"))?;
-
-        entry
-            .value
-            .parse::<u64>()
-            .map_err(raw_err_str!("failed to parse latest block: {}"))
     }
 }

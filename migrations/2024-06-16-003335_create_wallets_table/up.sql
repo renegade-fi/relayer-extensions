@@ -2,6 +2,6 @@
 -- The `secret_id` is the id of the AWS Secrets Manager secret that holds recovery information for the wallet
 CREATE TABLE wallets (
     id UUID PRIMARY KEY,
-    mints TEXT[],
-    secret_id TEXT
+    mints TEXT[] not null,
+    secret_id TEXT not null
 );
