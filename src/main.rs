@@ -6,12 +6,14 @@
 #![feature(trivial_bounds)]
 
 pub mod db;
-pub mod helpers;
 pub mod indexer;
+pub mod relayer_client;
 
-use aws_config::{BehaviorVersion, Region, SdkConfig as AwsConfig};
+use aws_config::{BehaviorVersion, Region};
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
+use indexer::Indexer;
+use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::telemetry::{setup_system_logger, LevelFilter};
 
@@ -39,6 +41,9 @@ const DEFAULT_REGION: &str = "us-east-2";
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]
 struct Cli {
+    /// The environment this sweeper runs in
+    #[clap(short, long, default_value = "testnet")]
+    env: String,
     /// The URL of the relayer to use
     #[clap(long)]
     relayer_url: String,
@@ -72,43 +77,6 @@ impl Cli {
     }
 }
 
-/// Stores the dependencies needed to index the chain
-pub(crate) struct Indexer {
-    /// The token address of the USDC token, used to get prices for fee redemption
-    pub usdc_mint: String,
-    /// The relayer URL
-    pub relayer_url: String,
-    /// The Arbitrum client
-    pub client: ArbitrumClient,
-    /// The decryption key
-    pub decryption_key: DecryptionKey,
-    /// A connection to the DB
-    pub db_conn: PgConnection,
-    /// The AWS config
-    pub aws_config: AwsConfig,
-}
-
-impl Indexer {
-    /// Constructor
-    pub fn new(
-        aws_config: AwsConfig,
-        client: ArbitrumClient,
-        decryption_key: DecryptionKey,
-        db_conn: PgConnection,
-        usdc_mint: String,
-        relayer_url: String,
-    ) -> Self {
-        Indexer {
-            client,
-            decryption_key,
-            db_conn,
-            usdc_mint,
-            relayer_url,
-            aws_config,
-        }
-    }
-}
-
 /// Main
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -135,7 +103,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build the indexer
     let key = DecryptionKey::from_hex_str(&cli.decryption_key)?;
-    let mut indexer = Indexer::new(config, client, key, db_conn, cli.usdc_mint, cli.relayer_url);
+    let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
+    let mut indexer = Indexer::new(cli.env, config, client, key, db_conn, relayer_client);
 
     // 1. Index all new fees in the DB
     indexer.index_fees().await?;

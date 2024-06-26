@@ -15,7 +15,6 @@ use renegade_util::raw_err_str;
 use tracing::{info, warn};
 
 use crate::db::models::WalletMetadata;
-use crate::helpers::{create_new_wallet, get_binance_price};
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
@@ -32,7 +31,7 @@ impl Indexer {
         // Get the prices of each redeemable mint, we want to redeem the most profitable fees first
         let mut prices = HashMap::new();
         for mint in mints.into_iter() {
-            let maybe_price = get_binance_price(&mint, &self.usdc_mint, &self.relayer_url).await?;
+            let maybe_price = self.relayer_client.get_binance_price(&mint).await?;
             if let Some(price) = maybe_price {
                 prices.insert(mint, price);
             } else {
@@ -89,7 +88,7 @@ impl Indexer {
     /// Create a new Renegade wallet on-chain
     async fn create_renegade_wallet(&mut self) -> Result<(WalletIdentifier, LocalWallet), String> {
         let chain_id = self
-            .client
+            .arbitrum_client
             .chain_id()
             .await
             .map_err(raw_err_str!("Error fetching chain ID: {}"))?;
@@ -101,7 +100,7 @@ impl Indexer {
         let key_chain = derive_wallet_keychain(&root_key, chain_id)?;
 
         let wallet = Wallet::new_empty_wallet(wallet_id, blinder_seed, share_seed, key_chain);
-        create_new_wallet(wallet, &self.relayer_url).await?;
+        self.relayer_client.create_new_wallet(wallet).await?;
         info!("created new wallet for fee redemption");
 
         Ok((wallet_id, root_key))
@@ -116,7 +115,7 @@ impl Indexer {
         wallet: LocalWallet,
     ) -> Result<String, String> {
         let client = SecretsManagerClient::new(&self.aws_config);
-        let secret_name = format!("redemption-wallet-{id}");
+        let secret_name = format!("redemption-wallet-{}-{id}", self.env);
         let secret_val = hex::encode(wallet.signer().to_bytes());
 
         // Check that the `LocalWallet` recovers the same

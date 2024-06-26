@@ -27,7 +27,7 @@ impl Indexer {
         info!("indexing fees from block {block_number}");
 
         let filter = self
-            .client
+            .arbitrum_client
             .get_darkpool_client()
             .event::<NotePostedFilter>()
             .from_block(block_number);
@@ -56,7 +56,7 @@ impl Indexer {
     async fn index_note(&mut self, note_comm: NoteCommitment, meta: LogMeta) -> Result<(), String> {
         // Parse the note from the tx
         let tx = self
-            .client
+            .arbitrum_client
             .get_darkpool_client()
             .client()
             .get_transaction(meta.transaction_hash)
