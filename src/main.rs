@@ -6,11 +6,14 @@
 #![feature(trivial_bounds)]
 
 pub mod db;
-pub mod helpers;
 pub mod indexer;
+pub mod relayer_client;
 
+use aws_config::{BehaviorVersion, Region};
 use diesel::{pg::PgConnection, Connection};
 use ethers::signers::LocalWallet;
+use indexer::Indexer;
+use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::telemetry::{setup_system_logger, LevelFilter};
 
@@ -22,12 +25,25 @@ use arbitrum_client::{
 };
 use clap::Parser;
 
+// -------------
+// | Constants |
+// -------------
+
 /// The block polling interval for the Arbitrum client
 const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
+/// The default region in which to provision secrets manager secrets
+const DEFAULT_REGION: &str = "us-east-2";
+
+// -------
+// | Cli |
+// -------
 
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]
 struct Cli {
+    /// The environment this sweeper runs in
+    #[clap(short, long, default_value = "testnet")]
+    env: String,
     /// The URL of the relayer to use
     #[clap(long)]
     relayer_url: String,
@@ -61,45 +77,18 @@ impl Cli {
     }
 }
 
-/// Stores the dependencies needed to index the chain
-pub(crate) struct Indexer {
-    /// The token address of the USDC token, used to get prices for fee redemption
-    pub usdc_mint: String,
-    /// The relayer URL
-    pub relayer_url: String,
-    /// The Arbitrum client
-    pub client: ArbitrumClient,
-    /// The decryption key
-    pub decryption_key: DecryptionKey,
-    /// A connection to the DB
-    pub db_conn: PgConnection,
-}
-
-impl Indexer {
-    /// Constructor
-    pub fn new(
-        client: ArbitrumClient,
-        decryption_key: DecryptionKey,
-        db_conn: PgConnection,
-        usdc_mint: String,
-        relayer_url: String,
-    ) -> Self {
-        Indexer {
-            client,
-            decryption_key,
-            db_conn,
-            usdc_mint,
-            relayer_url,
-        }
-    }
-}
-
 /// Main
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     setup_system_logger(LevelFilter::INFO);
     let cli = Cli::parse();
     let db_conn = cli.build_db_conn()?;
+
+    // Parse an AWS config
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .region(Region::new(DEFAULT_REGION))
+        .load()
+        .await;
 
     // Build an Arbitrum client
     let wallet = LocalWallet::from_str(&cli.arbitrum_private_key)?;
@@ -114,7 +103,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build the indexer
     let key = DecryptionKey::from_hex_str(&cli.decryption_key)?;
-    let mut indexer = Indexer::new(client, key, db_conn, cli.usdc_mint, cli.relayer_url);
+    let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
+    let mut indexer = Indexer::new(cli.env, config, client, key, db_conn, relayer_client);
 
     // 1. Index all new fees in the DB
     indexer.index_fees().await?;

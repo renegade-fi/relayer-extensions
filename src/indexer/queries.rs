@@ -7,7 +7,8 @@ use diesel::define_sql_function;
 use diesel::deserialize::Queryable;
 use diesel::deserialize::QueryableByName;
 use diesel::sql_query;
-use diesel::sql_types::{Array, Integer, Numeric, Text};
+use diesel::sql_types::SingleValue;
+use diesel::sql_types::{Array, Integer, Nullable, Numeric, Text};
 use diesel::PgArrayExpressionMethods;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use renegade_constants::MAX_BALANCES;
@@ -32,7 +33,12 @@ pub(crate) const LAST_INDEXED_BLOCK_KEY: &str = "latest_block";
 // Define the `array_length` function
 define_sql_function! {
     /// Calculate the length of an array
-    fn array_length<T>(array: Array<T>, dim: Integer) -> Integer;
+    fn array_length<T>(array: Array<T>, dim: Integer) -> Nullable<Integer>;
+}
+
+define_sql_function! {
+    /// Coalesce a nullable value with a default value
+    fn coalesce<T: SingleValue>(x: Nullable<T>, y: T) -> T;
 }
 
 // ---------------
@@ -177,13 +183,23 @@ impl Indexer {
     pub(crate) fn find_wallet_with_empty_balance(
         &mut self,
     ) -> Result<Option<WalletMetadata>, String> {
-        let wallets: Vec<WalletMetadata> = wallet_table
-            .filter(array_length(managed_mints_col, 1 /* dim */).lt(MAX_BALANCES as i32))
+        let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
+        let wallets = wallet_table
+            .filter(n_mints.lt(MAX_BALANCES as i32))
             .load(&mut self.db_conn)
             .map_err(raw_err_str!(
                 "failed to query wallets with empty balances: {}"
             ))?;
 
         Ok(wallets.first().cloned())
+    }
+
+    /// Insert a new wallet into the wallets table
+    pub(crate) fn insert_wallet(&mut self, wallet: WalletMetadata) -> Result<(), String> {
+        diesel::insert_into(wallet_table)
+            .values(vec![wallet])
+            .execute(&mut self.db_conn)
+            .map_err(raw_err_str!("failed to insert wallet: {}"))
+            .map(|_| ())
     }
 }
