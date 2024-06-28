@@ -1,0 +1,17 @@
+[package]
+name = "compliance-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# === HTTP Server === #
+http-body-util = "0.1.0"
+warp = "0.3"
+compliance-api = { path = "../compliance-api" }
+
+# === Renegade Dependencies === #
+renegade-util = { workspace = true }
+
+# === Misc === #
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1.37", features = ["full"] }
