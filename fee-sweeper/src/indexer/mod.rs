@@ -1,6 +1,6 @@
 //! The indexer handles the indexing and redemption of fee notes
 
-use arbitrum_client::client::ArbitrumClient;
+use arbitrum_client::{client::ArbitrumClient, constants::Chain};
 use aws_config::SdkConfig as AwsConfig;
 use diesel::PgConnection;
 use renegade_circuit_types::elgamal::DecryptionKey;
@@ -13,8 +13,10 @@ pub mod redeem_fees;
 
 /// Stores the dependencies needed to index the chain
 pub(crate) struct Indexer {
-    /// The environment this indexer runs in
-    pub env: String,
+    /// The id of the chain this indexer targets
+    pub chain_id: u64,
+    /// The chain this indexer targets
+    pub chain: Chain,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
     /// The Arbitrum client
@@ -30,7 +32,8 @@ pub(crate) struct Indexer {
 impl Indexer {
     /// Constructor
     pub fn new(
-        env: String,
+        chain_id: u64,
+        chain: Chain,
         aws_config: AwsConfig,
         arbitrum_client: ArbitrumClient,
         decryption_key: DecryptionKey,
@@ -38,7 +41,8 @@ impl Indexer {
         relayer_client: RelayerClient,
     ) -> Self {
         Indexer {
-            env,
+            chain_id,
+            chain,
             arbitrum_client,
             decryption_key,
             db_conn,

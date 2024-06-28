@@ -1,5 +1,10 @@
 [workspace]
-members = ["renegade-dealer", "renegade-dealer-api"]
+members = [
+    "dealer/renegade-dealer",
+    "dealer/renegade-dealer-api",
+    "fee-sweeper",
+    "price-reporter",
+]
 
 [profile.bench]
 opt-level = 3

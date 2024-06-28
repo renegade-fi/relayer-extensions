@@ -8,6 +8,7 @@ use arbitrum_client::{
 };
 use ethers::contract::LogMeta;
 use ethers::middleware::Middleware;
+use ethers::types::TxHash;
 use renegade_circuit_types::elgamal::ElGamalCiphertext;
 use renegade_circuit_types::native_helpers::elgamal_decrypt;
 use renegade_circuit_types::note::{Note, NOTE_CIPHERTEXT_SIZE};
@@ -54,15 +55,43 @@ impl Indexer {
 
     /// Index a note
     async fn index_note(&mut self, note_comm: NoteCommitment, meta: LogMeta) -> Result<(), String> {
+        let note = self.get_note_from_tx(meta.transaction_hash).await?;
+        let tx = format!("{:#x}", meta.transaction_hash);
+        if note.commitment() != note_comm {
+            info!("not receiver, skipping");
+            return Ok(());
+        } else {
+            info!("indexing note from tx: {tx}");
+        }
+
+        // Check that the note's nullifier has not been spent
+        let nullifier = note.nullifier();
+        if self
+            .arbitrum_client
+            .check_nullifier_used(nullifier)
+            .await
+            .map_err(raw_err_str!("failed to check nullifier: {}"))?
+        {
+            info!("note nullifier already spent, skipping");
+            return Ok(());
+        }
+
+        // Otherwise, index the note
+        let fee = NewFee::new_from_note(&note, tx);
+        self.insert_fee(fee)
+    }
+
+    /// Get a note from a transaction body
+    pub(crate) async fn get_note_from_tx(&self, tx_hash: TxHash) -> Result<Note, String> {
         // Parse the note from the tx
         let tx = self
             .arbitrum_client
             .get_darkpool_client()
             .client()
-            .get_transaction(meta.transaction_hash)
+            .get_transaction(tx_hash)
             .await
             .map_err(raw_err_str!("failed to query tx: {}"))?
-            .ok_or_else(|| format!("tx not found: {}", meta.transaction_hash))?;
+            .ok_or_else(|| format!("tx not found: {}", tx_hash))?;
 
         let calldata: Vec<u8> = tx.input.to_vec();
         let selector: [u8; 4] = calldata[..SELECTOR_LEN].try_into().unwrap();
@@ -74,19 +103,9 @@ impl Indexer {
             sel => return Err(format!("invalid selector when parsing note: {sel:?}")),
         };
 
-        // Decrypt the note and check that the commitment matches the expected value; if not we are not the receiver
+        // Decrypt the note
         let note = self.decrypt_note(&encryption);
-        let tx = format!("{:#x}", meta.transaction_hash);
-        if note.commitment() != note_comm {
-            info!("not receiver, skipping");
-            return Ok(());
-        } else {
-            info!("indexing note from tx: {tx}");
-        }
-
-        // Otherwise, index the note
-        let fee = NewFee::new_from_note(&note, tx);
-        self.insert_fee(fee)
+        Ok(note)
     }
 
     /// Decrypt a note using the decryption key

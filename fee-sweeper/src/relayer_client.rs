@@ -3,18 +3,35 @@
 use std::time::Duration;
 
 use base64::engine::{general_purpose as b64_general_purpose, Engine};
-use ethers::core::k256::ecdsa::{signature::Signer, Signature, SigningKey};
+use ethers::{
+    core::k256::ecdsa::{signature::Signer, Signature, SigningKey},
+    signers::LocalWallet,
+};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
     http::{
         price_report::{GetPriceReportRequest, GetPriceReportResponse, PRICE_REPORT_ROUTE},
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
-        wallet::{CreateWalletRequest, CreateWalletResponse, CREATE_WALLET_ROUTE},
+        wallet::{
+            CreateWalletRequest, CreateWalletResponse, FindWalletRequest, FindWalletResponse,
+            GetWalletResponse, RedeemNoteRequest, RedeemNoteResponse, CREATE_WALLET_ROUTE,
+            FIND_WALLET_ROUTE, GET_WALLET_ROUTE, REDEEM_NOTE_ROUTE,
+        },
     },
     RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
 use renegade_circuit_types::keychain::SecretSigningKey;
-use renegade_common::types::{exchange::PriceReporterState, token::Token, wallet::Wallet};
+use renegade_common::types::{
+    exchange::PriceReporterState,
+    token::Token,
+    wallet::{
+        derivation::{
+            derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
+        },
+        Wallet, WalletIdentifier,
+    },
+};
+use renegade_crypto::fields::scalar_to_biguint;
 use renegade_util::{get_current_time_millis, raw_err_str};
 use reqwest::{Body, Client};
 use serde::{Deserialize, Serialize};
@@ -68,6 +85,50 @@ impl RelayerClient {
     // | Wallet Methods |
     // ------------------
 
+    /// Check that the relayer has a given wallet, lookup the wallet if not
+    pub async fn check_wallet_indexed(
+        &self,
+        wallet_id: WalletIdentifier,
+        chain_id: u64,
+        eth_key: &LocalWallet,
+    ) -> Result<(), String> {
+        let mut path = GET_WALLET_ROUTE.to_string();
+        path = path.replace(":wallet_id", &wallet_id.to_string());
+
+        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
+        let root_key = keychain.secret_keys.sk_root.unwrap();
+        if self
+            .get_relayer_with_auth::<GetWalletResponse>(&path, &root_key)
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        // Otherwise lookup the wallet
+        self.lookup_wallet(chain_id, eth_key).await
+    }
+
+    /// Lookup a wallet in the configured relayer
+    async fn lookup_wallet(&self, chain_id: u64, eth_key: &LocalWallet) -> Result<(), String> {
+        let path = FIND_WALLET_ROUTE.to_string();
+        let wallet_id = derive_wallet_id(eth_key).unwrap();
+        let blinder_seed = derive_blinder_seed(eth_key).unwrap();
+        let share_seed = derive_share_seed(eth_key).unwrap();
+        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
+        let root_key = keychain.secret_keys.sk_root.clone().unwrap();
+
+        let body = FindWalletRequest {
+            wallet_id,
+            secret_share_seed: scalar_to_biguint(&share_seed),
+            blinder_seed: scalar_to_biguint(&blinder_seed),
+            key_chain: keychain.into(),
+        };
+
+        let resp: FindWalletResponse = self.post_relayer_with_auth(&path, &body, &root_key).await?;
+        self.await_relayer_task(resp.task_id).await
+    }
+
     /// Create a new wallet via the configured relayer
     pub(crate) async fn create_new_wallet(&self, wallet: Wallet) -> Result<(), String> {
         let body = CreateWalletRequest {
@@ -75,6 +136,20 @@ impl RelayerClient {
         };
 
         let resp: CreateWalletResponse = self.post_relayer(CREATE_WALLET_ROUTE, &body).await?;
+        self.await_relayer_task(resp.task_id).await
+    }
+
+    /// Redeem a note into a wallet
+    pub(crate) async fn redeem_note(
+        &self,
+        wallet_id: WalletIdentifier,
+        req: RedeemNoteRequest,
+        root_key: &SecretSigningKey,
+    ) -> Result<(), String> {
+        let mut path = REDEEM_NOTE_ROUTE.to_string();
+        path = path.replace(":wallet_id", &wallet_id.to_string());
+
+        let resp: RedeemNoteResponse = self.post_relayer_with_auth(&path, &req, root_key).await?;
         self.await_relayer_task(resp.task_id).await
     }
 

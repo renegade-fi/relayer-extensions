@@ -1,4 +1,5 @@
-//! The fee sweeper, sweeps for unredeemed fees in the Renegade protocol and redeems them
+//! The fee sweeper, sweeps for unredeemed fees in the Renegade protocol and
+//! redeems them
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![deny(unsafe_code)]
@@ -15,7 +16,10 @@ use ethers::signers::LocalWallet;
 use indexer::Indexer;
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_util::telemetry::{setup_system_logger, LevelFilter};
+use renegade_util::{
+    raw_err_str,
+    telemetry::{setup_system_logger, LevelFilter},
+};
 
 use std::{error::Error, str::FromStr};
 
@@ -41,9 +45,6 @@ const DEFAULT_REGION: &str = "us-east-2";
 /// The cli for the fee sweeper
 #[derive(Debug, Parser)]
 struct Cli {
-    /// The environment this sweeper runs in
-    #[clap(short, long, default_value = "testnet")]
-    env: String,
     /// The URL of the relayer to use
     #[clap(long)]
     relayer_url: String,
@@ -65,7 +66,8 @@ struct Cli {
     /// The database url
     #[clap(long)]
     db_url: String,
-    /// The token address of the USDC token, used to get prices for fee redemption
+    /// The token address of the USDC token, used to get prices for fee
+    /// redemption
     #[clap(long)]
     usdc_mint: String,
 }
@@ -100,11 +102,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         block_polling_interval_ms: BLOCK_POLLING_INTERVAL_MS,
     };
     let client = ArbitrumClient::new(conf).await?;
+    let chain_id = client.chain_id().await.map_err(raw_err_str!("Error fetching chain ID: {}"))?;
 
     // Build the indexer
     let key = DecryptionKey::from_hex_str(&cli.decryption_key)?;
     let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
-    let mut indexer = Indexer::new(cli.env, config, client, key, db_conn, relayer_client);
+    let mut indexer =
+        Indexer::new(chain_id, cli.chain, config, client, key, db_conn, relayer_client);
 
     // 1. Index all new fees in the DB
     indexer.index_fees().await?;

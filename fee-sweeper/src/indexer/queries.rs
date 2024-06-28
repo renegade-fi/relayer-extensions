@@ -17,7 +17,9 @@ use renegade_util::raw_err_str;
 use crate::db::models::WalletMetadata;
 use crate::db::models::{Metadata, NewFee};
 use crate::db::schema::{
-    fees::dsl::{fees as fees_table, mint as mint_col, redeemed as redeemed_col},
+    fees::dsl::{
+        fees as fees_table, mint as mint_col, redeemed as redeemed_col, tx_hash as tx_hash_col,
+    },
     indexing_metadata::dsl::{
         indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
     },
@@ -56,6 +58,7 @@ pub(crate) struct FeeValue {
     pub mint: String,
     /// The value of the fee
     #[sql_type = "Numeric"]
+    #[allow(unused)]
     pub value: BigDecimal,
 }
 
@@ -118,12 +121,23 @@ impl Indexer {
         Ok(mints)
     }
 
+    /// Mark a fee as redeemed
+    pub(crate) fn mark_fee_as_redeemed(&mut self, tx_hash: &str) -> Result<(), String> {
+        let filter = tx_hash_col.eq(tx_hash);
+        diesel::update(fees_table.filter(filter))
+            .set(redeemed_col.eq(true))
+            .execute(&mut self.db_conn)
+            .map_err(raw_err_str!("failed to mark fee as redeemed: {}"))
+            .map(|_| ())
+    }
+
     /// Get the most valuable fees to be redeemed
     ///
     /// Returns the tx hashes of the most valuable fees to be redeemed
     pub(crate) fn get_most_valuable_fees(
         &mut self,
         prices: HashMap<String, f64>,
+        receiver: &str,
     ) -> Result<Vec<FeeValue>, String> {
         if prices.is_empty() {
             return Ok(vec![]);
@@ -149,7 +163,10 @@ impl Indexer {
             query_string.push_str(&format!("WHEN mint = '{}' then amount * {} ", mint, price));
         }
         query_string.push_str("ELSE 0 END as value ");
-        query_string.push_str("FROM fees WHERE redeemed = false ");
+        query_string.push_str(&format!(
+            "FROM fees WHERE redeemed = false and receiver = '{}'",
+            receiver
+        ));
 
         // Sort and limit
         query_string.push_str(&format!("ORDER BY value DESC LIMIT {};", MAX_FEES_REDEEMED));

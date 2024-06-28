@@ -11,7 +11,7 @@ tokio = { version = "1.10", features = ["full"] }
 # === Infra === #
 aws-sdk-secretsmanager = "1.37"
 aws-config = "1.5"
-diesel = { version = "2.1", features = ["postgres", "numeric", "uuid"] }
+diesel = { version = "2.2", features = ["postgres", "numeric", "uuid"] }
 
 # === Blockchain Interaction === #
 alloy-sol-types = "0.3.1"
@@ -31,7 +31,7 @@ renegade-util = { package = "util", git = "https://github.com/renegade-fi/renega
 
 # === Misc Dependencies === #
 base64 = "0.22"
-bigdecimal = { version = "0.3", features = ["serde"] }
+bigdecimal = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 http = "1.1"
 num-bigint = "0.4"
