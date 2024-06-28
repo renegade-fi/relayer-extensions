@@ -99,7 +99,7 @@ impl Indexer {
             <settleOfflineFeeCall as SolCall>::SELECTOR => {
                 parse_note_ciphertext_from_settle_offline_fee(&calldata)
                     .map_err(raw_err_str!("failed to parse ciphertext: {}"))?
-            }
+            },
             sel => return Err(format!("invalid selector when parsing note: {sel:?}")),
         };
 

@@ -45,13 +45,7 @@ impl NewFee {
         let blinder = scalar_to_bigint(&note.blinder).into();
         let receiver = jubjub_to_hex_string(&note.receiver);
 
-        NewFee {
-            tx_hash,
-            mint,
-            amount,
-            blinder,
-            receiver,
-        }
+        NewFee { tx_hash, mint, amount, blinder, receiver }
     }
 }
 
@@ -79,10 +73,6 @@ pub struct WalletMetadata {
 impl WalletMetadata {
     /// Construct a new wallet metadata entry
     pub fn empty(id: Uuid, secret_id: String) -> Self {
-        WalletMetadata {
-            id,
-            mints: vec![],
-            secret_id,
-        }
+        WalletMetadata { id, mints: vec![], secret_id }
     }
 }

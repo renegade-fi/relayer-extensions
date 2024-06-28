@@ -55,7 +55,8 @@ async fn main() -> Result<(), ServerError> {
 
     info!("Listening on: {}", addr);
 
-    let http_server = HttpServer::new(http_port, exchange_conn_config.clone(), global_price_streams.clone());
+    let http_server =
+        HttpServer::new(http_port, exchange_conn_config.clone(), global_price_streams.clone());
     tokio::spawn(http_server.execution_loop());
     // TODO: Handle shutdown of the HTTP server
 

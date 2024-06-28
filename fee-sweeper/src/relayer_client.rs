@@ -54,10 +54,7 @@ pub struct RelayerClient {
 impl RelayerClient {
     /// Create a new relayer client
     pub fn new(base_url: &str, usdc_mint: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            usdc_mint: usdc_mint.to_string(),
-        }
+        Self { base_url: base_url.to_string(), usdc_mint: usdc_mint.to_string() }
     }
 
     /// Get the price for a given mint
@@ -77,7 +74,7 @@ impl RelayerClient {
             state => {
                 warn!("Price report state: {state:?}");
                 Ok(None)
-            }
+            },
         }
     }
 
@@ -97,11 +94,7 @@ impl RelayerClient {
 
         let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
         let root_key = keychain.secret_keys.sk_root.unwrap();
-        if self
-            .get_relayer_with_auth::<GetWalletResponse>(&path, &root_key)
-            .await
-            .is_ok()
-        {
+        if self.get_relayer_with_auth::<GetWalletResponse>(&path, &root_key).await.is_ok() {
             return Ok(());
         }
 
@@ -131,9 +124,7 @@ impl RelayerClient {
 
     /// Create a new wallet via the configured relayer
     pub(crate) async fn create_new_wallet(&self, wallet: Wallet) -> Result<(), String> {
-        let body = CreateWalletRequest {
-            wallet: wallet.into(),
-        };
+        let body = CreateWalletRequest { wallet: wallet.into() };
 
         let resp: CreateWalletResponse = self.post_relayer(CREATE_WALLET_ROUTE, &body).await?;
         self.await_relayer_task(resp.task_id).await
@@ -163,8 +154,7 @@ impl RelayerClient {
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
-        self.post_relayer_with_headers(path, body, &HeaderMap::new())
-            .await
+        self.post_relayer_with_headers(path, body, &HeaderMap::new()).await
     }
 
     /// Post to the relayer with wallet auth
@@ -211,9 +201,7 @@ impl RelayerClient {
             return Err(format!("Failed to send request: {}", resp.status()));
         }
 
-        resp.json::<Resp>()
-            .await
-            .map_err(raw_err_str!("Failed to parse response: {}"))
+        resp.json::<Resp>().await.map_err(raw_err_str!("Failed to parse response: {}"))
     }
 
     /// Get from the relayer URL
@@ -260,9 +248,7 @@ impl RelayerClient {
             return Err(format!("Failed to get relayer path: {}", resp.status()));
         }
 
-        resp.json::<Resp>()
-            .await
-            .map_err(raw_err_str!("Failed to parse response: {}"))
+        resp.json::<Resp>().await.map_err(raw_err_str!("Failed to parse response: {}"))
     }
 
     /// Await a relayer task
@@ -275,11 +261,7 @@ impl RelayerClient {
         loop {
             // For now, we assume that an error is a 404 in which case the task has completed
             // TODO: Improve this break condition if it proves problematic
-            if self
-                .get_relayer::<GetTaskStatusResponse>(&path)
-                .await
-                .is_err()
-            {
+            if self.get_relayer::<GetTaskStatusResponse>(&path).await.is_err() {
                 break;
             }
 
@@ -319,10 +301,7 @@ fn build_auth_headers(key: &SecretSigningKey, req_bytes: &[u8]) -> Result<Header
     let signature: Signature = root_key.sign(&payload);
     let encoded_sig = b64_general_purpose::STANDARD_NO_PAD.encode(signature.to_bytes());
 
-    headers.insert(
-        RENEGADE_AUTH_HEADER_NAME,
-        HeaderValue::from_str(&encoded_sig).unwrap(),
-    );
+    headers.insert(RENEGADE_AUTH_HEADER_NAME, HeaderValue::from_str(&encoded_sig).unwrap());
 
     Ok(headers)
 }

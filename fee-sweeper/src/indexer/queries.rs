@@ -80,10 +80,7 @@ impl Indexer {
             .map(|res: Vec<Metadata>| res[0].clone())
             .map_err(raw_err_str!("failed to query latest block: {}"))?;
 
-        entry
-            .value
-            .parse::<u64>()
-            .map_err(raw_err_str!("failed to parse latest block: {}"))
+        entry.value.parse::<u64>().map_err(raw_err_str!("failed to parse latest block: {}"))
     }
 
     /// Update the latest block number
@@ -163,10 +160,8 @@ impl Indexer {
             query_string.push_str(&format!("WHEN mint = '{}' then amount * {} ", mint, price));
         }
         query_string.push_str("ELSE 0 END as value ");
-        query_string.push_str(&format!(
-            "FROM fees WHERE redeemed = false and receiver = '{}'",
-            receiver
-        ));
+        query_string
+            .push_str(&format!("FROM fees WHERE redeemed = false and receiver = '{}'", receiver));
 
         // Sort and limit
         query_string.push_str(&format!("ORDER BY value DESC LIMIT {};", MAX_FEES_REDEEMED));
@@ -204,9 +199,7 @@ impl Indexer {
         let wallets = wallet_table
             .filter(n_mints.lt(MAX_BALANCES as i32))
             .load(&mut self.db_conn)
-            .map_err(raw_err_str!(
-                "failed to query wallets with empty balances: {}"
-            ))?;
+            .map_err(raw_err_str!("failed to query wallets with empty balances: {}"))?;
 
         Ok(wallets.first().cloned())
     }
