@@ -1,0 +1,42 @@
+[package]
+name = "fee-sweeper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# === CLI + Runtime === #
+clap = { version = "4.5.3", features = ["derive", "env"] }
+tokio = { version = "1.10", features = ["full"] }
+
+# === Infra === #
+aws-sdk-secretsmanager = "1.37"
+aws-config = "1.5"
+diesel = { version = "2.1", features = ["postgres", "numeric", "uuid"] }
+
+# === Blockchain Interaction === #
+alloy-sol-types = "0.3.1"
+ethers = "2"
+
+# === Renegade Dependencies === #
+arbitrum-client = { git = "https://github.com/renegade-fi/renegade.git", features = [
+    "rand",
+] }
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
+
+# === Misc Dependencies === #
+base64 = "0.22"
+bigdecimal = { version = "0.3", features = ["serde"] }
+futures = "0.3"
+http = "1.1"
+num-bigint = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
+serde = "1.0"
+serde_json = "1.0"
+tracing = "0.1"
+uuid = "1.8"
