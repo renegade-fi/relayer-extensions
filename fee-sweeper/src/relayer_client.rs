@@ -259,7 +259,8 @@ impl RelayerClient {
         // Enter a polling loop until the task finishes
         let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
         loop {
-            // For now, we assume that an error is a 404 in which case the task has completed
+            // For now, we assume that an error is a 404 in which case the task has
+            // completed
             // TODO: Improve this break condition if it proves problematic
             if self.get_relayer::<GetTaskStatusResponse>(&path).await.is_err() {
                 break;

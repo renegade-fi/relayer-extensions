@@ -1,4 +1,5 @@
-//! Phase one of the sweeper's execution; index all fees since the last consistent block
+//! Phase one of the sweeper's execution; index all fees since the last
+//! consistent block
 
 use alloy_sol_types::SolCall;
 use arbitrum_client::abi::settleOfflineFeeCall;

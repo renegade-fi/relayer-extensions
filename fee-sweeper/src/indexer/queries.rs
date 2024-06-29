@@ -140,8 +140,8 @@ impl Indexer {
             return Ok(vec![]);
         }
 
-        // We query the fees table with a transformation that calculates the value of each fee using the prices passed in.
-        // This query looks something like:
+        // We query the fees table with a transformation that calculates the value of
+        // each fee using the prices passed in. This query looks something like:
         //  SELECT tx_hash, mint, amount,
         //  CASE
         //      WHEN mint = '<mint1>' then amount * <price1>
