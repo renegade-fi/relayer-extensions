@@ -17,6 +17,9 @@ debug = true
 opt-level = 3 # Full optimizations
 lto = true
 
+[http]
+check-revoke = false
+
 [workspace.dependencies]
 # === Renegade Dependencies === #
 arbitrum-client = { git = "https://github.com/renegade-fi/renegade.git", features = [

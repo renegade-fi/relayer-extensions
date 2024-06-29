@@ -37,13 +37,13 @@ type ConnectionPool = Arc<Pool<ConnectionManager<PgConnection>>>;
 #[command(about = "The CLI for the compliance server")]
 struct Cli {
     /// The port to listen on
-    #[arg(short, long)]
+    #[arg(short, long, default_value = "3000")]
     port: u16,
     /// The Chainalysis API key
-    #[arg(long)]
+    #[arg(long, env = "CHAINALYSIS_API_KEY")]
     chainalysis_api_key: String,
     /// The url of the compliance database
-    #[arg(long)]
+    #[arg(long, env = "DATABASE_URL")]
     db_url: String,
 }
 
