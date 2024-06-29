@@ -8,6 +8,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The API endpoint for screening an address for compliance
+pub const WALLET_SCREEN_PATH: &str = "/v0/check-compliance";
+
 /// The response type for a compliance check
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceCheckResponse {

@@ -1,6 +1,6 @@
 //! Database helpers for the server
 
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use compliance_api::ComplianceStatus;
 use diesel::{ExpressionMethods, Insertable, PgConnection, QueryDsl, Queryable, RunQueryDsl};
@@ -14,6 +14,9 @@ use crate::{
     },
 };
 
+/// The default expiration duration for a compliance entry
+const DEFAULT_EXPIRATION_DURATION: Duration = Duration::from_days(365);
+
 // ----------
 // | Models |
 // ----------
@@ -25,12 +28,20 @@ use crate::{
 pub struct ComplianceEntry {
     pub address: String,
     pub is_compliant: bool,
+    pub risk_level: String,
     pub reason: String,
     pub created_at: SystemTime,
     pub expires_at: SystemTime,
 }
 
 impl ComplianceEntry {
+    /// Create a new entry from a risk assessment
+    pub fn new(address: String, is_compliant: bool, risk_level: String, reason: String) -> Self {
+        let created_at = SystemTime::now();
+        let expires_at = created_at + DEFAULT_EXPIRATION_DURATION;
+        ComplianceEntry { address, is_compliant, risk_level, reason, created_at, expires_at }
+    }
+
     /// Get the compliance status for an entry
     pub fn compliance_status(&self) -> ComplianceStatus {
         if self.is_compliant {
@@ -56,4 +67,17 @@ pub fn get_compliance_entry(
         .map_err(err_str!(ComplianceServerError::Db))?;
 
     Ok(query.first().cloned())
+}
+
+/// Insert a compliance entry into the database
+pub fn insert_compliance_entry(
+    entry: ComplianceEntry,
+    conn: &mut PgConnection,
+) -> Result<(), ComplianceServerError> {
+    diesel::insert_into(compliance_table)
+        .values(entry)
+        .execute(conn)
+        .map_err(err_str!(ComplianceServerError::Db))?;
+
+    Ok(())
 }

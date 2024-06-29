@@ -29,3 +29,6 @@ renegade-circuits = { package = "circuits", git = "https://github.com/renegade-f
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
+
+# === Misc Dependencies === #
+tracing = "0.1"

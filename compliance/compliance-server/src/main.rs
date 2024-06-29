@@ -5,20 +5,25 @@
 #![deny(unsafe_code)]
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
+#![feature(duration_constructors)]
 
 use std::sync::Arc;
 
+use chainalysis_api::query_chainalysis;
 use clap::Parser;
 use compliance_api::{ComplianceCheckResponse, ComplianceStatus};
+use db::insert_compliance_entry;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use error::ComplianceServerError;
 use renegade_util::err_str;
 use renegade_util::telemetry::{setup_system_logger, LevelFilter};
+use tracing::info;
 use warp::{reply::Json, Filter};
 
 use crate::db::get_compliance_entry;
 
+pub mod chainalysis_api;
 pub mod db;
 pub mod error;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
@@ -56,7 +61,7 @@ async fn main() {
     let chainalysis_key = cli.chainalysis_api_key.clone();
     let compliance_check = warp::get()
         .and(warp::path("v0"))
-        .and(warp::path("compliance-check"))
+        .and(warp::path("check-compliance"))
         .and(warp::path::param::<String>()) // wallet_address
         .and_then(move |wallet_address| {
             let key = chainalysis_key.clone();
@@ -102,5 +107,10 @@ async fn check_wallet_compliance(
     }
 
     // 2. If not present, check the chainalysis API
-    Ok(ComplianceStatus::Compliant)
+    info!("address not cached in DB, querying Chainalysis");
+    let compliance_entry = query_chainalysis(&wallet_address, chainalysis_api_key).await?;
+
+    // 3. Cache in the DB
+    insert_compliance_entry(compliance_entry.clone(), &mut conn)?;
+    Ok(compliance_entry.compliance_status())
 }
