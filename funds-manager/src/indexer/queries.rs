@@ -12,7 +12,6 @@ use diesel::sql_types::{Array, Integer, Nullable, Numeric, Text};
 use diesel::PgArrayExpressionMethods;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use renegade_constants::MAX_BALANCES;
-use renegade_util::raw_err_str;
 
 use crate::db::models::WalletMetadata;
 use crate::db::models::{Metadata, NewFee};
@@ -25,6 +24,7 @@ use crate::db::schema::{
     },
     wallets::dsl::{mints as managed_mints_col, wallets as wallet_table},
 };
+use crate::error::FundsManagerError;
 use crate::Indexer;
 
 use super::redeem_fees::MAX_FEES_REDEEMED;
@@ -56,6 +56,9 @@ pub(crate) struct FeeValue {
     /// The mint of the fee
     #[sql_type = "Text"]
     pub mint: String,
+    /// The receiver of the mint
+    #[sql_type = "Text"]
+    pub receiver: String,
     /// The value of the fee
     #[sql_type = "Numeric"]
     #[allow(unused)]
@@ -72,24 +75,30 @@ impl Indexer {
     // ------------------
 
     /// Get the latest block number
-    pub(crate) fn get_latest_block(&mut self) -> Result<u64, String> {
+    pub(crate) fn get_latest_block(&mut self) -> Result<u64, FundsManagerError> {
         let entry = metadata_table
             .filter(metadata_key.eq(LAST_INDEXED_BLOCK_KEY))
             .limit(1)
             .load(&mut self.db_conn)
             .map(|res: Vec<Metadata>| res[0].clone())
-            .map_err(raw_err_str!("failed to query latest block: {}"))?;
+            .map_err(|_| FundsManagerError::db("failed to query latest block"))?;
 
-        entry.value.parse::<u64>().map_err(raw_err_str!("failed to parse latest block: {}"))
+        entry
+            .value
+            .parse::<u64>()
+            .map_err(|_| FundsManagerError::db("could not parse latest block"))
     }
 
     /// Update the latest block number
-    pub(crate) fn update_latest_block(&mut self, block_number: u64) -> Result<(), String> {
+    pub(crate) fn update_latest_block(
+        &mut self,
+        block_number: u64,
+    ) -> Result<(), FundsManagerError> {
         let block_string = block_number.to_string();
         diesel::update(metadata_table.find(LAST_INDEXED_BLOCK_KEY))
             .set(metadata_value.eq(block_string))
             .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to update latest block: {}"))
+            .map_err(|_| FundsManagerError::db("failed to update latest block"))
             .map(|_| ())
     }
 
@@ -98,33 +107,33 @@ impl Indexer {
     // --------------
 
     /// Insert a fee into the fees table
-    pub(crate) fn insert_fee(&mut self, fee: NewFee) -> Result<(), String> {
+    pub(crate) fn insert_fee(&mut self, fee: NewFee) -> Result<(), FundsManagerError> {
         diesel::insert_into(fees_table)
             .values(vec![fee])
             .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to insert fee: {}"))
+            .map_err(|_| FundsManagerError::db("failed to insert fee: {}"))
             .map(|_| ())
     }
 
     /// Get all mints that have unredeemed fees
-    pub(crate) fn get_unredeemed_fee_mints(&mut self) -> Result<Vec<String>, String> {
+    pub(crate) fn get_unredeemed_fee_mints(&mut self) -> Result<Vec<String>, FundsManagerError> {
         let mints = fees_table
             .select(mint_col)
             .filter(redeemed_col.eq(false))
             .distinct()
             .load(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to query unredeemed fees: {}"))?;
+            .map_err(|_| FundsManagerError::db("failed to query unredeemed fees"))?;
 
         Ok(mints)
     }
 
     /// Mark a fee as redeemed
-    pub(crate) fn mark_fee_as_redeemed(&mut self, tx_hash: &str) -> Result<(), String> {
+    pub(crate) fn mark_fee_as_redeemed(&mut self, tx_hash: &str) -> Result<(), FundsManagerError> {
         let filter = tx_hash_col.eq(tx_hash);
         diesel::update(fees_table.filter(filter))
             .set(redeemed_col.eq(true))
             .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to mark fee as redeemed: {}"))
+            .map_err(|_| FundsManagerError::db("failed to mark fee as redeemed"))
             .map(|_| ())
     }
 
@@ -134,8 +143,7 @@ impl Indexer {
     pub(crate) fn get_most_valuable_fees(
         &mut self,
         prices: HashMap<String, f64>,
-        receiver: &str,
-    ) -> Result<Vec<FeeValue>, String> {
+    ) -> Result<Vec<FeeValue>, FundsManagerError> {
         if prices.is_empty() {
             return Ok(vec![]);
         }
@@ -152,7 +160,7 @@ impl Indexer {
         //  FROM fees
         //  ORDER BY value DESC;
         let mut query_string = String::new();
-        query_string.push_str("SELECT tx_hash, mint, ");
+        query_string.push_str("SELECT tx_hash, mint, receiver, ");
         query_string.push_str("CASE ");
 
         // Add the cases
@@ -160,8 +168,7 @@ impl Indexer {
             query_string.push_str(&format!("WHEN mint = '{}' then amount * {} ", mint, price));
         }
         query_string.push_str("ELSE 0 END as value ");
-        query_string
-            .push_str(&format!("FROM fees WHERE redeemed = false and receiver = '{}'", receiver));
+        query_string.push_str("FROM fees WHERE redeemed = false ");
 
         // Sort and limit
         query_string.push_str(&format!("ORDER BY value DESC LIMIT {};", MAX_FEES_REDEEMED));
@@ -169,7 +176,7 @@ impl Indexer {
         // Query for the tx hashes
         sql_query(query_string)
             .load(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to query most valuable fees: {}"))
+            .map_err(|_| FundsManagerError::db("failed to query most valuable fees"))
     }
 
     // -----------------
@@ -182,11 +189,11 @@ impl Indexer {
     pub(crate) fn get_wallet_for_mint(
         &mut self,
         mint: &str,
-    ) -> Result<Option<WalletMetadata>, String> {
+    ) -> Result<Option<WalletMetadata>, FundsManagerError> {
         let wallets: Vec<WalletMetadata> = wallet_table
             .filter(managed_mints_col.contains(vec![mint]))
             .load(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to query wallet for mint: {}"))?;
+            .map_err(|_| FundsManagerError::db("failed to query wallet for mint"))?;
 
         Ok(wallets.first().cloned())
     }
@@ -194,22 +201,25 @@ impl Indexer {
     /// Find a wallet with an empty balance slot, if one exists
     pub(crate) fn find_wallet_with_empty_balance(
         &mut self,
-    ) -> Result<Option<WalletMetadata>, String> {
+    ) -> Result<Option<WalletMetadata>, FundsManagerError> {
         let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
         let wallets = wallet_table
             .filter(n_mints.lt(MAX_BALANCES as i32))
             .load(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to query wallets with empty balances: {}"))?;
+            .map_err(|_| FundsManagerError::db("failed to query wallets with empty balances"))?;
 
         Ok(wallets.first().cloned())
     }
 
     /// Insert a new wallet into the wallets table
-    pub(crate) fn insert_wallet(&mut self, wallet: WalletMetadata) -> Result<(), String> {
+    pub(crate) fn insert_wallet(
+        &mut self,
+        wallet: WalletMetadata,
+    ) -> Result<(), FundsManagerError> {
         diesel::insert_into(wallet_table)
             .values(vec![wallet])
             .execute(&mut self.db_conn)
-            .map_err(raw_err_str!("failed to insert wallet: {}"))
+            .map_err(|_| FundsManagerError::db("failed to insert wallet"))
             .map(|_| ())
     }
 }

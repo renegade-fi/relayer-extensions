@@ -4,7 +4,7 @@ members = [
     "compliance/compliance-api",
     "dealer/renegade-dealer",
     "dealer/renegade-dealer-api",
-    "fee-sweeper",
+    "funds-manager",
     "price-reporter",
 ]
 

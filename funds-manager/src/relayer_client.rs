@@ -32,11 +32,13 @@ use renegade_common::types::{
     },
 };
 use renegade_crypto::fields::scalar_to_biguint;
-use renegade_util::{get_current_time_millis, raw_err_str};
+use renegade_util::{err_str, get_current_time_millis};
 use reqwest::{Body, Client};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
+
+use crate::error::FundsManagerError;
 
 /// The interval at which to poll relayer task status
 const POLL_INTERVAL_MS: u64 = 1000;
@@ -44,6 +46,7 @@ const POLL_INTERVAL_MS: u64 = 1000;
 const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
 
 /// A client for interacting with a configured relayer
+#[derive(Clone)]
 pub struct RelayerClient {
     /// The base URL of the relayer
     base_url: String,
@@ -58,7 +61,7 @@ impl RelayerClient {
     }
 
     /// Get the price for a given mint
-    pub async fn get_binance_price(&self, mint: &str) -> Result<Option<f64>, String> {
+    pub async fn get_binance_price(&self, mint: &str) -> Result<Option<f64>, FundsManagerError> {
         if mint == self.usdc_mint {
             return Ok(Some(1.0));
         }
@@ -88,7 +91,7 @@ impl RelayerClient {
         wallet_id: WalletIdentifier,
         chain_id: u64,
         eth_key: &LocalWallet,
-    ) -> Result<(), String> {
+    ) -> Result<(), FundsManagerError> {
         let mut path = GET_WALLET_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
 
@@ -103,7 +106,11 @@ impl RelayerClient {
     }
 
     /// Lookup a wallet in the configured relayer
-    async fn lookup_wallet(&self, chain_id: u64, eth_key: &LocalWallet) -> Result<(), String> {
+    async fn lookup_wallet(
+        &self,
+        chain_id: u64,
+        eth_key: &LocalWallet,
+    ) -> Result<(), FundsManagerError> {
         let path = FIND_WALLET_ROUTE.to_string();
         let wallet_id = derive_wallet_id(eth_key).unwrap();
         let blinder_seed = derive_blinder_seed(eth_key).unwrap();
@@ -123,7 +130,7 @@ impl RelayerClient {
     }
 
     /// Create a new wallet via the configured relayer
-    pub(crate) async fn create_new_wallet(&self, wallet: Wallet) -> Result<(), String> {
+    pub(crate) async fn create_new_wallet(&self, wallet: Wallet) -> Result<(), FundsManagerError> {
         let body = CreateWalletRequest { wallet: wallet.into() };
 
         let resp: CreateWalletResponse = self.post_relayer(CREATE_WALLET_ROUTE, &body).await?;
@@ -136,7 +143,7 @@ impl RelayerClient {
         wallet_id: WalletIdentifier,
         req: RedeemNoteRequest,
         root_key: &SecretSigningKey,
-    ) -> Result<(), String> {
+    ) -> Result<(), FundsManagerError> {
         let mut path = REDEEM_NOTE_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
 
@@ -149,7 +156,11 @@ impl RelayerClient {
     // -----------
 
     /// Post to the relayer URL
-    async fn post_relayer<Req, Resp>(&self, path: &str, body: &Req) -> Result<Resp, String>
+    async fn post_relayer<Req, Resp>(
+        &self,
+        path: &str,
+        body: &Req,
+    ) -> Result<Resp, FundsManagerError>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
@@ -163,14 +174,14 @@ impl RelayerClient {
         path: &str,
         body: &Req,
         root_key: &SecretSigningKey,
-    ) -> Result<Resp, String>
+    ) -> Result<Resp, FundsManagerError>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
-        let body_ser =
-            serde_json::to_vec(body).map_err(raw_err_str!("Failed to serialize body: {}"))?;
-        let headers = build_auth_headers(root_key, &body_ser)?;
+        let body_ser = serde_json::to_vec(body).map_err(err_str!(FundsManagerError::Custom))?;
+        let headers =
+            build_auth_headers(root_key, &body_ser).map_err(err_str!(FundsManagerError::custom))?;
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
@@ -180,7 +191,7 @@ impl RelayerClient {
         path: &str,
         body: &Req,
         headers: &HeaderMap,
-    ) -> Result<Resp, String>
+    ) -> Result<Resp, FundsManagerError>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
@@ -194,18 +205,21 @@ impl RelayerClient {
             .headers(headers.clone())
             .send()
             .await
-            .map_err(raw_err_str!("Failed to send request: {}"))?;
+            .map_err(err_str!(FundsManagerError::Http))?;
 
         // Deserialize the response
         if !resp.status().is_success() {
-            return Err(format!("Failed to send request: {}", resp.status()));
+            return Err(FundsManagerError::http(format!(
+                "Failed to send request: {}",
+                resp.status()
+            )));
         }
 
-        resp.json::<Resp>().await.map_err(raw_err_str!("Failed to parse response: {}"))
+        resp.json::<Resp>().await.map_err(err_str!(FundsManagerError::Parse))
     }
 
     /// Get from the relayer URL
-    async fn get_relayer<Resp>(&self, path: &str) -> Result<Resp, String>
+    async fn get_relayer<Resp>(&self, path: &str) -> Result<Resp, FundsManagerError>
     where
         Resp: for<'de> Deserialize<'de>,
     {
@@ -217,11 +231,12 @@ impl RelayerClient {
         &self,
         path: &str,
         root_key: &SecretSigningKey,
-    ) -> Result<Resp, String>
+    ) -> Result<Resp, FundsManagerError>
     where
         Resp: for<'de> Deserialize<'de>,
     {
-        let headers = build_auth_headers(root_key, &[])?;
+        let headers =
+            build_auth_headers(root_key, &[]).map_err(err_str!(FundsManagerError::Custom))?;
         self.get_relayer_with_headers(path, &headers).await
     }
 
@@ -230,7 +245,7 @@ impl RelayerClient {
         &self,
         path: &str,
         headers: &HeaderMap,
-    ) -> Result<Resp, String>
+    ) -> Result<Resp, FundsManagerError>
     where
         Resp: for<'de> Deserialize<'de>,
     {
@@ -241,18 +256,21 @@ impl RelayerClient {
             .headers(headers.clone())
             .send()
             .await
-            .map_err(raw_err_str!("Failed to get relayer path: {}"))?;
+            .map_err(err_str!(FundsManagerError::Http))?;
 
         // Parse the response
         if !resp.status().is_success() {
-            return Err(format!("Failed to get relayer path: {}", resp.status()));
+            return Err(FundsManagerError::http(format!(
+                "Failed to get relayer path: {}",
+                resp.status()
+            )));
         }
 
-        resp.json::<Resp>().await.map_err(raw_err_str!("Failed to parse response: {}"))
+        resp.json::<Resp>().await.map_err(err_str!(FundsManagerError::Parse))
     }
 
     /// Await a relayer task
-    async fn await_relayer_task(&self, task_id: Uuid) -> Result<(), String> {
+    async fn await_relayer_task(&self, task_id: Uuid) -> Result<(), FundsManagerError> {
         let mut path = GET_TASK_STATUS_ROUTE.to_string();
         path = path.replace(":task_id", &task_id.to_string());
 
@@ -279,11 +297,11 @@ impl RelayerClient {
 // -----------
 
 /// Build a reqwest client
-fn reqwest_client() -> Result<Client, String> {
+fn reqwest_client() -> Result<Client, FundsManagerError> {
     Client::builder()
         .user_agent("fee-sweeper")
         .build()
-        .map_err(raw_err_str!("Failed to create reqwest client: {}"))
+        .map_err(|_| FundsManagerError::custom("Failed to create reqwest client"))
 }
 
 /// Build authentication headers for a request

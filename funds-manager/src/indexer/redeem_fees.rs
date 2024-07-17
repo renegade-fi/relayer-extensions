@@ -9,16 +9,17 @@ use ethers::signers::LocalWallet;
 use ethers::types::TxHash;
 use ethers::utils::hex;
 use renegade_api::http::wallet::RedeemNoteRequest;
+use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_circuit_types::note::Note;
 use renegade_common::types::wallet::derivation::{
     derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
 };
 use renegade_common::types::wallet::{Wallet, WalletIdentifier};
-use renegade_util::hex::jubjub_to_hex_string;
-use renegade_util::raw_err_str;
+use renegade_util::err_str;
 use tracing::{info, warn};
 
 use crate::db::models::WalletMetadata;
+use crate::error::FundsManagerError;
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
@@ -26,7 +27,7 @@ pub(crate) const MAX_FEES_REDEEMED: usize = 20;
 
 impl Indexer {
     /// Redeem the most valuable open fees
-    pub async fn redeem_fees(&mut self) -> Result<(), String> {
+    pub async fn redeem_fees(&mut self) -> Result<(), FundsManagerError> {
         info!("redeeming fees...");
 
         // Get all mints that have unredeemed fees
@@ -45,14 +46,13 @@ impl Indexer {
         }
 
         // Get the most valuable fees and redeem them
-        let recv = jubjub_to_hex_string(&self.decryption_key.public_key());
-        let most_valuable_fees = self.get_most_valuable_fees(prices, &recv)?;
+        let most_valuable_fees = self.get_most_valuable_fees(prices)?;
 
         // TODO: Filter by those fees whose present value exceeds the expected gas costs
         // to redeem
         for fee in most_valuable_fees.into_iter() {
             let wallet = self.get_or_create_wallet(&fee.mint).await?;
-            self.redeem_note_into_wallet(fee.tx_hash.clone(), wallet).await?;
+            self.redeem_note_into_wallet(fee.tx_hash.clone(), fee.receiver, wallet).await?;
         }
 
         Ok(())
@@ -63,7 +63,10 @@ impl Indexer {
     // -------------------
 
     /// Find or create a wallet to store balances of a given mint
-    async fn get_or_create_wallet(&mut self, mint: &str) -> Result<WalletMetadata, String> {
+    async fn get_or_create_wallet(
+        &mut self,
+        mint: &str,
+    ) -> Result<WalletMetadata, FundsManagerError> {
         let maybe_wallet = self.get_wallet_for_mint(mint)?;
         let maybe_wallet =
             maybe_wallet.or_else(|| self.find_wallet_with_empty_balance().ok().flatten());
@@ -80,7 +83,7 @@ impl Indexer {
     /// Create a new wallet for managing a given mint
     ///
     /// Return the new wallet's metadata
-    async fn create_new_wallet(&mut self) -> Result<WalletMetadata, String> {
+    async fn create_new_wallet(&mut self) -> Result<WalletMetadata, FundsManagerError> {
         // 1. Create the new wallet on-chain
         let (wallet_id, root_key) = self.create_renegade_wallet().await?;
 
@@ -95,13 +98,16 @@ impl Indexer {
     }
 
     /// Create a new Renegade wallet on-chain
-    async fn create_renegade_wallet(&mut self) -> Result<(WalletIdentifier, LocalWallet), String> {
+    async fn create_renegade_wallet(
+        &mut self,
+    ) -> Result<(WalletIdentifier, LocalWallet), FundsManagerError> {
         let root_key = LocalWallet::new(&mut thread_rng());
 
-        let wallet_id = derive_wallet_id(&root_key)?;
-        let blinder_seed = derive_blinder_seed(&root_key)?;
-        let share_seed = derive_share_seed(&root_key)?;
-        let key_chain = derive_wallet_keychain(&root_key, self.chain_id)?;
+        let wallet_id = derive_wallet_id(&root_key).map_err(FundsManagerError::custom)?;
+        let blinder_seed = derive_blinder_seed(&root_key).map_err(FundsManagerError::custom)?;
+        let share_seed = derive_share_seed(&root_key).map_err(FundsManagerError::custom)?;
+        let key_chain =
+            derive_wallet_keychain(&root_key, self.chain_id).map_err(FundsManagerError::custom)?;
 
         let wallet = Wallet::new_empty_wallet(wallet_id, blinder_seed, share_seed, key_chain);
         self.relayer_client.create_new_wallet(wallet).await?;
@@ -118,8 +124,9 @@ impl Indexer {
     pub async fn redeem_note_into_wallet(
         &mut self,
         tx: String,
+        receiver: String,
         wallet: WalletMetadata,
-    ) -> Result<Note, String> {
+    ) -> Result<Note, FundsManagerError> {
         info!("redeeming fee into {}", wallet.id);
         // Get the wallet key for the given wallet
         let eth_key = self.get_wallet_private_key(&wallet).await?;
@@ -129,11 +136,12 @@ impl Indexer {
         self.relayer_client.check_wallet_indexed(wallet.id, self.chain_id, &eth_key).await?;
 
         // Find the note in the tx body
-        let tx_hash = TxHash::from_str(&tx).map_err(raw_err_str!("invalid tx hash: {}"))?;
-        let note = self.get_note_from_tx(tx_hash).await?;
+        let tx_hash = TxHash::from_str(&tx).map_err(err_str!(FundsManagerError::Parse))?;
+        let receiver = DecryptionKey::from_hex_str(&receiver).unwrap();
+        let note = self.get_note_from_tx_with_key(tx_hash, &receiver).await?;
 
         // Redeem the note through the relayer
-        let req = RedeemNoteRequest { note: note.clone(), decryption_key: self.decryption_key };
+        let req = RedeemNoteRequest { note: note.clone(), decryption_key: receiver };
         self.relayer_client.redeem_note(wallet.id, req, &root_key).await?;
 
         // Mark the fee as redeemed
@@ -142,13 +150,17 @@ impl Indexer {
     }
 
     /// Mark a fee as redeemed if its nullifier is spent on-chain
-    async fn maybe_mark_redeemed(&mut self, tx_hash: &str, note: &Note) -> Result<(), String> {
+    async fn maybe_mark_redeemed(
+        &mut self,
+        tx_hash: &str,
+        note: &Note,
+    ) -> Result<(), FundsManagerError> {
         let nullifier = note.nullifier();
         if !self
             .arbitrum_client
             .check_nullifier_used(nullifier)
             .await
-            .map_err(raw_err_str!("failed to check nullifier: {}"))?
+            .map_err(err_str!(FundsManagerError::Arbitrum))?
         {
             return Ok(());
         }
@@ -169,7 +181,7 @@ impl Indexer {
         &mut self,
         id: WalletIdentifier,
         wallet: LocalWallet,
-    ) -> Result<String, String> {
+    ) -> Result<String, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
         let secret_name = format!("redemption-wallet-{}-{id}", self.chain);
         let secret_val = hex::encode(wallet.signer().to_bytes());
@@ -185,7 +197,7 @@ impl Indexer {
             .description("Wallet used for fee redemption")
             .send()
             .await
-            .map_err(raw_err_str!("Error creating secret: {}"))?;
+            .map_err(err_str!(FundsManagerError::SecretsManager))?;
 
         Ok(secret_name)
     }
@@ -194,7 +206,7 @@ impl Indexer {
     async fn get_wallet_private_key(
         &mut self,
         metadata: &WalletMetadata,
-    ) -> Result<LocalWallet, String> {
+    ) -> Result<LocalWallet, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
         let secret_name = format!("redemption-wallet-{}-{}", self.chain, metadata.id);
 
@@ -203,11 +215,11 @@ impl Indexer {
             .secret_id(secret_name)
             .send()
             .await
-            .map_err(raw_err_str!("Error fetching secret: {}"))?;
+            .map_err(err_str!(FundsManagerError::SecretsManager))?;
 
         let secret_str = secret.secret_string().unwrap();
         let wallet =
-            LocalWallet::from_str(secret_str).map_err(raw_err_str!("Invalid wallet secret: {}"))?;
+            LocalWallet::from_str(secret_str).map_err(err_str!(FundsManagerError::Parse))?;
         Ok(wallet)
     }
 }
