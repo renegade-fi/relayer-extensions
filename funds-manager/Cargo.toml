@@ -1,17 +1,25 @@
 [package]
-name = "fee-sweeper"
+name = "funds-manager"
+description = "Manages custody of funds for protocol operator"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# === CLI + Runtime === #
+# === CLI + Server === #
 clap = { version = "4.5.3", features = ["derive", "env"] }
+http-body-util = "0.1.0"
 tokio = { version = "1.10", features = ["full"] }
+warp = "0.3"
+
 
 # === Infra === #
 aws-sdk-secretsmanager = "1.37"
 aws-config = "1.5"
-diesel = { version = "2.2", features = ["postgres", "numeric", "uuid"] }
+diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
+diesel-async = { workspace = true, features = ["postgres"] }
+native-tls = "0.2"
+postgres-native-tls = "0.5"
+tokio-postgres = "0.7.7"
 
 # === Blockchain Interaction === #
 alloy-sol-types = "0.3.1"
