@@ -9,7 +9,6 @@ use ethers::signers::LocalWallet;
 use ethers::types::TxHash;
 use ethers::utils::hex;
 use renegade_api::http::wallet::RedeemNoteRequest;
-use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_circuit_types::note::Note;
 use renegade_common::types::wallet::derivation::{
     derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
@@ -31,7 +30,7 @@ impl Indexer {
         info!("redeeming fees...");
 
         // Get all mints that have unredeemed fees
-        let mints = self.get_unredeemed_fee_mints()?;
+        let mints = self.get_unredeemed_fee_mints().await?;
 
         // Get the prices of each redeemable mint, we want to redeem the most profitable
         // fees first
@@ -46,7 +45,7 @@ impl Indexer {
         }
 
         // Get the most valuable fees and redeem them
-        let most_valuable_fees = self.get_most_valuable_fees(prices)?;
+        let most_valuable_fees = self.get_most_valuable_fees(prices).await?;
 
         // TODO: Filter by those fees whose present value exceeds the expected gas costs
         // to redeem
@@ -67,9 +66,12 @@ impl Indexer {
         &mut self,
         mint: &str,
     ) -> Result<WalletMetadata, FundsManagerError> {
-        let maybe_wallet = self.get_wallet_for_mint(mint)?;
-        let maybe_wallet =
-            maybe_wallet.or_else(|| self.find_wallet_with_empty_balance().ok().flatten());
+        let maybe_wallet = self.get_wallet_for_mint(mint).await?;
+        let maybe_wallet = if maybe_wallet.is_none() {
+            self.find_wallet_with_empty_balance().await?
+        } else {
+            maybe_wallet
+        };
 
         match maybe_wallet {
             Some(wallet) => Ok(wallet),
@@ -92,7 +94,7 @@ impl Indexer {
 
         // 3. Add an entry in the wallets table for the newly created wallet
         let entry = WalletMetadata::empty(wallet_id, secret_name);
-        self.insert_wallet(entry.clone())?;
+        self.insert_wallet(entry.clone()).await?;
 
         Ok(entry)
     }
@@ -137,11 +139,13 @@ impl Indexer {
 
         // Find the note in the tx body
         let tx_hash = TxHash::from_str(&tx).map_err(err_str!(FundsManagerError::Parse))?;
-        let receiver = DecryptionKey::from_hex_str(&receiver).unwrap();
-        let note = self.get_note_from_tx_with_key(tx_hash, &receiver).await?;
+        let key = self
+            .get_key_for_receiver(&receiver)
+            .ok_or(FundsManagerError::custom("no key found for receiver"))?;
+        let note = self.get_note_from_tx_with_key(tx_hash, key).await?;
 
         // Redeem the note through the relayer
-        let req = RedeemNoteRequest { note: note.clone(), decryption_key: receiver };
+        let req = RedeemNoteRequest { note: note.clone(), decryption_key: *key };
         self.relayer_client.redeem_note(wallet.id, req, &root_key).await?;
 
         // Mark the fee as redeemed
@@ -166,7 +170,7 @@ impl Indexer {
         }
 
         info!("successfully redeemed fee from tx: {}", tx_hash);
-        self.mark_fee_as_redeemed(tx_hash)
+        self.mark_fee_as_redeemed(tx_hash).await
     }
 
     // -------------------

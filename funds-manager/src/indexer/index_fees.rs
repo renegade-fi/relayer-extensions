@@ -26,7 +26,7 @@ use crate::Indexer;
 impl Indexer {
     /// Index all fees since the given block
     pub async fn index_fees(&mut self) -> Result<(), FundsManagerError> {
-        let block_number = self.get_latest_block()?;
+        let block_number = self.get_latest_block().await?;
         info!("indexing fees from block {block_number}");
 
         let filter = self
@@ -48,7 +48,7 @@ impl Indexer {
 
             if block > most_recent_block {
                 most_recent_block = block;
-                self.update_latest_block(most_recent_block)?;
+                self.update_latest_block(most_recent_block).await?;
             }
         }
 
@@ -86,7 +86,7 @@ impl Indexer {
 
         // Otherwise, index the note
         let fee = NewFee::new_from_note(&note, tx);
-        self.insert_fee(fee)
+        self.insert_fee(fee).await
     }
 
     /// Get a note from a transaction body

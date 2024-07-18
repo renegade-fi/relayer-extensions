@@ -21,6 +21,7 @@ pub enum FundsManagerError {
     Custom(String),
 }
 
+#[allow(clippy::needless_pass_by_value)]
 impl FundsManagerError {
     /// Create an arbitrum error
     pub fn arbitrum<T: ToString>(msg: T) -> FundsManagerError {
@@ -67,3 +68,28 @@ impl Display for FundsManagerError {
 }
 impl Error for FundsManagerError {}
 impl Reject for FundsManagerError {}
+
+/// API-specific error type
+#[derive(Debug)]
+pub enum ApiError {
+    /// Error during fee indexing
+    IndexingError(String),
+    /// Error during fee redemption
+    RedemptionError(String),
+    /// Internal server error
+    InternalError(String),
+}
+
+impl Reject for ApiError {}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApiError::IndexingError(e) => write!(f, "Indexing error: {}", e),
+            ApiError::RedemptionError(e) => write!(f, "Redemption error: {}", e),
+            ApiError::InternalError(e) => write!(f, "Internal error: {}", e),
+        }
+    }
+}
+
+impl Error for ApiError {}

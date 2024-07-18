@@ -10,7 +10,7 @@ warp = "0.3"
 compliance-api = { path = "../compliance-api" }
 
 # === Database === #
-diesel = { version = "2.2", features = ["postgres", "r2d2"] }
+diesel = { workspace = true, features = ["postgres", "r2d2"] }
 
 # === Renegade Dependencies === #
 renegade-util = { workspace = true }

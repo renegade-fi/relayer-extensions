@@ -12,7 +12,6 @@ pub mod indexer;
 pub mod relayer_client;
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
-use diesel::{pg::PgConnection, Connection};
 use error::FundsManagerError;
 use ethers::signers::LocalWallet;
 use indexer::Indexer;
@@ -30,7 +29,10 @@ use arbitrum_client::{
     constants::Chain,
 };
 use clap::Parser;
+use tracing::error;
 use warp::{reply::Json, Filter};
+
+use crate::error::ApiError;
 
 // -------------
 // | Constants |
@@ -61,13 +63,13 @@ struct Cli {
     #[clap(long, default_value = "mainnet")]
     chain: Chain,
     /// The fee decryption key to use
-    #[clap(short, long, env = "RELAYER_DECRYPTION_KEY")]
+    #[clap(long, env = "RELAYER_DECRYPTION_KEY")]
     relayer_decryption_key: String,
     /// The fee decryption key to use for the protocol fees
     ///
     /// This argument is not necessary, protocol fee indexing is skipped if this
     /// is omitted
-    #[clap(short, long, env = "PROTOCOL_DECRYPTION_KEY")]
+    #[clap(long, env = "PROTOCOL_DECRYPTION_KEY")]
     protocol_decryption_key: Option<String>,
     /// The arbitrum private key used to submit transactions
     #[clap(long = "pkey", env = "ARBITRUM_PRIVATE_KEY")]
@@ -105,9 +107,11 @@ struct Server {
 
 impl Server {
     /// Build an indexer
-    pub fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
-        let db_conn =
-            PgConnection::establish(&self.db_url).map_err(err_str!(FundsManagerError::Db))?;
+    pub async fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
+        let db_conn = db::establish_connection(&self.db_url)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))?;
+
         Ok(Indexer::new(
             self.chain_id,
             self.chain,
@@ -120,7 +124,6 @@ impl Server {
     }
 }
 
-/// Main
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     setup_system_logger(LevelFilter::INFO);
@@ -161,13 +164,81 @@ async fn main() -> Result<(), Box<dyn Error>> {
         aws_config: config,
     };
 
-    // Define routes
+    // --- Routes --- //
+
     let ping = warp::get()
         .and(warp::path("ping"))
         .map(|| warp::reply::with_status("PONG", warp::http::StatusCode::OK));
 
-    let routes = ping;
+    let index_fees = warp::post()
+        .and(warp::path("index-fees"))
+        .and(with_server(Arc::new(server.clone())))
+        .and_then(index_fees_handler);
+
+    let redeem_fees = warp::post()
+        .and(warp::path("redeem-fees"))
+        .and(with_server(Arc::new(server.clone())))
+        .and_then(redeem_fees_handler);
+
+    let routes = ping.or(index_fees).or(redeem_fees).recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
 
     Ok(())
+}
+
+// ------------
+// | Handlers |
+// ------------
+
+/// Handler for indexing fees
+async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
+    let mut indexer = server
+        .build_indexer()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    indexer
+        .index_fees()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::IndexingError(e.to_string())))?;
+    Ok(warp::reply::json(&"Fees indexed successfully"))
+}
+
+/// Handler for redeeming fees
+async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
+    let mut indexer = server
+        .build_indexer()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    indexer
+        .redeem_fees()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
+    Ok(warp::reply::json(&"Fees redeemed successfully"))
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Handle a rejection from an endpoint handler
+async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
+    if let Some(api_error) = err.find::<ApiError>() {
+        let (code, message) = match api_error {
+            ApiError::IndexingError(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
+            ApiError::RedemptionError(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
+            ApiError::InternalError(msg) => (warp::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
+        };
+        error!("API Error: {:?}", api_error);
+        Ok(warp::reply::with_status(message.clone(), code))
+    } else {
+        error!("Unhandled rejection: {:?}", err);
+        Err(err)
+    }
+}
+
+/// Helper function to clone and pass the server to filters
+fn with_server(
+    server: Arc<Server>,
+) -> impl Filter<Extract = (Arc<Server>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || server.clone())
 }

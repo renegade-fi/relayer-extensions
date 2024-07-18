@@ -2,8 +2,9 @@
 
 use arbitrum_client::{client::ArbitrumClient, constants::Chain};
 use aws_config::SdkConfig as AwsConfig;
-use diesel::PgConnection;
-use renegade_circuit_types::elgamal::{DecryptionKey, EncryptionKey};
+use diesel_async::AsyncPgConnection;
+use renegade_circuit_types::elgamal::DecryptionKey;
+use renegade_util::hex::jubjub_from_hex_string;
 
 use crate::relayer_client::RelayerClient;
 
@@ -24,7 +25,7 @@ pub(crate) struct Indexer {
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
     /// A connection to the DB
-    pub db_conn: PgConnection,
+    pub db_conn: AsyncPgConnection,
     /// The AWS config
     pub aws_config: AwsConfig,
 }
@@ -37,7 +38,7 @@ impl Indexer {
         aws_config: AwsConfig,
         arbitrum_client: ArbitrumClient,
         decryption_keys: Vec<DecryptionKey>,
-        db_conn: PgConnection,
+        db_conn: AsyncPgConnection,
         relayer_client: RelayerClient,
     ) -> Self {
         Indexer {
@@ -53,7 +54,8 @@ impl Indexer {
 
     /// Get the decryption key for a given encryption key, referred to as a
     /// receiver in this context
-    pub fn get_key_for_receiver(&self, receiver: EncryptionKey) -> Option<&DecryptionKey> {
-        self.decryption_keys.iter().find(|key| key.public_key() == receiver)
+    pub fn get_key_for_receiver(&self, receiver: &str) -> Option<&DecryptionKey> {
+        let key = jubjub_from_hex_string(receiver).ok()?;
+        self.decryption_keys.iter().find(|k| k.public_key() == key)
     }
 }

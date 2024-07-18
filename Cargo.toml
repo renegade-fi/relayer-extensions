@@ -33,5 +33,9 @@ renegade-circuit-types = { package = "circuit-types", git = "https://github.com/
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
 
+# === Database Dependencies === #
+diesel = { version = "2.1" }
+diesel-async = { version = "0.4" }
+
 # === Misc Dependencies === #
 tracing = "0.1"
