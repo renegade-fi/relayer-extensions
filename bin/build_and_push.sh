@@ -1,7 +1,7 @@
 #!/bin/sh
-REGION=us-east-2
+REGION=${REGION:-us-east-2}
 ENVIRONMENT=testnet
-ECR_REGISTRY=377928551571.dkr.ecr.us-east-2.amazonaws.com
+ECR_REGISTRY=377928551571.dkr.ecr.$REGION.amazonaws.com
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -9,6 +9,7 @@ while [[ "$#" -gt 0 ]]; do
         --dockerfile) DOCKERFILE="$2"; shift ;;
         --ecr-repo) ECR_REPO="$2"; shift ;;
         --environment) ENVIRONMENT="$2"; shift ;;
+        --region) REGION="$2"; shift ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
@@ -16,7 +17,7 @@ done
 
 # Check if required arguments are provided
 if [ -z "$DOCKERFILE" ] || [ -z "$ECR_REPO" ]; then
-    echo "Usage: $0 --dockerfile <path_to_dockerfile> --ecr-repo <ecr_repository> [--environment <environment>]"
+    echo "Usage: $0 --dockerfile <path_to_dockerfile> --ecr-repo <ecr_repository> [--environment <environment>] [--region <aws_region>]"
     exit 1
 fi
 

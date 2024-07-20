@@ -17,10 +17,7 @@ use ethers::signers::LocalWallet;
 use indexer::Indexer;
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_util::{
-    err_str, raw_err_str,
-    telemetry::{setup_system_logger, LevelFilter},
-};
+use renegade_util::{err_str, raw_err_str, telemetry::configure_telemetry};
 
 use std::{error::Error, str::FromStr, sync::Arc};
 
@@ -42,6 +39,12 @@ use crate::error::ApiError;
 const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
 /// The default region in which to provision secrets manager secrets
 const DEFAULT_REGION: &str = "us-east-2";
+/// The dummy private key used to instantiate the arbitrum client
+///
+/// We don't need any client functionality using a real private key, so instead
+/// we use the key deployed by Arbitrum on local devnets
+const DUMMY_PRIVATE_KEY: &str =
+    "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
 
 // -------
 // | Cli |
@@ -51,16 +54,16 @@ const DEFAULT_REGION: &str = "us-east-2";
 #[derive(Clone, Debug, Parser)]
 struct Cli {
     /// The URL of the relayer to use
-    #[clap(long)]
+    #[clap(long, env = "RELAYER_URL")]
     relayer_url: String,
     /// The Arbitrum RPC url to use
     #[clap(short, long, env = "RPC_URL")]
     rpc_url: String,
     /// The address of the darkpool contract
-    #[clap(short = 'a', long)]
+    #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
     /// The chain to redeem fees for
-    #[clap(long, default_value = "mainnet")]
+    #[clap(long, default_value = "mainnet", env = "CHAIN")]
     chain: Chain,
     /// The fee decryption key to use
     #[clap(long, env = "RELAYER_DECRYPTION_KEY")]
@@ -71,19 +74,19 @@ struct Cli {
     /// is omitted
     #[clap(long, env = "PROTOCOL_DECRYPTION_KEY")]
     protocol_decryption_key: Option<String>,
-    /// The arbitrum private key used to submit transactions
-    #[clap(long = "pkey", env = "ARBITRUM_PRIVATE_KEY")]
-    arbitrum_private_key: String,
     /// The database url
     #[clap(long, env = "DATABASE_URL")]
     db_url: String,
     /// The token address of the USDC token, used to get prices for fee
     /// redemption
-    #[clap(long)]
+    #[clap(long, env = "USDC_MINT")]
     usdc_mint: String,
     /// The port to run the server on
     #[clap(long, default_value = "3000")]
     port: u16,
+    /// Whether to enable datadog formatted logs
+    #[clap(long, default_value = "false")]
+    datadog_logging: bool,
 }
 
 /// The server
@@ -126,8 +129,16 @@ impl Server {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    setup_system_logger(LevelFilter::INFO);
     let cli = Cli::parse();
+    configure_telemetry(
+        cli.datadog_logging, // datadog_enabled
+        false,               // otlp_enabled
+        false,               // metrics_enabled
+        "".to_string(),      // collector_endpoint
+        "",                  // statsd_host
+        0,                   // statsd_port
+    )
+    .expect("failed to setup telemetry");
 
     // Parse an AWS config
     let config = aws_config::defaults(BehaviorVersion::latest())
@@ -136,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await;
 
     // Build an Arbitrum client
-    let wallet = LocalWallet::from_str(&cli.arbitrum_private_key)?;
+    let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY)?;
     let conf = ArbitrumClientConfig {
         darkpool_addr: cli.darkpool_address,
         chain: cli.chain,

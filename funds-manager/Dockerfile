@@ -51,4 +51,4 @@ RUN apt-get update && \
 COPY --from=builder /build/target/release/funds-manager /bin/funds-manager
 
 ENTRYPOINT ["/bin/funds-manager"]
-CMD ["--help"]
+CMD ["--datadog-logging"]
