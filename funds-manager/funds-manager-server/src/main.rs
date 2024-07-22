@@ -8,13 +8,14 @@
 
 pub mod db;
 pub mod error;
-pub mod indexer;
+pub mod fee_indexer;
 pub mod relayer_client;
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use error::FundsManagerError;
 use ethers::signers::LocalWallet;
-use indexer::Indexer;
+use fee_indexer::Indexer;
+use funds_manager_api::{INDEX_FEES_ROUTE, PING_ROUTE, REDEEM_FEES_ROUTE};
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::{err_str, raw_err_str, telemetry::configure_telemetry};
@@ -178,16 +179,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // --- Routes --- //
 
     let ping = warp::get()
-        .and(warp::path("ping"))
+        .and(warp::path(PING_ROUTE))
         .map(|| warp::reply::with_status("PONG", warp::http::StatusCode::OK));
 
     let index_fees = warp::post()
-        .and(warp::path("index-fees"))
+        .and(warp::path(INDEX_FEES_ROUTE))
         .and(with_server(Arc::new(server.clone())))
         .and_then(index_fees_handler);
 
     let redeem_fees = warp::post()
-        .and(warp::path("redeem-fees"))
+        .and(warp::path(REDEEM_FEES_ROUTE))
         .and(with_server(Arc::new(server.clone())))
         .and_then(redeem_fees_handler);
 

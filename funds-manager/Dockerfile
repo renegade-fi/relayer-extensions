@@ -26,8 +26,8 @@ WORKDIR /build
 RUN apt-get update && \
     apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev
 
-# Update Cargo.toml to include only "funds-manager" in workspace members
-RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["funds-manager"]' Cargo.toml
+# Update Cargo.toml to include only "funds-manager/funds-manager-server" in workspace members
+RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["funds-manager/funds-manager-server"]' Cargo.toml
 RUN cargo chef prepare --recipe-path recipe.json --bin funds-manager
 
 # Build only the dependencies to cache them in this layer
