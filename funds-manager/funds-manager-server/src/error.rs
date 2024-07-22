@@ -4,6 +4,8 @@ use std::{error::Error, fmt::Display};
 
 use warp::reject::Reject;
 
+use fireblocks_sdk::{ClientError as FireblocksClientError, FireblocksError};
+
 /// The error type emitted by the funds manager
 #[derive(Debug, Clone)]
 pub enum FundsManagerError {
@@ -11,6 +13,8 @@ pub enum FundsManagerError {
     Arbitrum(String),
     /// An error with a database query
     Db(String),
+    /// An error with Fireblocks operations
+    Fireblocks(String),
     /// An error executing an HTTP request
     Http(String),
     /// An error parsing a value
@@ -31,6 +35,11 @@ impl FundsManagerError {
     /// Create a database error
     pub fn db<T: ToString>(msg: T) -> FundsManagerError {
         FundsManagerError::Db(msg.to_string())
+    }
+
+    /// Create a Fireblocks error
+    pub fn fireblocks<T: ToString>(msg: T) -> FundsManagerError {
+        FundsManagerError::Fireblocks(msg.to_string())
     }
 
     /// Create an HTTP error
@@ -63,11 +72,24 @@ impl Display for FundsManagerError {
             FundsManagerError::Parse(e) => write!(f, "Parse error: {}", e),
             FundsManagerError::SecretsManager(e) => write!(f, "Secrets manager error: {}", e),
             FundsManagerError::Custom(e) => write!(f, "Custom error: {}", e),
+            FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
         }
     }
 }
 impl Error for FundsManagerError {}
 impl Reject for FundsManagerError {}
+
+impl From<FireblocksClientError> for FundsManagerError {
+    fn from(error: FireblocksClientError) -> Self {
+        FundsManagerError::Fireblocks(error.to_string())
+    }
+}
+
+impl From<FireblocksError> for FundsManagerError {
+    fn from(error: FireblocksError) -> Self {
+        FundsManagerError::Fireblocks(error.to_string())
+    }
+}
 
 /// API-specific error type
 #[derive(Debug)]
@@ -78,6 +100,8 @@ pub enum ApiError {
     RedemptionError(String),
     /// Internal server error
     InternalError(String),
+    /// Bad request error
+    BadRequest(String),
 }
 
 impl Reject for ApiError {}
@@ -88,6 +112,7 @@ impl Display for ApiError {
             ApiError::IndexingError(e) => write!(f, "Indexing error: {}", e),
             ApiError::RedemptionError(e) => write!(f, "Redemption error: {}", e),
             ApiError::InternalError(e) => write!(f, "Internal error: {}", e),
+            ApiError::BadRequest(e) => write!(f, "Bad request: {}", e),
         }
     }
 }
