@@ -6,21 +6,29 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+pub mod custody_client;
 pub mod db;
 pub mod error;
 pub mod fee_indexer;
+pub mod handlers;
 pub mod relayer_client;
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use error::FundsManagerError;
 use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
-use funds_manager_api::{INDEX_FEES_ROUTE, PING_ROUTE, REDEEM_FEES_ROUTE};
+use funds_manager_api::{
+    GET_DEPOSIT_ADDRESS_ROUTE, INDEX_FEES_ROUTE, PING_ROUTE, REDEEM_FEES_ROUTE,
+    WITHDRAW_CUSTODY_ROUTE,
+};
+use handlers::{
+    get_deposit_address_handler, index_fees_handler, redeem_fees_handler, withdraw_funds_handler,
+};
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::{err_str, raw_err_str, telemetry::configure_telemetry};
 
-use std::{error::Error, str::FromStr, sync::Arc};
+use std::{collections::HashMap, error::Error, str::FromStr, sync::Arc};
 
 use arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
@@ -28,8 +36,9 @@ use arbitrum_client::{
 };
 use clap::Parser;
 use tracing::error;
-use warp::{reply::Json, Filter};
+use warp::{filters::query::query, Filter};
 
+use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
 
 // -------------
@@ -52,20 +61,27 @@ const DUMMY_PRIVATE_KEY: &str =
 // -------
 
 /// The cli for the fee sweeper
+#[rustfmt::skip]
 #[derive(Clone, Debug, Parser)]
 struct Cli {
+    // --- Environment Configs --- //
+
     /// The URL of the relayer to use
     #[clap(long, env = "RELAYER_URL")]
     relayer_url: String,
-    /// The Arbitrum RPC url to use
-    #[clap(short, long, env = "RPC_URL")]
-    rpc_url: String,
     /// The address of the darkpool contract
     #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
     /// The chain to redeem fees for
     #[clap(long, default_value = "mainnet", env = "CHAIN")]
     chain: Chain,
+    /// The token address of the USDC token, used to get prices for fee
+    /// redemption
+    #[clap(long, env = "USDC_MINT")]
+    usdc_mint: String,
+
+    // --- Decryption Keys --- //
+
     /// The fee decryption key to use
     #[clap(long, env = "RELAYER_DECRYPTION_KEY")]
     relayer_decryption_key: String,
@@ -75,13 +91,24 @@ struct Cli {
     /// is omitted
     #[clap(long, env = "PROTOCOL_DECRYPTION_KEY")]
     protocol_decryption_key: Option<String>,
+
+    //  --- Api Secrets --- //
+
+    /// The Arbitrum RPC url to use
+    #[clap(short, long, env = "RPC_URL")]
+    rpc_url: String,
     /// The database url
     #[clap(long, env = "DATABASE_URL")]
     db_url: String,
-    /// The token address of the USDC token, used to get prices for fee
-    /// redemption
-    #[clap(long, env = "USDC_MINT")]
-    usdc_mint: String,
+    /// The fireblocks api key
+    #[clap(long, env = "FIREBLOCKS_API_KEY")]
+    fireblocks_api_key: String,
+    /// The fireblocks api secret
+    #[clap(long, env = "FIREBLOCKS_API_SECRET")]
+    fireblocks_api_secret: String,
+
+    // --- Server Config --- //
+
     /// The port to run the server on
     #[clap(long, default_value = "3000")]
     port: u16,
@@ -105,6 +132,8 @@ struct Server {
     pub decryption_keys: Vec<DecryptionKey>,
     /// The DB url
     pub db_url: String,
+    /// The custody client
+    pub custody_client: CustodyClient,
     /// The AWS config
     pub aws_config: SdkConfig,
 }
@@ -152,7 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let conf = ArbitrumClientConfig {
         darkpool_addr: cli.darkpool_address,
         chain: cli.chain,
-        rpc_url: cli.rpc_url,
+        rpc_url: cli.rpc_url.clone(),
         arb_priv_keys: vec![wallet],
         block_polling_interval_ms: BLOCK_POLLING_INTERVAL_MS,
     };
@@ -166,6 +195,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
+    let custody_client =
+        CustodyClient::new(cli.fireblocks_api_key, cli.fireblocks_api_secret, cli.rpc_url);
     let server = Server {
         chain_id,
         chain: cli.chain,
@@ -173,6 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         arbitrum_client: client.clone(),
         decryption_keys,
         db_url: cli.db_url,
+        custody_client,
         aws_config: config,
     };
 
@@ -192,40 +224,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(Arc::new(server.clone())))
         .and_then(redeem_fees_handler);
 
-    let routes = ping.or(index_fees).or(redeem_fees).recover(handle_rejection);
+    let withdraw_custody = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(WITHDRAW_CUSTODY_ROUTE))
+        .and(with_server(Arc::new(server.clone())))
+        .and_then(withdraw_funds_handler);
+
+    let get_deposit_address = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
+        .and(query::<HashMap<String, String>>())
+        .and(with_server(Arc::new(server.clone())))
+        .and_then(get_deposit_address_handler);
+
+    let routes = ping
+        .or(index_fees)
+        .or(redeem_fees)
+        .or(withdraw_custody)
+        .or(get_deposit_address)
+        .recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
 
     Ok(())
-}
-
-// ------------
-// | Handlers |
-// ------------
-
-/// Handler for indexing fees
-async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
-    let mut indexer = server
-        .build_indexer()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-    indexer
-        .index_fees()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::IndexingError(e.to_string())))?;
-    Ok(warp::reply::json(&"Fees indexed successfully"))
-}
-
-/// Handler for redeeming fees
-async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
-    let mut indexer = server
-        .build_indexer()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-    indexer
-        .redeem_fees()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
-    Ok(warp::reply::json(&"Fees redeemed successfully"))
 }
 
 // -----------
@@ -239,6 +261,7 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             ApiError::IndexingError(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
             ApiError::RedemptionError(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
             ApiError::InternalError(msg) => (warp::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
+            ApiError::BadRequest(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
         };
         error!("API Error: {:?}", api_error);
         Ok(warp::reply::with_status(message.clone(), code))
