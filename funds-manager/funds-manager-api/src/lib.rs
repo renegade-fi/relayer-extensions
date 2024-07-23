@@ -38,4 +38,6 @@ pub struct WithdrawFundsRequest {
     pub mint: String,
     /// The amount of funds to withdraw
     pub amount: u128,
+    /// The address to withdraw to
+    pub address: String,
 }

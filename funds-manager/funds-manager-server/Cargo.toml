@@ -17,7 +17,7 @@ aws-sdk-secretsmanager = "1.37"
 aws-config = "1.5"
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
 diesel-async = { workspace = true, features = ["postgres"] }
-fireblocks-sdk = "0.4"
+fireblocks-sdk = { git = "https://github.com/renegade-fi/fireblocks-sdk-rs" }
 native-tls = "0.2"
 postgres-native-tls = "0.5"
 tokio-postgres = "0.7.7"

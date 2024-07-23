@@ -71,7 +71,7 @@ impl Display for FundsManagerError {
             FundsManagerError::Http(e) => write!(f, "HTTP error: {}", e),
             FundsManagerError::Parse(e) => write!(f, "Parse error: {}", e),
             FundsManagerError::SecretsManager(e) => write!(f, "Secrets manager error: {}", e),
-            FundsManagerError::Custom(e) => write!(f, "Custom error: {}", e),
+            FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
         }
     }

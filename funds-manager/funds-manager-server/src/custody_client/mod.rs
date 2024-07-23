@@ -1,14 +1,21 @@
 //! Manages the custody backend for the funds manager
 #![allow(missing_docs)]
 pub mod deposit;
+pub mod withdraw;
 
 use ethers::prelude::abigen;
 use ethers::providers::{Http, Provider};
 use ethers::types::Address;
-use fireblocks_sdk::{Client as FireblocksClient, ClientBuilder as FireblocksClientBuilder};
+use fireblocks_sdk::types::Transaction;
+use fireblocks_sdk::{
+    types::{Account as FireblocksAccount, AccountAsset},
+    Client as FireblocksClient, ClientBuilder as FireblocksClientBuilder,
+};
 use renegade_util::err_str;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
+use tracing::info;
 
 use crate::error::FundsManagerError;
 
@@ -20,20 +27,24 @@ abigen!(
 );
 
 /// The source of a deposit
-pub(crate) enum DepositSource {
-    /// A Renegade quoter
+#[derive(Clone, Copy)]
+pub(crate) enum DepositWithdrawSource {
+    /// A Renegade quoter deposit or withdrawal
     Quoter,
-    /// A fee withdrawal
-    FeeWithdrawal,
+    /// A fee redemption deposit
+    FeeRedemption,
+    /// A gas withdrawal
+    Gas,
 }
 
-impl DepositSource {
+impl DepositWithdrawSource {
     /// Get the Fireblocks vault name into which the given deposit source should
     /// deposit funds
     pub(crate) fn get_vault_name(&self) -> &str {
         match self {
-            DepositSource::Quoter => "Quoters",
-            DepositSource::FeeWithdrawal => unimplemented!("no vault for fee withdrawal yet"),
+            Self::Quoter => "Quoters",
+            Self::FeeRedemption => unimplemented!("no vault for fee redemption yet"),
+            Self::Gas => unimplemented!("no vault for gas yet"),
         }
     }
 }
@@ -83,5 +94,52 @@ impl CustodyClient {
         let erc20 = ERC20::new(addr, client);
 
         erc20.symbol().call().await.map_err(FundsManagerError::arbitrum)
+    }
+
+    /// Get the vault account for a given asset and source
+    pub(crate) async fn get_vault_account(
+        &self,
+        source: &DepositWithdrawSource,
+    ) -> Result<Option<FireblocksAccount>, FundsManagerError> {
+        let client = self.get_fireblocks_client()?;
+        let req = fireblocks_sdk::PagingVaultRequestBuilder::new()
+            .limit(100)
+            .build()
+            .map_err(err_str!(FundsManagerError::Fireblocks))?;
+
+        let (vaults, _rid) = client.vaults(req).await?;
+        for vault in vaults.accounts.into_iter() {
+            if vault.name == source.get_vault_name() {
+                return Ok(Some(vault));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Find the wallet in a vault account for a given symbol
+    pub(crate) fn get_wallet_for_ticker(
+        &self,
+        vault: &FireblocksAccount,
+        symbol: &str,
+    ) -> Option<AccountAsset> {
+        vault.assets.iter().find(|acct| acct.id.starts_with(symbol)).cloned()
+    }
+
+    /// Poll a fireblocks transaction for completion
+    pub(crate) async fn poll_fireblocks_transaction(
+        &self,
+        transaction_id: &str,
+    ) -> Result<Transaction, FundsManagerError> {
+        let client = self.get_fireblocks_client()?;
+        let timeout = Duration::from_secs(60);
+        let interval = Duration::from_secs(5);
+        client
+            .poll_transaction(transaction_id, timeout, interval, |tx| {
+                info!("tx {}: {:?}", transaction_id, tx.status);
+            })
+            .await
+            .map_err(FundsManagerError::fireblocks)
+            .map(|(tx, _rid)| tx)
     }
 }

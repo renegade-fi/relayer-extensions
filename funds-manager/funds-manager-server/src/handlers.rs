@@ -1,9 +1,9 @@
 //! Route handlers for the funds manager
 
-use crate::custody_client::DepositSource;
+use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
-use funds_manager_api::DepositAddressResponse;
+use funds_manager_api::{DepositAddressResponse, WithdrawFundsRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::reply::Json;
@@ -38,9 +38,22 @@ pub(crate) async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, war
 }
 
 /// Handler for withdrawing funds from custody
-pub(crate) async fn withdraw_funds_handler(_server: Arc<Server>) -> Result<Json, warp::Rejection> {
-    // Implement the withdrawal logic here
-    todo!("Implement withdrawal from custody")
+pub(crate) async fn quoter_withdraw_handler(
+    withdraw_request: WithdrawFundsRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    server
+        .custody_client
+        .withdraw(
+            DepositWithdrawSource::Quoter,
+            &withdraw_request.mint,
+            withdraw_request.amount,
+            withdraw_request.address,
+        )
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    Ok(warp::reply::json(&"Withdrawal complete"))
 }
 
 /// Handler for retrieving the address to deposit custody funds to
@@ -54,7 +67,7 @@ pub(crate) async fn get_deposit_address_handler(
 
     let address = server
         .custody_client
-        .get_deposit_address(mint, DepositSource::Quoter)
+        .get_deposit_address(mint, DepositWithdrawSource::Quoter)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = DepositAddressResponse { address };
