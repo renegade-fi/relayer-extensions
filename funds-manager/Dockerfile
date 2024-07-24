@@ -19,12 +19,18 @@ COPY ./funds-manager ./funds-manager
 # === Builder === #
 # Pull the sources into their own layer
 FROM chef AS builder
+
+# Disable compiler warnings and enable backtraces for panic debugging
+ENV RUSTFLAGS=-Awarnings
+ENV RUST_BACKTRACE=1
+ENV CARGO_HTTP_CHECK_REVOKE=false
+
 COPY --from=sources /build /build
 WORKDIR /build
 
 # Install protoc, openssl, and pkg-config
 RUN apt-get update && \
-    apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev
+    apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev ca-certificates
 
 # Update Cargo.toml to include only "funds-manager/funds-manager-server" in workspace members
 RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["funds-manager/funds-manager-server"]' Cargo.toml
@@ -32,10 +38,6 @@ RUN cargo chef prepare --recipe-path recipe.json --bin funds-manager
 
 # Build only the dependencies to cache them in this layer
 RUN cargo chef cook --release --recipe-path recipe.json
-
-# Disable compiler warnings and enable backtraces for panic debugging
-ENV RUSTFLAGS=-Awarnings
-ENV RUST_BACKTRACE=1
 
 COPY --from=sources /build/funds-manager /build/funds-manager
 WORKDIR /build
