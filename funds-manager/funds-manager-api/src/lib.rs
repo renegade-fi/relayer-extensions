@@ -32,7 +32,7 @@ pub struct DepositAddressResponse {
 }
 
 /// The request body for withdrawing funds from custody
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WithdrawFundsRequest {
     /// The mint of the asset to withdraw
     pub mint: String,

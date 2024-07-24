@@ -102,6 +102,8 @@ pub enum ApiError {
     InternalError(String),
     /// Bad request error
     BadRequest(String),
+    /// Unauthenticated error
+    Unauthenticated(String),
 }
 
 impl Reject for ApiError {}
@@ -113,6 +115,7 @@ impl Display for ApiError {
             ApiError::RedemptionError(e) => write!(f, "Redemption error: {}", e),
             ApiError::InternalError(e) => write!(f, "Internal error: {}", e),
             ApiError::BadRequest(e) => write!(f, "Bad request: {}", e),
+            ApiError::Unauthenticated(e) => write!(f, "Unauthenticated: {}", e),
         }
     }
 }

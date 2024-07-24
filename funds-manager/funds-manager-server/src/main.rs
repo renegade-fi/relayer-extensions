@@ -11,6 +11,7 @@ pub mod db;
 pub mod error;
 pub mod fee_indexer;
 pub mod handlers;
+pub mod middleware;
 pub mod relayer_client;
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
@@ -24,6 +25,7 @@ use funds_manager_api::{
 use handlers::{
     get_deposit_address_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
 };
+use middleware::{identity, with_hmac_auth, with_json_body};
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::{err_str, raw_err_str, telemetry::configure_telemetry};
@@ -35,7 +37,8 @@ use arbitrum_client::{
     constants::Chain,
 };
 use clap::Parser;
-use tracing::error;
+use funds_manager_api::WithdrawFundsRequest;
+use tracing::{error, warn};
 use warp::{filters::query::query, Filter};
 
 use crate::custody_client::CustodyClient;
@@ -62,8 +65,18 @@ const DUMMY_PRIVATE_KEY: &str =
 
 /// The cli for the fee sweeper
 #[rustfmt::skip]
-#[derive(Clone, Debug, Parser)]
+#[derive(Parser)]
+#[clap(about = "Funds manager server")]
 struct Cli {
+    // --- Authentication --- //
+
+    /// The HMAC key to use for authentication
+    #[clap(long, conflicts_with = "disable_auth", env = "HMAC_KEY")]
+    hmac_key: Option<String>,
+    /// Whether to disable authentication
+    #[clap(long, conflicts_with = "hmac_key")]
+    disable_auth: bool,
+
     // --- Environment Configs --- //
 
     /// The URL of the relayer to use
@@ -117,6 +130,30 @@ struct Cli {
     datadog_logging: bool,
 }
 
+impl Cli {
+    /// Validate the CLI arguments
+    fn validate(&self) -> Result<(), String> {
+        if self.hmac_key.is_none() && !self.disable_auth {
+            Err("Either --hmac-key or --disable-auth must be provided".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Get the HMAC key as a 32-byte array
+    fn get_hmac_key(&self) -> Option<[u8; 32]> {
+        self.hmac_key.as_ref().map(|key| {
+            let decoded = hex::decode(key).expect("Invalid HMAC key");
+            if decoded.len() != 32 {
+                panic!("HMAC key must be 32 bytes long");
+            }
+            let mut array = [0u8; 32];
+            array.copy_from_slice(&decoded);
+            array
+        })
+    }
+}
+
 /// The server
 #[derive(Clone)]
 struct Server {
@@ -136,6 +173,8 @@ struct Server {
     pub custody_client: CustodyClient,
     /// The AWS config
     pub aws_config: SdkConfig,
+    /// The HMAC key for custody endpoint authentication
+    pub hmac_key: Option<[u8; 32]>,
 }
 
 impl Server {
@@ -160,6 +199,11 @@ impl Server {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
+    cli.validate()?;
+    if cli.hmac_key.is_none() {
+        warn!("Authentication is disabled. This is not recommended for production use.");
+    }
+
     configure_telemetry(
         cli.datadog_logging, // datadog_enabled
         false,               // otlp_enabled
@@ -179,7 +223,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Build an Arbitrum client
     let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY)?;
     let conf = ArbitrumClientConfig {
-        darkpool_addr: cli.darkpool_address,
+        darkpool_addr: cli.darkpool_address.clone(),
         chain: cli.chain,
         rpc_url: cli.rpc_url.clone(),
         arb_priv_keys: vec![wallet],
@@ -190,10 +234,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build the indexer
     let mut decryption_keys = vec![DecryptionKey::from_hex_str(&cli.relayer_decryption_key)?];
-    if let Some(protocol_key) = cli.protocol_decryption_key {
-        decryption_keys.push(DecryptionKey::from_hex_str(&protocol_key)?);
+    if let Some(protocol_key) = &cli.protocol_decryption_key {
+        decryption_keys.push(DecryptionKey::from_hex_str(protocol_key)?);
     }
 
+    let hmac_key = cli.get_hmac_key();
     let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
     let custody_client =
         CustodyClient::new(cli.fireblocks_api_key, cli.fireblocks_api_secret, cli.rpc_url);
@@ -206,30 +251,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
         db_url: cli.db_url,
         custody_client,
         aws_config: config,
+        hmac_key,
     };
 
     // --- Routes --- //
-
+    let server = Arc::new(server);
     let ping = warp::get()
         .and(warp::path(PING_ROUTE))
         .map(|| warp::reply::with_status("PONG", warp::http::StatusCode::OK));
 
     let index_fees = warp::post()
         .and(warp::path(INDEX_FEES_ROUTE))
-        .and(with_server(Arc::new(server.clone())))
+        .and(with_server(server.clone()))
         .and_then(index_fees_handler);
 
     let redeem_fees = warp::post()
         .and(warp::path(REDEEM_FEES_ROUTE))
-        .and(with_server(Arc::new(server.clone())))
+        .and(with_server(server.clone()))
         .and_then(redeem_fees_handler);
 
     let withdraw_custody = warp::post()
         .and(warp::path("custody"))
         .and(warp::path("quoters"))
         .and(warp::path(WITHDRAW_CUSTODY_ROUTE))
-        .and(warp::body::json())
-        .and(with_server(Arc::new(server.clone())))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawFundsRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
         .and_then(quoter_withdraw_handler);
 
     let get_deposit_address = warp::get()
@@ -237,7 +285,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("quoters"))
         .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
         .and(query::<HashMap<String, String>>())
-        .and(with_server(Arc::new(server.clone())))
+        .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
 
     let routes = ping
@@ -263,6 +311,7 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             ApiError::RedemptionError(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
             ApiError::InternalError(msg) => (warp::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
             ApiError::BadRequest(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
+            ApiError::Unauthenticated(msg) => (warp::http::StatusCode::UNAUTHORIZED, msg),
         };
         error!("API Error: {:?}", api_error);
         Ok(warp::reply::with_status(message.clone(), code))
