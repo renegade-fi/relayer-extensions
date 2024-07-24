@@ -22,7 +22,7 @@ use funds_manager_api::{
     WITHDRAW_CUSTODY_ROUTE,
 };
 use handlers::{
-    get_deposit_address_handler, index_fees_handler, redeem_fees_handler, withdraw_funds_handler,
+    get_deposit_address_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
 };
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
@@ -228,8 +228,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("custody"))
         .and(warp::path("quoters"))
         .and(warp::path(WITHDRAW_CUSTODY_ROUTE))
+        .and(warp::body::json())
         .and(with_server(Arc::new(server.clone())))
-        .and_then(withdraw_funds_handler);
+        .and_then(quoter_withdraw_handler);
 
     let get_deposit_address = warp::get()
         .and(warp::path("custody"))
