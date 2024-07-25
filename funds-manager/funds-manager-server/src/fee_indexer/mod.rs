@@ -6,6 +6,7 @@ use diesel_async::AsyncPgConnection;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::hex::jubjub_from_hex_string;
 
+use crate::custody_client::CustodyClient;
 use crate::relayer_client::RelayerClient;
 
 pub mod fee_balances;
@@ -29,10 +30,13 @@ pub(crate) struct Indexer {
     pub db_conn: AsyncPgConnection,
     /// The AWS config
     pub aws_config: AwsConfig,
+    /// The custody client
+    pub custody_client: CustodyClient,
 }
 
 impl Indexer {
     /// Constructor
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_id: u64,
         chain: Chain,
@@ -41,6 +45,7 @@ impl Indexer {
         decryption_keys: Vec<DecryptionKey>,
         db_conn: AsyncPgConnection,
         relayer_client: RelayerClient,
+        custody_client: CustodyClient,
     ) -> Self {
         Indexer {
             chain_id,
@@ -50,6 +55,7 @@ impl Indexer {
             db_conn,
             relayer_client,
             aws_config,
+            custody_client,
         }
     }
 

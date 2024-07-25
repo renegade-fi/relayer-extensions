@@ -16,6 +16,7 @@ use diesel_async::RunQueryDsl;
 use renegade_common::types::wallet::WalletIdentifier;
 use renegade_constants::MAX_BALANCES;
 use tracing::warn;
+use uuid::Uuid;
 
 use crate::db::models::WalletMetadata;
 use crate::db::models::{Metadata, NewFee};
@@ -26,7 +27,7 @@ use crate::db::schema::{
     indexing_metadata::dsl::{
         indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
     },
-    wallets::dsl::{mints as managed_mints_col, wallets as wallet_table},
+    wallets::dsl::{id as wallet_id_col, mints as managed_mints_col, wallets as wallet_table},
 };
 use crate::error::FundsManagerError;
 use crate::Indexer;
@@ -207,6 +208,18 @@ impl Indexer {
     // -----------------
     // | Wallets Table |
     // -----------------
+
+    /// Get a wallet by its ID
+    pub(crate) async fn get_wallet_by_id(
+        &mut self,
+        wallet_id: &Uuid,
+    ) -> Result<WalletMetadata, FundsManagerError> {
+        wallet_table
+            .filter(wallet_id_col.eq(wallet_id))
+            .first::<WalletMetadata>(&mut self.db_conn)
+            .await
+            .map_err(|e| FundsManagerError::db(format!("failed to get wallet by ID: {}", e)))
+    }
 
     /// Get all wallets in the table
     pub(crate) async fn get_all_wallets(

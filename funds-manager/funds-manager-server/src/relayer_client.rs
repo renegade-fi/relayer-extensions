@@ -14,8 +14,9 @@ use renegade_api::{
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
         wallet::{
             CreateWalletRequest, CreateWalletResponse, FindWalletRequest, FindWalletResponse,
-            GetWalletResponse, RedeemNoteRequest, RedeemNoteResponse, CREATE_WALLET_ROUTE,
-            FIND_WALLET_ROUTE, GET_WALLET_ROUTE, REDEEM_NOTE_ROUTE,
+            GetWalletResponse, RedeemNoteRequest, RedeemNoteResponse, WithdrawBalanceRequest,
+            WithdrawBalanceResponse, CREATE_WALLET_ROUTE, FIND_WALLET_ROUTE, GET_WALLET_ROUTE,
+            REDEEM_NOTE_ROUTE, WITHDRAW_BALANCE_ROUTE,
         },
     },
     RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
@@ -162,6 +163,23 @@ impl RelayerClient {
         self.await_relayer_task(resp.task_id).await
     }
 
+    /// Withdraw a balance from a wallet
+    pub async fn withdraw_balance(
+        &self,
+        wallet_id: WalletIdentifier,
+        mint: String,
+        req: WithdrawBalanceRequest,
+        root_key: &SecretSigningKey,
+    ) -> Result<(), FundsManagerError> {
+        let mut path = WITHDRAW_BALANCE_ROUTE.to_string();
+        path = path.replace(":wallet_id", &wallet_id.to_string());
+        path = path.replace(":mint", &mint);
+
+        let resp: WithdrawBalanceResponse =
+            self.post_relayer_with_auth(&path, &req, root_key).await?;
+        self.await_relayer_task(resp.task_id).await
+    }
+
     // -----------
     // | Helpers |
     // -----------
@@ -220,9 +238,11 @@ impl RelayerClient {
 
         // Deserialize the response
         if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap();
             return Err(FundsManagerError::http(format!(
-                "Failed to send request: {}",
-                resp.status()
+                "Failed to send request: {}, {}",
+                status, body
             )));
         }
 
