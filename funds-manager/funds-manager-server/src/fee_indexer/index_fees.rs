@@ -66,7 +66,7 @@ impl Indexer {
         let note = match maybe_note {
             Some(note) => note,
             None => {
-                info!("note not found, skipping");
+                info!("not the note receiver, skipping...");
                 return Ok(());
             },
         };
