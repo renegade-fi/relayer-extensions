@@ -20,6 +20,9 @@ pub const GET_DEPOSIT_ADDRESS_ROUTE: &str = "deposit-address";
 /// The route to withdraw funds from custody
 pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 
+/// The route to withdraw gas from custody
+pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
+
 // -------------
 // | Api Types |
 // -------------
@@ -37,7 +40,17 @@ pub struct WithdrawFundsRequest {
     /// The mint of the asset to withdraw
     pub mint: String,
     /// The amount of funds to withdraw
-    pub amount: u128,
+    pub amount: f64,
     /// The address to withdraw to
     pub address: String,
+}
+
+// Update request body name and documentation
+/// The request body for withdrawing gas from custody
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WithdrawGasRequest {
+    /// The amount of gas to withdraw
+    pub amount: f64,
+    /// The address to withdraw to
+    pub destination_address: String,
 }

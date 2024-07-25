@@ -5,16 +5,27 @@ use fireblocks_sdk::types::TransactionStatus;
 use super::{CustodyClient, DepositWithdrawSource};
 
 impl CustodyClient {
+    /// Withdraw gas from custody
+    pub(crate) async fn withdraw_with_token_addr(
+        &self,
+        source: DepositWithdrawSource,
+        destination_address: &str,
+        token_address: &str,
+        amount: f64,
+    ) -> Result<(), FundsManagerError> {
+        let symbol = self.get_erc20_token_symbol(token_address).await?;
+        self.withdraw(source, destination_address, &symbol, amount).await
+    }
+
     /// Withdraw funds from custody
     pub(crate) async fn withdraw(
         &self,
         source: DepositWithdrawSource,
-        token_address: &str,
-        amount: u128,
-        destination_address: String,
+        destination_address: &str,
+        symbol: &str,
+        amount: f64,
     ) -> Result<(), FundsManagerError> {
         let client = self.get_fireblocks_client()?;
-        let symbol = self.get_erc20_token_symbol(token_address).await?;
 
         // Get the vault account and asset to transfer from
         let vault = self
@@ -22,12 +33,13 @@ impl CustodyClient {
             .await?
             .ok_or_else(|| FundsManagerError::Custom("Vault not found".to_string()))?;
 
-        let asset = self.get_wallet_for_ticker(&vault, &symbol).ok_or_else(|| {
+        let asset = self.get_wallet_for_ticker(&vault, symbol).ok_or_else(|| {
             FundsManagerError::Custom(format!("Asset not found for symbol: {}", symbol))
         })?;
 
         // Check if the available balance is sufficient
-        let withdraw_amount = BigDecimal::from_u128(amount).expect("amount too large");
+        let withdraw_amount = BigDecimal::from_f64(amount)
+            .ok_or_else(|| FundsManagerError::Custom("Invalid amount".to_string()))?;
         if asset.available < withdraw_amount {
             return Err(FundsManagerError::Custom(format!(
                 "Insufficient balance. Available: {}, Requested: {}",
