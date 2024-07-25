@@ -9,6 +9,17 @@ use crate::error::FundsManagerError;
 use crate::CustodyClient;
 
 impl CustodyClient {
+    /// Get all hot wallets
+    pub async fn get_all_hot_wallets(&self) -> Result<Vec<HotWallet>, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        let wallets = hot_wallets::table
+            .load::<HotWallet>(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))?;
+
+        Ok(wallets)
+    }
+
     /// Insert a new hot wallet into the database
     pub async fn insert_hot_wallet(
         &self,

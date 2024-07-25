@@ -6,14 +6,15 @@ use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
     CreateHotWalletRequest, CreateHotWalletResponse, DepositAddressResponse, FeeWalletsResponse,
-    WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
+    HotWalletBalancesResponse, WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
 };
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::reply::Json;
 
-/// The "mint" query param
-pub const MINT_QUERY_PARAM: &str = "mint";
+/// The "mints" query param
+pub const MINTS_QUERY_PARAM: &str = "mints";
 /// The asset used for gas (ETH)
 pub const GAS_ASSET_NAME: &str = "ETH";
 /// The maximum amount of gas that can be withdrawn at a given time
@@ -67,8 +68,8 @@ pub(crate) async fn get_deposit_address_handler(
     query_params: HashMap<String, String>,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let mint = query_params.get(MINT_QUERY_PARAM).ok_or_else(|| {
-        warp::reject::custom(ApiError::BadRequest("Missing 'mint' query parameter".to_string()))
+    let mint = query_params.get(MINTS_QUERY_PARAM).ok_or_else(|| {
+        warp::reject::custom(ApiError::BadRequest("Missing 'mints' query parameter".to_string()))
     })?;
 
     let address = server
@@ -142,5 +143,26 @@ pub(crate) async fn create_hot_wallet_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     let resp = CreateHotWalletResponse { address };
+    Ok(warp::reply::json(&resp))
+}
+
+/// Handler for getting hot wallet balances
+pub(crate) async fn get_hot_wallet_balances_handler(
+    _body: Bytes, // unused
+    query_params: HashMap<String, String>,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mints = query_params
+        .get(MINTS_QUERY_PARAM)
+        .map(|s| s.split(',').map(String::from).collect_vec())
+        .unwrap_or_default();
+
+    let wallets = server
+        .custody_client
+        .get_hot_wallet_balances(&mints)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    let resp = HotWalletBalancesResponse { wallets };
     Ok(warp::reply::json(&resp))
 }

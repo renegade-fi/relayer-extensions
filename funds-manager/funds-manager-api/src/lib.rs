@@ -30,9 +30,6 @@ pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
 /// The route to withdraw a fee balance
 pub const WITHDRAW_FEE_BALANCE_ROUTE: &str = "withdraw-fee-balance";
 
-/// The route to create a new hot wallet
-pub const CREATE_HOT_WALLET_ROUTE: &str = "create-hot-wallet";
-
 // -------------
 // | Api Types |
 // -------------
@@ -101,4 +98,29 @@ pub struct CreateHotWalletRequest {
 pub struct CreateHotWalletResponse {
     /// The address of the hot wallet
     pub address: String,
+}
+
+/// The response containing hot wallet balances
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HotWalletBalancesResponse {
+    /// The list of hot wallets with their balances
+    pub wallets: Vec<WalletWithBalances>,
+}
+
+/// A hot wallet with its balances
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WalletWithBalances {
+    /// The address of the hot wallet
+    pub address: String,
+    /// The balances of various tokens
+    pub balances: Vec<TokenBalance>,
+}
+
+/// A balance for a specific token
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenBalance {
+    /// The mint address of the token
+    pub mint: String,
+    /// The balance amount
+    pub amount: u128,
 }
