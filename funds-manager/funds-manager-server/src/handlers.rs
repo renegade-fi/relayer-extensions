@@ -3,13 +3,17 @@
 use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
-use funds_manager_api::{DepositAddressResponse, WithdrawFundsRequest};
+use funds_manager_api::{DepositAddressResponse, WithdrawFundsRequest, WithdrawGasRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::reply::Json;
 
 /// The "mint" query param
 pub const MINT_QUERY_PARAM: &str = "mint";
+/// The asset used for gas (ETH)
+pub const GAS_ASSET_NAME: &str = "ETH";
+/// The maximum amount of gas that can be withdrawn at a given time
+pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 0.1; // 0.1 ETH
 
 /// Handler for indexing fees
 pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
@@ -44,11 +48,11 @@ pub(crate) async fn quoter_withdraw_handler(
 ) -> Result<Json, warp::Rejection> {
     server
         .custody_client
-        .withdraw(
+        .withdraw_with_token_addr(
             DepositWithdrawSource::Quoter,
+            &withdraw_request.address,
             &withdraw_request.mint,
             withdraw_request.amount,
-            withdraw_request.address,
         )
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
@@ -72,4 +76,30 @@ pub(crate) async fn get_deposit_address_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = DepositAddressResponse { address };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for withdrawing gas from custody
+pub(crate) async fn withdraw_gas_handler(
+    withdraw_request: WithdrawGasRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    if withdraw_request.amount > MAX_GAS_WITHDRAWAL_AMOUNT {
+        return Err(warp::reject::custom(ApiError::BadRequest(format!(
+            "Requested amount {} ETH exceeds maximum allowed withdrawal of {} ETH",
+            withdraw_request.amount, MAX_GAS_WITHDRAWAL_AMOUNT
+        ))));
+    }
+
+    server
+        .custody_client
+        .withdraw(
+            DepositWithdrawSource::Gas,
+            &withdraw_request.destination_address,
+            GAS_ASSET_NAME,
+            withdraw_request.amount,
+        )
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    Ok(warp::reply::json(&format!("Gas withdrawal of {} ETH complete", withdraw_request.amount)))
 }

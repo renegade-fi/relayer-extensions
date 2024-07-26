@@ -44,7 +44,7 @@ impl DepositWithdrawSource {
         match self {
             Self::Quoter => "Quoters",
             Self::FeeRedemption => unimplemented!("no vault for fee redemption yet"),
-            Self::Gas => unimplemented!("no vault for gas yet"),
+            Self::Gas => "Arbitrum Gas",
         }
     }
 }
