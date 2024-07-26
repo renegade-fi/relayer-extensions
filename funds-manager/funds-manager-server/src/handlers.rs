@@ -3,7 +3,10 @@
 use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
-use funds_manager_api::{DepositAddressResponse, WithdrawFundsRequest, WithdrawGasRequest};
+use bytes::Bytes;
+use funds_manager_api::{
+    DepositAddressResponse, FeeWalletsResponse, WithdrawFundsRequest, WithdrawGasRequest,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::reply::Json;
@@ -102,4 +105,14 @@ pub(crate) async fn withdraw_gas_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     Ok(warp::reply::json(&format!("Gas withdrawal of {} ETH complete", withdraw_request.amount)))
+}
+
+/// Handler for getting fee wallets
+pub(crate) async fn get_fee_wallets_handler(
+    _body: Bytes, // no body
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mut indexer = server.build_indexer().await?;
+    let wallets = indexer.fetch_fee_wallets().await?;
+    Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
 }

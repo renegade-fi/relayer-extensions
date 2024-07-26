@@ -8,6 +8,7 @@ use renegade_util::hex::jubjub_from_hex_string;
 
 use crate::relayer_client::RelayerClient;
 
+pub mod fee_balances;
 pub mod index_fees;
 pub mod queries;
 pub mod redeem_fees;

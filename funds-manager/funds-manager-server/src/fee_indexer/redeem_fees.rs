@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
-use diesel::IntoSql;
 use ethers::core::rand::thread_rng;
 use ethers::signers::LocalWallet;
 use ethers::types::TxHash;
@@ -213,7 +212,7 @@ impl Indexer {
     }
 
     /// Get the private key for a wallet specified by its metadata
-    async fn get_wallet_private_key(
+    pub(crate) async fn get_wallet_private_key(
         &mut self,
         metadata: &WalletMetadata,
     ) -> Result<LocalWallet, FundsManagerError> {

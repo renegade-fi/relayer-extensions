@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 
+use renegade_api::types::ApiWallet;
 use serde::{Deserialize, Serialize};
 
 // --------------
@@ -22,6 +23,9 @@ pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 
 /// The route to withdraw gas from custody
 pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
+
+/// The route to get fee wallets
+pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
 
 // -------------
 // | Api Types |
@@ -53,4 +57,11 @@ pub struct WithdrawGasRequest {
     pub amount: f64,
     /// The address to withdraw to
     pub destination_address: String,
+}
+
+/// The response containing fee wallets
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeeWalletsResponse {
+    /// The wallets managed by the funds manager
+    pub wallets: Vec<ApiWallet>,
 }

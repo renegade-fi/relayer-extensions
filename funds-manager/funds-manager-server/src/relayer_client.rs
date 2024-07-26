@@ -85,6 +85,17 @@ impl RelayerClient {
     // | Wallet Methods |
     // ------------------
 
+    /// Get the wallet for a given id
+    pub async fn get_wallet(
+        &self,
+        wallet_id: WalletIdentifier,
+        root_key: &SecretSigningKey,
+    ) -> Result<GetWalletResponse, FundsManagerError> {
+        let mut path = GET_WALLET_ROUTE.to_string();
+        path = path.replace(":wallet_id", &wallet_id.to_string());
+        self.get_relayer_with_auth::<GetWalletResponse>(&path, root_key).await
+    }
+
     /// Check that the relayer has a given wallet, lookup the wallet if not
     pub async fn check_wallet_indexed(
         &self,
