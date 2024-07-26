@@ -19,12 +19,12 @@ use error::FundsManagerError;
 use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
 use funds_manager_api::{
-    WithdrawGasRequest, GET_DEPOSIT_ADDRESS_ROUTE, INDEX_FEES_ROUTE, PING_ROUTE, REDEEM_FEES_ROUTE,
-    WITHDRAW_CUSTODY_ROUTE, WITHDRAW_GAS_ROUTE,
+    WithdrawGasRequest, GET_DEPOSIT_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE,
+    PING_ROUTE, REDEEM_FEES_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_GAS_ROUTE,
 };
 use handlers::{
-    get_deposit_address_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
-    withdraw_gas_handler,
+    get_deposit_address_handler, get_fee_wallets_handler, index_fees_handler,
+    quoter_withdraw_handler, redeem_fees_handler, withdraw_gas_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
 use relayer_client::RelayerClient;
@@ -299,12 +299,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(withdraw_gas_handler);
 
+    let get_balances = warp::get()
+        .and(warp::path("fees"))
+        .and(warp::path(GET_FEE_WALLETS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(get_fee_wallets_handler);
+
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
         .or(withdraw_custody)
         .or(get_deposit_address)
         .or(withdraw_gas)
+        .or(get_balances)
         .recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
 

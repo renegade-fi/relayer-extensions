@@ -212,7 +212,7 @@ impl Indexer {
     }
 
     /// Get the private key for a wallet specified by its metadata
-    async fn get_wallet_private_key(
+    pub(crate) async fn get_wallet_private_key(
         &mut self,
         metadata: &WalletMetadata,
     ) -> Result<LocalWallet, FundsManagerError> {

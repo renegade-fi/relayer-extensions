@@ -208,6 +208,17 @@ impl Indexer {
     // | Wallets Table |
     // -----------------
 
+    /// Get all wallets in the table
+    pub(crate) async fn get_all_wallets(
+        &mut self,
+    ) -> Result<Vec<WalletMetadata>, FundsManagerError> {
+        let wallets = wallet_table
+            .load::<WalletMetadata>(&mut self.db_conn)
+            .await
+            .map_err(|e| FundsManagerError::db(format!("failed to load wallets: {}", e)))?;
+        Ok(wallets)
+    }
+
     /// Get the wallet managing an mint, if it exists
     ///
     /// Returns the id and secret id of the wallet
