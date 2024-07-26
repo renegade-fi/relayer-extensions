@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use bigdecimal::BigDecimal;
 use diesel::deserialize::Queryable;
 use diesel::deserialize::QueryableByName;
+use diesel::result::Error as DieselError;
 use diesel::sql_function;
 use diesel::sql_query;
 use diesel::sql_types::SingleValue;
@@ -12,7 +13,9 @@ use diesel::sql_types::{Array, Integer, Nullable, Numeric, Text};
 use diesel::PgArrayExpressionMethods;
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
+use renegade_common::types::wallet::WalletIdentifier;
 use renegade_constants::MAX_BALANCES;
+use tracing::warn;
 
 use crate::db::models::WalletMetadata;
 use crate::db::models::{Metadata, NewFee};
@@ -42,6 +45,11 @@ sql_function! {
 sql_function! {
     /// Coalesce a nullable value with a default value
     fn coalesce<T: SingleValue>(x: Nullable<T>, y: T) -> T;
+}
+
+sql_function! {
+    /// Append an element to an array
+    fn array_append<T: SingleValue>(arr: Array<T>, elem: T) -> Array<T>;
 }
 
 // ---------------
@@ -111,12 +119,17 @@ impl Indexer {
 
     /// Insert a fee into the fees table
     pub(crate) async fn insert_fee(&mut self, fee: NewFee) -> Result<(), FundsManagerError> {
-        diesel::insert_into(fees_table)
-            .values(vec![fee])
-            .execute(&mut self.db_conn)
-            .await
-            .map_err(|e| FundsManagerError::db(format!("failed to insert fee: {e}")))
-            .map(|_| ())
+        match diesel::insert_into(fees_table).values(vec![fee]).execute(&mut self.db_conn).await {
+            Ok(_) => Ok(()),
+            Err(DieselError::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => {
+                warn!("Fee already exists in the database, skipping insertion...",);
+                Ok(())
+            },
+            Err(e) => Err(FundsManagerError::db(format!("failed to insert fee: {e}"))),
+        }
     }
 
     /// Get all mints that have unredeemed fees
@@ -235,6 +248,20 @@ impl Indexer {
             .execute(&mut self.db_conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to insert wallet"))
+            .map(|_| ())
+    }
+
+    /// Add a new mint to a wallet's managed mints
+    pub(crate) async fn add_mint_to_wallet(
+        &mut self,
+        wallet_id: &WalletIdentifier,
+        mint: &str,
+    ) -> Result<(), FundsManagerError> {
+        diesel::update(wallet_table.find(wallet_id))
+            .set(managed_mints_col.eq(array_append(managed_mints_col, mint)))
+            .execute(&mut self.db_conn)
+            .await
+            .map_err(|_| FundsManagerError::db("failed to add mint to wallet"))
             .map(|_| ())
     }
 }

@@ -66,20 +66,25 @@ impl Indexer {
         &mut self,
         mint: &str,
     ) -> Result<WalletMetadata, FundsManagerError> {
+        // Find a wallet with an existing balance
         let maybe_wallet = self.get_wallet_for_mint(mint).await?;
-        let maybe_wallet = if maybe_wallet.is_none() {
-            self.find_wallet_with_empty_balance().await?
-        } else {
-            maybe_wallet
-        };
+        if let Some(wallet) = maybe_wallet {
+            return Ok(wallet);
+        }
 
-        match maybe_wallet {
-            Some(wallet) => Ok(wallet),
+        // Otherwise find a wallet with an empty balance slot, create a new one if no
+        // such wallet exists
+        let maybe_wallet = self.find_wallet_with_empty_balance().await?;
+        let wallet = match maybe_wallet {
+            Some(wallet) => wallet,
             None => {
                 info!("creating new wallet for {mint}");
-                self.create_new_wallet().await
+                self.create_new_wallet().await?
             },
-        }
+        };
+
+        self.add_mint_to_wallet(&wallet.id, mint).await?;
+        Ok(wallet)
     }
 
     /// Create a new wallet for managing a given mint
