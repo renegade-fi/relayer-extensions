@@ -15,6 +15,7 @@ pub mod middleware;
 pub mod relayer_client;
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
+use db::{create_db_pool, DbPool};
 use error::FundsManagerError;
 use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
@@ -31,7 +32,7 @@ use handlers::{
 use middleware::{identity, with_hmac_auth, with_json_body};
 use relayer_client::RelayerClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_util::{err_str, raw_err_str, telemetry::configure_telemetry};
+use renegade_util::{raw_err_str, telemetry::configure_telemetry};
 
 use std::{collections::HashMap, error::Error, str::FromStr, sync::Arc};
 
@@ -170,8 +171,8 @@ struct Server {
     pub arbitrum_client: ArbitrumClient,
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
-    /// The DB url
-    pub db_url: String,
+    /// The database connection pool
+    pub db_pool: Arc<DbPool>,
     /// The custody client
     pub custody_client: CustodyClient,
     /// The AWS config
@@ -182,18 +183,14 @@ struct Server {
 
 impl Server {
     /// Build an indexer
-    pub async fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
-        let db_conn = db::establish_connection(&self.db_url)
-            .await
-            .map_err(err_str!(FundsManagerError::Db))?;
-
+    pub fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
         Ok(Indexer::new(
             self.chain_id,
             self.chain,
             self.aws_config.clone(),
             self.arbitrum_client.clone(),
             self.decryption_keys.clone(),
-            db_conn,
+            self.db_pool.clone(),
             self.relayer_client.clone(),
             self.custody_client.clone(),
         ))
@@ -244,35 +241,70 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let hmac_key = cli.get_hmac_key();
     let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
-    let custody_client =
-        CustodyClient::new(cli.fireblocks_api_key, cli.fireblocks_api_secret, cli.rpc_url);
+
+    // Create a database connection pool using bb8
+    let db_pool = create_db_pool(&cli.db_url).await?;
+    let arc_pool = Arc::new(db_pool);
+
+    let custody_client = CustodyClient::new(
+        cli.fireblocks_api_key,
+        cli.fireblocks_api_secret,
+        cli.rpc_url,
+        arc_pool.clone(),
+    );
+
     let server = Server {
         chain_id,
         chain: cli.chain,
         relayer_client: relayer_client.clone(),
         arbitrum_client: client.clone(),
         decryption_keys,
-        db_url: cli.db_url,
+        db_pool: arc_pool,
         custody_client,
         aws_config: config,
         hmac_key,
     };
 
-    // --- Routes --- //
+    // ----------
+    // | Routes |
+    // ----------
+
     let server = Arc::new(server);
     let ping = warp::get()
         .and(warp::path(PING_ROUTE))
         .map(|| warp::reply::with_status("PONG", warp::http::StatusCode::OK));
 
+    // --- Fee Indexing --- //
+
     let index_fees = warp::post()
+        .and(warp::path("fees"))
         .and(warp::path(INDEX_FEES_ROUTE))
         .and(with_server(server.clone()))
         .and_then(index_fees_handler);
 
     let redeem_fees = warp::post()
+        .and(warp::path("fees"))
         .and(warp::path(REDEEM_FEES_ROUTE))
         .and(with_server(server.clone()))
         .and_then(redeem_fees_handler);
+
+    let get_balances = warp::get()
+        .and(warp::path("fees"))
+        .and(warp::path(GET_FEE_WALLETS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(get_fee_wallets_handler);
+
+    let withdraw_fee_balance = warp::post()
+        .and(warp::path("fees"))
+        .and(warp::path(WITHDRAW_FEE_BALANCE_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawFeeBalanceRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(withdraw_fee_balance_handler);
+
+    // --- Quoters --- //
 
     let withdraw_custody = warp::post()
         .and(warp::path("custody"))
@@ -292,6 +324,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
 
+    // --- Gas --- //
+
     let withdraw_gas = warp::post()
         .and(warp::path("custody"))
         .and(warp::path("gas"))
@@ -301,22 +335,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and_then(identity)
         .and(with_server(server.clone()))
         .and_then(withdraw_gas_handler);
-
-    let get_balances = warp::get()
-        .and(warp::path("fees"))
-        .and(warp::path(GET_FEE_WALLETS_ROUTE))
-        .and(with_hmac_auth(server.clone()))
-        .and(with_server(server.clone()))
-        .and_then(get_fee_wallets_handler);
-
-    let withdraw_fee_balance = warp::post()
-        .and(warp::path("fees"))
-        .and(warp::path(WITHDRAW_FEE_BALANCE_ROUTE))
-        .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<WithdrawFeeBalanceRequest>)
-        .and_then(identity)
-        .and(with_server(server.clone()))
-        .and_then(withdraw_fee_balance_handler);
 
     let routes = ping
         .or(index_fees)

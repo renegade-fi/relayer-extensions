@@ -24,8 +24,9 @@ warp = "0.3"
 # === Infra === #
 aws-sdk-secretsmanager = "1.37"
 aws-config = "1.5"
+bb8 = "0.8"
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
-diesel-async = { workspace = true, features = ["postgres"] }
+diesel-async = { workspace = true, features = ["postgres", "bb8"] }
 fireblocks-sdk = { git = "https://github.com/renegade-fi/fireblocks-sdk-rs" }
 native-tls = "0.2"
 postgres-native-tls = "0.5"
