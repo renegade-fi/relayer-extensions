@@ -64,15 +64,33 @@ pub struct Metadata {
 #[diesel(table_name = crate::db::schema::renegade_wallets)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
-pub struct WalletMetadata {
+pub struct RenegadeWalletMetadata {
     pub id: Uuid,
     pub mints: Vec<Option<String>>,
     pub secret_id: String,
 }
 
-impl WalletMetadata {
+impl RenegadeWalletMetadata {
     /// Construct a new wallet metadata entry
     pub fn empty(id: Uuid, secret_id: String) -> Self {
-        WalletMetadata { id, mints: vec![], secret_id }
+        RenegadeWalletMetadata { id, mints: vec![], secret_id }
+    }
+}
+
+/// A hot wallet managed by the custody client
+#[derive(Clone, Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::hot_wallets)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct HotWallet {
+    pub id: Uuid,
+    pub secret_id: String,
+    pub vault: String,
+    pub address: String,
+}
+
+impl HotWallet {
+    /// Construct a new hot wallet entry
+    pub fn new(secret_id: String, vault: String, address: String) -> Self {
+        HotWallet { id: Uuid::new_v4(), secret_id, vault, address }
     }
 }

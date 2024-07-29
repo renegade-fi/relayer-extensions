@@ -5,8 +5,8 @@ use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
-    DepositAddressResponse, FeeWalletsResponse, WithdrawFeeBalanceRequest, WithdrawFundsRequest,
-    WithdrawGasRequest,
+    CreateHotWalletRequest, CreateHotWalletResponse, DepositAddressResponse, FeeWalletsResponse,
+    WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -128,4 +128,19 @@ pub(crate) async fn withdraw_fee_balance_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Fee withdrawal initiated..."))
+}
+
+/// Handler for creating a hot wallet
+pub(crate) async fn create_hot_wallet_handler(
+    req: CreateHotWalletRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let address = server
+        .custody_client
+        .create_hot_wallet(req.vault)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    let resp = CreateHotWalletResponse { address };
+    Ok(warp::reply::json(&resp))
 }

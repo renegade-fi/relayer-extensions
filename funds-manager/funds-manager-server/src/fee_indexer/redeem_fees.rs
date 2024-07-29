@@ -17,8 +17,9 @@ use renegade_common::types::wallet::{Wallet, WalletIdentifier};
 use renegade_util::err_str;
 use tracing::{info, warn};
 
-use crate::db::models::WalletMetadata;
+use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
+use crate::helpers::create_secrets_manager_entry_with_description;
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
@@ -65,7 +66,7 @@ impl Indexer {
     async fn get_or_create_wallet(
         &mut self,
         mint: &str,
-    ) -> Result<WalletMetadata, FundsManagerError> {
+    ) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         // Find a wallet with an existing balance
         let maybe_wallet = self.get_wallet_for_mint(mint).await?;
         if let Some(wallet) = maybe_wallet {
@@ -90,15 +91,15 @@ impl Indexer {
     /// Create a new wallet for managing a given mint
     ///
     /// Return the new wallet's metadata
-    async fn create_new_wallet(&mut self) -> Result<WalletMetadata, FundsManagerError> {
+    async fn create_new_wallet(&mut self) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         // 1. Create the new wallet on-chain
         let (wallet_id, root_key) = self.create_renegade_wallet().await?;
 
         // 2. Create a secrets manager entry for the new wallet
-        let secret_name = self.create_secrets_manager_entry(wallet_id, root_key).await?;
+        let secret_name = self.store_wallet_secret(wallet_id, root_key).await?;
 
         // 3. Add an entry in the wallets table for the newly created wallet
-        let entry = WalletMetadata::empty(wallet_id, secret_name);
+        let entry = RenegadeWalletMetadata::empty(wallet_id, secret_name);
         self.insert_wallet(entry.clone()).await?;
 
         Ok(entry)
@@ -132,7 +133,7 @@ impl Indexer {
         &mut self,
         tx: String,
         receiver: String,
-        wallet: WalletMetadata,
+        wallet: RenegadeWalletMetadata,
     ) -> Result<Note, FundsManagerError> {
         info!("redeeming fee into {}", wallet.id);
         // Get the wallet key for the given wallet
@@ -186,35 +187,30 @@ impl Indexer {
     /// recovered later
     ///
     /// Returns the name of the secret
-    async fn create_secrets_manager_entry(
+    async fn store_wallet_secret(
         &mut self,
         id: WalletIdentifier,
         wallet: LocalWallet,
     ) -> Result<String, FundsManagerError> {
-        let client = SecretsManagerClient::new(&self.aws_config);
         let secret_name = format!("redemption-wallet-{}-{id}", self.chain);
         let secret_val = hex::encode(wallet.signer().to_bytes());
 
         // Check that the `LocalWallet` recovers the same
         debug_assert_eq!(LocalWallet::from_str(&secret_val).unwrap(), wallet);
-
-        // Store the secret in AWS
-        client
-            .create_secret()
-            .name(secret_name.clone())
-            .secret_string(secret_val)
-            .description("Wallet used for fee redemption")
-            .send()
-            .await
-            .map_err(err_str!(FundsManagerError::SecretsManager))?;
-
+        create_secrets_manager_entry_with_description(
+            &secret_name,
+            &secret_val,
+            &self.aws_config,
+            "Renegade wallet key used for fee redemption",
+        )
+        .await?;
         Ok(secret_name)
     }
 
     /// Get the private key for a wallet specified by its metadata
     pub(crate) async fn get_wallet_private_key(
         &mut self,
-        metadata: &WalletMetadata,
+        metadata: &RenegadeWalletMetadata,
     ) -> Result<LocalWallet, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
         let secret_name = format!("redemption-wallet-{}-{}", self.chain, metadata.id);

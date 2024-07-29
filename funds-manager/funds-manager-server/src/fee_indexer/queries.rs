@@ -19,7 +19,7 @@ use renegade_constants::MAX_BALANCES;
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::db::models::WalletMetadata;
+use crate::db::models::RenegadeWalletMetadata;
 use crate::db::models::{Metadata, NewFee};
 use crate::db::schema::{
     fees::dsl::{
@@ -222,11 +222,11 @@ impl Indexer {
     pub(crate) async fn get_wallet_by_id(
         &mut self,
         wallet_id: &Uuid,
-    ) -> Result<WalletMetadata, FundsManagerError> {
+    ) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         renegade_wallet_table
             .filter(wallet_id_col.eq(wallet_id))
-            .first::<WalletMetadata>(&mut conn)
+            .first::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to get wallet by ID: {}", e)))
     }
@@ -234,10 +234,10 @@ impl Indexer {
     /// Get all wallets in the table
     pub(crate) async fn get_all_wallets(
         &mut self,
-    ) -> Result<Vec<WalletMetadata>, FundsManagerError> {
+    ) -> Result<Vec<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let wallets = renegade_wallet_table
-            .load::<WalletMetadata>(&mut conn)
+            .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to load wallets: {}", e)))?;
         Ok(wallets)
@@ -247,11 +247,11 @@ impl Indexer {
     pub(crate) async fn get_wallet_for_mint(
         &mut self,
         mint: &str,
-    ) -> Result<Option<WalletMetadata>, FundsManagerError> {
+    ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let wallets: Vec<WalletMetadata> = renegade_wallet_table
+        let wallets: Vec<RenegadeWalletMetadata> = renegade_wallet_table
             .filter(managed_mints_col.contains(vec![mint]))
-            .load::<WalletMetadata>(&mut conn)
+            .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallet for mint"))?;
 
@@ -261,12 +261,12 @@ impl Indexer {
     /// Find a wallet with an empty balance slot, if one exists
     pub(crate) async fn find_wallet_with_empty_balance(
         &mut self,
-    ) -> Result<Option<WalletMetadata>, FundsManagerError> {
+    ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
         let wallets = renegade_wallet_table
             .filter(n_mints.lt(MAX_BALANCES as i32))
-            .load::<WalletMetadata>(&mut conn)
+            .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallets with empty balances"))?;
 
@@ -276,7 +276,7 @@ impl Indexer {
     /// Insert a new wallet into the wallets table
     pub(crate) async fn insert_wallet(
         &mut self,
-        wallet: WalletMetadata,
+        wallet: RenegadeWalletMetadata,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
         diesel::insert_into(renegade_wallet_table)
