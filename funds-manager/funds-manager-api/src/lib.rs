@@ -27,13 +27,35 @@ pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
 
 /// The route to get fee wallets
 pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
-
 /// The route to withdraw a fee balance
 pub const WITHDRAW_FEE_BALANCE_ROUTE: &str = "withdraw-fee-balance";
+
+/// The route to create a new hot wallet
+pub const CREATE_HOT_WALLET_ROUTE: &str = "create-hot-wallet";
 
 // -------------
 // | Api Types |
 // -------------
+
+// --- Fee Indexing & Management --- //
+
+/// The response containing fee wallets
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeeWalletsResponse {
+    /// The wallets managed by the funds manager
+    pub wallets: Vec<ApiWallet>,
+}
+
+/// The request body for withdrawing a fee balance
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WithdrawFeeBalanceRequest {
+    /// The ID of the wallet to withdraw from
+    pub wallet_id: Uuid,
+    /// The mint of the asset to withdraw
+    pub mint: String,
+}
+
+// --- Quoters --- //
 
 /// A response containing the deposit address
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,6 +75,8 @@ pub struct WithdrawFundsRequest {
     pub address: String,
 }
 
+// --- Gas --- //
+
 // Update request body name and documentation
 /// The request body for withdrawing gas from custody
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -63,18 +87,18 @@ pub struct WithdrawGasRequest {
     pub destination_address: String,
 }
 
-/// The response containing fee wallets
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FeeWalletsResponse {
-    /// The wallets managed by the funds manager
-    pub wallets: Vec<ApiWallet>,
+// --- Hot Wallets --- //
+
+/// The request body for creating a hot wallet
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateHotWalletRequest {
+    /// The name of the vault backing the hot wallet
+    pub vault: String,
 }
 
-/// The request body for withdrawing a fee balance
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WithdrawFeeBalanceRequest {
-    /// The ID of the wallet to withdraw from
-    pub wallet_id: Uuid,
-    /// The mint of the asset to withdraw
-    pub mint: String,
+/// The response containing the hot wallet's address
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateHotWalletResponse {
+    /// The address of the hot wallet
+    pub address: String,
 }

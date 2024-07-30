@@ -1,7 +1,7 @@
 //! Fetch the balances of redeemed fees
 
 use crate::custody_client::DepositWithdrawSource;
-use crate::db::models::WalletMetadata;
+use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
 use arbitrum_client::{conversion::to_contract_external_transfer, helpers::serialize_calldata};
 use ethers::{
@@ -77,7 +77,7 @@ impl Indexer {
     ///     2. Use the key to fetch the wallet from the relayer
     async fn fetch_wallet(
         &mut self,
-        wallet_metadata: WalletMetadata,
+        wallet_metadata: RenegadeWalletMetadata,
     ) -> Result<ApiWallet, FundsManagerError> {
         // Get the wallet's private key from secrets manager
         let eth_key = self.get_wallet_private_key(&wallet_metadata).await?;

@@ -1,8 +1,11 @@
 //! Manages the custody backend for the funds manager
 #![allow(missing_docs)]
 pub mod deposit;
+mod hot_wallets;
+mod queries;
 pub mod withdraw;
 
+use aws_config::SdkConfig as AwsConfig;
 use ethers::prelude::abigen;
 use ethers::providers::{Http, Provider};
 use ethers::types::Address;
@@ -61,6 +64,8 @@ pub struct CustodyClient {
     arbitrum_rpc_url: String,
     /// The database connection pool
     db_pool: Arc<DbPool>,
+    /// The AWS config
+    aws_config: AwsConfig,
 }
 
 impl CustodyClient {
@@ -71,9 +76,10 @@ impl CustodyClient {
         fireblocks_api_secret: String,
         arbitrum_rpc_url: String,
         db_pool: Arc<DbPool>,
+        aws_config: AwsConfig,
     ) -> Self {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        Self { fireblocks_api_key, fireblocks_api_secret, arbitrum_rpc_url, db_pool }
+        Self { fireblocks_api_key, fireblocks_api_secret, arbitrum_rpc_url, db_pool, aws_config }
     }
 
     /// Get a fireblocks client

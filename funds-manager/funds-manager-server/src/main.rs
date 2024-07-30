@@ -11,6 +11,7 @@ pub mod db;
 pub mod error;
 pub mod fee_indexer;
 pub mod handlers;
+pub mod helpers;
 pub mod middleware;
 pub mod relayer_client;
 
@@ -20,13 +21,13 @@ use error::FundsManagerError;
 use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
 use funds_manager_api::{
-    WithdrawFeeBalanceRequest, WithdrawGasRequest, GET_DEPOSIT_ADDRESS_ROUTE,
-    GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE, PING_ROUTE, REDEEM_FEES_ROUTE, WITHDRAW_CUSTODY_ROUTE,
-    WITHDRAW_FEE_BALANCE_ROUTE, WITHDRAW_GAS_ROUTE,
+    CreateHotWalletRequest, WithdrawFeeBalanceRequest, WithdrawGasRequest, CREATE_HOT_WALLET_ROUTE,
+    GET_DEPOSIT_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE, PING_ROUTE,
+    REDEEM_FEES_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_FEE_BALANCE_ROUTE, WITHDRAW_GAS_ROUTE,
 };
 use handlers::{
-    get_deposit_address_handler, get_fee_wallets_handler, index_fees_handler,
-    quoter_withdraw_handler, redeem_fees_handler, withdraw_fee_balance_handler,
+    create_hot_wallet_handler, get_deposit_address_handler, get_fee_wallets_handler,
+    index_fees_handler, quoter_withdraw_handler, redeem_fees_handler, withdraw_fee_balance_handler,
     withdraw_gas_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
@@ -251,6 +252,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         cli.fireblocks_api_secret,
         cli.rpc_url,
         arc_pool.clone(),
+        config.clone(),
     );
 
     let server = Server {
@@ -336,6 +338,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(withdraw_gas_handler);
 
+    // --- Hot Wallets --- //
+
+    let create_hot_wallet = warp::post()
+        .and(warp::path("hot-wallets"))
+        .and(warp::path(CREATE_HOT_WALLET_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<CreateHotWalletRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(create_hot_wallet_handler);
+
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
@@ -344,6 +357,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(withdraw_gas)
         .or(get_balances)
         .or(withdraw_fee_balance)
+        .or(create_hot_wallet)
         .recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
 
