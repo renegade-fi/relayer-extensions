@@ -26,6 +26,7 @@ use crate::error::FundsManagerError;
 abigen!(
     ERC20,
     r#"[
+        function balanceOf(address owner) external view returns (uint256)
         function symbol() external view returns (string memory)
     ]"#
 );
@@ -91,6 +92,12 @@ impl CustodyClient {
             .map_err(FundsManagerError::fireblocks)
     }
 
+    /// Get a JSON RPC provider for the given RPC url
+    pub fn get_rpc_provider(&self) -> Result<Provider<Http>, FundsManagerError> {
+        Provider::<Http>::try_from(&self.arbitrum_rpc_url)
+            .map_err(err_str!(FundsManagerError::Arbitrum))
+    }
+
     /// Get the symbol for an ERC20 token at the given address
     pub(self) async fn get_erc20_token_symbol(
         &self,
@@ -98,8 +105,7 @@ impl CustodyClient {
     ) -> Result<String, FundsManagerError> {
         let addr =
             Address::from_str(token_address).map_err(err_str!(FundsManagerError::Arbitrum))?;
-        let provider = Provider::<Http>::try_from(&self.arbitrum_rpc_url)
-            .map_err(err_str!(FundsManagerError::Arbitrum))?;
+        let provider = self.get_rpc_provider()?;
         let client = Arc::new(provider);
         let erc20 = ERC20::new(addr, client);
 
