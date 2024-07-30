@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
 
+use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
 
 abigen!(
@@ -58,6 +59,8 @@ pub struct CustodyClient {
     fireblocks_api_secret: Vec<u8>,
     /// The arbitrum RPC url to use for the custody client
     arbitrum_rpc_url: String,
+    /// The database connection pool
+    db_pool: Arc<DbPool>,
 }
 
 impl CustodyClient {
@@ -67,9 +70,10 @@ impl CustodyClient {
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
         arbitrum_rpc_url: String,
+        db_pool: Arc<DbPool>,
     ) -> Self {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        Self { fireblocks_api_key, fireblocks_api_secret, arbitrum_rpc_url }
+        Self { fireblocks_api_key, fireblocks_api_secret, arbitrum_rpc_url, db_pool }
     }
 
     /// Get a fireblocks client
@@ -141,5 +145,10 @@ impl CustodyClient {
             .await
             .map_err(FundsManagerError::fireblocks)
             .map(|(tx, _rid)| tx)
+    }
+
+    /// Get a database connection from the pool
+    pub async fn get_db_conn(&self) -> Result<DbConn, FundsManagerError> {
+        self.db_pool.get().await.map_err(|e| FundsManagerError::Db(e.to_string()))
     }
 }

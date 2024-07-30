@@ -23,7 +23,6 @@ pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 0.1; // 0.1 ETH
 pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
     let mut indexer = server
         .build_indexer()
-        .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     indexer
         .index_fees()
@@ -36,7 +35,6 @@ pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp
 pub(crate) async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
     let mut indexer = server
         .build_indexer()
-        .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     indexer
         .redeem_fees()
@@ -113,7 +111,7 @@ pub(crate) async fn get_fee_wallets_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let mut indexer = server.build_indexer().await?;
+    let mut indexer = server.build_indexer()?;
     let wallets = indexer.fetch_fee_wallets().await?;
     Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
 }
@@ -123,7 +121,7 @@ pub(crate) async fn withdraw_fee_balance_handler(
     req: WithdrawFeeBalanceRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let mut indexer = server.build_indexer().await?;
+    let mut indexer = server.build_indexer()?;
     indexer
         .withdraw_fee_balance(req.wallet_id, req.mint)
         .await
