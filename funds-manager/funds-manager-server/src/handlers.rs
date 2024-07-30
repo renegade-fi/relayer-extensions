@@ -5,7 +5,8 @@ use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
-    DepositAddressResponse, FeeWalletsResponse, WithdrawFundsRequest, WithdrawGasRequest,
+    DepositAddressResponse, FeeWalletsResponse, WithdrawFeeBalanceRequest, WithdrawFundsRequest,
+    WithdrawGasRequest,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -115,4 +116,18 @@ pub(crate) async fn get_fee_wallets_handler(
     let mut indexer = server.build_indexer().await?;
     let wallets = indexer.fetch_fee_wallets().await?;
     Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
+}
+
+/// Handler for withdrawing a fee balance
+pub(crate) async fn withdraw_fee_balance_handler(
+    req: WithdrawFeeBalanceRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mut indexer = server.build_indexer().await?;
+    indexer
+        .withdraw_fee_balance(req.wallet_id, req.mint)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    Ok(warp::reply::json(&"Fee withdrawal initiated..."))
 }

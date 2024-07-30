@@ -43,7 +43,7 @@ impl DepositWithdrawSource {
     pub(crate) fn get_vault_name(&self) -> &str {
         match self {
             Self::Quoter => "Quoters",
-            Self::FeeRedemption => unimplemented!("no vault for fee redemption yet"),
+            Self::FeeRedemption => "Fee Collection",
             Self::Gas => "Arbitrum Gas",
         }
     }
