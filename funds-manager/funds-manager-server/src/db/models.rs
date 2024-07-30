@@ -61,7 +61,7 @@ pub struct Metadata {
 
 /// A metadata entry for a wallet managed by the indexer
 #[derive(Clone, Queryable, Selectable, Insertable)]
-#[diesel(table_name = crate::db::schema::wallets)]
+#[diesel(table_name = crate::db::schema::renegade_wallets)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub struct WalletMetadata {

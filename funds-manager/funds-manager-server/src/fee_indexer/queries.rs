@@ -27,7 +27,9 @@ use crate::db::schema::{
     indexing_metadata::dsl::{
         indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
     },
-    wallets::dsl::{id as wallet_id_col, mints as managed_mints_col, wallets as wallet_table},
+    renegade_wallets::dsl::{
+        id as wallet_id_col, mints as managed_mints_col, renegade_wallets as renegade_wallet_table,
+    },
 };
 use crate::error::FundsManagerError;
 use crate::Indexer;
@@ -214,7 +216,7 @@ impl Indexer {
         &mut self,
         wallet_id: &Uuid,
     ) -> Result<WalletMetadata, FundsManagerError> {
-        wallet_table
+        renegade_wallet_table
             .filter(wallet_id_col.eq(wallet_id))
             .first::<WalletMetadata>(&mut self.db_conn)
             .await
@@ -225,7 +227,7 @@ impl Indexer {
     pub(crate) async fn get_all_wallets(
         &mut self,
     ) -> Result<Vec<WalletMetadata>, FundsManagerError> {
-        let wallets = wallet_table
+        let wallets = renegade_wallet_table
             .load::<WalletMetadata>(&mut self.db_conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to load wallets: {}", e)))?;
@@ -239,7 +241,7 @@ impl Indexer {
         &mut self,
         mint: &str,
     ) -> Result<Option<WalletMetadata>, FundsManagerError> {
-        let wallets: Vec<WalletMetadata> = wallet_table
+        let wallets: Vec<WalletMetadata> = renegade_wallet_table
             .filter(managed_mints_col.contains(vec![mint]))
             .load::<WalletMetadata>(&mut self.db_conn)
             .await
@@ -253,7 +255,7 @@ impl Indexer {
         &mut self,
     ) -> Result<Option<WalletMetadata>, FundsManagerError> {
         let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
-        let wallets = wallet_table
+        let wallets = renegade_wallet_table
             .filter(n_mints.lt(MAX_BALANCES as i32))
             .load::<WalletMetadata>(&mut self.db_conn)
             .await
@@ -267,7 +269,7 @@ impl Indexer {
         &mut self,
         wallet: WalletMetadata,
     ) -> Result<(), FundsManagerError> {
-        diesel::insert_into(wallet_table)
+        diesel::insert_into(renegade_wallet_table)
             .values(vec![wallet])
             .execute(&mut self.db_conn)
             .await
@@ -281,7 +283,7 @@ impl Indexer {
         wallet_id: &WalletIdentifier,
         mint: &str,
     ) -> Result<(), FundsManagerError> {
-        diesel::update(wallet_table.find(wallet_id))
+        diesel::update(renegade_wallet_table.find(wallet_id))
             .set(managed_mints_col.eq(array_append(managed_mints_col, mint)))
             .execute(&mut self.db_conn)
             .await
