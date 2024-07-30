@@ -92,8 +92,7 @@ impl CustodyClient {
         let wallet = LocalWallet::from_str(&secret_value).map_err(FundsManagerError::parse)?;
 
         // 3. Look up the vault deposit address
-        let deposit_address =
-            self.get_deposit_address_by_vault_name(mint, &hot_wallet.vault).await?;
+        let deposit_address = self.get_fireblocks_deposit_address(mint, &hot_wallet.vault).await?;
 
         // 4. Transfer the tokens
         let receipt = self.erc20_transfer(mint, &deposit_address, amount, wallet).await?;
@@ -114,7 +113,8 @@ impl CustodyClient {
         // Fetch the wallet info, then withdraw
         let wallet = self.get_hot_wallet_by_vault(vault).await?;
         let source = DepositWithdrawSource::from_vault_name(vault)?;
-        self.withdraw_with_token_addr(source, &wallet.address, mint, amount).await
+        let symbol = self.get_erc20_token_symbol(mint).await?;
+        self.withdraw_from_fireblocks(source, &wallet.address, &symbol, amount).await
     }
 
     // ------------
@@ -122,7 +122,7 @@ impl CustodyClient {
     // ------------
 
     /// The secret name for a hot wallet
-    fn hot_wallet_secret_name(address: &str) -> String {
+    pub(crate) fn hot_wallet_secret_name(address: &str) -> String {
         format!("hot-wallet-{address}")
     }
 

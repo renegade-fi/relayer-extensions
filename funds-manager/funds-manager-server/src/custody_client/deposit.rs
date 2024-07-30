@@ -8,15 +8,22 @@ impl CustodyClient {
     /// Get the deposit address for the given mint
     pub(crate) async fn get_deposit_address(
         &self,
-        mint: &str,
         source: DepositWithdrawSource,
     ) -> Result<String, FundsManagerError> {
         let vault_name = source.vault_name();
-        self.get_deposit_address_by_vault_name(mint, vault_name).await
+        self.get_deposit_address_by_vault_name(vault_name).await
     }
 
     /// Get the deposit address given a vault name
     pub(crate) async fn get_deposit_address_by_vault_name(
+        &self,
+        vault_name: &str,
+    ) -> Result<String, FundsManagerError> {
+        self.get_hot_wallet_by_vault(vault_name).await.map(|w| w.address)
+    }
+
+    /// Get the deposit address given a vault name
+    pub(crate) async fn get_fireblocks_deposit_address(
         &self,
         mint: &str,
         vault_name: &str,
