@@ -7,7 +7,7 @@ use bytes::Bytes;
 use funds_manager_api::{
     CreateHotWalletRequest, CreateHotWalletResponse, DepositAddressResponse, FeeWalletsResponse,
     HotWalletBalancesResponse, TransferToVaultRequest, WithdrawFeeBalanceRequest,
-    WithdrawFundsRequest, WithdrawGasRequest,
+    WithdrawFundsRequest, WithdrawGasRequest, WithdrawToHotWalletRequest,
 };
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -180,4 +180,17 @@ pub(crate) async fn transfer_to_vault_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Transfer from hot wallet to vault initiated"))
+}
+
+/// Handler for withdrawing funds from a vault to its hot wallet
+pub(crate) async fn withdraw_from_vault_handler(
+    req: WithdrawToHotWalletRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    server
+        .custody_client
+        .transfer_from_vault_to_hot_wallet(&req.vault, &req.mint, req.amount)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    Ok(warp::reply::json(&"Withdrawal from vault to hot wallet initiated"))
 }

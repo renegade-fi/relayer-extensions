@@ -17,11 +17,16 @@ use tracing::info;
 
 use super::{CustodyClient, ERC20};
 use crate::{
+    custody_client::DepositWithdrawSource,
     error::FundsManagerError,
     helpers::{create_secrets_manager_entry_with_description, get_secret},
 };
 
 impl CustodyClient {
+    // ------------
+    // | Handlers |
+    // ------------
+
     /// Create a new hot wallet
     ///
     /// Returns the Arbitrum address of the hot wallet
@@ -32,7 +37,7 @@ impl CustodyClient {
         let private_key = wallet.signer().to_bytes();
 
         // Store the private key in Secrets Manager
-        let secret_name = format!("hot-wallet-{}", address);
+        let secret_name = Self::hot_wallet_secret_name(&address);
         let secret_value = hex::encode(private_key);
         let description = format!("Hot wallet for vault: {vault}");
         create_secrets_manager_entry_with_description(
@@ -72,29 +77,6 @@ impl CustodyClient {
         Ok(hot_wallet_balances)
     }
 
-    /// Fetch the token balance at the given address for a wallet
-    async fn get_token_balance(
-        &self,
-        wallet_address: &str,
-        token_address: &str,
-        provider: Arc<Provider<Http>>,
-    ) -> Result<u128, FundsManagerError> {
-        let wallet_address: Address = wallet_address.parse().map_err(|_| {
-            FundsManagerError::parse(format!("Invalid wallet address: {wallet_address}"))
-        })?;
-        let token_address: Address = token_address.parse().map_err(|_| {
-            FundsManagerError::parse(format!("Invalid token address: {token_address}"))
-        })?;
-
-        let token = ERC20::new(token_address, provider);
-        token
-            .balance_of(wallet_address)
-            .call()
-            .await
-            .map(|balance| balance.as_u128())
-            .map_err(FundsManagerError::arbitrum)
-    }
-
     /// Transfer funds from a hot wallet to its backing Fireblocks vault
     pub async fn transfer_from_hot_wallet_to_vault(
         &self,
@@ -121,5 +103,49 @@ impl CustodyClient {
         );
 
         Ok(())
+    }
+
+    pub async fn transfer_from_vault_to_hot_wallet(
+        &self,
+        vault: &str,
+        mint: &str,
+        amount: f64,
+    ) -> Result<(), FundsManagerError> {
+        // Fetch the wallet info, then withdraw
+        let wallet = self.get_hot_wallet_by_vault(vault).await?;
+        let source = DepositWithdrawSource::from_vault_name(vault)?;
+        self.withdraw_with_token_addr(source, &wallet.address, mint, amount).await
+    }
+
+    // ------------
+    // | Handlers |
+    // ------------
+
+    /// The secret name for a hot wallet
+    fn hot_wallet_secret_name(address: &str) -> String {
+        format!("hot-wallet-{address}")
+    }
+
+    /// Fetch the token balance at the given address for a wallet
+    async fn get_token_balance(
+        &self,
+        wallet_address: &str,
+        token_address: &str,
+        provider: Arc<Provider<Http>>,
+    ) -> Result<u128, FundsManagerError> {
+        let wallet_address: Address = wallet_address.parse().map_err(|_| {
+            FundsManagerError::parse(format!("Invalid wallet address: {wallet_address}"))
+        })?;
+        let token_address: Address = token_address.parse().map_err(|_| {
+            FundsManagerError::parse(format!("Invalid token address: {token_address}"))
+        })?;
+
+        let token = ERC20::new(token_address, provider);
+        token
+            .balance_of(wallet_address)
+            .call()
+            .await
+            .map(|balance| balance.as_u128())
+            .map_err(FundsManagerError::arbitrum)
     }
 }
