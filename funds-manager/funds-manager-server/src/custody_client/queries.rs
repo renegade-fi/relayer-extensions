@@ -1,5 +1,6 @@
 //! Queries for managing custody data
 
+use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
 
@@ -36,5 +37,18 @@ impl CustodyClient {
             .map_err(err_str!(FundsManagerError::Db))?;
 
         Ok(())
+    }
+
+    /// Get a hot wallet by its address
+    pub async fn get_hot_wallet_by_address(
+        &self,
+        address: &str,
+    ) -> Result<HotWallet, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        hot_wallets::table
+            .filter(hot_wallets::address.eq(address))
+            .first::<HotWallet>(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))
     }
 }

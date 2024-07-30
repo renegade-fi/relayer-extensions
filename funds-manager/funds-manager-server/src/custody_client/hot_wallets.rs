@@ -3,7 +3,7 @@
 //! We store funds in hot wallets to prevent excessive in/out-flow from
 //! Fireblocks
 
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use ethers::{
     providers::{Http, Provider},
@@ -16,7 +16,10 @@ use rand::thread_rng;
 use tracing::info;
 
 use super::{CustodyClient, ERC20};
-use crate::{error::FundsManagerError, helpers::create_secrets_manager_entry_with_description};
+use crate::{
+    error::FundsManagerError,
+    helpers::{create_secrets_manager_entry_with_description, get_secret},
+};
 
 impl CustodyClient {
     /// Create a new hot wallet
@@ -90,5 +93,33 @@ impl CustodyClient {
             .await
             .map(|balance| balance.as_u128())
             .map_err(FundsManagerError::arbitrum)
+    }
+
+    /// Transfer funds from a hot wallet to its backing Fireblocks vault
+    pub async fn transfer_from_hot_wallet_to_vault(
+        &self,
+        hot_wallet_address: &str,
+        mint: &str,
+        amount: f64,
+    ) -> Result<(), FundsManagerError> {
+        // 1. Look up the wallet's information
+        let hot_wallet = self.get_hot_wallet_by_address(hot_wallet_address).await?;
+
+        // 2. Retrieve the wallet's private key from Secrets Manager
+        let secret_value = get_secret(&hot_wallet.secret_id, &self.aws_config).await?;
+        let wallet = LocalWallet::from_str(&secret_value).map_err(FundsManagerError::parse)?;
+
+        // 3. Look up the vault deposit address
+        let deposit_address =
+            self.get_deposit_address_by_vault_name(mint, &hot_wallet.vault).await?;
+
+        // 4. Transfer the tokens
+        let receipt = self.erc20_transfer(mint, &deposit_address, amount, wallet).await?;
+        info!(
+            "Transferred {} of token {} from hot wallet {} to vault address {}. \n\tTransaction hash: {:#x}",
+            amount, mint, hot_wallet_address, deposit_address, receipt.transaction_hash
+        );
+
+        Ok(())
     }
 }

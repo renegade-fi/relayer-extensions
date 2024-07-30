@@ -6,6 +6,23 @@ use renegade_util::err_str;
 
 use crate::error::FundsManagerError;
 
+/// Get a secret from AWS Secrets Manager
+pub async fn get_secret(
+    secret_name: &str,
+    config: &SdkConfig,
+) -> Result<String, FundsManagerError> {
+    let client = SecretsManagerClient::new(config);
+    let response = client
+        .get_secret_value()
+        .secret_id(secret_name)
+        .send()
+        .await
+        .map_err(err_str!(FundsManagerError::SecretsManager))?;
+
+    let secret = response.secret_string().expect("secret value is empty").to_string();
+    Ok(secret)
+}
+
 /// Add a Renegade wallet to the secrets manager entry so that it may be
 /// recovered later
 ///
