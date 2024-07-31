@@ -22,15 +22,15 @@ use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
 use funds_manager_api::{
     CreateHotWalletRequest, TransferToVaultRequest, WithdrawFeeBalanceRequest, WithdrawGasRequest,
-    GET_DEPOSIT_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE, PING_ROUTE,
-    REDEEM_FEES_ROUTE, TRANSFER_TO_VAULT_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_FEE_BALANCE_ROUTE,
-    WITHDRAW_GAS_ROUTE,
+    WithdrawToHotWalletRequest, GET_DEPOSIT_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE,
+    PING_ROUTE, REDEEM_FEES_ROUTE, TRANSFER_TO_VAULT_ROUTE, WITHDRAW_CUSTODY_ROUTE,
+    WITHDRAW_FEE_BALANCE_ROUTE, WITHDRAW_GAS_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use handlers::{
     create_hot_wallet_handler, get_deposit_address_handler, get_fee_wallets_handler,
     get_hot_wallet_balances_handler, index_fees_handler, quoter_withdraw_handler,
     redeem_fees_handler, transfer_to_vault_handler, withdraw_fee_balance_handler,
-    withdraw_gas_handler,
+    withdraw_from_vault_handler, withdraw_gas_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
 use relayer_client::RelayerClient;
@@ -370,6 +370,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(transfer_to_vault_handler);
 
+    let transfer_to_hot_wallet = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("hot-wallets"))
+        .and(warp::path(WITHDRAW_TO_HOT_WALLET_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawToHotWalletRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(withdraw_from_vault_handler);
+
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
@@ -379,8 +389,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_balances)
         .or(withdraw_fee_balance)
         .or(transfer_to_vault)
-        .or(create_hot_wallet)
+        .or(transfer_to_hot_wallet)
         .or(get_hot_wallet_balances)
+        .or(create_hot_wallet)
         .recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
 

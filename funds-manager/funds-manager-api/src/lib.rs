@@ -32,6 +32,8 @@ pub const WITHDRAW_FEE_BALANCE_ROUTE: &str = "withdraw-fee-balance";
 
 /// The route to transfer funds from a hot wallet to its backing vault
 pub const TRANSFER_TO_VAULT_ROUTE: &str = "transfer-to-vault";
+/// The route to withdraw funds from a hot wallet to Fireblocks
+pub const WITHDRAW_TO_HOT_WALLET_ROUTE: &str = "withdraw-to-hot-wallet";
 
 // -------------
 // | Api Types |
@@ -134,6 +136,17 @@ pub struct TokenBalance {
 pub struct TransferToVaultRequest {
     /// The address of the hot wallet
     pub hot_wallet_address: String,
+    /// The mint of the asset to transfer
+    pub mint: String,
+    /// The amount to transfer
+    pub amount: f64,
+}
+
+/// The request body for transferring from Fireblocks to a hot wallet
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WithdrawToHotWalletRequest {
+    /// The name of the vault to withdraw from
+    pub vault: String,
     /// The mint of the asset to transfer
     pub mint: String,
     /// The amount to transfer

@@ -51,4 +51,17 @@ impl CustodyClient {
             .await
             .map_err(err_str!(FundsManagerError::Db))
     }
+
+    /// Get a hot wallet for the given vault
+    pub async fn get_hot_wallet_by_vault(
+        &self,
+        vault: &str,
+    ) -> Result<HotWallet, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        hot_wallets::table
+            .filter(hot_wallets::vault.eq(vault))
+            .first::<HotWallet>(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))
+    }
 }

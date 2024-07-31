@@ -56,6 +56,16 @@ impl DepositWithdrawSource {
             Self::Gas => "Arbitrum Gas",
         }
     }
+
+    /// Build a `DepositWithdrawSource` from a vault name
+    pub fn from_vault_name(name: &str) -> Result<Self, FundsManagerError> {
+        match name.to_lowercase().as_str() {
+            "quoters" => Ok(Self::Quoter),
+            "fee collection" => Ok(Self::FeeRedemption),
+            "arbitrum gas" => Ok(Self::Gas),
+            _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
+        }
+    }
 }
 
 /// The client interacting with the custody backend
