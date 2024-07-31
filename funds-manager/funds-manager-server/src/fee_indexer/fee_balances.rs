@@ -54,10 +54,8 @@ impl Indexer {
             old_wallet.key_chain.secret_keys.sk_root.as_ref().expect("root key not present");
 
         // Get the deposit address for the fee withdrawal
-        let deposit_address = self
-            .custody_client
-            .get_deposit_address(&mint, DepositWithdrawSource::FeeRedemption)
-            .await?;
+        let deposit_address =
+            self.custody_client.get_deposit_address(DepositWithdrawSource::FeeRedemption).await?;
 
         // Send a withdrawal request to the relayer
         let req = Self::build_withdrawal_request(&mint, &deposit_address, &old_wallet)?;

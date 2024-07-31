@@ -52,7 +52,7 @@ pub(crate) async fn quoter_withdraw_handler(
 ) -> Result<Json, warp::Rejection> {
     server
         .custody_client
-        .withdraw_with_token_addr(
+        .withdraw_from_hot_wallet(
             DepositWithdrawSource::Quoter,
             &withdraw_request.address,
             &withdraw_request.mint,
@@ -66,16 +66,11 @@ pub(crate) async fn quoter_withdraw_handler(
 
 /// Handler for retrieving the address to deposit custody funds to
 pub(crate) async fn get_deposit_address_handler(
-    query_params: HashMap<String, String>,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let mint = query_params.get(MINTS_QUERY_PARAM).ok_or_else(|| {
-        warp::reject::custom(ApiError::BadRequest("Missing 'mints' query parameter".to_string()))
-    })?;
-
     let address = server
         .custody_client
-        .get_deposit_address(mint, DepositWithdrawSource::Quoter)
+        .get_deposit_address(DepositWithdrawSource::Quoter)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = DepositAddressResponse { address };
@@ -96,12 +91,7 @@ pub(crate) async fn withdraw_gas_handler(
 
     server
         .custody_client
-        .withdraw(
-            DepositWithdrawSource::Gas,
-            &withdraw_request.destination_address,
-            GAS_ASSET_NAME,
-            withdraw_request.amount,
-        )
+        .withdraw_gas(withdraw_request.amount, &withdraw_request.destination_address)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 

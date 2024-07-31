@@ -8,9 +8,10 @@ pub mod withdraw;
 use aws_config::SdkConfig as AwsConfig;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::abigen;
-use ethers::providers::{Http, Provider};
+use ethers::providers::{Http, Middleware, Provider};
 use ethers::signers::{LocalWallet, Signer};
-use ethers::types::{Address, TransactionReceipt};
+use ethers::types::{Address, TransactionReceipt, TransactionRequest, U256};
+use ethers::utils::format_units;
 use fireblocks_sdk::types::Transaction;
 use fireblocks_sdk::{
     types::{Account as FireblocksAccount, AccountAsset},
@@ -178,6 +179,43 @@ impl CustodyClient {
             .map_err(err_str!(FundsManagerError::Arbitrum))
     }
 
+    /// Get the native token balance of an address
+    pub(crate) async fn get_ether_balance(&self, address: &str) -> Result<f64, FundsManagerError> {
+        let provider = self.get_rpc_provider()?;
+        let client = Arc::new(provider);
+        let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
+        let balance =
+            client.get_balance(address, None).await.map_err(FundsManagerError::arbitrum)?;
+
+        // Convert U256 to f64
+        let balance_str = format_units(balance, "ether").map_err(FundsManagerError::parse)?;
+        balance_str.parse::<f64>().map_err(FundsManagerError::parse)
+    }
+
+    /// Transfer ether from the given wallet
+    pub(crate) async fn transfer_ether(
+        &self,
+        to: &str,
+        amount: f64,
+        wallet: LocalWallet,
+    ) -> Result<TransactionReceipt, FundsManagerError> {
+        let wallet = wallet.with_chain_id(self.chain_id);
+        let provider = self.get_rpc_provider()?;
+        let client = SignerMiddleware::new(provider, wallet);
+
+        let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
+        let amount = ethers::utils::parse_units(amount.to_string(), "ether")
+            .map_err(FundsManagerError::parse)?;
+
+        let tx = TransactionRequest::new().to(to).value(U256::from(amount));
+        let pending_tx =
+            client.send_transaction(tx, None).await.map_err(FundsManagerError::arbitrum)?;
+        pending_tx
+            .await
+            .map_err(FundsManagerError::arbitrum)?
+            .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))
+    }
+
     /// Get the symbol for an ERC20 token at the given address
     pub(self) async fn get_erc20_token_symbol(
         &self,
@@ -190,6 +228,29 @@ impl CustodyClient {
         let erc20 = ERC20::new(addr, client);
 
         erc20.symbol().call().await.map_err(FundsManagerError::arbitrum)
+    }
+
+    /// Get the erc20 balance of an address
+    pub(crate) async fn get_erc20_balance(
+        &self,
+        token_address: &str,
+        address: &str,
+    ) -> Result<f64, FundsManagerError> {
+        // Setup the provider
+        let token_address = Address::from_str(token_address).map_err(FundsManagerError::parse)?;
+        let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
+        let provider = self.get_rpc_provider()?;
+        let client = Arc::new(provider);
+        let erc20 = ERC20::new(token_address, client);
+
+        // Fetch the balance and correct for the ERC20 decimal precision
+        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::arbitrum)? as u32;
+        let balance =
+            erc20.balance_of(address).call().await.map_err(FundsManagerError::arbitrum)?;
+        let bal_str = format_units(balance, decimals).map_err(FundsManagerError::parse)?;
+        let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
+
+        Ok(bal_f64)
     }
 
     /// Perform an erc20 transfer

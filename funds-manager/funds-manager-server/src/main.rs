@@ -46,7 +46,7 @@ use arbitrum_client::{
 use clap::Parser;
 use funds_manager_api::WithdrawFundsRequest;
 use tracing::{error, warn};
-use warp::{filters::query::query, Filter};
+use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
@@ -325,7 +325,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("custody"))
         .and(warp::path("quoters"))
         .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
-        .and(query::<HashMap<String, String>>())
         .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
 
