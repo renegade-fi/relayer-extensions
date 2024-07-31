@@ -113,8 +113,7 @@ impl CustodyClient {
         // Fetch the wallet info, then withdraw
         let wallet = self.get_hot_wallet_by_vault(vault).await?;
         let source = DepositWithdrawSource::from_vault_name(vault)?;
-        let symbol = self.get_erc20_token_symbol(mint).await?;
-        self.withdraw_from_fireblocks(source, &wallet.address, &symbol, amount).await
+        self.withdraw_from_fireblocks(source, &wallet.address, mint, amount).await
     }
 
     // ------------

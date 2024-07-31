@@ -28,22 +28,21 @@ impl CustodyClient {
         mint: &str,
         vault_name: &str,
     ) -> Result<String, FundsManagerError> {
-        // Find a vault account for the asset
-        let symbol = self.get_erc20_token_symbol(mint).await?;
+        // Find a vault account and asset
         let deposit_vault = self.get_vault_account(vault_name).await?.ok_or_else(|| {
             FundsManagerError::fireblocks(format!("no vault for deposit source: {vault_name}"))
         })?;
 
-        // TODO: Create an account asset if one doesn't exist
-        let asset = self.get_wallet_for_ticker(&deposit_vault, &symbol).ok_or_else(|| {
-            FundsManagerError::fireblocks(format!("no wallet for deposit source: {vault_name}"))
-        })?;
+        let asset_id = self
+            .get_asset_id_for_address(mint)
+            .await?
+            .ok_or_else(|| FundsManagerError::fireblocks(format!("no asset for mint: {mint}")))?;
 
         // Fetch the wallet addresses for the asset
         let client = self.get_fireblocks_client()?;
-        let (addresses, _rid) = client.addresses(deposit_vault.id, &asset.id).await?;
+        let (addresses, _rid) = client.addresses(deposit_vault.id, &asset_id).await?;
         let addr = addresses.first().ok_or_else(|| {
-            FundsManagerError::fireblocks(format!("no addresses for asset: {}", asset.id))
+            FundsManagerError::fireblocks(format!("no addresses for asset: {}", asset_id))
         })?;
 
         Ok(addr.address.clone())

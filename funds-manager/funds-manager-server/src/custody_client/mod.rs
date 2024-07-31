@@ -14,8 +14,8 @@ use ethers::types::{Address, TransactionReceipt, TransactionRequest, U256};
 use ethers::utils::format_units;
 use fireblocks_sdk::types::Transaction;
 use fireblocks_sdk::{
-    types::{Account as FireblocksAccount, AccountAsset},
-    Client as FireblocksClient, ClientBuilder as FireblocksClientBuilder,
+    types::Account as FireblocksAccount, Client as FireblocksClient,
+    ClientBuilder as FireblocksClientBuilder,
 };
 use renegade_util::err_str;
 use std::str::FromStr;
@@ -124,6 +124,22 @@ impl CustodyClient {
             .map_err(FundsManagerError::fireblocks)
     }
 
+    /// Get the fireblocks asset ID for a given ERC20 address
+    pub(crate) async fn get_asset_id_for_address(
+        &self,
+        address: &str,
+    ) -> Result<Option<String>, FundsManagerError> {
+        let client = self.get_fireblocks_client()?;
+        let (supported_assets, _rid) = client.supported_assets().await?;
+        for asset in supported_assets {
+            if asset.contract_address == address {
+                return Ok(Some(asset.id.to_string()));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Get the vault account for a given asset and source
     pub(crate) async fn get_vault_account(
         &self,
@@ -131,6 +147,7 @@ impl CustodyClient {
     ) -> Result<Option<FireblocksAccount>, FundsManagerError> {
         let client = self.get_fireblocks_client()?;
         let req = fireblocks_sdk::PagingVaultRequestBuilder::new()
+            .name_prefix(name)
             .limit(100)
             .build()
             .map_err(err_str!(FundsManagerError::Fireblocks))?;
@@ -143,15 +160,6 @@ impl CustodyClient {
         }
 
         Ok(None)
-    }
-
-    /// Find the wallet in a vault account for a given symbol
-    pub(crate) fn get_wallet_for_ticker(
-        &self,
-        vault: &FireblocksAccount,
-        symbol: &str,
-    ) -> Option<AccountAsset> {
-        vault.assets.iter().find(|acct| acct.id.starts_with(symbol)).cloned()
     }
 
     /// Poll a fireblocks transaction for completion
@@ -214,20 +222,6 @@ impl CustodyClient {
             .await
             .map_err(FundsManagerError::arbitrum)?
             .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))
-    }
-
-    /// Get the symbol for an ERC20 token at the given address
-    pub(self) async fn get_erc20_token_symbol(
-        &self,
-        token_address: &str,
-    ) -> Result<String, FundsManagerError> {
-        let addr =
-            Address::from_str(token_address).map_err(err_str!(FundsManagerError::Arbitrum))?;
-        let provider = self.get_rpc_provider()?;
-        let client = Arc::new(provider);
-        let erc20 = ERC20::new(addr, client);
-
-        erc20.symbol().call().await.map_err(FundsManagerError::arbitrum)
     }
 
     /// Get the erc20 balance of an address
