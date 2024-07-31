@@ -30,6 +30,9 @@ pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
 /// The route to withdraw a fee balance
 pub const WITHDRAW_FEE_BALANCE_ROUTE: &str = "withdraw-fee-balance";
 
+/// The route to transfer funds from a hot wallet to its backing vault
+pub const TRANSFER_TO_VAULT_ROUTE: &str = "transfer-to-vault";
+
 // -------------
 // | Api Types |
 // -------------
@@ -123,4 +126,16 @@ pub struct TokenBalance {
     pub mint: String,
     /// The balance amount
     pub amount: u128,
+}
+
+/// The request body for transferring funds from a hot wallet to its backing
+/// vault
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransferToVaultRequest {
+    /// The address of the hot wallet
+    pub hot_wallet_address: String,
+    /// The mint of the asset to transfer
+    pub mint: String,
+    /// The amount to transfer
+    pub amount: f64,
 }

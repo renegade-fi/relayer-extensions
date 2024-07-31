@@ -6,7 +6,8 @@ use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
     CreateHotWalletRequest, CreateHotWalletResponse, DepositAddressResponse, FeeWalletsResponse,
-    HotWalletBalancesResponse, WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
+    HotWalletBalancesResponse, TransferToVaultRequest, WithdrawFeeBalanceRequest,
+    WithdrawFundsRequest, WithdrawGasRequest,
 };
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -165,4 +166,18 @@ pub(crate) async fn get_hot_wallet_balances_handler(
 
     let resp = HotWalletBalancesResponse { wallets };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for transferring funds from a hot wallet to its backing vault
+pub(crate) async fn transfer_to_vault_handler(
+    req: TransferToVaultRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    server
+        .custody_client
+        .transfer_from_hot_wallet_to_vault(&req.hot_wallet_address, &req.mint, req.amount)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    Ok(warp::reply::json(&"Transfer from hot wallet to vault initiated"))
 }

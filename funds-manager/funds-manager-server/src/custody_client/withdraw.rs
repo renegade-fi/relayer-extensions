@@ -29,7 +29,7 @@ impl CustodyClient {
 
         // Get the vault account and asset to transfer from
         let vault = self
-            .get_vault_account(&source)
+            .get_vault_account(source.vault_name())
             .await?
             .ok_or_else(|| FundsManagerError::Custom("Vault not found".to_string()))?;
 
@@ -48,7 +48,7 @@ impl CustodyClient {
         }
 
         // Transfer
-        let vault_name = source.get_vault_name();
+        let vault_name = source.vault_name();
         let note = format!("Withdraw {amount} {symbol} from {vault_name} to {destination_address}");
 
         let (resp, _rid) = client
