@@ -45,7 +45,7 @@ impl CustodyClient {
         &self,
         source: DepositWithdrawSource,
         destination_address: &str,
-        symbol: &str,
+        mint: &str,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
         let client = self.get_fireblocks_client()?;
@@ -55,30 +55,36 @@ impl CustodyClient {
             .get_vault_account(source.vault_name())
             .await?
             .ok_or_else(|| FundsManagerError::Custom("Vault not found".to_string()))?;
-
-        let asset = self.get_wallet_for_ticker(&vault, symbol).ok_or_else(|| {
-            FundsManagerError::Custom(format!("Asset not found for symbol: {}", symbol))
+        let asset_id = self.get_asset_id_for_address(mint).await?.ok_or_else(|| {
+            FundsManagerError::Custom(format!("Asset not found for mint: {mint}"))
         })?;
 
         // Check if the available balance is sufficient
+        let available = vault
+            .assets
+            .iter()
+            .find(|a| a.id == asset_id)
+            .map(|acct| acct.available.clone())
+            .unwrap_or_default();
         let withdraw_amount = BigDecimal::from_f64(amount)
             .ok_or_else(|| FundsManagerError::Custom("Invalid amount".to_string()))?;
-        if asset.available < withdraw_amount {
+        if available < withdraw_amount {
             return Err(FundsManagerError::Custom(format!(
                 "Insufficient balance. Available: {}, Requested: {}",
-                asset.available, withdraw_amount
+                available, withdraw_amount
             )));
         }
 
         // Transfer
         let vault_name = source.vault_name();
-        let note = format!("Withdraw {amount} {symbol} from {vault_name} to {destination_address}");
+        let note =
+            format!("Withdraw {amount} {asset_id} from {vault_name} to {destination_address}");
 
         let (resp, _rid) = client
             .create_transaction_external(
                 vault.id,
                 destination_address,
-                asset.id,
+                asset_id,
                 withdraw_amount,
                 Some(&note),
             )
