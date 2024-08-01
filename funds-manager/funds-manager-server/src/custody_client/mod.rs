@@ -118,8 +118,6 @@ impl CustodyClient {
     /// Get a fireblocks client
     pub fn get_fireblocks_client(&self) -> Result<FireblocksClient, FundsManagerError> {
         FireblocksClientBuilder::new(&self.fireblocks_api_key, &self.fireblocks_api_secret)
-            // TODO: Remove the sandbox config
-            .with_sandbox()
             .build()
             .map_err(FundsManagerError::fireblocks)
     }

@@ -129,7 +129,7 @@ pub(crate) async fn create_hot_wallet_handler(
 ) -> Result<Json, warp::Rejection> {
     let address = server
         .custody_client
-        .create_hot_wallet(req.vault)
+        .create_hot_wallet(req.vault, req.internal_wallet_id)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 

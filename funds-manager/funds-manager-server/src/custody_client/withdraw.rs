@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::{error::FundsManagerError, helpers::get_secret};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use ethers::signers::LocalWallet;
-use fireblocks_sdk::types::TransactionStatus;
+use fireblocks_sdk::types::{PeerType, TransactionStatus};
 use tracing::info;
 
 use super::{CustodyClient, DepositWithdrawSource};
@@ -44,15 +44,16 @@ impl CustodyClient {
     pub(crate) async fn withdraw_from_fireblocks(
         &self,
         source: DepositWithdrawSource,
-        destination_address: &str,
         mint: &str,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
+        let vault_name = source.vault_name();
         let client = self.get_fireblocks_client()?;
+        let hot_wallet = self.get_hot_wallet_by_vault(vault_name).await?;
 
         // Get the vault account and asset to transfer from
         let vault = self
-            .get_vault_account(source.vault_name())
+            .get_vault_account(vault_name)
             .await?
             .ok_or_else(|| FundsManagerError::Custom("Vault not found".to_string()))?;
         let asset_id = self.get_asset_id_for_address(mint).await?.ok_or_else(|| {
@@ -76,14 +77,14 @@ impl CustodyClient {
         }
 
         // Transfer
-        let vault_name = source.vault_name();
-        let note =
-            format!("Withdraw {amount} {asset_id} from {vault_name} to {destination_address}");
+        let wallet_id = hot_wallet.internal_wallet_id.to_string();
+        let note = format!("Withdraw {amount} {asset_id} from {vault_name} to {wallet_id}");
 
         let (resp, _rid) = client
-            .create_transaction_external(
+            .create_transaction_peer(
                 vault.id,
-                destination_address,
+                &wallet_id,
+                PeerType::INTERNAL_WALLET,
                 asset_id,
                 withdraw_amount,
                 Some(&note),

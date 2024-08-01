@@ -18,6 +18,7 @@ diesel::table! {
         secret_id -> Text,
         vault -> Text,
         address -> Text,
+        internal_wallet_id -> Uuid,
     }
 }
 

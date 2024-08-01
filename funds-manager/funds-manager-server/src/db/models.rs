@@ -86,11 +86,17 @@ pub struct HotWallet {
     pub secret_id: String,
     pub vault: String,
     pub address: String,
+    pub internal_wallet_id: Uuid,
 }
 
 impl HotWallet {
     /// Construct a new hot wallet entry
-    pub fn new(secret_id: String, vault: String, address: String) -> Self {
-        HotWallet { id: Uuid::new_v4(), secret_id, vault, address }
+    pub fn new(
+        secret_id: String,
+        vault: String,
+        address: String,
+        internal_wallet_id: Uuid,
+    ) -> Self {
+        HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id }
     }
 }

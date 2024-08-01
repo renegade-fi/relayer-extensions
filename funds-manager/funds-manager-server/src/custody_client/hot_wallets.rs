@@ -14,6 +14,7 @@ use ethers::{
 use funds_manager_api::{TokenBalance, WalletWithBalances};
 use rand::thread_rng;
 use tracing::info;
+use uuid::Uuid;
 
 use super::{CustodyClient, ERC20};
 use crate::{
@@ -30,7 +31,11 @@ impl CustodyClient {
     /// Create a new hot wallet
     ///
     /// Returns the Arbitrum address of the hot wallet
-    pub async fn create_hot_wallet(&self, vault: String) -> Result<String, FundsManagerError> {
+    pub async fn create_hot_wallet(
+        &self,
+        vault: String,
+        internal_wallet_id: Uuid,
+    ) -> Result<String, FundsManagerError> {
         // Generate a new Ethereum keypair
         let wallet = LocalWallet::new(&mut thread_rng());
         let address = wallet.address().encode_hex();
@@ -49,7 +54,7 @@ impl CustodyClient {
         .await?;
 
         // Insert the wallet metadata into the database
-        self.insert_hot_wallet(&address, &vault, &secret_name).await?;
+        self.insert_hot_wallet(&address, &vault, &secret_name, &internal_wallet_id).await?;
         info!("Created hot wallet with address: {} for vault: {}", address, vault);
         Ok(address)
     }
@@ -111,9 +116,8 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<(), FundsManagerError> {
         // Fetch the wallet info, then withdraw
-        let wallet = self.get_hot_wallet_by_vault(vault).await?;
         let source = DepositWithdrawSource::from_vault_name(vault)?;
-        self.withdraw_from_fireblocks(source, &wallet.address, mint, amount).await
+        self.withdraw_from_fireblocks(source, mint, amount).await
     }
 
     // ------------
