@@ -13,6 +13,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    gas_wallets (id) {
+        id -> Uuid,
+        address -> Text,
+        peer_id -> Nullable<Text>,
+        active -> Bool,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     hot_wallets (id) {
         id -> Uuid,
         secret_id -> Text,
@@ -39,6 +49,7 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     fees,
+    gas_wallets,
     hot_wallets,
     indexing_metadata,
     renegade_wallets,

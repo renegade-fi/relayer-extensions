@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 #![allow(trivial_bounds)]
 
+use std::time::SystemTime;
+
 use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use num_bigint::BigInt;
@@ -99,4 +101,16 @@ impl HotWallet {
     ) -> Self {
         HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id }
     }
+}
+
+/// A gas wallet's metadata
+#[derive(Clone, Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::gas_wallets)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct GasWallet {
+    pub id: Uuid,
+    pub address: String,
+    pub peer_id: Option<String>,
+    pub active: bool,
+    pub created_at: SystemTime,
 }
