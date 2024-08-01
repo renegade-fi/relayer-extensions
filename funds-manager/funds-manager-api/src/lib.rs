@@ -96,6 +96,8 @@ pub struct WithdrawGasRequest {
 pub struct CreateHotWalletRequest {
     /// The name of the vault backing the hot wallet
     pub vault: String,
+    /// The internal wallet ID to associate with the hot wallet
+    pub internal_wallet_id: Uuid,
 }
 
 /// The response containing the hot wallet's address

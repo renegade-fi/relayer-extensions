@@ -3,6 +3,7 @@
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
+use uuid::Uuid;
 
 use crate::db::models::HotWallet;
 use crate::db::schema::hot_wallets;
@@ -27,9 +28,15 @@ impl CustodyClient {
         address: &str,
         vault: &str,
         secret_id: &str,
+        internal_wallet_id: &Uuid,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
-        let entry = HotWallet::new(secret_id.to_string(), vault.to_string(), address.to_string());
+        let entry = HotWallet::new(
+            secret_id.to_string(),
+            vault.to_string(),
+            address.to_string(),
+            *internal_wallet_id,
+        );
         diesel::insert_into(hot_wallets::table)
             .values(entry)
             .execute(&mut conn)
