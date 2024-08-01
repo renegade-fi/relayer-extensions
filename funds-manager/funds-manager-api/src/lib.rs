@@ -79,7 +79,6 @@ pub struct WithdrawFundsRequest {
 
 // --- Gas --- //
 
-// Update request body name and documentation
 /// The request body for withdrawing gas from custody
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WithdrawGasRequest {
@@ -87,6 +86,13 @@ pub struct WithdrawGasRequest {
     pub amount: f64,
     /// The address to withdraw to
     pub destination_address: String,
+}
+
+/// The response containing the gas wallet's address
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateGasWalletResponse {
+    /// The address of the gas wallet
+    pub address: String,
 }
 
 // --- Hot Wallets --- //
