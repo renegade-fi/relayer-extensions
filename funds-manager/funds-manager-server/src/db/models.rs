@@ -114,3 +114,11 @@ pub struct GasWallet {
     pub active: bool,
     pub created_at: SystemTime,
 }
+
+impl GasWallet {
+    /// Construct a new gas wallet
+    pub fn new(address: String) -> Self {
+        let id = Uuid::new_v4();
+        GasWallet { id, address, peer_id: None, active: true, created_at: SystemTime::now() }
+    }
+}
