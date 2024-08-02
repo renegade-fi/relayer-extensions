@@ -5,12 +5,30 @@ use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
 use uuid::Uuid;
 
-use crate::db::models::HotWallet;
+use crate::db::models::{GasWallet, HotWallet};
+use crate::db::schema::gas_wallets;
 use crate::db::schema::hot_wallets;
 use crate::error::FundsManagerError;
 use crate::CustodyClient;
 
 impl CustodyClient {
+    // --- Gas Wallets --- //
+
+    /// Add a new gas wallet
+    pub async fn add_gas_wallet(&self, address: &str) -> Result<(), FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        let entry = GasWallet::new(address.to_string());
+        diesel::insert_into(gas_wallets::table)
+            .values(entry)
+            .execute(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))?;
+
+        Ok(())
+    }
+
+    // --- Hot Wallets --- //
+
     /// Get all hot wallets
     pub async fn get_all_hot_wallets(&self) -> Result<Vec<HotWallet>, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;

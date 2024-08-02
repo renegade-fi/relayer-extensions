@@ -1,6 +1,7 @@
 //! Manages the custody backend for the funds manager
 #![allow(missing_docs)]
 pub mod deposit;
+pub mod gas_wallets;
 mod hot_wallets;
 mod queries;
 pub mod withdraw;

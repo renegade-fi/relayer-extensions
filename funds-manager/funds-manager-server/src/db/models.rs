@@ -164,3 +164,12 @@ pub struct GasWallet {
     pub status: String,
     pub created_at: SystemTime,
 }
+
+impl GasWallet {
+    /// Construct a new gas wallet
+    pub fn new(address: String) -> Self {
+        let id = Uuid::new_v4();
+        let status = GasWalletStatus::Inactive.to_string();
+        GasWallet { id, address, peer_id: None, status, created_at: SystemTime::now() }
+    }
+}

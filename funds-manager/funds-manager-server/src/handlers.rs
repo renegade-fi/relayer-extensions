@@ -5,9 +5,10 @@ use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
-    CreateHotWalletRequest, CreateHotWalletResponse, DepositAddressResponse, FeeWalletsResponse,
-    HotWalletBalancesResponse, TransferToVaultRequest, WithdrawFeeBalanceRequest,
-    WithdrawFundsRequest, WithdrawGasRequest, WithdrawToHotWalletRequest,
+    CreateGasWalletResponse, CreateHotWalletRequest, CreateHotWalletResponse,
+    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse, TransferToVaultRequest,
+    WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
+    WithdrawToHotWalletRequest,
 };
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -20,6 +21,8 @@ pub const MINTS_QUERY_PARAM: &str = "mints";
 pub const GAS_ASSET_NAME: &str = "ETH";
 /// The maximum amount of gas that can be withdrawn at a given time
 pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 0.1; // 0.1 ETH
+
+// --- Fee Indexing --- //
 
 /// Handler for indexing fees
 pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
@@ -44,6 +47,32 @@ pub(crate) async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, war
         .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
     Ok(warp::reply::json(&"Fees redeemed successfully"))
 }
+
+/// Handler for getting fee wallets
+pub(crate) async fn get_fee_wallets_handler(
+    _body: Bytes, // no body
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mut indexer = server.build_indexer()?;
+    let wallets = indexer.fetch_fee_wallets().await?;
+    Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
+}
+
+/// Handler for withdrawing a fee balance
+pub(crate) async fn withdraw_fee_balance_handler(
+    req: WithdrawFeeBalanceRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mut indexer = server.build_indexer()?;
+    indexer
+        .withdraw_fee_balance(req.wallet_id, req.mint)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    Ok(warp::reply::json(&"Fee withdrawal initiated..."))
+}
+
+// --- Quoters --- //
 
 /// Handler for withdrawing funds from custody
 pub(crate) async fn quoter_withdraw_handler(
@@ -77,6 +106,8 @@ pub(crate) async fn get_deposit_address_handler(
     Ok(warp::reply::json(&resp))
 }
 
+// --- Gas --- //
+
 /// Handler for withdrawing gas from custody
 pub(crate) async fn withdraw_gas_handler(
     withdraw_request: WithdrawGasRequest,
@@ -98,29 +129,17 @@ pub(crate) async fn withdraw_gas_handler(
     Ok(warp::reply::json(&format!("Gas withdrawal of {} ETH complete", withdraw_request.amount)))
 }
 
-/// Handler for getting fee wallets
-pub(crate) async fn get_fee_wallets_handler(
+/// Handler for creating a new gas wallet
+pub(crate) async fn create_gas_wallet_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let mut indexer = server.build_indexer()?;
-    let wallets = indexer.fetch_fee_wallets().await?;
-    Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
+    let address = server.custody_client.create_gas_wallet().await?;
+    let resp = CreateGasWalletResponse { address };
+    Ok(warp::reply::json(&resp))
 }
 
-/// Handler for withdrawing a fee balance
-pub(crate) async fn withdraw_fee_balance_handler(
-    req: WithdrawFeeBalanceRequest,
-    server: Arc<Server>,
-) -> Result<Json, warp::Rejection> {
-    let mut indexer = server.build_indexer()?;
-    indexer
-        .withdraw_fee_balance(req.wallet_id, req.mint)
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-
-    Ok(warp::reply::json(&"Fee withdrawal initiated..."))
-}
+// --- Hot Wallets --- //
 
 /// Handler for creating a hot wallet
 pub(crate) async fn create_hot_wallet_handler(
