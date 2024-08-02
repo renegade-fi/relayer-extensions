@@ -24,6 +24,8 @@ pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 
 /// The route to withdraw gas from custody
 pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
+/// The route to register a gas wallet for a peer
+pub const REGISTER_GAS_WALLET_ROUTE: &str = "register-gas-wallet";
 
 /// The route to get fee wallets
 pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
@@ -93,6 +95,23 @@ pub struct WithdrawGasRequest {
 pub struct CreateGasWalletResponse {
     /// The address of the gas wallet
     pub address: String,
+}
+
+/// A request to allocate a gas wallet for a peer
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RegisterGasWalletRequest {
+    /// The peer ID of the peer to allocate a gas wallet for
+    pub peer_id: String,
+}
+
+/// The response containing an newly active gas wallet's key
+///
+/// Clients will hit the corresponding endpoint to register a gas wallet with
+/// the funds manager when they spin up
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterGasWalletResponse {
+    /// The key of the active gas wallet
+    pub key: String,
 }
 
 // --- Hot Wallets --- //
