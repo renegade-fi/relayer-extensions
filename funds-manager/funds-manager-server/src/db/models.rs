@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 #![allow(trivial_bounds)]
 
+use std::{fmt::Display, str::FromStr, time::SystemTime};
+
 use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use num_bigint::BigInt;
@@ -99,4 +101,66 @@ impl HotWallet {
     ) -> Self {
         HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id }
     }
+}
+
+/// The status of a gas wallet
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GasWalletStatus {
+    /// The gas wallet is active
+    Active,
+    /// Marked as inactive but not yet transitioned to inactive
+    Pending,
+    /// The gas wallet is inactive
+    Inactive,
+}
+
+impl Display for GasWalletStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GasWalletStatus::Active => write!(f, "active"),
+            GasWalletStatus::Pending => write!(f, "pending"),
+            GasWalletStatus::Inactive => write!(f, "inactive"),
+        }
+    }
+}
+
+impl FromStr for GasWalletStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "active" => Ok(GasWalletStatus::Active),
+            "pending" => Ok(GasWalletStatus::Pending),
+            "inactive" => Ok(GasWalletStatus::Inactive),
+            _ => Err(format!("Invalid gas wallet status: {s}")),
+        }
+    }
+}
+
+impl GasWalletStatus {
+    /// Get the state resulting from marking the gas wallet as active
+    pub fn transition_active(&self) -> Self {
+        GasWalletStatus::Active
+    }
+
+    /// Get the state resulting from marking the gas wallet as inactive
+    pub fn transition_inactive(&self) -> Self {
+        match self {
+            GasWalletStatus::Active => GasWalletStatus::Pending,
+            GasWalletStatus::Pending => GasWalletStatus::Inactive,
+            GasWalletStatus::Inactive => GasWalletStatus::Inactive,
+        }
+    }
+}
+
+/// A gas wallet's metadata
+#[derive(Clone, Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::gas_wallets)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct GasWallet {
+    pub id: Uuid,
+    pub address: String,
+    pub peer_id: Option<String>,
+    pub status: String,
+    pub created_at: SystemTime,
 }
