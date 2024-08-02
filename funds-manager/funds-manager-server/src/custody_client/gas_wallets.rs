@@ -7,11 +7,18 @@ use ethers::{
 use rand::thread_rng;
 use tracing::info;
 
-use crate::{error::FundsManagerError, helpers::create_secrets_manager_entry_with_description};
+use crate::{
+    error::FundsManagerError,
+    helpers::{create_secrets_manager_entry_with_description, get_secret},
+};
 
 use super::CustodyClient;
 
 impl CustodyClient {
+    // ------------
+    // | Handlers |
+    // ------------
+
     /// Create a new gas wallet
     pub(crate) async fn create_gas_wallet(&self) -> Result<String, FundsManagerError> {
         // Sample a new ethereum keypair
@@ -37,6 +44,26 @@ impl CustodyClient {
 
         Ok(address)
     }
+
+    /// Register a gas wallet for a peer
+    ///
+    /// Returns the private key the client should use for gas
+    pub(crate) async fn register_gas_wallet(
+        &self,
+        peer_id: &str,
+    ) -> Result<String, FundsManagerError> {
+        let gas_wallet = self.find_inactive_gas_wallet().await?;
+        let secret_name = Self::gas_wallet_secret_name(&gas_wallet.address);
+        let secret_value = get_secret(&secret_name, &self.aws_config).await?;
+
+        // Update the gas wallet to be active and return the keypair
+        self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
+        Ok(secret_value)
+    }
+
+    // -----------
+    // | Helpers |
+    // -----------
 
     /// Get the secret name for a gas wallet's private key
     fn gas_wallet_secret_name(address: &str) -> String {
