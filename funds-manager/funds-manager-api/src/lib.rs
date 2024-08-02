@@ -24,6 +24,8 @@ pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 
 /// The route to withdraw gas from custody
 pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
+/// The route to refill gas for all active wallets
+pub const REFILL_GAS_ROUTE: &str = "refill-gas";
 /// The route to register a gas wallet for a peer
 pub const REGISTER_GAS_WALLET_ROUTE: &str = "register-gas-wallet";
 /// The route to report active peers
@@ -90,6 +92,13 @@ pub struct WithdrawGasRequest {
     pub amount: f64,
     /// The address to withdraw to
     pub destination_address: String,
+}
+
+/// The request body for refilling gas for all active wallets
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RefillGasRequest {
+    /// The amount of gas to top up each wallet to
+    pub amount: f64,
 }
 
 /// The response containing the gas wallet's address

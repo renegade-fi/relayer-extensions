@@ -129,6 +129,17 @@ impl CustodyClient {
         format!("hot-wallet-{address}")
     }
 
+    /// Get the hot wallet private key for a vault
+    pub async fn get_hot_wallet_private_key(
+        &self,
+        address: &str,
+    ) -> Result<LocalWallet, FundsManagerError> {
+        let secret_name = Self::hot_wallet_secret_name(address);
+        let secret_value = get_secret(&secret_name, &self.aws_config).await?;
+
+        LocalWallet::from_str(&secret_value).map_err(FundsManagerError::parse)
+    }
+
     /// Fetch the token balance at the given address for a wallet
     async fn get_token_balance(
         &self,

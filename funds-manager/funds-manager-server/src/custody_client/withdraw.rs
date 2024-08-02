@@ -25,10 +25,7 @@ impl CustodyClient {
         }
 
         // Fetch the wallet private key
-        let secret_name = Self::hot_wallet_secret_name(&wallet.address);
-        let private_key = get_secret(&secret_name, &self.aws_config).await?;
-        let wallet =
-            LocalWallet::from_str(private_key.as_str()).map_err(FundsManagerError::parse)?;
+        let wallet = self.get_hot_wallet_private_key(&wallet.address).await?;
 
         // Execute the erc20 transfer
         let tx = self.erc20_transfer(token_address, destination_address, amount, wallet).await?;

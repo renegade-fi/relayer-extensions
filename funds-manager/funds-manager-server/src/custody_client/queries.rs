@@ -27,6 +27,17 @@ impl CustodyClient {
             .map_err(err_str!(FundsManagerError::Db))
     }
 
+    /// Get all active gas wallets
+    pub async fn get_active_gas_wallets(&self) -> Result<Vec<GasWallet>, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        let active = GasWalletStatus::Active.to_string();
+        gas_wallets::table
+            .filter(gas_wallets::status.eq(active))
+            .load::<GasWallet>(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))
+    }
+
     /// Find an inactive gas wallet
     pub async fn find_inactive_gas_wallet(&self) -> Result<GasWallet, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;

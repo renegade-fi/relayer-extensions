@@ -10,6 +10,7 @@ use rand::thread_rng;
 use tracing::info;
 
 use crate::{
+    custody_client::DepositWithdrawSource,
     db::models::GasWalletStatus,
     error::FundsManagerError,
     helpers::{create_secrets_manager_entry_with_description, get_secret},
@@ -17,10 +18,43 @@ use crate::{
 
 use super::CustodyClient;
 
+/// The threshold beneath which we skip refilling gas for a wallet
+///
+/// I.e. if the wallet's balance is within this amount of the desired fill, we
+/// skip refilling
+pub const GAS_REFILL_TOLERANCE: f64 = 0.001; // ETH
+/// The amount to top up a newly registered gas wallet
+pub const DEFAULT_TOP_UP_AMOUNT: f64 = 0.01; // ETH
+
 impl CustodyClient {
     // ------------
     // | Handlers |
     // ------------
+
+    /// Refill gas for all active wallets
+    pub(crate) async fn refill_gas_for_active_wallets(
+        &self,
+        fill_to: f64,
+    ) -> Result<(), FundsManagerError> {
+        // Fetch all active gas wallets
+        let active_wallets = self.get_active_gas_wallets().await?;
+
+        // Filter out those that don't need refilling
+        let mut wallets_to_fill: Vec<(String, f64)> = Vec::new(); // (address, fill amount)
+        for wallet in active_wallets {
+            let bal = self.get_ether_balance(&wallet.address).await?;
+            if bal + GAS_REFILL_TOLERANCE < fill_to {
+                wallets_to_fill.push((wallet.address, fill_to - bal));
+            }
+        }
+
+        if wallets_to_fill.is_empty() {
+            return Ok(());
+        }
+
+        // Refill the gas wallets
+        self.refill_gas_for_wallets(wallets_to_fill).await
+    }
 
     /// Create a new gas wallet
     pub(crate) async fn create_gas_wallet(&self) -> Result<String, FundsManagerError> {
@@ -59,8 +93,9 @@ impl CustodyClient {
         let secret_name = Self::gas_wallet_secret_name(&gas_wallet.address);
         let secret_value = get_secret(&secret_name, &self.aws_config).await?;
 
-        // Update the gas wallet to be active and return the keypair
+        // Update the gas wallet to be active, top up wallets, and return the key
         self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
+        self.refill_gas_for_active_wallets(DEFAULT_TOP_UP_AMOUNT).await?;
         Ok(secret_value)
     }
 
@@ -106,5 +141,32 @@ impl CustodyClient {
     /// Get the secret name for a gas wallet's private key
     fn gas_wallet_secret_name(address: &str) -> String {
         format!("gas-wallet-{}", address)
+    }
+
+    /// Refill gas for a set of wallets
+    async fn refill_gas_for_wallets(
+        &self,
+        wallets: Vec<(String, f64)>, // (address, fill amount)
+    ) -> Result<(), FundsManagerError> {
+        // Get the gas hot wallet's private key
+        let source = DepositWithdrawSource::Gas.vault_name();
+        let gas_wallet = self.get_hot_wallet_by_vault(source).await?;
+        let signer = self.get_hot_wallet_private_key(&gas_wallet.address).await?;
+
+        // Check that the gas wallet has enough ETH to cover the refill
+        let total_amount = wallets.iter().map(|(_, amount)| *amount).sum::<f64>();
+        let my_balance = self.get_ether_balance(&gas_wallet.address).await?;
+        if my_balance < total_amount {
+            return Err(FundsManagerError::custom(
+                "gas wallet does not have enough ETH to cover the refill",
+            ));
+        }
+
+        // Refill the balances
+        for (address, amount) in wallets {
+            self.transfer_ether(&address, amount, signer.clone()).await?;
+        }
+
+        Ok(())
     }
 }
