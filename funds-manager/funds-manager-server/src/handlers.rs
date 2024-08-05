@@ -6,12 +6,13 @@ use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
     CreateGasWalletResponse, CreateHotWalletRequest, CreateHotWalletResponse,
-    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse,
+    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse, RefillGasRequest,
     RegisterGasWalletRequest, RegisterGasWalletResponse, ReportActivePeersRequest,
     TransferToVaultRequest, WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
     WithdrawToHotWalletRequest,
 };
 use itertools::Itertools;
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use warp::reply::Json;
@@ -21,7 +22,9 @@ pub const MINTS_QUERY_PARAM: &str = "mints";
 /// The asset used for gas (ETH)
 pub const GAS_ASSET_NAME: &str = "ETH";
 /// The maximum amount of gas that can be withdrawn at a given time
-pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 0.1; // 0.1 ETH
+pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 1.; // ETH
+/// The maximum amount that a request may refill gas to
+pub const MAX_GAS_REFILL_AMOUNT: f64 = 0.1; // ETH
 
 // --- Fee Indexing --- //
 
@@ -126,8 +129,25 @@ pub(crate) async fn withdraw_gas_handler(
         .withdraw_gas(withdraw_request.amount, &withdraw_request.destination_address)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    Ok(warp::reply::json(&"Withdrawal complete"))
+}
 
-    Ok(warp::reply::json(&format!("Gas withdrawal of {} ETH complete", withdraw_request.amount)))
+/// Handler for refilling gas for all active wallets
+pub(crate) async fn refill_gas_handler(
+    req: RefillGasRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    // Check that the refill amount is less than the max
+    if req.amount > MAX_GAS_REFILL_AMOUNT {
+        return Err(warp::reject::custom(ApiError::BadRequest(format!(
+            "Requested amount {} ETH exceeds maximum allowed refill of {} ETH",
+            req.amount, MAX_GAS_REFILL_AMOUNT
+        ))));
+    }
+
+    server.custody_client.refill_gas_for_active_wallets(req.amount).await?;
+    let resp = json!({});
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handler for creating a new gas wallet
@@ -168,7 +188,9 @@ pub(crate) async fn report_active_peers_handler(
         .record_active_gas_wallet(req.peers)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-    Ok(warp::reply::json(&{}))
+
+    let resp = json!({});
+    Ok(warp::reply::json(&resp))
 }
 
 // --- Hot Wallets --- //

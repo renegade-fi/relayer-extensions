@@ -11,7 +11,7 @@ use ethers::middleware::SignerMiddleware;
 use ethers::prelude::abigen;
 use ethers::providers::{Http, Middleware, Provider};
 use ethers::signers::{LocalWallet, Signer};
-use ethers::types::{Address, TransactionReceipt, TransactionRequest, U256};
+use ethers::types::{Address, TransactionReceipt, TransactionRequest};
 use ethers::utils::format_units;
 use fireblocks_sdk::types::Transaction;
 use fireblocks_sdk::{
@@ -211,10 +211,11 @@ impl CustodyClient {
         let client = SignerMiddleware::new(provider, wallet);
 
         let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
-        let amount = ethers::utils::parse_units(amount.to_string(), "ether")
+        let amount_units = ethers::utils::parse_units(amount.to_string(), "ether")
             .map_err(FundsManagerError::parse)?;
 
-        let tx = TransactionRequest::new().to(to).value(U256::from(amount));
+        info!("Transferring {amount} ETH to {to:#x}");
+        let tx = TransactionRequest::new().to(to).value(amount_units);
         let pending_tx =
             client.send_transaction(tx, None).await.map_err(FundsManagerError::arbitrum)?;
         pending_tx
