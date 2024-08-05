@@ -6,7 +6,8 @@ use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::{
     CreateGasWalletResponse, CreateHotWalletRequest, CreateHotWalletResponse,
-    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse, TransferToVaultRequest,
+    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse,
+    RegisterGasWalletRequest, RegisterGasWalletResponse, TransferToVaultRequest,
     WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
     WithdrawToHotWalletRequest,
 };
@@ -134,8 +135,26 @@ pub(crate) async fn create_gas_wallet_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let address = server.custody_client.create_gas_wallet().await?;
+    let address = server
+        .custody_client
+        .create_gas_wallet()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = CreateGasWalletResponse { address };
+    Ok(warp::reply::json(&resp))
+}
+
+/// Handler for registering a gas wallet for a peer
+pub(crate) async fn register_gas_wallet_handler(
+    req: RegisterGasWalletRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let key = server
+        .custody_client
+        .register_gas_wallet(&req.peer_id)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    let resp = RegisterGasWalletResponse { key };
     Ok(warp::reply::json(&resp))
 }
 

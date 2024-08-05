@@ -27,6 +27,33 @@ impl CustodyClient {
         Ok(())
     }
 
+    /// Find an inactive gas wallet
+    pub async fn find_inactive_gas_wallet(&self) -> Result<GasWallet, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        gas_wallets::table
+            .filter(gas_wallets::active.eq(false))
+            .first::<GasWallet>(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))
+    }
+
+    /// Mark a gas wallet as active
+    pub async fn mark_gas_wallet_active(
+        &self,
+        address: &str,
+        peer_id: &str,
+    ) -> Result<(), FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        let updates = (gas_wallets::active.eq(true), gas_wallets::peer_id.eq(peer_id));
+        diesel::update(gas_wallets::table.filter(gas_wallets::address.eq(address)))
+            .set(updates)
+            .execute(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))?;
+
+        Ok(())
+    }
+
     // --- Hot Wallets --- //
 
     /// Get all hot wallets
