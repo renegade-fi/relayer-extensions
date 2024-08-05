@@ -7,8 +7,8 @@ use bytes::Bytes;
 use funds_manager_api::{
     CreateGasWalletResponse, CreateHotWalletRequest, CreateHotWalletResponse,
     DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse,
-    RegisterGasWalletRequest, RegisterGasWalletResponse, TransferToVaultRequest,
-    WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
+    RegisterGasWalletRequest, RegisterGasWalletResponse, ReportActivePeersRequest,
+    TransferToVaultRequest, WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
     WithdrawToHotWalletRequest,
 };
 use itertools::Itertools;
@@ -156,6 +156,19 @@ pub(crate) async fn register_gas_wallet_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = RegisterGasWalletResponse { key };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for reporting active peers
+pub(crate) async fn report_active_peers_handler(
+    req: ReportActivePeersRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    server
+        .custody_client
+        .record_active_gas_wallet(req.peers)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    Ok(warp::reply::json(&{}))
 }
 
 // --- Hot Wallets --- //
