@@ -2,6 +2,8 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 
+pub mod auth;
+
 use renegade_api::types::ApiWallet;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
