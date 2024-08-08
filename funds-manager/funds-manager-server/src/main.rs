@@ -9,6 +9,7 @@
 pub mod custody_client;
 pub mod db;
 pub mod error;
+pub mod execution_client;
 pub mod fee_indexer;
 pub mod handlers;
 pub mod helpers;
