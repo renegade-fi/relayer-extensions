@@ -1,6 +1,11 @@
 //! Client methods for fetching quotes and prices from the execution venue
 
-use serde::Deserialize;
+use ethers::types::{Address, Bytes, U256};
+use serde::{Deserialize, Serialize};
+
+use crate::helpers::{
+    address_string_serialization, bytes_string_serialization, u256_string_serialization,
+};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -26,21 +31,35 @@ pub struct PriceResponse {
 }
 
 /// The subset of the quote response forwarded to consumers of this client
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionQuote {
+    /// The token address we're buying
+    #[serde(with = "address_string_serialization")]
+    pub buy_token_address: Address,
+    /// The token address we're selling
+    #[serde(with = "address_string_serialization")]
+    pub sell_token_address: Address,
+    /// The amount of tokens to sell
+    #[serde(with = "u256_string_serialization")]
+    pub sell_amount: U256,
     /// The quoted price
     pub price: String,
     /// The submitting address
-    pub from: String,
+    #[serde(with = "address_string_serialization")]
+    pub from: Address,
     /// The 0x swap contract address
-    pub to: String,
+    #[serde(with = "address_string_serialization")]
+    pub to: Address,
     /// The calldata for the swap
-    pub data: String,
+    #[serde(with = "bytes_string_serialization")]
+    pub data: Bytes,
     /// The value of the tx; should be zero
-    pub value: String,
+    #[serde(with = "u256_string_serialization")]
+    pub value: U256,
     /// The gas price used in the swap
-    pub gas_price: String,
+    #[serde(with = "u256_string_serialization")]
+    pub gas_price: U256,
 }
 
 impl ExecutionClient {
