@@ -2,6 +2,8 @@
 
 use std::{error::Error, fmt::Display};
 
+use warp::reject::Reject;
+
 /// An error returned by the execution client
 #[derive(Debug, Clone)]
 pub enum ExecutionClientError {
@@ -44,8 +46,8 @@ impl Display for ExecutionClientError {
         write!(f, "{}", msg)
     }
 }
-
 impl Error for ExecutionClientError {}
+impl Reject for ExecutionClientError {}
 
 impl From<reqwest::Error> for ExecutionClientError {
     fn from(e: reqwest::Error) -> Self {

@@ -9,7 +9,7 @@ pub(crate) mod address_string_serialization {
 
     /// Serialize an address to a string
     pub fn serialize<S: Serializer>(address: &Address, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&address.to_string())
+        s.serialize_str(&format!("{address:#x}"))
     }
 
     /// Deserialize a string to an address

@@ -3,10 +3,13 @@
 
 use aws_config::SdkConfig;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
-use ethers::contract::abigen;
+use ethers::{contract::abigen, types::H256};
 use renegade_util::err_str;
 
 use crate::error::FundsManagerError;
+
+/// A readable type alias for a transaction hash
+pub type TransactionHash = H256;
 
 // ---------
 // | ERC20 |

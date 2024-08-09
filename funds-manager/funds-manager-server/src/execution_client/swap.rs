@@ -10,7 +10,7 @@ use ethers::{
 use funds_manager_api::quoters::ExecutionQuote;
 use tracing::info;
 
-use crate::helpers::ERC20;
+use crate::helpers::{TransactionHash, ERC20};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -20,7 +20,7 @@ impl ExecutionClient {
         &self,
         quote: ExecutionQuote,
         wallet: LocalWallet,
-    ) -> Result<(), ExecutionClientError> {
+    ) -> Result<TransactionHash, ExecutionClientError> {
         // Approve the necessary ERC20 allowance
         self.approve_erc20_allowance(
             quote.sell_token_address,
@@ -32,8 +32,9 @@ impl ExecutionClient {
 
         // Execute the swap
         let receipt = self.execute_swap_tx(quote, wallet).await?;
-        info!("Swap executed at {}", receipt.transaction_hash);
-        Ok(())
+        let tx_hash = receipt.transaction_hash;
+        info!("Swap executed at {tx_hash}");
+        Ok(tx_hash)
     }
 
     /// Approve an erc20 allowance
