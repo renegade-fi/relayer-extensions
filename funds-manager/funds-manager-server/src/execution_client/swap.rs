@@ -7,11 +7,12 @@ use ethers::{
     signers::LocalWallet,
     types::{Address, Eip1559TransactionRequest, TransactionReceipt, U256},
 };
+use funds_manager_api::quoters::ExecutionQuote;
 use tracing::info;
 
 use crate::helpers::ERC20;
 
-use super::{error::ExecutionClientError, quotes::ExecutionQuote, ExecutionClient};
+use super::{error::ExecutionClientError, ExecutionClient};
 
 impl ExecutionClient {
     /// Execute a quoted swap

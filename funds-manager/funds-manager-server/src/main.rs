@@ -15,60 +15,47 @@ pub mod handlers;
 pub mod helpers;
 pub mod middleware;
 pub mod relayer_client;
+pub mod server;
 
-use aws_config::{BehaviorVersion, Region, SdkConfig};
-use db::{create_db_pool, DbPool};
-use error::FundsManagerError;
-use ethers::signers::LocalWallet;
 use fee_indexer::Indexer;
-use funds_manager_api::{
-    CreateHotWalletRequest, RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest,
-    TransferToVaultRequest, WithdrawFeeBalanceRequest, WithdrawGasRequest,
-    WithdrawToHotWalletRequest, GET_DEPOSIT_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE,
-    PING_ROUTE, REDEEM_FEES_ROUTE, REFILL_GAS_ROUTE, REGISTER_GAS_WALLET_ROUTE,
-    REPORT_ACTIVE_PEERS_ROUTE, TRANSFER_TO_VAULT_ROUTE, WITHDRAW_CUSTODY_ROUTE,
-    WITHDRAW_FEE_BALANCE_ROUTE, WITHDRAW_GAS_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
+use funds_manager_api::fees::{
+    WithdrawFeeBalanceRequest, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE,
+    WITHDRAW_FEE_BALANCE_ROUTE,
 };
+use funds_manager_api::gas::{
+    RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest, WithdrawGasRequest,
+    REFILL_GAS_ROUTE, REGISTER_GAS_WALLET_ROUTE, REPORT_ACTIVE_PEERS_ROUTE, WITHDRAW_GAS_ROUTE,
+};
+use funds_manager_api::hot_wallets::{
+    CreateHotWalletRequest, TransferToVaultRequest, WithdrawToHotWalletRequest,
+    TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
+};
+use funds_manager_api::quoters::{
+    ExecuteSwapRequest, GetExecutionQuoteRequest, WithdrawFundsRequest, EXECUTE_SWAP_ROUTE,
+    GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
+};
+use funds_manager_api::PING_ROUTE;
 use handlers::{
-    create_gas_wallet_handler, create_hot_wallet_handler, get_deposit_address_handler,
-    get_fee_wallets_handler, get_hot_wallet_balances_handler, index_fees_handler,
-    quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler, register_gas_wallet_handler,
+    create_gas_wallet_handler, create_hot_wallet_handler, execute_swap_handler,
+    get_deposit_address_handler, get_execution_quote_handler, get_fee_wallets_handler,
+    get_hot_wallet_balances_handler, index_fees_handler, quoter_withdraw_handler,
+    redeem_fees_handler, refill_gas_handler, register_gas_wallet_handler,
     report_active_peers_handler, transfer_to_vault_handler, withdraw_fee_balance_handler,
     withdraw_from_vault_handler, withdraw_gas_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
-use relayer_client::RelayerClient;
-use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_util::{raw_err_str, telemetry::configure_telemetry};
-
-use std::{collections::HashMap, error::Error, str::FromStr, sync::Arc};
-
-use arbitrum_client::{
-    client::{ArbitrumClient, ArbitrumClientConfig},
-    constants::Chain,
-};
-use clap::Parser;
-use funds_manager_api::WithdrawFundsRequest;
-use tracing::{error, warn};
+use renegade_util::telemetry::configure_telemetry;
+use server::Server;
 use warp::Filter;
+
+use std::{collections::HashMap, error::Error, sync::Arc};
+
+use arbitrum_client::constants::Chain;
+use clap::Parser;
+use tracing::{error, warn};
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The block polling interval for the Arbitrum client
-const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
-/// The default region in which to provision secrets manager secrets
-const DEFAULT_REGION: &str = "us-east-2";
-/// The dummy private key used to instantiate the arbitrum client
-///
-/// We don't need any client functionality using a real private key, so instead
-/// we use the key deployed by Arbitrum on local devnets
-const DUMMY_PRIVATE_KEY: &str =
-    "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
 
 // -------
 // | Cli |
@@ -130,6 +117,12 @@ struct Cli {
     /// The fireblocks api secret
     #[clap(long, env = "FIREBLOCKS_API_SECRET")]
     fireblocks_api_secret: String,
+    /// The execution venue api key
+    #[clap(long, env = "EXECUTION_VENUE_API_KEY")]
+    execution_venue_api_key: String,
+    /// The execution venue base url
+    #[clap(long, env = "EXECUTION_VENUE_BASE_URL")]
+    execution_venue_base_url: String,
 
     // --- Server Config --- //
 
@@ -165,45 +158,6 @@ impl Cli {
     }
 }
 
-/// The server
-#[derive(Clone)]
-struct Server {
-    /// The id of the chain this indexer targets
-    pub chain_id: u64,
-    /// The chain this indexer targets
-    pub chain: Chain,
-    /// A client for interacting with the relayer
-    pub relayer_client: RelayerClient,
-    /// The Arbitrum client
-    pub arbitrum_client: ArbitrumClient,
-    /// The decryption key
-    pub decryption_keys: Vec<DecryptionKey>,
-    /// The database connection pool
-    pub db_pool: Arc<DbPool>,
-    /// The custody client
-    pub custody_client: CustodyClient,
-    /// The AWS config
-    pub aws_config: SdkConfig,
-    /// The HMAC key for custody endpoint authentication
-    pub hmac_key: Option<[u8; 32]>,
-}
-
-impl Server {
-    /// Build an indexer
-    pub fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
-        Ok(Indexer::new(
-            self.chain_id,
-            self.chain,
-            self.aws_config.clone(),
-            self.arbitrum_client.clone(),
-            self.decryption_keys.clone(),
-            self.db_pool.clone(),
-            self.relayer_client.clone(),
-            self.custody_client.clone(),
-        ))
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -222,57 +176,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .expect("failed to setup telemetry");
 
-    // Parse an AWS config
-    let config = aws_config::defaults(BehaviorVersion::latest())
-        .region(Region::new(DEFAULT_REGION))
-        .load()
-        .await;
-
-    // Build an Arbitrum client
-    let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY)?;
-    let conf = ArbitrumClientConfig {
-        darkpool_addr: cli.darkpool_address.clone(),
-        chain: cli.chain,
-        rpc_url: cli.rpc_url.clone(),
-        arb_priv_keys: vec![wallet],
-        block_polling_interval_ms: BLOCK_POLLING_INTERVAL_MS,
-    };
-    let client = ArbitrumClient::new(conf).await?;
-    let chain_id = client.chain_id().await.map_err(raw_err_str!("Error fetching chain ID: {}"))?;
-
-    // Build the indexer
-    let mut decryption_keys = vec![DecryptionKey::from_hex_str(&cli.relayer_decryption_key)?];
-    if let Some(protocol_key) = &cli.protocol_decryption_key {
-        decryption_keys.push(DecryptionKey::from_hex_str(protocol_key)?);
-    }
-
-    let hmac_key = cli.get_hmac_key();
-    let relayer_client = RelayerClient::new(&cli.relayer_url, &cli.usdc_mint);
-
-    // Create a database connection pool using bb8
-    let db_pool = create_db_pool(&cli.db_url).await?;
-    let arc_pool = Arc::new(db_pool);
-
-    let custody_client = CustodyClient::new(
-        chain_id,
-        cli.fireblocks_api_key,
-        cli.fireblocks_api_secret,
-        cli.rpc_url,
-        arc_pool.clone(),
-        config.clone(),
-    );
-
-    let server = Server {
-        chain_id,
-        chain: cli.chain,
-        relayer_client: relayer_client.clone(),
-        arbitrum_client: client.clone(),
-        decryption_keys,
-        db_pool: arc_pool,
-        custody_client,
-        aws_config: config,
-        hmac_key,
-    };
+    let port = cli.port; // copy `cli.port` to use after moving `cli`
+    let server = Server::build_from_cli(cli).await.expect("failed to build server");
 
     // ----------
     // | Routes |
@@ -331,6 +236,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
         .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
+
+    let get_execution_quote = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(GET_EXECUTION_QUOTE_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<GetExecutionQuoteRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(get_execution_quote_handler);
+
+    let execute_swap = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(EXECUTE_SWAP_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<ExecuteSwapRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(execute_swap_handler);
 
     // --- Gas --- //
 
@@ -425,6 +350,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(redeem_fees)
         .or(withdraw_custody)
         .or(get_deposit_address)
+        .or(get_execution_quote)
+        .or(execute_swap)
         .or(withdraw_gas)
         .or(refill_gas)
         .or(report_active_peers)
@@ -437,7 +364,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_hot_wallet_balances)
         .or(create_hot_wallet)
         .recover(handle_rejection);
-    warp::serve(routes).run(([0, 0, 0, 0], cli.port)).await;
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 
     Ok(())
 }
