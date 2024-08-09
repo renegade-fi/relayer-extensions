@@ -16,11 +16,11 @@ use rand::thread_rng;
 use tracing::info;
 use uuid::Uuid;
 
-use super::{CustodyClient, ERC20};
+use super::CustodyClient;
 use crate::{
     custody_client::DepositWithdrawSource,
     error::FundsManagerError,
-    helpers::{create_secrets_manager_entry_with_description, get_secret},
+    helpers::{create_secrets_manager_entry_with_description, get_secret, ERC20},
 };
 
 impl CustodyClient {
@@ -109,6 +109,7 @@ impl CustodyClient {
         Ok(())
     }
 
+    /// Transfer funds from a vault to a hot wallet
     pub async fn transfer_from_vault_to_hot_wallet(
         &self,
         vault: &str,

@@ -1,5 +1,4 @@
 //! Manages the custody backend for the funds manager
-#![allow(missing_docs)]
 pub mod deposit;
 pub mod gas_wallets;
 mod hot_wallets;
@@ -8,7 +7,6 @@ pub mod withdraw;
 
 use aws_config::SdkConfig as AwsConfig;
 use ethers::middleware::SignerMiddleware;
-use ethers::prelude::abigen;
 use ethers::providers::{Http, Middleware, Provider};
 use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, TransactionReceipt, TransactionRequest};
@@ -26,16 +24,7 @@ use tracing::info;
 
 use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
-
-abigen!(
-    ERC20,
-    r#"[
-        function balanceOf(address account) external view returns (uint256)
-        function transfer(address recipient, uint256 amount) external returns (bool)
-        function symbol() external view returns (string memory)
-        function decimals() external view returns (uint8)
-    ]"#
-);
+use crate::helpers::ERC20;
 
 /// The source of a deposit
 #[derive(Clone, Copy)]
