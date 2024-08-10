@@ -19,9 +19,10 @@ pub type TransactionHash = H256;
 abigen!(
     ERC20,
     r#"[
-        function balanceOf(address account) external view returns (uint256)
         function symbol() external view returns (string memory)
         function decimals() external view returns (uint8)
+        function balanceOf(address account) external view returns (uint256)
+        function allowance(address owner, address spender) external view returns (uint256)
         function approve(address spender, uint256 value) external returns (bool)
         function transfer(address recipient, uint256 amount) external returns (bool)
     ]"#

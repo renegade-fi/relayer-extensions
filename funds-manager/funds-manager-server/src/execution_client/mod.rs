@@ -79,10 +79,9 @@ impl ExecutionClient {
         let status = response.status();
         if status != StatusCode::OK {
             let body = response.text().await?;
-            error!("Unexpected status code: {status}\nbody: {body}");
-            return Err(ExecutionClientError::http(format!(
-                "Unexpected status code: {status}\nbody: {body}"
-            )));
+            let msg = format!("Unexpected status code: {status}\nbody: {body}");
+            error!(msg);
+            return Err(ExecutionClientError::http(msg));
         }
 
         response.json::<T>().await.map_err(ExecutionClientError::http)
