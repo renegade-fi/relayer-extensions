@@ -2,9 +2,15 @@
 //! API
 pub mod error;
 pub mod quotes;
+pub mod swap;
 
 use std::sync::Arc;
 
+use ethers::{
+    middleware::SignerMiddleware,
+    providers::{Http, Provider},
+    signers::LocalWallet,
+};
 use reqwest::{Client, Url};
 use serde::Deserialize;
 
@@ -22,12 +28,25 @@ pub struct ExecutionClient {
     base_url: String,
     /// The underlying HTTP client
     http_client: Arc<Client>,
+    /// The RPC provider
+    rpc_provider: Arc<Provider<Http>>,
 }
 
 impl ExecutionClient {
     /// Create a new client
-    pub fn new(api_key: String, base_url: String) -> Self {
-        Self { api_key, base_url, http_client: Arc::new(Client::new()) }
+    pub fn new(
+        api_key: String,
+        base_url: String,
+        rpc_url: &str,
+    ) -> Result<Self, ExecutionClientError> {
+        let provider =
+            Provider::<Http>::try_from(rpc_url).map_err(ExecutionClientError::arbitrum)?;
+        Ok(Self {
+            api_key,
+            base_url,
+            http_client: Arc::new(Client::new()),
+            rpc_provider: Arc::new(provider),
+        })
     }
 
     /// Get a full URL for a given endpoint
@@ -60,5 +79,13 @@ impl ExecutionClient {
             .json::<T>()
             .await
             .map_err(ExecutionClientError::http)
+    }
+
+    /// Get an instance of a signer middleware with the http provider attached
+    fn get_signer(
+        &self,
+        wallet: LocalWallet,
+    ) -> SignerMiddleware<Arc<Provider<Http>>, LocalWallet> {
+        SignerMiddleware::new(self.rpc_provider.clone(), wallet)
     }
 }

@@ -1,3 +1,4 @@
+//! Withdrawal methods for custodied funds
 use std::str::FromStr;
 
 use crate::{error::FundsManagerError, helpers::get_secret};

@@ -5,6 +5,8 @@ use std::fmt::Display;
 /// An error returned by the execution client
 #[derive(Debug, Clone)]
 pub enum ExecutionClientError {
+    /// An error interacting with Arbitrum
+    Arbitrum(String),
     /// An error returned by the execution client
     Http(String),
     /// An error parsing a value
@@ -12,6 +14,12 @@ pub enum ExecutionClientError {
 }
 
 impl ExecutionClientError {
+    /// Create a new arbitrum error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn arbitrum<T: ToString>(e: T) -> Self {
+        ExecutionClientError::Arbitrum(e.to_string())
+    }
+
     /// Create a new http error
     #[allow(clippy::needless_pass_by_value)]
     pub fn http<T: ToString>(e: T) -> Self {
@@ -28,6 +36,7 @@ impl ExecutionClientError {
 impl Display for ExecutionClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
+            ExecutionClientError::Arbitrum(e) => format!("Arbitrum error: {e}"),
             ExecutionClientError::Http(e) => format!("HTTP error: {e}"),
             ExecutionClientError::Parse(e) => format!("Parse error: {e}"),
         };
