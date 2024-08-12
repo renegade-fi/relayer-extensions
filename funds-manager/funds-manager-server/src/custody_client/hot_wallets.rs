@@ -11,7 +11,7 @@ use ethers::{
     types::Address,
     utils::hex::ToHexExt,
 };
-use funds_manager_api::{TokenBalance, WalletWithBalances};
+use funds_manager_api::hot_wallets::{TokenBalance, WalletWithBalances};
 use rand::thread_rng;
 use tracing::info;
 use uuid::Uuid;

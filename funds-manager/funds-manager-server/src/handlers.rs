@@ -4,12 +4,17 @@ use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
-use funds_manager_api::{
-    CreateGasWalletResponse, CreateHotWalletRequest, CreateHotWalletResponse,
-    DepositAddressResponse, FeeWalletsResponse, HotWalletBalancesResponse, RefillGasRequest,
-    RegisterGasWalletRequest, RegisterGasWalletResponse, ReportActivePeersRequest,
-    TransferToVaultRequest, WithdrawFeeBalanceRequest, WithdrawFundsRequest, WithdrawGasRequest,
-    WithdrawToHotWalletRequest,
+use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
+use funds_manager_api::gas::{
+    CreateGasWalletResponse, RefillGasRequest, RegisterGasWalletRequest, RegisterGasWalletResponse,
+    ReportActivePeersRequest, WithdrawGasRequest,
+};
+use funds_manager_api::hot_wallets::{
+    CreateHotWalletRequest, CreateHotWalletResponse, HotWalletBalancesResponse,
+    TransferToVaultRequest, WithdrawToHotWalletRequest,
+};
+use funds_manager_api::quoters::{
+    DepositAddressResponse, ExecuteSwapRequest, GetExecutionQuoteRequest, WithdrawFundsRequest,
 };
 use itertools::Itertools;
 use serde_json::json;
@@ -108,6 +113,26 @@ pub(crate) async fn get_deposit_address_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     let resp = DepositAddressResponse { address };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for getting an execution quote
+pub(crate) async fn get_execution_quote_handler(
+    _quote_request: GetExecutionQuoteRequest,
+    _server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    // TODO: Implement this handler
+    println!("Getting execution quote");
+    Ok(warp::reply::json(&"Quote fetched"))
+}
+
+/// Handler for executing a swap
+pub(crate) async fn execute_swap_handler(
+    _swap_request: ExecuteSwapRequest,
+    _server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    // TODO: Implement this handler
+    println!("Executing swap");
+    Ok(warp::reply::json(&"Swap executed"))
 }
 
 // --- Gas --- //

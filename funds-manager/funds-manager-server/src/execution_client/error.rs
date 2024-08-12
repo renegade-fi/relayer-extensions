@@ -1,6 +1,6 @@
 //! Error types for the execution client
 
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
 /// An error returned by the execution client
 #[derive(Debug, Clone)]
@@ -44,6 +44,8 @@ impl Display for ExecutionClientError {
         write!(f, "{}", msg)
     }
 }
+
+impl Error for ExecutionClientError {}
 
 impl From<reqwest::Error> for ExecutionClientError {
     fn from(e: reqwest::Error) -> Self {
