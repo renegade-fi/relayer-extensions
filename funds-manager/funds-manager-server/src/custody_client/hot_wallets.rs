@@ -138,7 +138,9 @@ impl CustodyClient {
         let secret_name = Self::hot_wallet_secret_name(address);
         let secret_value = get_secret(&secret_name, &self.aws_config).await?;
 
-        LocalWallet::from_str(&secret_value).map_err(FundsManagerError::parse)
+        LocalWallet::from_str(&secret_value)
+            .map_err(FundsManagerError::parse)
+            .map(|w| w.with_chain_id(self.chain_id))
     }
 
     /// Fetch the token balance at the given address for a wallet

@@ -14,7 +14,8 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    DepositAddressResponse, ExecuteSwapRequest, GetExecutionQuoteRequest, WithdrawFundsRequest,
+    DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse, GetExecutionQuoteRequest,
+    GetExecutionQuoteResponse, WithdrawFundsRequest,
 };
 use itertools::Itertools;
 use serde_json::json;
@@ -117,22 +118,35 @@ pub(crate) async fn get_deposit_address_handler(
 
 /// Handler for getting an execution quote
 pub(crate) async fn get_execution_quote_handler(
-    _quote_request: GetExecutionQuoteRequest,
-    _server: Arc<Server>,
+    req: GetExecutionQuoteRequest,
+    server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    // TODO: Implement this handler
-    println!("Getting execution quote");
-    Ok(warp::reply::json(&"Quote fetched"))
+    // Fetch the quoter hot wallet information
+    let vault = DepositWithdrawSource::Quoter.vault_name();
+    let hot_wallet = server.custody_client.get_hot_wallet_by_vault(vault).await?;
+    let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
+    let quote = server
+        .execution_client
+        .get_quote(req.buy_token_address, req.sell_token_address, req.sell_amount, &wallet)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    let resp = GetExecutionQuoteResponse { quote };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handler for executing a swap
 pub(crate) async fn execute_swap_handler(
-    _swap_request: ExecuteSwapRequest,
-    _server: Arc<Server>,
+    req: ExecuteSwapRequest,
+    server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    // TODO: Implement this handler
-    println!("Executing swap");
-    Ok(warp::reply::json(&"Swap executed"))
+    let vault = DepositWithdrawSource::Quoter.vault_name();
+    let hot_wallet = server.custody_client.get_hot_wallet_by_vault(vault).await?;
+    let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
+
+    let tx = server.execution_client.execute_swap(req.quote, &wallet).await?;
+    let resp = ExecuteSwapResponse { tx_hash: format!("{tx:#x}") };
+    Ok(warp::reply::json(&resp))
 }
 
 // --- Gas --- //

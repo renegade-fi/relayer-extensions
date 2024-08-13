@@ -11,8 +11,10 @@ use ethers::{
     providers::{Http, Provider},
     signers::LocalWallet,
 };
+use http::StatusCode;
 use reqwest::{Client, Url};
 use serde::Deserialize;
+use tracing::error;
 
 use self::error::ExecutionClientError;
 
@@ -71,14 +73,18 @@ impl ExecutionClient {
         params: &[(&str, &str)],
     ) -> Result<T, ExecutionClientError> {
         let url = self.build_url(endpoint, params)?;
-        self.http_client
-            .get(url)
-            .header(API_KEY_HEADER, &self.api_key)
-            .send()
-            .await?
-            .json::<T>()
-            .await
-            .map_err(ExecutionClientError::http)
+        let response =
+            self.http_client.get(url).header(API_KEY_HEADER, &self.api_key).send().await?;
+
+        let status = response.status();
+        if status != StatusCode::OK {
+            let body = response.text().await?;
+            let msg = format!("Unexpected status code: {status}\nbody: {body}");
+            error!(msg);
+            return Err(ExecutionClientError::http(msg));
+        }
+
+        response.json::<T>().await.map_err(ExecutionClientError::http)
     }
 
     /// Get an instance of a signer middleware with the http provider attached

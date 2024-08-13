@@ -44,7 +44,7 @@ pub struct WithdrawFundsRequest {
 // --- Execution --- //
 
 /// The subset of the quote response forwarded to consumers of this client
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionQuote {
     /// The token address we're buying
@@ -79,9 +79,11 @@ pub struct ExecutionQuote {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetExecutionQuoteRequest {
     /// The token address we're buying
-    pub buy_token_address: String,
+    #[serde(with = "address_string_serialization")]
+    pub buy_token_address: Address,
     /// The token address we're selling
-    pub sell_token_address: String,
+    #[serde(with = "address_string_serialization")]
+    pub sell_token_address: Address,
     /// The amount of tokens to sell
     pub sell_amount: u128,
 }
