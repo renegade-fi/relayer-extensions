@@ -2,14 +2,14 @@
 //! consistent block
 
 use alloy_sol_types::SolCall;
-use arbitrum_client::abi::settleOfflineFeeCall;
-use arbitrum_client::{
-    abi::NotePostedFilter, constants::SELECTOR_LEN,
-    helpers::parse_note_ciphertext_from_settle_offline_fee,
-};
 use ethers::contract::LogMeta;
 use ethers::middleware::Middleware;
 use ethers::types::TxHash;
+use renegade_arbitrum_client::abi::settleOfflineFeeCall;
+use renegade_arbitrum_client::{
+    abi::NotePostedFilter, constants::SELECTOR_LEN,
+    helpers::parse_note_ciphertext_from_settle_offline_fee,
+};
 use renegade_circuit_types::elgamal::{DecryptionKey, ElGamalCiphertext};
 use renegade_circuit_types::native_helpers::elgamal_decrypt;
 use renegade_circuit_types::note::{Note, NOTE_CIPHERTEXT_SIZE};

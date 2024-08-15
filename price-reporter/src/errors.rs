@@ -6,7 +6,7 @@ use std::{
     io,
 };
 
-use price_reporter::errors::ExchangeConnectionError;
+use renegade_price_reporter::errors::ExchangeConnectionError;
 use serde_json::Error as SerdeError;
 
 /// An error that can occur in the price reporter server.

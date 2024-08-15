@@ -8,7 +8,7 @@ use hyper::{
     Body, Error as HyperError, Request, Response, Server, StatusCode,
 };
 use matchit::Router;
-use price_reporter::worker::ExchangeConnectionsConfig;
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 
 use crate::{errors::ServerError, utils::HttpRouter, ws_server::GlobalPriceStreams};
 

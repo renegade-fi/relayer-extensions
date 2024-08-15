@@ -3,7 +3,6 @@
 use crate::custody_client::DepositWithdrawSource;
 use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
-use arbitrum_client::{conversion::to_contract_external_transfer, helpers::serialize_calldata};
 use ethers::{
     core::k256::ecdsa::SigningKey,
     types::{Signature, U256},
@@ -11,6 +10,9 @@ use ethers::{
 };
 use num_bigint::BigUint;
 use renegade_api::{http::wallet::WithdrawBalanceRequest, types::ApiWallet};
+use renegade_arbitrum_client::{
+    conversion::to_contract_external_transfer, helpers::serialize_calldata,
+};
 use renegade_circuit_types::{
     keychain::SecretSigningKey,
     transfers::{ExternalTransfer, ExternalTransferDirection},

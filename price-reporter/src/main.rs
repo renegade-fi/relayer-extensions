@@ -9,12 +9,12 @@
 
 use std::net::SocketAddr;
 
-use config::setup_token_remaps;
 use errors::ServerError;
 use http_server::HttpServer;
+use renegade_config::setup_token_remaps;
+use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use util::err_str;
 use utils::{parse_config_env_vars, setup_logging, PriceReporterConfig};
 use ws_server::{handle_connection, GlobalPriceStreams};
 

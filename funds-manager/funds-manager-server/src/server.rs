@@ -3,12 +3,12 @@
 
 use std::{error::Error, str::FromStr, sync::Arc};
 
-use arbitrum_client::{
+use aws_config::{BehaviorVersion, Region, SdkConfig};
+use ethers::signers::LocalWallet;
+use renegade_arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
     constants::Chain,
 };
-use aws_config::{BehaviorVersion, Region, SdkConfig};
-use ethers::signers::LocalWallet;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::raw_err_str;
 
