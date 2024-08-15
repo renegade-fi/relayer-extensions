@@ -3,13 +3,14 @@
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
-use external_api::websocket::{SubscriptionResponse, WebsocketMessage};
 use futures_util::{SinkExt, StreamExt};
-use price_reporter::{
+use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
+use renegade_price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
     worker::ExchangeConnectionsConfig,
 };
+use renegade_util::err_str;
 use tokio::{
     net::TcpStream,
     sync::{broadcast::channel, RwLock},
@@ -19,7 +20,6 @@ use tokio_stream::StreamMap;
 use tokio_tungstenite::accept_async;
 use tracing::{debug, error, info, warn};
 use tungstenite::Message;
-use util::err_str;
 
 use crate::{
     errors::ServerError,

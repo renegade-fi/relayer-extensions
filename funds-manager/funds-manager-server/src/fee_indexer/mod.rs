@@ -1,7 +1,7 @@
 //! The indexer handles the indexing and redemption of fee notes
 
-use arbitrum_client::{client::ArbitrumClient, constants::Chain};
 use aws_config::SdkConfig as AwsConfig;
+use renegade_arbitrum_client::{client::ArbitrumClient, constants::Chain};
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_util::err_str;
 use renegade_util::hex::jubjub_from_hex_string;

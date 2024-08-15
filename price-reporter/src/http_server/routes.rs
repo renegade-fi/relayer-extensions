@@ -1,10 +1,10 @@
 //! The routes for the HTTP server
 
 use async_trait::async_trait;
-use common::types::Price;
 use futures_util::StreamExt;
 use hyper::{Body, Request, Response, StatusCode};
-use price_reporter::worker::ExchangeConnectionsConfig;
+use renegade_common::types::Price;
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 
 use crate::{
     errors::ServerError,

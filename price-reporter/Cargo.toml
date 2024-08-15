@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 # === Networking === #
 tokio-stream = { version = "0.1", features = ["sync"] }
-tokio-tungstenite = { version = "0.18", features = ["native-tls"]}
+tokio-tungstenite = { version = "0.18", features = ["native-tls"] }
 tungstenite = "0.18"
 hyper = { version = "0.14", features = ["http1", "http2", "server", "tcp"] }
 matchit = "0.7"
@@ -22,13 +22,12 @@ serde_json = "1"
 
 # === Telemetry === #
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"]}
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # === Renegade === #
-price-reporter = { git = "https://github.com/renegade-fi/renegade.git" }
-external-api = { git = "https://github.com/renegade-fi/renegade.git" }
-arbitrum-client = { git = "https://github.com/renegade-fi/renegade.git" }
-config = { git = "https://github.com/renegade-fi/renegade.git" }
-common = { git = "https://github.com/renegade-fi/renegade.git" }
-util = { git = "https://github.com/renegade-fi/renegade.git" }
-
+renegade-price-reporter = { package = "price-reporter", workspace = true }
+renegade-api = { package = "external-api", workspace = true }
+renegade-arbitrum-client = { package = "arbitrum-client", workspace = true }
+renegade-config = { package = "config", workspace = true }
+renegade-common = { package = "common", workspace = true }
+renegade-util = { package = "util", workspace = true }
