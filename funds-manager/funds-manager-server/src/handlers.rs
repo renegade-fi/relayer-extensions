@@ -184,7 +184,7 @@ pub(crate) async fn refill_gas_handler(
         ))));
     }
 
-    server.custody_client.refill_gas_for_active_wallets(req.amount).await?;
+    server.custody_client.refill_gas_wallets(req.amount).await?;
     let resp = json!({});
     Ok(warp::reply::json(&resp))
 }

@@ -66,6 +66,7 @@ impl CustodyClient {
 
     /// Mark a gas wallet as inactive
     pub async fn mark_gas_wallet_inactive(&self, address: &str) -> Result<(), FundsManagerError> {
+        info!("Marking gas wallet as inactive: {address}");
         let mut conn = self.get_db_conn().await?;
         let updates = (
             gas_wallets::status.eq(GasWalletStatus::Inactive.to_string()),
@@ -83,6 +84,7 @@ impl CustodyClient {
 
     /// Update a gas wallet to pending
     pub async fn mark_gas_wallet_pending(&self, address: &str) -> Result<(), FundsManagerError> {
+        info!("Marking gas wallet as pending: {address}");
         let mut conn = self.get_db_conn().await?;
         let pending = GasWalletStatus::Pending.to_string();
         diesel::update(gas_wallets::table.filter(gas_wallets::address.eq(address)))
@@ -100,6 +102,7 @@ impl CustodyClient {
         address: &str,
         peer_id: &str,
     ) -> Result<(), FundsManagerError> {
+        info!("Marking gas wallet as active: {address}");
         let mut conn = self.get_db_conn().await?;
         let active = GasWalletStatus::Active.to_string();
         let updates = (gas_wallets::status.eq(active), gas_wallets::peer_id.eq(peer_id));

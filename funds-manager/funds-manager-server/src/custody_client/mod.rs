@@ -120,7 +120,7 @@ impl CustodyClient {
         let client = self.get_fireblocks_client()?;
         let (supported_assets, _rid) = client.supported_assets().await?;
         for asset in supported_assets {
-            if asset.contract_address == address {
+            if asset.contract_address.to_lowercase() == address.to_lowercase() {
                 return Ok(Some(asset.id.to_string()));
             }
         }

@@ -31,13 +31,10 @@ impl CustodyClient {
     // | Handlers |
     // ------------
 
-    /// Refill gas for all active wallets
-    pub(crate) async fn refill_gas_for_active_wallets(
-        &self,
-        fill_to: f64,
-    ) -> Result<(), FundsManagerError> {
-        // Fetch all active gas wallets
-        let active_wallets = self.get_active_gas_wallets().await?;
+    /// Refill gas for all gas wallets
+    pub(crate) async fn refill_gas_wallets(&self, fill_to: f64) -> Result<(), FundsManagerError> {
+        // Fetch all gas wallets
+        let gas_wallets = self.get_all_gas_wallets().await?;
 
         // Filter out those that don't need refilling
         let mut wallets_to_fill: Vec<(String, f64)> = Vec::new(); // (address, fill amount)
