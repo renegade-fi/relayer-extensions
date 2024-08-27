@@ -31,7 +31,7 @@ impl CustodyClient {
         // Execute the erc20 transfer
         let tx = self.erc20_transfer(token_address, destination_address, amount, wallet).await?;
         info!(
-            "Withdrew {amount} {token_address} from hot wallet to {destination_address}. Tx: {:#}",
+            "Withdrew {amount} {token_address} from hot wallet to {destination_address}. Tx: {:?}",
             tx.transaction_hash
         );
 

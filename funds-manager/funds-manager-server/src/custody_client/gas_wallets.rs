@@ -38,7 +38,7 @@ impl CustodyClient {
 
         // Filter out those that don't need refilling
         let mut wallets_to_fill: Vec<(String, f64)> = Vec::new(); // (address, fill amount)
-        for wallet in active_wallets {
+        for wallet in gas_wallets.into_iter() {
             let bal = self.get_ether_balance(&wallet.address).await?;
             if bal + GAS_REFILL_TOLERANCE < fill_to {
                 wallets_to_fill.push((wallet.address, fill_to - bal));
@@ -92,7 +92,7 @@ impl CustodyClient {
 
         // Update the gas wallet to be active, top up wallets, and return the key
         self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
-        self.refill_gas_for_active_wallets(DEFAULT_TOP_UP_AMOUNT).await?;
+        self.refill_gas_wallets(DEFAULT_TOP_UP_AMOUNT).await?;
         Ok(secret_value)
     }
 
