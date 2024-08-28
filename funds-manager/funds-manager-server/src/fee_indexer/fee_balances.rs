@@ -9,7 +9,10 @@ use ethers::{
     utils::keccak256,
 };
 use num_bigint::BigUint;
-use renegade_api::{http::wallet::WithdrawBalanceRequest, types::ApiWallet};
+use renegade_api::{
+    http::wallet::{WalletUpdateAuthorization, WithdrawBalanceRequest},
+    types::ApiWallet,
+};
 use renegade_arbitrum_client::{
     conversion::to_contract_external_transfer, helpers::serialize_calldata,
 };
@@ -52,8 +55,7 @@ impl Indexer {
         let wallet_metadata = self.get_wallet_by_id(&wallet_id).await?;
         let api_wallet = self.fetch_wallet(wallet_metadata.clone()).await?;
         let old_wallet = Wallet::try_from(api_wallet).map_err(FundsManagerError::custom)?;
-        let root_key =
-            old_wallet.key_chain.secret_keys.sk_root.as_ref().expect("root key not present");
+        let wallet_key = old_wallet.key_chain.symmetric_key();
 
         // Get the deposit address for the fee withdrawal
         let deposit_address =
@@ -61,7 +63,7 @@ impl Indexer {
 
         // Send a withdrawal request to the relayer
         let req = Self::build_withdrawal_request(&mint, &deposit_address, &old_wallet)?;
-        self.relayer_client.withdraw_balance(wallet_metadata.id, mint, req, root_key).await?;
+        self.relayer_client.withdraw_balance(wallet_metadata.id, mint, req, &wallet_key).await?;
 
         Ok(())
     }
@@ -85,12 +87,12 @@ impl Indexer {
         // Derive the wallet keychain
         let wallet_keychain =
             derive_wallet_keychain(&eth_key, self.chain_id).map_err(FundsManagerError::custom)?;
-        let root_key = wallet_keychain.secret_keys.sk_root.clone().expect("root key not present");
+        let wallet_key = wallet_keychain.symmetric_key();
 
         // Fetch the wallet from the relayer and replace the keychain so that we have
         // access to the full set of secret keys
         let mut wallet =
-            self.relayer_client.get_wallet(wallet_metadata.id, &root_key).await?.wallet;
+            self.relayer_client.get_wallet(wallet_metadata.id, &wallet_key).await?.wallet;
         wallet.key_chain = wallet_keychain.into();
 
         Ok(wallet)
@@ -130,10 +132,15 @@ impl Indexer {
             dest_bigint.clone(),
         )?;
 
+        let update_auth = WalletUpdateAuthorization {
+            statement_sig: commitment_sig.to_vec(),
+            new_root_key: None,
+        };
+
         Ok(WithdrawBalanceRequest {
             destination_addr: dest_bigint,
             amount: BigUint::from(bal.amount),
-            wallet_commitment_sig: commitment_sig.to_vec(),
+            update_auth,
             external_transfer_sig: transfer_sig.to_vec(),
         })
     }

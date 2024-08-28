@@ -3,6 +3,7 @@
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::db::models::{GasWallet, GasWalletStatus, HotWallet};

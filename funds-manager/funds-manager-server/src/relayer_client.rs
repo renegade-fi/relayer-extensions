@@ -3,10 +3,7 @@
 use std::time::Duration;
 
 use base64::engine::{general_purpose as b64_general_purpose, Engine};
-use ethers::{
-    core::k256::ecdsa::{signature::Signer, Signature, SigningKey},
-    signers::LocalWallet,
-};
+use ethers::signers::LocalWallet;
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
     http::{
@@ -19,9 +16,9 @@ use renegade_api::{
             REDEEM_NOTE_ROUTE, WITHDRAW_BALANCE_ROUTE,
         },
     },
+    types::ApiKeychain,
     RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
-use renegade_circuit_types::keychain::SecretSigningKey;
 use renegade_common::types::{
     exchange::PriceReporterState,
     token::Token,
@@ -29,6 +26,7 @@ use renegade_common::types::{
         derivation::{
             derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
         },
+        keychain::HmacKey,
         Wallet, WalletIdentifier,
     },
 };
@@ -90,11 +88,11 @@ impl RelayerClient {
     pub async fn get_wallet(
         &self,
         wallet_id: WalletIdentifier,
-        root_key: &SecretSigningKey,
+        wallet_key: &HmacKey,
     ) -> Result<GetWalletResponse, FundsManagerError> {
         let mut path = GET_WALLET_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
-        self.get_relayer_with_auth::<GetWalletResponse>(&path, root_key).await
+        self.get_relayer_with_auth::<GetWalletResponse>(&path, wallet_key).await
     }
 
     /// Check that the relayer has a given wallet, lookup the wallet if not
@@ -108,8 +106,8 @@ impl RelayerClient {
         path = path.replace(":wallet_id", &wallet_id.to_string());
 
         let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
-        let root_key = keychain.secret_keys.sk_root.unwrap();
-        if self.get_relayer_with_auth::<GetWalletResponse>(&path, &root_key).await.is_ok() {
+        let wallet_key = keychain.symmetric_key();
+        if self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await.is_ok() {
             return Ok(());
         }
 
@@ -128,16 +126,17 @@ impl RelayerClient {
         let blinder_seed = derive_blinder_seed(eth_key).unwrap();
         let share_seed = derive_share_seed(eth_key).unwrap();
         let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
-        let root_key = keychain.secret_keys.sk_root.clone().unwrap();
+        let wallet_key = keychain.symmetric_key();
 
         let body = FindWalletRequest {
             wallet_id,
             secret_share_seed: scalar_to_biguint(&share_seed),
             blinder_seed: scalar_to_biguint(&blinder_seed),
-            key_chain: keychain.into(),
+            private_keychain: ApiKeychain::from(keychain).private_keys,
         };
 
-        let resp: FindWalletResponse = self.post_relayer_with_auth(&path, &body, &root_key).await?;
+        let resp: FindWalletResponse =
+            self.post_relayer_with_auth(&path, &body, &wallet_key).await?;
         self.await_relayer_task(resp.task_id).await
     }
 
@@ -154,12 +153,12 @@ impl RelayerClient {
         &self,
         wallet_id: WalletIdentifier,
         req: RedeemNoteRequest,
-        root_key: &SecretSigningKey,
+        wallet_key: &HmacKey,
     ) -> Result<(), FundsManagerError> {
         let mut path = REDEEM_NOTE_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
 
-        let resp: RedeemNoteResponse = self.post_relayer_with_auth(&path, &req, root_key).await?;
+        let resp: RedeemNoteResponse = self.post_relayer_with_auth(&path, &req, wallet_key).await?;
         self.await_relayer_task(resp.task_id).await
     }
 
@@ -169,7 +168,7 @@ impl RelayerClient {
         wallet_id: WalletIdentifier,
         mint: String,
         req: WithdrawBalanceRequest,
-        root_key: &SecretSigningKey,
+        root_key: &HmacKey,
     ) -> Result<(), FundsManagerError> {
         let mut path = WITHDRAW_BALANCE_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
@@ -202,15 +201,15 @@ impl RelayerClient {
         &self,
         path: &str,
         body: &Req,
-        root_key: &SecretSigningKey,
+        wallet_key: &HmacKey,
     ) -> Result<Resp, FundsManagerError>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
         let body_ser = serde_json::to_vec(body).map_err(err_str!(FundsManagerError::Custom))?;
-        let headers =
-            build_auth_headers(root_key, &body_ser).map_err(err_str!(FundsManagerError::custom))?;
+        let headers = build_auth_headers(wallet_key, &body_ser)
+            .map_err(err_str!(FundsManagerError::custom))?;
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
@@ -261,13 +260,13 @@ impl RelayerClient {
     async fn get_relayer_with_auth<Resp>(
         &self,
         path: &str,
-        root_key: &SecretSigningKey,
+        wallet_key: &HmacKey,
     ) -> Result<Resp, FundsManagerError>
     where
         Resp: for<'de> Deserialize<'de>,
     {
         let headers =
-            build_auth_headers(root_key, &[]).map_err(err_str!(FundsManagerError::Custom))?;
+            build_auth_headers(wallet_key, &[]).map_err(err_str!(FundsManagerError::Custom))?;
         self.get_relayer_with_headers(path, &headers).await
     }
 
@@ -336,21 +335,19 @@ fn reqwest_client() -> Result<Client, FundsManagerError> {
 }
 
 /// Build authentication headers for a request
-fn build_auth_headers(key: &SecretSigningKey, req_bytes: &[u8]) -> Result<HeaderMap, String> {
+fn build_auth_headers(key: &HmacKey, req_bytes: &[u8]) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     let expiration = get_current_time_millis() + SIG_EXPIRATION_BUFFER_MS;
     headers.insert(RENEGADE_SIG_EXPIRATION_HEADER_NAME, expiration.into());
 
-    let root_key: SigningKey = key.try_into()?;
-
-    // Sign the concatenation of the message and the expiration timestamp
+    // Concatenate the message and the timestamp
     let body = Body::from(req_bytes.to_vec());
     let msg_bytes = body.as_bytes().unwrap();
     let payload = [msg_bytes, &expiration.to_le_bytes()].concat();
 
-    let signature: Signature = root_key.sign(&payload);
-    let encoded_sig = b64_general_purpose::STANDARD_NO_PAD.encode(signature.to_bytes());
-
+    // Compute the hmac
+    let hmac = key.compute_mac(&payload);
+    let encoded_sig = b64_general_purpose::STANDARD_NO_PAD.encode(hmac);
     headers.insert(RENEGADE_AUTH_HEADER_NAME, HeaderValue::from_str(&encoded_sig).unwrap());
 
     Ok(headers)

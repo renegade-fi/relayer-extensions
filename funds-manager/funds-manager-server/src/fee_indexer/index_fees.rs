@@ -17,7 +17,7 @@ use renegade_circuit_types::wallet::NoteCommitment;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128, u256_to_scalar};
 use renegade_util::err_str;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::db::models::NewFee;
 use crate::error::FundsManagerError;
@@ -29,10 +29,12 @@ impl Indexer {
         let block_number = self.get_latest_block().await?;
         info!("indexing fees from block {block_number}");
 
+        let darkpool_addr = self.arbitrum_client.get_darkpool_client().address();
         let filter = self
             .arbitrum_client
             .get_darkpool_client()
             .event::<NotePostedFilter>()
+            .address(darkpool_addr.into())
             .from_block(block_number);
 
         let events = filter
@@ -154,6 +156,11 @@ impl Indexer {
         note: &ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>,
         note_comm: NoteCommitment,
     ) -> Option<Note> {
+        if !note.is_valid_ciphertext() {
+            warn!("invalid note ciphertext, skipping decryption...");
+            return None;
+        }
+
         // The ciphertext stores all note values except the encryption key
         for key in self.decryption_keys.iter() {
             let note = self.decrypt_note_with_key(note, key);

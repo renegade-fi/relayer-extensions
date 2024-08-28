@@ -139,7 +139,7 @@ impl Indexer {
         // Get the wallet key for the given wallet
         let eth_key = self.get_wallet_private_key(&wallet).await?;
         let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
-        let root_key = wallet_keychain.secret_keys.sk_root.clone().unwrap();
+        let wallet_key = wallet_keychain.symmetric_key();
 
         self.relayer_client.check_wallet_indexed(wallet.id, self.chain_id, &eth_key).await?;
 
@@ -152,7 +152,7 @@ impl Indexer {
 
         // Redeem the note through the relayer
         let req = RedeemNoteRequest { note: note.clone(), decryption_key: *key };
-        self.relayer_client.redeem_note(wallet.id, req, &root_key).await?;
+        self.relayer_client.redeem_note(wallet.id, req, &wallet_key).await?;
 
         // Mark the fee as redeemed
         self.maybe_mark_redeemed(&tx, &note).await?;
@@ -172,6 +172,7 @@ impl Indexer {
             .await
             .map_err(err_str!(FundsManagerError::Arbitrum))?
         {
+            warn!("nullifier not seen on-chain after redemption, tx: {tx_hash}");
             return Ok(());
         }
 
