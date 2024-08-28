@@ -73,6 +73,9 @@ pub struct ExecutionQuote {
     /// The gas price used in the swap
     #[serde(with = "u256_string_serialization")]
     pub gas_price: U256,
+    /// The estimated gas for the swap
+    #[serde(with = "u256_string_serialization")]
+    pub estimated_gas: U256,
 }
 
 /// The request body for fetching a quote from the execution venue
