@@ -21,6 +21,7 @@ use itertools::Itertools;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::warn;
 use warp::reply::Json;
 
 /// The "mints" query param
@@ -31,6 +32,9 @@ pub const GAS_ASSET_NAME: &str = "ETH";
 pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 1.; // ETH
 /// The maximum amount that a request may refill gas to
 pub const MAX_GAS_REFILL_AMOUNT: f64 = 0.1; // ETH
+/// The maximum value of a quoter withdrawal that can be processed in a single
+/// request
+pub const MAX_WITHDRAWAL_VALUE: f64 = 50_000.; // USD
 
 // --- Fee Indexing --- //
 
@@ -89,6 +93,29 @@ pub(crate) async fn quoter_withdraw_handler(
     withdraw_request: WithdrawFundsRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    // Get the price of the token
+    let maybe_price = server
+        .relayer_client
+        .get_binance_price(&withdraw_request.mint)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    if let Some(price) = maybe_price {
+        // If a price was found, check that the withdrawal value is less than the
+        // allowable maximum. If no price was found, we do not block the
+        // withdrawal.
+
+        let value = withdraw_request.amount * price;
+        if value > MAX_WITHDRAWAL_VALUE {
+            return Err(warp::reject::custom(ApiError::BadRequest(format!(
+                "Requested withdrawal of ${} of {} exceeds maximum allowed withdrawal of ${}",
+                value, withdraw_request.mint, MAX_WITHDRAWAL_VALUE
+            ))));
+        }
+    } else {
+        warn!("No price found for {}, allowing withdrawal", withdraw_request.mint);
+    }
+
     server
         .custody_client
         .withdraw_from_hot_wallet(
