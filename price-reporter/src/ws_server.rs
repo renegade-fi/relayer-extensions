@@ -5,17 +5,14 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
+use renegade_common::types::Price;
 use renegade_price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
     worker::ExchangeConnectionsConfig,
 };
 use renegade_util::err_str;
-use tokio::{
-    net::TcpStream,
-    sync::{broadcast::channel, RwLock},
-    time::Instant,
-};
+use tokio::{net::TcpStream, sync::watch::channel, sync::RwLock, time::Instant};
 use tokio_stream::StreamMap;
 use tokio_tungstenite::accept_async;
 use tracing::{debug, error, info, warn};
@@ -25,8 +22,8 @@ use crate::{
     errors::ServerError,
     utils::{
         get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic,
-        validate_subscription, ClosureSender, PairInfo, PriceMessage, PriceSender, PriceStream,
-        PriceStreamMap, SharedPriceStreams, WsWriteStream, CONN_RETRY_DELAY_MS,
+        validate_subscription, ClosureSender, PairInfo, PriceMessage, PriceReceiver, PriceSender,
+        PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream, CONN_RETRY_DELAY_MS,
         KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
@@ -52,44 +49,47 @@ impl GlobalPriceStreams {
         Self { price_streams: Arc::new(RwLock::new(HashMap::new())), closure_channel }
     }
 
+    /// Add a price stream to the global map
+    pub async fn add_price_stream(&mut self, pair_info: PairInfo, price_rx: PriceReceiver) {
+        self.price_streams.write().await.insert(pair_info, price_rx);
+    }
+
+    /// Remove a price stream from the global map
+    pub async fn remove_price_stream(&mut self, pair_info: PairInfo) {
+        self.price_streams.write().await.remove(&pair_info);
+    }
+
     /// Initialize a price stream for the given pair info
     pub async fn init_price_stream(
         &mut self,
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
-    ) -> Result<PriceStream, ServerError> {
+    ) -> Result<PriceReceiver, ServerError> {
         validate_subscription(&pair_info).await?;
 
         info!("Initializing price stream for {}", get_pair_info_topic(&pair_info));
 
         // Create a shared channel into which we forward streamed prices
-        let (price_tx, price_rx) = channel(32 /* capacity */);
-
-        // Clone the global map of price streams for the task to have access to it
-        let global_price_streams = self.clone();
+        let (price_tx, price_rx) = channel(Price::default());
+        self.add_price_stream(pair_info.clone(), price_rx.clone()).await;
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
+        let mut global_price_streams = self.clone();
         tokio::spawn(async move {
-            let res = Self::price_stream_task(
-                config,
-                pair_info,
-                &global_price_streams.price_streams,
-                price_tx,
-            )
-            .await;
+            let res = Self::price_stream_task(config, pair_info.clone(), price_tx).await;
+            global_price_streams.remove_price_stream(pair_info).await;
             global_price_streams.closure_channel.send(res).unwrap()
         });
 
         // Return a handle to the broadcast channel stream
-        Ok(PriceStream::new(price_rx))
+        Ok(price_rx)
     }
 
     /// The task responsible for streaming prices from the exchange
     async fn price_stream_task(
         config: ExchangeConnectionsConfig,
         pair_info: PairInfo,
-        price_streams: &SharedPriceStreams,
         price_tx: PriceSender,
     ) -> Result<(), ServerError> {
         let mut retry_timestamps = Vec::new();
@@ -97,11 +97,6 @@ impl GlobalPriceStreams {
         // Connect to the pair on the specified exchange
         let mut conn =
             Self::connect_with_retries(&pair_info, &config, &mut retry_timestamps).await?;
-
-        // Add the channel to the map of price streams
-        {
-            price_streams.write().await.insert(pair_info.clone(), price_tx.clone());
-        }
 
         let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
         tokio::pin!(delay);
@@ -119,13 +114,9 @@ impl GlobalPriceStreams {
                     match price_res.map_err(ServerError::ExchangeConnection) {
                         Ok(price) => {
                             // `send` only errors if there are no more receivers, meaning no more
-                            // clientz are subscribed to this price stream. In this case, we remove
+                            // clients are subscribed to this price stream. In this case, we remove
                             // the stream from the global map, and complete the task.
-                            if price_tx.send(price).is_err() {
-                                info!("No more subscribers for {}, closing price stream", get_pair_info_topic(&pair_info));
-                                price_streams.write().await.remove(&pair_info);
-                                return Ok(());
-                            }
+                            let _ = price_tx.send(price);
                         }
                         Err(e) => {
                             // We failed to stream a price, attempt to
@@ -219,18 +210,18 @@ impl GlobalPriceStreams {
         &mut self,
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
-    ) -> Result<PriceStream, ServerError> {
-        let maybe_stream_tx = {
+    ) -> Result<PriceReceiver, ServerError> {
+        let maybe_stream_rx = {
             let price_streams = self.price_streams.read().await;
             price_streams.get(&pair_info).cloned()
         };
-        let price_stream = if let Some(stream_tx) = maybe_stream_tx {
-            PriceStream::new(stream_tx.subscribe())
-        } else {
-            self.init_price_stream(pair_info, config).await?
+
+        let recv = match maybe_stream_rx {
+            Some(stream_rx) => stream_rx,
+            None => self.init_price_stream(pair_info, config).await?,
         };
 
-        Ok(price_stream)
+        Ok(recv)
     }
 }
 
@@ -258,18 +249,16 @@ pub async fn handle_connection(
     loop {
         tokio::select! {
             // Send the next price to the client
-            Some((pair_info, price_res)) = subscriptions.next() => {
+            Some((pair_info, price)) = subscriptions.next() => {
                 // The potential error in `price_res` here is a `BroadcastStreamRecvError::Lagged`,
                 // meaning the stream lagged receiving price updates. We can safely ignore this.
-                if let Ok(price) = price_res {
-                    let topic = get_pair_info_topic(&pair_info);
-                    let message = PriceMessage { topic, price };
-                    let message_ser = serde_json::to_string(&message).map_err(ServerError::Serde)?;
-                    write_stream
-                        .send(Message::Text(message_ser))
-                        .await
-                        .map_err(err_str!(ServerError::WebsocketSend))?;
-                }
+                let topic = get_pair_info_topic(&pair_info);
+                let message = PriceMessage { topic, price };
+                let message_ser = serde_json::to_string(&message).map_err(ServerError::Serde)?;
+                write_stream
+                    .send(Message::Text(message_ser))
+                    .await
+                    .map_err(err_str!(ServerError::WebsocketSend))?;
             }
 
             // Handle incoming websocket messages
@@ -361,9 +350,9 @@ async fn handle_subscription_message(
 
             info!("Subscribing {} to {}", peer_addr, &topic);
 
-            let price_stream =
+            let price_rx =
                 global_price_streams.get_or_create_price_stream(pair_info.clone(), config).await?;
-            subscriptions.insert(pair_info, price_stream);
+            subscriptions.insert(pair_info, PriceStream::new(price_rx));
         },
         WebsocketMessage::Unsubscribe { topic } => {
             info!("Unsubscribing {} from {}", peer_addr, &topic);

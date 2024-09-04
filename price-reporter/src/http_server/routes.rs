@@ -1,7 +1,6 @@
 //! The routes for the HTTP server
 
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use hyper::{Body, Request, Response, StatusCode};
 use renegade_common::types::Price;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
@@ -72,23 +71,13 @@ impl PriceHandler {
         let mut self_clone = self.clone();
 
         let pair_info = parse_pair_info_from_topic(topic)?;
-        let mut price_stream = self_clone
+        let price_rx = self_clone
             .price_streams
             .get_or_create_price_stream(pair_info, self_clone.config.clone())
             .await?;
 
-        // Loop until we get a price from the stream
-        loop {
-            match price_stream.next().await {
-                None => return Err(ServerError::HttpServer("Price stream closed".to_string())),
-                Some(Ok(price)) => {
-                    return Ok(price);
-                },
-                // This error case is only thrown when the stream is lagging, meaning we should just
-                // continue looping
-                Some(Err(_)) => {},
-            }
-        }
+        let price = *price_rx.borrow();
+        Ok(price)
     }
 }
 

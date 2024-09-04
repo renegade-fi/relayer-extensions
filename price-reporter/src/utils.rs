@@ -11,9 +11,10 @@ use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
-    sync::{broadcast::Sender, mpsc::UnboundedSender, RwLock},
+    sync::watch::{Receiver as WatchReceiver, Sender as WatchSender},
+    sync::{mpsc::UnboundedSender, RwLock},
 };
-use tokio_stream::{wrappers::BroadcastStream, StreamMap};
+use tokio_stream::{wrappers::WatchStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
@@ -77,14 +78,17 @@ const ETH_WS_ADDR_ENV_VAR: &str = "ETH_WS_ADDR";
 pub type PairInfo = (Exchange, Token, Token);
 
 /// A type alias for the sender end of a price channel
-pub type PriceSender = Sender<Price>;
+pub type PriceSender = WatchSender<Price>;
+
+/// A type alias for a price receiver
+pub type PriceReceiver = WatchReceiver<Price>;
 
 /// A type alias for a shareable map of price streams, indexed by the (source,
 /// base, quote) tuple
-pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceSender>>>;
+pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceReceiver>>>;
 
 /// A type alias for a price stream
-pub type PriceStream = BroadcastStream<Price>;
+pub type PriceStream = WatchStream<Price>;
 
 /// A type alias for a mapped stream prices, indexed by the (source, base,
 /// quote) tuple
