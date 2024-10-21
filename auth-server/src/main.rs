@@ -11,6 +11,9 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
+pub(crate) mod schema;
+
 use bytes::Bytes;
 use clap::Parser;
 use reqwest::{Client, Method, StatusCode};
