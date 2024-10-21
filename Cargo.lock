@@ -702,17 +702,22 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auth-server"
 version = "0.1.0"
 dependencies = [
+ "bb8",
  "bytes",
  "clap",
  "diesel",
+ "diesel-async",
  "futures-util",
  "http 0.2.12",
  "hyper 0.14.30",
+ "native-tls",
+ "postgres-native-tls",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-postgres",
  "tracing",
  "warp",
 ]

@@ -13,15 +13,18 @@
 
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;
+mod server;
 
-use bytes::Bytes;
 use clap::Parser;
-use reqwest::{Client, Method, StatusCode};
+use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
 use warp::{Filter, Rejection, Reply};
+
+use server::Server;
 
 // -------
 // | CLI |
@@ -30,19 +33,25 @@ use warp::{Filter, Rejection, Reply};
 /// The command line arguments for the auth server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+pub struct Cli {
+    /// The database url
+    #[arg(long, env = "DATABASE_URL")]
+    pub database_url: String,
+    /// The encryption key used to encrypt/decrypt database values
+    #[arg(long, env = "ENCRYPTION_KEY")]
+    pub encryption_key: String,
     /// The URL of the relayer
     #[arg(long, env = "RELAYER_URL")]
-    relayer_url: String,
+    pub relayer_url: String,
     /// The admin key for the relayer
     #[arg(long, env = "RELAYER_ADMIN_KEY")]
-    relayer_admin_key: String,
+    pub relayer_admin_key: String,
     /// The port to run the server on
-    #[arg(long, env = "PORT", default_value = "3030")]
-    port: u16,
+    #[arg(long, env = "PORT", default_value = "3000")]
+    pub port: u16,
     /// Whether to enable datadog logging
     #[arg(long)]
-    datadog_logging: bool,
+    pub datadog_logging: bool,
 }
 
 // -------------
@@ -70,8 +79,12 @@ impl warp::reject::Reject for ApiError {}
 /// The main function for the auth server
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
+    let args = Cli::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
+
+    // Create the server
+    let server = Server::new(args).await.expect("Failed to create server");
+    let server = Arc::new(server);
 
     // TODO: Setup logging
 
@@ -87,53 +100,22 @@ async fn main() {
         .and(warp::method())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::any().map(move || args.relayer_url.clone()))
-        .and(warp::any().map(move || args.relayer_admin_key.clone()))
-        .and_then(handle_request);
+        .and(with_server(server.clone()))
+        .and_then(|path, method, headers, body, server: Arc<Server>| async move {
+            server.handle_proxy_request(path, method, headers, body).await
+        });
 
     // Bind the server and listen
-    info!("Starting auth server on port {}", args.port);
+    info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping.or(proxy).recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
 
-/// Handle a request to the relayer
-async fn handle_request(
-    path: warp::path::FullPath,
-    method: Method,
-    headers: warp::hyper::HeaderMap,
-    body: Bytes,
-    relayer_url: String,
-    relayer_admin_key: String,
-) -> Result<impl Reply, Rejection> {
-    let client = Client::new();
-    let url = format!("{}{}", relayer_url, path.as_str());
-
-    let mut req = client.request(method, &url).headers(headers).body(body);
-    req = req.header("X-Admin-Key", &relayer_admin_key);
-
-    match req.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let headers = resp.headers().clone();
-            let body = resp.bytes().await.map_err(|e| {
-                warp::reject::custom(ApiError::InternalError(format!(
-                    "Failed to read response body: {}",
-                    e
-                )))
-            })?;
-
-            let mut response = warp::http::Response::new(body);
-            *response.status_mut() = status;
-            *response.headers_mut() = headers;
-
-            Ok(response)
-        },
-        Err(e) => {
-            error!("Error proxying request: {}", e);
-            Err(warp::reject::custom(ApiError::InternalError(e.to_string())))
-        },
-    }
+/// Helper function to pass the server to filters
+fn with_server(
+    server: Arc<Server>,
+) -> impl Filter<Extract = (Arc<Server>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || server.clone())
 }
 
 /// Handle a rejection from an endpoint handler
