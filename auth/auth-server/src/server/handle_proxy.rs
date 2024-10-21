@@ -32,8 +32,7 @@ impl Server {
                 let headers = resp.headers().clone();
                 let body = resp.bytes().await.map_err(|e| {
                     warp::reject::custom(ApiError::InternalError(format!(
-                        "Failed to read response body: {}",
-                        e
+                        "Failed to read response body: {e}"
                     )))
                 })?;
 
