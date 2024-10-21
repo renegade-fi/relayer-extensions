@@ -37,6 +37,9 @@ struct Args {
     /// The port to run the server on
     #[arg(long, env = "PORT", default_value = "3030")]
     port: u16,
+    /// Whether to enable datadog logging
+    #[arg(long)]
+    datadog_logging: bool,
 }
 
 // -------------
@@ -66,6 +69,8 @@ impl warp::reject::Reject for ApiError {}
 async fn main() {
     let args = Args::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
+
+    // TODO: Setup logging
 
     // --- Routes --- //
 
