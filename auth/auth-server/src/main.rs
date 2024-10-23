@@ -11,20 +11,28 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+pub(crate) mod error;
+pub(crate) mod models;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;
 mod server;
 
+use auth_server_api::{API_KEYS_PATH, DEACTIVATE_API_KEY_PATH};
 use clap::Parser;
+use renegade_utils::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
+use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
 
 use server::Server;
+
+/// The default internal server error message
+const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
 
 // -------
 // | CLI |
@@ -82,11 +90,20 @@ async fn main() {
     let args = Cli::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
 
+    // Setup logging
+    configure_telemetry(
+        args.datadog_logging, // datadog_enabled
+        false,                // otlp_enabled
+        false,                // metrics_enabled
+        "".to_string(),       // collector_endpoint
+        "",                   // statsd_host
+        0,                    // statsd_port
+    )
+    .expect("failed to setup telemetry");
+
     // Create the server
     let server = Server::new(args).await.expect("Failed to create server");
     let server = Arc::new(server);
-
-    // TODO: Setup logging
 
     // --- Routes --- //
 
@@ -94,6 +111,21 @@ async fn main() {
     let ping = warp::path("ping")
         .and(warp::get())
         .map(|| warp::reply::with_status("PONG", StatusCode::OK));
+
+    // Add an API key
+    let add_api_key = warp::path(API_KEYS_PATH)
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(with_server(server.clone()))
+        .and_then(|request, server: Arc<Server>| async move { server.add_key(request).await });
+
+    // Expire an API key
+    let expire_api_key = warp::path(API_KEYS_PATH)
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path(DEACTIVATE_API_KEY_PATH))
+        .and(warp::post())
+        .and(with_server(server.clone()))
+        .and_then(|id: Uuid, server: Arc<Server>| async move { server.expire_key(id).await });
 
     // Proxy route
     let proxy = warp::path::full()
@@ -107,7 +139,7 @@ async fn main() {
 
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
-    let routes = ping.or(proxy).recover(handle_rejection);
+    let routes = ping.or(add_api_key).or(expire_api_key).or(proxy).recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
 
@@ -122,8 +154,11 @@ fn with_server(
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     if let Some(api_error) = err.find::<ApiError>() {
         let (code, message) = match api_error {
-            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            ApiError::InternalError(e) => {
+                error!("Internal server error: {e}");
+                (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
+            },
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
         };
 
         Ok(json_error(message, code))

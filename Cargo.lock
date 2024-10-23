@@ -49,6 +49,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes-gcm"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "ghash",
+ "subtle",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -262,7 +276,7 @@ dependencies = [
 [[package]]
 name = "arbitrum-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -702,8 +716,12 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auth-server"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
+ "auth-server-api",
+ "base64 0.22.1",
  "bb8",
  "bytes",
+ "chrono",
  "clap",
  "diesel",
  "diesel-async",
@@ -712,6 +730,7 @@ dependencies = [
  "hyper 0.14.30",
  "native-tls",
  "postgres-native-tls",
+ "rand 0.8.5",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -719,7 +738,17 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
+ "util",
+ "uuid 1.10.0",
  "warp",
+]
+
+[[package]]
+name = "auth-server-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "uuid 1.10.0",
 ]
 
 [[package]]
@@ -1613,7 +1642,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -1624,7 +1653,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -1655,7 +1684,7 @@ dependencies = [
 [[package]]
 name = "circuits"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-crypto-primitives",
  "ark-ec",
@@ -1799,7 +1828,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-mpc",
  "async-trait",
@@ -1864,7 +1893,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "arbitrum-client",
  "base64 0.13.1",
@@ -1916,7 +1945,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -2291,6 +2320,7 @@ dependencies = [
  "bigdecimal 0.4.5",
  "bitflags 2.6.0",
  "byteorder",
+ "chrono",
  "diesel_derives",
  "itoa",
  "num-bigint",
@@ -2971,7 +3001,7 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "base64 0.22.1",
  "circuit-types",
@@ -3375,6 +3405,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghash"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1"
+dependencies = [
+ "opaque-debug 0.3.1",
+ "polyval",
+]
+
+[[package]]
 name = "gimli"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3401,7 +3441,7 @@ dependencies = [
 [[package]]
 name = "gossip-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "bincode",
  "circuit-types",
@@ -4083,7 +4123,7 @@ dependencies = [
 [[package]]
 name = "job-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-mpc",
  "circuit-types",
@@ -5443,6 +5483,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyval"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d1fe60d06143b2430aa532c94cfe9e29783047f06c0d7fd359a9a51b729fa25"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "opaque-debug 0.3.1",
+ "universal-hash",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5546,7 +5598,7 @@ dependencies = [
 [[package]]
 name = "price-reporter"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "async-trait",
  "atomic_float 0.1.0",
@@ -6059,7 +6111,7 @@ dependencies = [
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
@@ -6123,7 +6175,7 @@ dependencies = [
 [[package]]
 name = "renegade-metrics"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "atomic_float 1.1.0",
  "circuit-types",
@@ -7375,7 +7427,7 @@ dependencies = [
 [[package]]
 name = "system-bus"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "bus",
  "common",
@@ -8164,7 +8216,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
+source = "git+https://github.com/renegade-fi/renegade#99cc160e9db51ade72d0310b44cf3e1a9b7d9da8"
 dependencies = [
  "ark-ec",
  "ark-serialize 0.4.2",
