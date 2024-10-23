@@ -4,11 +4,30 @@ use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{models::NewApiKey, schema::api_keys};
+use crate::{
+    models::{ApiKey, NewApiKey},
+    schema::api_keys,
+};
 
 use super::{AuthServerError, Server};
 
 impl Server {
+    // --- Getters --- //
+
+    /// Get the API key entry for a given key
+    pub async fn get_api_key_entry(&self, api_key: Uuid) -> Result<ApiKey, AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        api_keys::table
+            .filter(api_keys::id.eq(api_key))
+            .limit(1)
+            .load::<ApiKey>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)
+            .map(|res| res[0].clone())
+    }
+
+    // --- Setters --- //
+
     /// Add a new API key to the database
     pub async fn add_key_query(&self, new_key: NewApiKey) -> Result<(), AuthServerError> {
         let mut conn = self.get_db_conn().await?;

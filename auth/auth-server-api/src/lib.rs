@@ -9,6 +9,9 @@
 use serde::Deserialize;
 use uuid::Uuid;
 
+/// The Renegade API key header
+pub const RENEGADE_API_KEY_HEADER: &str = "X-Renegade-Api-Key";
+
 // ----------------------
 // | API Key Management |
 // ----------------------

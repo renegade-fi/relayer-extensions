@@ -26,7 +26,11 @@ rand = "0.8.5"
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
-renegade-utils = { package = "util", git = "https://github.com/renegade-fi/renegade" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
+    "auth",
+] }
 
 # === Misc Dependencies === #
 base64 = "0.22.1"
