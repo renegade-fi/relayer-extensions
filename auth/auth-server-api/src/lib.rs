@@ -23,7 +23,7 @@ pub const API_KEYS_PATH: &str = "api-keys";
 /// The path to mark an API key as inactive
 ///
 /// POST /api-keys/{id}/deactivate
-pub const DEACTIVATE_API_KEY_PATH: &str = "deactivate";
+pub const DEACTIVATE_API_KEY_PATH: &str = "/api-keys/{id}/deactivate";
 
 /// A request to create a new API key
 #[derive(Debug, Deserialize)]

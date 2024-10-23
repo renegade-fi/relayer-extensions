@@ -22,6 +22,9 @@ pub enum AuthServerError {
     /// Error serializing or deserializing a stored value
     #[error("Error serializing/deserializing a stored value: {0}")]
     Serde(String),
+    /// Error setting up the auth server
+    #[error("Error setting up the auth server: {0}")]
+    Setup(String),
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
@@ -29,26 +32,37 @@ pub enum AuthServerError {
 
 impl AuthServerError {
     /// Create a new database connection error
+    #[allow(clippy::needless_pass_by_value)]
     pub fn db<T: ToString>(msg: T) -> Self {
         Self::DatabaseConnection(msg.to_string())
     }
 
     /// Create a new encryption error
+    #[allow(clippy::needless_pass_by_value)]
     pub fn encryption<T: ToString>(msg: T) -> Self {
         Self::Encryption(msg.to_string())
     }
 
     /// Create a new decryption error
+    #[allow(clippy::needless_pass_by_value)]
     pub fn decryption<T: ToString>(msg: T) -> Self {
         Self::Decryption(msg.to_string())
     }
 
     /// Create a new serde error
+    #[allow(clippy::needless_pass_by_value)]
     pub fn serde<T: ToString>(msg: T) -> Self {
         Self::Serde(msg.to_string())
     }
 
+    /// Create a new setup error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn setup<T: ToString>(msg: T) -> Self {
+        Self::Setup(msg.to_string())
+    }
+
     /// Create a new unauthorized error
+    #[allow(clippy::needless_pass_by_value)]
     pub fn unauthorized<T: ToString>(msg: T) -> Self {
         Self::Unauthorized(msg.to_string())
     }

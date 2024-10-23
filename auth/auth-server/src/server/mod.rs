@@ -1,24 +1,32 @@
 //! Defines the server struct and associated functions
 //!
 //! The server is a dependency injection container for the authentication server
+mod api_auth;
+mod handle_external_match;
 mod handle_key_management;
-mod handle_proxy;
 mod helpers;
 mod queries;
 
-use crate::{error::AuthServerError, Cli};
+use crate::{error::AuthServerError, ApiError, Cli};
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
+use bytes::Bytes;
 use diesel::ConnectionError;
 use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
+use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
+use renegade_api::auth::add_expiring_auth_to_headers;
+use renegade_common::types::wallet::keychain::HmacKey;
 use reqwest::Client;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tracing::error;
+
+/// The duration for which the admin authentication is valid
+const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
 
 /// The DB connection type
 pub type DbConn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgConnection>>;
@@ -32,7 +40,7 @@ pub struct Server {
     /// The URL of the relayer
     pub relayer_url: String,
     /// The admin key for the relayer
-    pub relayer_admin_key: String,
+    pub relayer_admin_key: HmacKey,
     /// The encryption key for storing API secrets
     pub encryption_key: Vec<u8>,
     /// The HTTP client
@@ -50,10 +58,13 @@ impl Server {
             .decode(&args.encryption_key)
             .map_err(AuthServerError::encryption)?;
 
+        let relayer_admin_key =
+            HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
+
         Ok(Self {
             db_pool: Arc::new(db_pool),
             relayer_url: args.relayer_url,
-            relayer_admin_key: args.relayer_admin_key,
+            relayer_admin_key,
             encryption_key,
             client: Client::new(),
         })
@@ -62,6 +73,54 @@ impl Server {
     /// Get a db connection from the pool
     pub async fn get_db_conn(&self) -> Result<DbConn, AuthServerError> {
         self.db_pool.get().await.map_err(AuthServerError::db)
+    }
+
+    /// Send a proxied request to the relayer with admin authentication
+    pub(crate) async fn send_admin_request(
+        &self,
+        method: Method,
+        path: &str,
+        mut headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<Response<Bytes>, ApiError> {
+        // Admin authenticate the request
+        self.admin_authenticate(path, &mut headers, &body).await?;
+
+        // Forward the request to the relayer
+        let url = format!("{}{}", self.relayer_url, path);
+        let req = self.client.request(method, &url).headers(headers).body(body);
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let headers = resp.headers().clone();
+                let body = resp.bytes().await.map_err(|e| {
+                    ApiError::internal(format!("Failed to read response body: {e}"))
+                })?;
+
+                let mut response = warp::http::Response::new(body);
+                *response.status_mut() = status;
+                *response.headers_mut() = headers;
+
+                Ok(response)
+            },
+            Err(e) => {
+                error!("Error proxying request: {}", e);
+                Err(ApiError::internal(e))
+            },
+        }
+    }
+
+    /// Admin authenticate a request
+    pub fn admin_authenticate(
+        &self,
+        path: &str,
+        headers: &mut HeaderMap,
+        body: &[u8],
+    ) -> Result<(), ApiError> {
+        let key = self.relayer_admin_key;
+        let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
+        add_expiring_auth_to_headers(path, headers, body, &key, expiration);
+        Ok(())
     }
 }
 
