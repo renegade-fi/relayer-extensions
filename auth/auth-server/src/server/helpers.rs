@@ -65,4 +65,12 @@ mod tests {
         let decrypted = aes_decrypt(&encrypted, &key).unwrap();
         assert_eq!(value, decrypted);
     }
+
+    /// Generate an encryption key, base64 encode it, and print it
+    #[test]
+    pub fn generate_encryption_key() {
+        let key = Aes128Gcm::generate_key(&mut thread_rng());
+        let encoded = general_purpose::STANDARD.encode(&key);
+        println!("{}", encoded);
+    }
 }

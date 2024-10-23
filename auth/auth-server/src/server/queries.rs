@@ -17,13 +17,18 @@ impl Server {
     /// Get the API key entry for a given key
     pub async fn get_api_key_entry(&self, api_key: Uuid) -> Result<ApiKey, AuthServerError> {
         let mut conn = self.get_db_conn().await?;
-        api_keys::table
+        let result = api_keys::table
             .filter(api_keys::id.eq(api_key))
             .limit(1)
             .load::<ApiKey>(&mut conn)
             .await
-            .map_err(AuthServerError::db)
-            .map(|res| res[0].clone())
+            .map_err(AuthServerError::db)?;
+
+        if result.is_empty() {
+            Err(AuthServerError::unauthorized("API key not found"))
+        } else {
+            Ok(result[0].clone())
+        }
     }
 
     // --- Setters --- //

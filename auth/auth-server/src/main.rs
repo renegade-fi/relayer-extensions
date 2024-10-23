@@ -17,7 +17,7 @@ pub(crate) mod models;
 pub(crate) mod schema;
 mod server;
 
-use auth_server_api::{API_KEYS_PATH, DEACTIVATE_API_KEY_PATH};
+use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
@@ -80,6 +80,14 @@ pub enum ApiError {
     Unauthorized,
 }
 
+impl ApiError {
+    /// Create a new internal server error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn internal<T: ToString>(msg: T) -> Self {
+        Self::InternalError(msg.to_string())
+    }
+}
+
 // Implement warp::reject::Reject for ApiError
 impl warp::reject::Reject for ApiError {}
 
@@ -108,7 +116,7 @@ async fn main() {
     let server = Server::new(args).await.expect("Failed to create server");
     let server = Arc::new(server);
 
-    // --- Routes --- //
+    // --- Management Routes --- //
 
     // Ping route
     let ping = warp::path("ping")
@@ -125,24 +133,29 @@ async fn main() {
     // Expire an API key
     let expire_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
-        .and(warp::path(DEACTIVATE_API_KEY_PATH))
+        .and(warp::path("deactivate"))
         .and(warp::post())
         .and(with_server(server.clone()))
         .and_then(|id: Uuid, server: Arc<Server>| async move { server.expire_key(id).await });
 
-    // Proxy route
-    let proxy = warp::path::full()
-        .and(warp::method())
+    // --- Proxied Routes --- //
+
+    let atomic_match_path = warp::path("v0")
+        .and(warp::path("matching-engine"))
+        .and(warp::path("request-external-match"))
+        .and(warp::post())
+        .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
         .and(with_server(server.clone()))
-        .and_then(|path, method, headers, body, server: Arc<Server>| async move {
-            server.handle_proxy_request(path, method, headers, body).await
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.handle_external_match_request(path, headers, body).await
         });
 
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
-    let routes = ping.or(add_api_key).or(expire_api_key).or(proxy).recover(handle_rejection);
+    let routes =
+        ping.or(add_api_key).or(expire_api_key).or(atomic_match_path).recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
 
