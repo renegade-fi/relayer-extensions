@@ -19,7 +19,7 @@ mod server;
 
 use auth_server_api::{API_KEYS_PATH, DEACTIVATE_API_KEY_PATH};
 use clap::Parser;
-use renegade_utils::telemetry::configure_telemetry;
+use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -75,6 +75,9 @@ pub enum ApiError {
     /// A bad request error
     #[error("Bad request: {0}")]
     BadRequest(String),
+    /// An unauthorized error
+    #[error("Unauthorized")]
+    Unauthorized,
 }
 
 // Implement warp::reject::Reject for ApiError
@@ -159,6 +162,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
                 (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
             },
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
+            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
         };
 
         Ok(json_error(message, code))
