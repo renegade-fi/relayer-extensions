@@ -9,6 +9,7 @@
 #![deny(clippy::missing_docs_in_private_items)]
 #![deny(unsafe_code)]
 #![deny(clippy::needless_pass_by_ref_mut)]
+#![deny(clippy::needless_pass_by_value)]
 #![feature(trivial_bounds)]
 
 pub(crate) mod error;
@@ -48,6 +49,10 @@ pub struct Cli {
     /// The encryption key used to encrypt/decrypt database values
     #[arg(long, env = "ENCRYPTION_KEY")]
     pub encryption_key: String,
+    /// The management key for the auth server, used to authenticate management
+    /// requests
+    #[arg(long, env = "MANAGEMENT_KEY")]
+    pub management_key: String,
     /// The URL of the relayer
     #[arg(long, env = "RELAYER_URL")]
     pub relayer_url: String,
@@ -85,6 +90,12 @@ impl ApiError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn internal<T: ToString>(msg: T) -> Self {
         Self::InternalError(msg.to_string())
+    }
+
+    /// Create a new bad request error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn bad_request<T: ToString>(msg: T) -> Self {
+        Self::BadRequest(msg.to_string())
     }
 }
 
@@ -126,17 +137,26 @@ async fn main() {
     // Add an API key
     let add_api_key = warp::path(API_KEYS_PATH)
         .and(warp::post())
-        .and(warp::body::json())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
         .and(with_server(server.clone()))
-        .and_then(|request, server: Arc<Server>| async move { server.add_key(request).await });
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.add_key(path, headers, body).await
+        });
 
     // Expire an API key
     let expire_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
         .and(warp::path("deactivate"))
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
         .and(warp::post())
         .and(with_server(server.clone()))
-        .and_then(|id: Uuid, server: Arc<Server>| async move { server.expire_key(id).await });
+        .and_then(|id, path, headers, body, server: Arc<Server>| async move {
+            server.expire_key(id, path, headers, body).await
+        });
 
     // --- Proxied Routes --- //
 
@@ -155,7 +175,7 @@ async fn main() {
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes =
-        ping.or(add_api_key).or(expire_api_key).or(atomic_match_path).recover(handle_rejection);
+        ping.or(atomic_match_path).or(expire_api_key).or(add_api_key).recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
 

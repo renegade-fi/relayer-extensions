@@ -6,7 +6,7 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// The Renegade API key header
@@ -26,7 +26,7 @@ pub const API_KEYS_PATH: &str = "api-keys";
 pub const DEACTIVATE_API_KEY_PATH: &str = "/api-keys/{id}/deactivate";
 
 /// A request to create a new API key
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateApiKeyRequest {
     /// The API key id
     pub id: Uuid,

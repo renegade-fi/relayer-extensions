@@ -41,6 +41,8 @@ pub struct Server {
     pub relayer_url: String,
     /// The admin key for the relayer
     pub relayer_admin_key: HmacKey,
+    /// The management key for the auth server
+    pub management_key: HmacKey,
     /// The encryption key for storing API secrets
     pub encryption_key: Vec<u8>,
     /// The HTTP client
@@ -53,11 +55,13 @@ impl Server {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
-        // Parse the decryption key as a base64 encoded string
+        // Parse the decryption key, management key, and relayer admin key as
+        // base64 encoded strings
         let encryption_key = general_purpose::STANDARD
             .decode(&args.encryption_key)
             .map_err(AuthServerError::encryption)?;
-
+        let management_key =
+            HmacKey::from_base64_string(&args.management_key).map_err(AuthServerError::setup)?;
         let relayer_admin_key =
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
@@ -65,6 +69,7 @@ impl Server {
             db_pool: Arc::new(db_pool),
             relayer_url: args.relayer_url,
             relayer_admin_key,
+            management_key,
             encryption_key,
             client: Client::new(),
         })
@@ -84,7 +89,7 @@ impl Server {
         body: Bytes,
     ) -> Result<Response<Bytes>, ApiError> {
         // Admin authenticate the request
-        self.admin_authenticate(path, &mut headers, &body).await?;
+        self.admin_authenticate(path, &mut headers, &body)?;
 
         // Forward the request to the relayer
         let url = format!("{}{}", self.relayer_url, path);
