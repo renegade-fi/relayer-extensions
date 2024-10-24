@@ -5,12 +5,24 @@ use http::HeaderMap;
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::wallet::keychain::HmacKey;
 use uuid::Uuid;
+use warp::filters::path::FullPath;
 
 use crate::{error::AuthServerError, ApiError};
 
 use super::{helpers::aes_decrypt, Server};
 
 impl Server {
+    /// Authorize a management request
+    pub fn authorize_management_request(
+        &self,
+        path: &FullPath,
+        headers: &HeaderMap,
+        body: &[u8],
+    ) -> Result<(), ApiError> {
+        validate_expiring_auth(path.as_str(), headers, body, &self.management_key)
+            .map_err(|_| ApiError::Unauthorized)
+    }
+
     /// Authorize a request
     pub(crate) async fn authorize_request(
         &self,

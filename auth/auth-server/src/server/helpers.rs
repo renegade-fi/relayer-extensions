@@ -52,6 +52,8 @@ pub fn aes_decrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
 
 #[cfg(test)]
 mod tests {
+    use renegade_common::types::wallet::keychain::HmacKey;
+
     use super::*;
 
     /// Tests AES encryption and decryption
@@ -66,11 +68,13 @@ mod tests {
         assert_eq!(value, decrypted);
     }
 
-    /// Generate an encryption key, base64 encode it, and print it
+    /// Generate a management key
+    ///
+    /// Useful for local testing
     #[test]
-    pub fn generate_encryption_key() {
-        let key = Aes128Gcm::generate_key(&mut thread_rng());
-        let encoded = general_purpose::STANDARD.encode(&key);
-        println!("{}", encoded);
+    fn test_generate_management_key() {
+        let key = HmacKey::random();
+        let encoded = general_purpose::STANDARD.encode(key.0);
+        println!("management key: {encoded}");
     }
 }
