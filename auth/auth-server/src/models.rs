@@ -33,3 +33,15 @@ impl NewApiKey {
         Self { id, encrypted_key, description }
     }
 }
+
+impl From<NewApiKey> for ApiKey {
+    fn from(key: NewApiKey) -> Self {
+        Self {
+            id: key.id,
+            encrypted_key: key.encrypted_key,
+            description: key.description,
+            created_at: SystemTime::now(),
+            is_active: true,
+        }
+    }
+}
