@@ -14,7 +14,7 @@ RUN cargo install cargo-chef
 FROM chef AS sources
 WORKDIR /build
 COPY ./Cargo.toml ./Cargo.lock ./
-COPY ./auth-server ./auth-server
+COPY ./auth ./auth
 
 # === Builder === #
 # Pull the sources into their own layer
@@ -33,13 +33,13 @@ RUN apt-get update && \
     apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev ca-certificates
 
 # Update Cargo.toml to include only "auth-server" in workspace members
-RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["auth-server"]' Cargo.toml
+RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["auth/auth-server"]' Cargo.toml
 RUN cargo chef prepare --recipe-path recipe.json --bin auth-server
 
 # Build only the dependencies to cache them in this layer
 RUN cargo chef cook --release --recipe-path recipe.json
 
-COPY --from=sources /build/auth-server /build/auth-server
+COPY --from=sources /build/auth /build/auth
 WORKDIR /build
 
 RUN cargo build --release -p auth-server
