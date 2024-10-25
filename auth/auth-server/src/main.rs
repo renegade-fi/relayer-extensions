@@ -63,7 +63,7 @@ pub struct Cli {
     #[arg(long, env = "PORT", default_value = "3000")]
     pub port: u16,
     /// Whether to enable datadog logging
-    #[arg(long)]
+    #[arg(long, env = "DATADOG_LOGGING_ENABLED")]
     pub datadog_logging: bool,
 }
 
