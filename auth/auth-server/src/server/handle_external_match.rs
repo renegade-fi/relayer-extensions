@@ -15,11 +15,11 @@ impl Server {
     pub async fn handle_external_match_request(
         &self,
         path: warp::path::FullPath,
-        mut headers: warp::hyper::HeaderMap,
+        headers: warp::hyper::HeaderMap,
         body: Bytes,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        self.authorize_request(path.as_str(), &mut headers, &body).await?;
+        self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
         let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
