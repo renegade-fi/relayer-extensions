@@ -27,12 +27,12 @@ impl Server {
     pub(crate) async fn authorize_request(
         &self,
         path: &str,
-        headers: &mut HeaderMap,
+        headers: &HeaderMap,
         body: &[u8],
     ) -> Result<(), ApiError> {
         // Check API auth
         let api_key = headers
-            .remove(RENEGADE_API_KEY_HEADER)
+            .get(RENEGADE_API_KEY_HEADER)
             .and_then(|h| h.to_str().ok().map(String::from)) // Convert to String
             .and_then(|s| Uuid::parse_str(&s).ok()) // Use &s to parse
             .ok_or(AuthServerError::unauthorized("Invalid or missing Renegade API key"))?;
