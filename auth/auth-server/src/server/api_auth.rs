@@ -4,6 +4,7 @@ use auth_server_api::RENEGADE_API_KEY_HEADER;
 use http::HeaderMap;
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::wallet::keychain::HmacKey;
+use tracing::info;
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
@@ -37,27 +38,35 @@ impl Server {
             .and_then(|s| Uuid::parse_str(&s).ok()) // Use &s to parse
             .ok_or(AuthServerError::unauthorized("Invalid or missing Renegade API key"))?;
 
-        self.check_api_key_auth(api_key, path, headers, body).await?;
+        let key_description = self.check_api_key_auth(api_key, path, headers, body).await?;
+        info!("Authorized request for entity: {key_description}");
         Ok(())
     }
 
     /// Check that a request is authorized with a given API key and an HMAC of
     /// the request using the API secret
+    ///
+    /// Returns the description for the API key, i.e. a human readable name for
+    /// the entity that is making the request
     async fn check_api_key_auth(
         &self,
         api_key: Uuid,
         path: &str,
         headers: &HeaderMap,
         body: &[u8],
-    ) -> Result<(), AuthServerError> {
-        let api_secret = self.get_api_secret(api_key).await?;
+    ) -> Result<String, AuthServerError> {
+        let (api_secret, description) = self.get_api_secret(api_key).await?;
         let key = HmacKey::from_base64_string(&api_secret).map_err(AuthServerError::serde)?;
 
-        validate_expiring_auth(path, headers, body, &key).map_err(AuthServerError::unauthorized)
+        validate_expiring_auth(path, headers, body, &key).map_err(AuthServerError::unauthorized)?;
+        Ok(description)
     }
 
     /// Get the API secret for a given API key
-    async fn get_api_secret(&self, api_key: Uuid) -> Result<String, AuthServerError> {
+    ///
+    /// Also returns the description for the API key, i.e. a human readable name
+    /// for the entity that is making the request
+    async fn get_api_secret(&self, api_key: Uuid) -> Result<(String, String), AuthServerError> {
         // Fetch the API key entry then decrypt the API secret
         let entry = self.get_api_key_entry(api_key).await?;
         let decrypted = aes_decrypt(&entry.encrypted_key, &self.encryption_key)?;
@@ -65,6 +74,6 @@ impl Server {
             return Err(AuthServerError::ApiKeyInactive);
         }
 
-        Ok(decrypted)
+        Ok((decrypted, entry.description))
     }
 }
