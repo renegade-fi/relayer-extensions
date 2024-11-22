@@ -68,7 +68,7 @@ impl PriceHandler {
 
     /// Get a single price from the stream pertaining to the given topic
     pub async fn get_price(&self, topic: &str) -> Result<Price, ServerError> {
-        let mut self_clone = self.clone();
+        let self_clone = self.clone();
 
         let pair_info = parse_pair_info_from_topic(topic)?;
         let price_rx = self_clone

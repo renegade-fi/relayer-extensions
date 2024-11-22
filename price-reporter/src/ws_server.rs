@@ -50,18 +50,18 @@ impl GlobalPriceStreams {
     }
 
     /// Add a price stream to the global map
-    pub async fn add_price_stream(&mut self, pair_info: PairInfo, price_rx: PriceReceiver) {
+    pub async fn add_price_stream(&self, pair_info: PairInfo, price_rx: PriceReceiver) {
         self.price_streams.write().await.insert(pair_info, price_rx);
     }
 
     /// Remove a price stream from the global map
-    pub async fn remove_price_stream(&mut self, pair_info: PairInfo) {
+    pub async fn remove_price_stream(&self, pair_info: PairInfo) {
         self.price_streams.write().await.remove(&pair_info);
     }
 
     /// Initialize a price stream for the given pair info
     pub async fn init_price_stream(
-        &mut self,
+        &self,
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
@@ -75,7 +75,7 @@ impl GlobalPriceStreams {
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
-        let mut global_price_streams = self.clone();
+        let global_price_streams = self.clone();
         tokio::spawn(async move {
             let res = Self::price_stream_task(config, pair_info.clone(), price_tx).await;
             global_price_streams.remove_price_stream(pair_info).await;
@@ -217,7 +217,7 @@ impl GlobalPriceStreams {
 
     /// Fetch a price stream for the given pair info from the global map
     pub async fn get_or_create_price_stream(
-        &mut self,
+        &self,
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
@@ -350,7 +350,7 @@ async fn handle_ws_message(
 async fn handle_subscription_message(
     message: WebsocketMessage,
     subscriptions: &mut PriceStreamMap,
-    mut global_price_streams: GlobalPriceStreams,
+    global_price_streams: GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
     peer_addr: SocketAddr,
 ) -> Result<SubscriptionResponse, ServerError> {

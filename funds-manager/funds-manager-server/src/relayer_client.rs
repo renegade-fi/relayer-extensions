@@ -30,6 +30,7 @@ use renegade_common::types::{
         Wallet, WalletIdentifier,
     },
 };
+use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_biguint;
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::{Body, Client};
@@ -141,8 +142,15 @@ impl RelayerClient {
     }
 
     /// Create a new wallet via the configured relayer
-    pub(crate) async fn create_new_wallet(&self, wallet: Wallet) -> Result<(), FundsManagerError> {
-        let body = CreateWalletRequest { wallet: wallet.into() };
+    pub(crate) async fn create_new_wallet(
+        &self,
+        wallet: Wallet,
+        blinder_seed: &Scalar,
+    ) -> Result<(), FundsManagerError> {
+        let body = CreateWalletRequest {
+            wallet: wallet.into(),
+            blinder_seed: scalar_to_biguint(blinder_seed),
+        };
 
         let resp: CreateWalletResponse = self.post_relayer(CREATE_WALLET_ROUTE, &body).await?;
         self.await_relayer_task(resp.task_id).await

@@ -88,7 +88,7 @@ impl Indexer {
     // ------------------
 
     /// Get the latest block number
-    pub(crate) async fn get_latest_block(&mut self) -> Result<u64, FundsManagerError> {
+    pub(crate) async fn get_latest_block(&self) -> Result<u64, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let entry = metadata_table
             .filter(metadata_key.eq(LAST_INDEXED_BLOCK_KEY))
@@ -106,7 +106,7 @@ impl Indexer {
 
     /// Update the latest block number
     pub(crate) async fn update_latest_block(
-        &mut self,
+        &self,
         block_number: u64,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
@@ -124,7 +124,7 @@ impl Indexer {
     // --------------
 
     /// Insert a fee into the fees table
-    pub(crate) async fn insert_fee(&mut self, fee: NewFee) -> Result<(), FundsManagerError> {
+    pub(crate) async fn insert_fee(&self, fee: NewFee) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
         match diesel::insert_into(fees_table).values(vec![fee]).execute(&mut conn).await {
             Ok(_) => Ok(()),
@@ -140,9 +140,7 @@ impl Indexer {
     }
 
     /// Get all mints that have unredeemed fees
-    pub(crate) async fn get_unredeemed_fee_mints(
-        &mut self,
-    ) -> Result<Vec<String>, FundsManagerError> {
+    pub(crate) async fn get_unredeemed_fee_mints(&self) -> Result<Vec<String>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let mints = fees_table
             .select(mint_col)
@@ -157,7 +155,7 @@ impl Indexer {
 
     /// Mark a fee as redeemed
     pub(crate) async fn mark_fee_as_redeemed(
-        &mut self,
+        &self,
         tx_hash: &str,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
@@ -174,7 +172,7 @@ impl Indexer {
     ///
     /// Returns the `MAX_FEES_REDEEMED` most valuable fees to be redeemed
     pub(crate) async fn get_most_valuable_fees(
-        &mut self,
+        &self,
         prices: HashMap<String, f64>,
     ) -> Result<Vec<FeeValue>, FundsManagerError> {
         if prices.is_empty() {
@@ -220,7 +218,7 @@ impl Indexer {
 
     /// Get a wallet by its ID
     pub(crate) async fn get_wallet_by_id(
-        &mut self,
+        &self,
         wallet_id: &Uuid,
     ) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         let mut conn = self.get_conn().await?;
@@ -233,7 +231,7 @@ impl Indexer {
 
     /// Get all wallets in the table
     pub(crate) async fn get_all_wallets(
-        &mut self,
+        &self,
     ) -> Result<Vec<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let wallets = renegade_wallet_table
@@ -245,7 +243,7 @@ impl Indexer {
 
     /// Get the wallet managing a mint, if it exists
     pub(crate) async fn get_wallet_for_mint(
-        &mut self,
+        &self,
         mint: &str,
     ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
@@ -260,7 +258,7 @@ impl Indexer {
 
     /// Find a wallet with an empty balance slot, if one exists
     pub(crate) async fn find_wallet_with_empty_balance(
-        &mut self,
+        &self,
     ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
@@ -275,7 +273,7 @@ impl Indexer {
 
     /// Insert a new wallet into the wallets table
     pub(crate) async fn insert_wallet(
-        &mut self,
+        &self,
         wallet: RenegadeWalletMetadata,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
@@ -289,7 +287,7 @@ impl Indexer {
 
     /// Add a new mint to a wallet's managed mints
     pub(crate) async fn add_mint_to_wallet(
-        &mut self,
+        &self,
         wallet_id: &WalletIdentifier,
         mint: &str,
     ) -> Result<(), FundsManagerError> {
