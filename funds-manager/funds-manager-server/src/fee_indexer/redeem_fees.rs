@@ -27,7 +27,7 @@ pub(crate) const MAX_FEES_REDEEMED: usize = 20;
 
 impl Indexer {
     /// Redeem the most valuable open fees
-    pub async fn redeem_fees(&mut self) -> Result<(), FundsManagerError> {
+    pub async fn redeem_fees(&self) -> Result<(), FundsManagerError> {
         info!("redeeming fees...");
 
         // Get all mints that have unredeemed fees
@@ -64,7 +64,7 @@ impl Indexer {
 
     /// Find or create a wallet to store balances of a given mint
     async fn get_or_create_wallet(
-        &mut self,
+        &self,
         mint: &str,
     ) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         // Find a wallet with an existing balance
@@ -91,7 +91,7 @@ impl Indexer {
     /// Create a new wallet for managing a given mint
     ///
     /// Return the new wallet's metadata
-    async fn create_new_wallet(&mut self) -> Result<RenegadeWalletMetadata, FundsManagerError> {
+    async fn create_new_wallet(&self) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         // 1. Create the new wallet on-chain
         let (wallet_id, root_key) = self.create_renegade_wallet().await?;
 
@@ -107,7 +107,7 @@ impl Indexer {
 
     /// Create a new Renegade wallet on-chain
     async fn create_renegade_wallet(
-        &mut self,
+        &self,
     ) -> Result<(WalletIdentifier, LocalWallet), FundsManagerError> {
         let root_key = LocalWallet::new(&mut thread_rng());
 
@@ -118,7 +118,7 @@ impl Indexer {
             derive_wallet_keychain(&root_key, self.chain_id).map_err(FundsManagerError::custom)?;
 
         let wallet = Wallet::new_empty_wallet(wallet_id, blinder_seed, share_seed, key_chain);
-        self.relayer_client.create_new_wallet(wallet).await?;
+        self.relayer_client.create_new_wallet(wallet, &blinder_seed).await?;
         info!("created new wallet for fee redemption");
 
         Ok((wallet_id, root_key))
@@ -130,7 +130,7 @@ impl Indexer {
 
     /// Redeem a note into a wallet
     pub async fn redeem_note_into_wallet(
-        &mut self,
+        &self,
         tx: String,
         receiver: String,
         wallet: RenegadeWalletMetadata,
@@ -161,7 +161,7 @@ impl Indexer {
 
     /// Mark a fee as redeemed if its nullifier is spent on-chain
     async fn maybe_mark_redeemed(
-        &mut self,
+        &self,
         tx_hash: &str,
         note: &Note,
     ) -> Result<(), FundsManagerError> {
@@ -189,7 +189,7 @@ impl Indexer {
     ///
     /// Returns the name of the secret
     async fn store_wallet_secret(
-        &mut self,
+        &self,
         id: WalletIdentifier,
         wallet: LocalWallet,
     ) -> Result<String, FundsManagerError> {
@@ -210,7 +210,7 @@ impl Indexer {
 
     /// Get the private key for a wallet specified by its metadata
     pub(crate) async fn get_wallet_private_key(
-        &mut self,
+        &self,
         metadata: &RenegadeWalletMetadata,
     ) -> Result<LocalWallet, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);

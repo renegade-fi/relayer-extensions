@@ -15,6 +15,7 @@ pub struct ApiKey {
     pub id: Uuid,
     pub encrypted_key: String,
     pub description: String,
+    #[allow(dead_code)]
     pub created_at: SystemTime,
     pub is_active: bool,
 }

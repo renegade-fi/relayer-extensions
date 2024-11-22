@@ -33,7 +33,7 @@ impl Indexer {
     // -------------
 
     /// Fetch fee balances for wallets managed by the funds manager
-    pub async fn fetch_fee_wallets(&mut self) -> Result<Vec<ApiWallet>, FundsManagerError> {
+    pub async fn fetch_fee_wallets(&self) -> Result<Vec<ApiWallet>, FundsManagerError> {
         // Query the wallets and fetch from the relayer
         let wallet_metadata = self.get_all_wallets().await?;
         let mut wallets = Vec::with_capacity(wallet_metadata.len());
@@ -47,7 +47,7 @@ impl Indexer {
 
     /// Withdraw a fee balance for a specific wallet and mint
     pub async fn withdraw_fee_balance(
-        &mut self,
+        &self,
         wallet_id: Uuid,
         mint: String,
     ) -> Result<(), FundsManagerError> {
@@ -78,7 +78,7 @@ impl Indexer {
     ///     1. Fetch the wallet's key from secrets manager
     ///     2. Use the key to fetch the wallet from the relayer
     async fn fetch_wallet(
-        &mut self,
+        &self,
         wallet_metadata: RenegadeWalletMetadata,
     ) -> Result<ApiWallet, FundsManagerError> {
         // Get the wallet's private key from secrets manager

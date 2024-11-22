@@ -25,7 +25,7 @@ use crate::Indexer;
 
 impl Indexer {
     /// Index all fees since the given block
-    pub async fn index_fees(&mut self) -> Result<(), FundsManagerError> {
+    pub async fn index_fees(&self) -> Result<(), FundsManagerError> {
         let block_number = self.get_latest_block().await?;
         info!("indexing fees from block {block_number}");
 
@@ -59,7 +59,7 @@ impl Indexer {
 
     /// Index a note
     async fn index_note(
-        &mut self,
+        &self,
         note_comm: NoteCommitment,
         meta: LogMeta,
     ) -> Result<(), FundsManagerError> {

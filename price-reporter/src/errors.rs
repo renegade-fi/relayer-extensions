@@ -11,6 +11,7 @@ use serde_json::Error as SerdeError;
 
 /// An error that can occur in the price reporter server.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ServerError {
     /// An error setting up the token remapping
     TokenRemap(String),
