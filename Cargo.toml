@@ -22,18 +22,18 @@ lto = true
 
 [workspace.dependencies]
 # === Renegade Dependencies === #
-renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = [
+renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping", features = [
     "rand",
 ] }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/new-token-mapping" }
 
 # === Database Dependencies === #
 diesel = { version = "2.1" }

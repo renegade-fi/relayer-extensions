@@ -282,17 +282,17 @@ dependencies = [
 [[package]]
 name = "arbitrum-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "ark-bn254",
  "ark-ec",
  "ark-ff 0.4.2",
- "circuit-types",
- "circuits",
- "common",
- "constants",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "contracts-common",
  "ethers",
  "itertools 0.12.1",
@@ -302,14 +302,14 @@ dependencies = [
  "num-traits",
  "postcard",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "renegade-metrics",
  "ruint",
  "serde",
  "serde_with",
  "tokio",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
 ]
 
 [[package]]
@@ -731,10 +731,10 @@ dependencies = [
  "cached",
  "chrono",
  "clap",
- "common",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "diesel",
  "diesel-async",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "futures-util",
  "http 0.2.12",
  "hyper 0.14.31",
@@ -748,7 +748,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "uuid 1.11.0",
  "warp",
 ]
@@ -1685,12 +1685,54 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "circuit-macros"
+version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "circuit-types"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "ark-mpc",
+ "ark-serialize 0.4.2",
+ "async-trait",
+ "bigdecimal 0.3.1",
+ "byteorder",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "futures",
+ "hex 0.4.3",
+ "itertools 0.10.5",
+ "jf-primitives",
+ "k256",
+ "lazy_static",
+ "mpc-plonk",
+ "mpc-relation",
+ "num-bigint",
+ "num-integer",
+ "rand 0.8.5",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1706,8 +1748,8 @@ dependencies = [
  "async-trait",
  "bigdecimal 0.3.1",
  "byteorder",
- "circuit-macros",
- "constants",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "futures",
  "hex 0.4.3",
  "itertools 0.10.5",
@@ -1719,9 +1761,39 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "circuits"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "ark-crypto-primitives",
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "ark-mpc",
+ "bigdecimal 0.3.1",
+ "bitvec 1.0.1",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "futures",
+ "itertools 0.10.5",
+ "jf-primitives",
+ "lazy_static",
+ "mpc-plonk",
+ "mpc-relation",
+ "num-bigint",
+ "num-integer",
+ "rand 0.8.5",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "serde",
+ "serde_json",
+ "tracing",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
 ]
 
 [[package]]
@@ -1735,9 +1807,9 @@ dependencies = [
  "ark-mpc",
  "bigdecimal 0.3.1",
  "bitvec 1.0.1",
- "circuit-macros",
- "circuit-types",
- "constants",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "futures",
  "itertools 0.10.5",
  "jf-primitives",
@@ -1747,11 +1819,11 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
  "serde_json",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
 ]
 
 [[package]]
@@ -1871,15 +1943,15 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "ark-mpc",
  "async-trait",
  "base64 0.22.1",
  "bimap",
- "circuit-types",
- "circuits",
- "constants",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "contracts-common",
  "crossbeam",
  "derivative",
@@ -1896,7 +1968,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "renegade-dealer-api 0.1.0 (git+https://github.com/renegade-fi/renegade-dealer.git)",
  "serde",
  "serde_json",
@@ -1904,7 +1976,47 @@ dependencies = [
  "signature 2.2.0",
  "tokio",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "uuid 1.11.0",
+]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+dependencies = [
+ "ark-mpc",
+ "async-trait",
+ "base64 0.22.1",
+ "bimap",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "contracts-common",
+ "crossbeam",
+ "derivative",
+ "ed25519-dalek 1.0.1",
+ "ethers",
+ "hmac",
+ "indexmap 2.6.0",
+ "itertools 0.10.5",
+ "k256",
+ "lazy_static",
+ "libp2p",
+ "libp2p-identity",
+ "metrics",
+ "num-bigint",
+ "num-traits",
+ "rand 0.8.5",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "renegade-dealer-api 0.1.0 (git+https://github.com/renegade-fi/renegade-dealer.git)",
+ "serde",
+ "serde_json",
+ "sha2 0.10.8",
+ "signature 2.2.0",
+ "tokio",
+ "tracing",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "uuid 1.11.0",
 ]
 
@@ -1929,23 +2041,23 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "warp",
 ]
 
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "arbitrum-client",
  "base64 0.13.1",
  "bimap",
- "circuit-types",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "clap",
  "colored",
- "common",
- "constants",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "ed25519-dalek 1.0.1",
  "ethers",
  "json",
@@ -1957,7 +2069,7 @@ dependencies = [
  "toml 0.5.11",
  "tracing",
  "url",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
 ]
 
 [[package]]
@@ -1984,6 +2096,17 @@ name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
+
+[[package]]
+name = "constants"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ed-on-bn254",
+ "ark-mpc",
+]
 
 [[package]]
 name = "constants"
@@ -3044,22 +3167,42 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "base64 0.22.1",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "ethers",
+ "hex 0.4.3",
+ "itertools 0.10.5",
+ "num-bigint",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "serde",
+ "serde_json",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "uuid 1.11.0",
+]
+
+[[package]]
+name = "external-api"
+version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
 dependencies = [
  "base64 0.22.1",
- "circuit-types",
- "common",
- "constants",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "ethers",
  "hex 0.4.3",
  "http 0.2.12",
  "itertools 0.10.5",
  "num-bigint",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
  "serde_json",
  "thiserror",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "uuid 1.11.0",
 ]
 
@@ -3226,15 +3369,15 @@ dependencies = [
  "bb8",
  "bigdecimal 0.4.5",
  "bytes",
- "circuit-types",
- "circuits",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "clap",
- "common",
- "constants",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "diesel",
  "diesel-async",
  "ethers",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "fireblocks-sdk",
  "funds-manager-api",
  "futures",
@@ -3246,14 +3389,14 @@ dependencies = [
  "num-bigint",
  "postgres-native-tls",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "reqwest 0.12.8",
  "serde",
  "serde_json",
  "tokio",
  "tokio-postgres",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "uuid 1.11.0",
  "warp",
 ]
@@ -3263,7 +3406,7 @@ name = "funds-manager-api"
 version = "0.1.0"
 dependencies = [
  "ethers",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "hex 0.4.3",
  "hmac",
  "http 0.2.12",
@@ -3487,11 +3630,11 @@ dependencies = [
 [[package]]
 name = "gossip-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "bincode",
- "circuit-types",
- "common",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "hmac",
  "libp2p",
  "openraft",
@@ -3499,7 +3642,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.8",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "uuid 1.11.0",
 ]
 
@@ -4176,20 +4319,20 @@ dependencies = [
 [[package]]
 name = "job-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "ark-mpc",
- "circuit-types",
- "circuits",
- "common",
- "constants",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "crossbeam",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "gossip-api",
  "libp2p",
  "libp2p-core",
  "tokio",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "uuid 1.11.0",
 ]
 
@@ -5649,14 +5792,14 @@ dependencies = [
 [[package]]
 name = "price-reporter"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "async-trait",
  "atomic_float 0.1.0",
- "common",
- "constants",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "create2",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "futures",
  "futures-util",
  "hex 0.3.2",
@@ -5675,7 +5818,7 @@ dependencies = [
  "tracing",
  "tungstenite 0.18.0",
  "url",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "web3",
 ]
 
@@ -6162,13 +6305,32 @@ dependencies = [
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
+dependencies = [
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "ark-mpc",
+ "bigdecimal 0.3.1",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "ethers-core",
+ "itertools 0.10.5",
+ "lazy_static",
+ "num-bigint",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "renegade-crypto"
+version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
  "ark-mpc",
  "bigdecimal 0.3.1",
- "constants",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "ethers-core",
  "itertools 0.10.5",
  "lazy_static",
@@ -6226,16 +6388,16 @@ dependencies = [
 [[package]]
 name = "renegade-metrics"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "atomic_float 1.1.0",
- "circuit-types",
- "common",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "lazy_static",
  "metrics",
  "num-bigint",
  "tracing",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
 ]
 
 [[package]]
@@ -6244,9 +6406,9 @@ version = "0.1.0"
 dependencies = [
  "arbitrum-client",
  "async-trait",
- "common",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "config",
- "external-api",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "futures-util",
  "hyper 0.14.31",
  "matchit",
@@ -6259,7 +6421,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.18",
  "tungstenite 0.18.0",
- "util",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
 ]
 
 [[package]]
@@ -7477,10 +7639,10 @@ dependencies = [
 [[package]]
 name = "system-bus"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "bus",
- "common",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "futures",
  "serde",
  "tokio",
@@ -8263,13 +8425,13 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping#446df806718d8d18a80c73b168404e09a3b27749"
 dependencies = [
  "ark-ec",
  "ark-serialize 0.4.2",
  "chrono",
- "circuit-types",
- "constants",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
  "crossbeam",
  "eyre",
  "futures",
@@ -8288,7 +8450,45 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "rand 0.8.5",
- "renegade-crypto",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew/new-token-mapping)",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-serde",
+ "tracing-subscriber 0.3.18",
+]
+
+[[package]]
+name = "util"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#e46651ebd6e4031852f3ce28a8e7063d2f0a217d"
+dependencies = [
+ "ark-ec",
+ "ark-serialize 0.4.2",
+ "chrono",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "crossbeam",
+ "eyre",
+ "futures",
+ "hex 0.4.3",
+ "json",
+ "libp2p",
+ "metrics",
+ "metrics-exporter-statsd",
+ "metrics-tracing-context",
+ "metrics-util",
+ "num-bigint",
+ "num-traits",
+ "opentelemetry",
+ "opentelemetry-datadog",
+ "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "rand 0.8.5",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
  "serde_json",
  "tokio",

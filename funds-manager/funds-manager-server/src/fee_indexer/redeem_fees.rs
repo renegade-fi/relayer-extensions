@@ -118,7 +118,7 @@ impl Indexer {
             derive_wallet_keychain(&root_key, self.chain_id).map_err(FundsManagerError::custom)?;
 
         let wallet = Wallet::new_empty_wallet(wallet_id, blinder_seed, share_seed, key_chain);
-        self.relayer_client.create_new_wallet(wallet).await?;
+        self.relayer_client.create_new_wallet(wallet, &blinder_seed).await?;
         info!("created new wallet for fee redemption");
 
         Ok((wallet_id, root_key))

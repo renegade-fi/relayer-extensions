@@ -7,16 +7,16 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 
-use std::net::SocketAddr;
+use std::{collections::HashSet, net::SocketAddr};
 
 use errors::ServerError;
 use http_server::HttpServer;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{Token, TOKEN_REMAPS, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{default_exchange_stable, Token, TOKEN_REMAPS, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
 use renegade_config::setup_token_remaps;
-use renegade_price_reporter::{manager::get_listing_exchanges, worker::ExchangeConnectionsConfig};
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
@@ -27,9 +27,6 @@ mod errors;
 mod http_server;
 mod utils;
 mod ws_server;
-
-/// The default stable to initiate price streams on
-const DEFAULT_STABLE: &str = USDT_TICKER;
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
@@ -98,7 +95,6 @@ async fn init_default_price_streams(
     info!("Initializing default price streams");
 
     // Get the default token remap
-    let quote_token = Token::from_ticker(DEFAULT_STABLE);
     let remap = TOKEN_REMAPS.get().unwrap();
     for (addr, ticker) in remap.clone().into_iter() {
         // Skip stables
@@ -107,11 +103,14 @@ async fn init_default_price_streams(
         }
 
         let base_token = Token::from_addr(&addr);
-        let supported_exchanges = get_supported_exchanges(&base_token, &quote_token, &config);
+        let supported_exchanges = get_supported_exchanges(&base_token, &config);
         for exchange in supported_exchanges.into_iter() {
+            let quote_token = default_exchange_stable(&exchange);
+            // We assume that the exchange has a market between the base token
+            // and its default stable token
             init_price_stream(
                 base_token.clone(),
-                quote_token.clone(),
+                quote_token,
                 exchange,
                 global_price_streams,
                 config.clone(),
@@ -144,19 +143,18 @@ fn init_price_stream(
     Ok(())
 }
 
-/// Get the listing exchanges for a given pair
+/// Get the listing exchanges for a given base token
 fn get_supported_exchanges(
     base_token: &Token,
-    quote_token: &Token,
     config: &ExchangeConnectionsConfig,
-) -> Vec<Exchange> {
-    let mut supported_exchanges = get_listing_exchanges(base_token, quote_token);
+) -> HashSet<Exchange> {
+    let mut supported_exchanges = base_token.supported_exchanges();
     if config.coinbase_api_key.is_none() || config.coinbase_api_secret.is_none() {
-        supported_exchanges.retain(|e| e != &Exchange::Coinbase);
+        supported_exchanges.remove(&Exchange::Coinbase);
     }
 
     if config.eth_websocket_addr.is_none() {
-        supported_exchanges.retain(|e| e != &Exchange::UniswapV3);
+        supported_exchanges.remove(&Exchange::UniswapV3);
     }
 
     supported_exchanges
