@@ -68,6 +68,14 @@ mod tests {
         assert_eq!(value, decrypted);
     }
 
+    /// Generate an API secret
+    #[test]
+    fn test_generate_api_secret() {
+        let hmac_key = HmacKey::random();
+        let base64_hmac_key = hmac_key.to_base64_string();
+        println!("base64 hmac key: {base64_hmac_key}");
+    }
+
     /// Generate a management key
     ///
     /// Useful for local testing
