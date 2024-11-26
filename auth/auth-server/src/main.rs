@@ -160,6 +160,30 @@ async fn main() {
 
     // --- Proxied Routes --- //
 
+    let external_quote_path = warp::path("v0")
+        .and(warp::path("matching-engine"))
+        .and(warp::path("quote"))
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.handle_external_quote_request(path, headers, body).await
+        });
+
+    let external_quote_assembly_path = warp::path("v0")
+        .and(warp::path("matching-engine"))
+        .and(warp::path("assemble-external-match"))
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.handle_external_quote_assembly_request(path, headers, body).await
+        });
+
     let atomic_match_path = warp::path("v0")
         .and(warp::path("matching-engine"))
         .and(warp::path("request-external-match"))
@@ -174,8 +198,13 @@ async fn main() {
 
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
-    let routes =
-        ping.or(atomic_match_path).or(expire_api_key).or(add_api_key).recover(handle_rejection);
+    let routes = ping
+        .or(atomic_match_path)
+        .or(external_quote_path)
+        .or(external_quote_assembly_path)
+        .or(expire_api_key)
+        .or(add_api_key)
+        .recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
 
