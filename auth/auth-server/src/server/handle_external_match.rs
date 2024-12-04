@@ -87,11 +87,11 @@ impl Server {
 
         let match_result = resp.signed_quote.match_result();
         let is_buy = match_result.direction;
-        let base_amount = match_result.base_amount;
-        let quote_amount = match_result.quote_amount;
+        let recv = resp.signed_quote.receive_amount();
+        let send = resp.signed_quote.send_amount();
         info!(
-            "Sending quote(is_buy: {}, base_amount: {}, quote_amount: {}) to client",
-            is_buy, base_amount, quote_amount
+            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({})) to client",
+            recv.amount, recv.mint, send.amount, send.mint
         );
 
         Ok(())
@@ -104,11 +104,11 @@ impl Server {
 
         let match_result = resp.match_bundle.match_result;
         let is_buy = match_result.direction;
-        let base_amount = match_result.base_amount;
-        let quote_amount = match_result.quote_amount;
+        let recv = resp.match_bundle.receive;
+        let send = resp.match_bundle.send;
         info!(
-            "Sending bundle(is_buy: {}, base_amount: {}, quote_amount: {}) to client",
-            is_buy, base_amount, quote_amount
+            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
+            is_buy, recv.amount, recv.mint, send.amount, send.mint
         );
 
         Ok(())
