@@ -8,9 +8,13 @@ use hyper::{
     Body, Error as HyperError, Request, Response, Server, StatusCode,
 };
 use matchit::Router;
-use renegade_price_reporter::worker::ExchangeConnectionsConfig;
+use routes::{RefreshTokenMappingHandler, REFRESH_TOKEN_MAPPING_ROUTE};
 
-use crate::{errors::ServerError, utils::HttpRouter, ws_server::GlobalPriceStreams};
+use crate::{
+    errors::ServerError,
+    utils::{HttpRouter, PriceReporterConfig},
+    ws_server::GlobalPriceStreams,
+};
 
 use self::routes::{Handler, HealthCheckHandler, PriceHandler, HEALTH_CHECK_ROUTE, PRICE_ROUTE};
 
@@ -27,24 +31,39 @@ pub struct HttpServer {
 
 impl HttpServer {
     /// Create a new HTTP server with the given port and global price streams
-    pub fn new(
-        port: u16,
-        config: ExchangeConnectionsConfig,
-        price_streams: GlobalPriceStreams,
-    ) -> Self {
+    pub fn new(config: &PriceReporterConfig, price_streams: GlobalPriceStreams) -> Self {
         let router = Self::build_router(config, price_streams);
-        Self { port, router: Arc::new(router) }
+        Self { port: config.http_port, router: Arc::new(router) }
     }
 
     /// Build the router for the HTTP server
-    fn build_router(
-        config: ExchangeConnectionsConfig,
-        price_streams: GlobalPriceStreams,
-    ) -> HttpRouter {
+    fn build_router(config: &PriceReporterConfig, price_streams: GlobalPriceStreams) -> HttpRouter {
         let mut router: Router<Box<dyn Handler>> = Router::new();
 
         router.insert(HEALTH_CHECK_ROUTE, Box::new(HealthCheckHandler::new())).unwrap();
-        router.insert(PRICE_ROUTE, Box::new(PriceHandler::new(config, price_streams))).unwrap();
+
+        router
+            .insert(
+                PRICE_ROUTE,
+                Box::new(PriceHandler::new(
+                    config.exchange_conn_config.clone(),
+                    price_streams.clone(),
+                )),
+            )
+            .unwrap();
+
+        router
+            .insert(
+                REFRESH_TOKEN_MAPPING_ROUTE,
+                Box::new(RefreshTokenMappingHandler::new(
+                    config.admin_key,
+                    config.token_remap_path.clone(),
+                    config.remap_chain,
+                    price_streams,
+                    config.exchange_conn_config.clone(),
+                )),
+            )
+            .unwrap();
 
         router
     }

@@ -13,14 +13,16 @@ use errors::ServerError;
 use http_server::HttpServer;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{default_exchange_stable, Token, TOKEN_REMAPS, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{
+        default_exchange_stable, read_token_remap, Token, USDC_TICKER, USDT_TICKER, USD_TICKER,
+    },
 };
 use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{parse_config_env_vars, setup_logging, PriceReporterConfig};
+use utils::{parse_config_env_vars, setup_logging};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
@@ -34,15 +36,11 @@ async fn main() -> Result<(), ServerError> {
     setup_logging();
 
     // Parse configuration env vars
-    let PriceReporterConfig {
-        ws_port,
-        http_port,
-        token_remap_path,
-        remap_chain,
-        exchange_conn_config,
-    } = parse_config_env_vars();
+    let price_reporter_config = parse_config_env_vars();
 
     // Set up the token remapping
+    let token_remap_path = price_reporter_config.token_remap_path.clone();
+    let remap_chain = price_reporter_config.remap_chain;
     tokio::task::spawn_blocking(move || {
         setup_token_remaps(token_remap_path, remap_chain).map_err(err_str!(ServerError::TokenRemap))
     })
@@ -51,18 +49,17 @@ async fn main() -> Result<(), ServerError> {
 
     let (closure_tx, mut closure_rx) = unbounded_channel();
     let global_price_streams = GlobalPriceStreams::new(closure_tx);
-    init_default_price_streams(&global_price_streams, &exchange_conn_config)?;
+    init_default_price_streams(&global_price_streams, &price_reporter_config.exchange_conn_config)?;
 
     // Bind the server to the given port
-    let addr: SocketAddr = format!("0.0.0.0:{:?}", ws_port).parse().unwrap();
+    let addr: SocketAddr = format!("0.0.0.0:{:?}", price_reporter_config.ws_port).parse().unwrap();
 
     let listener =
         TcpListener::bind(addr).await.map_err(err_str!(ServerError::WebsocketConnection))?;
 
     info!("Listening on: {}", addr);
 
-    let http_server =
-        HttpServer::new(http_port, exchange_conn_config.clone(), global_price_streams.clone());
+    let http_server = HttpServer::new(&price_reporter_config, global_price_streams.clone());
     tokio::spawn(http_server.execution_loop());
     // TODO: Handle shutdown of the HTTP server
 
@@ -73,7 +70,7 @@ async fn main() -> Result<(), ServerError> {
                 tokio::spawn(handle_connection(
                     stream,
                     global_price_streams.clone(),
-                    exchange_conn_config.clone(),
+                    price_reporter_config.exchange_conn_config.clone(),
                 ));
             }
             // Handle price stream closure
@@ -88,21 +85,21 @@ async fn main() -> Result<(), ServerError> {
 }
 
 /// Initialize price streams for all default token mapped pairs
-fn init_default_price_streams(
+pub fn init_default_price_streams(
     global_price_streams: &GlobalPriceStreams,
     config: &ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
     info!("Initializing default price streams");
 
     // Get the default token remap
-    let remap = TOKEN_REMAPS.get().unwrap();
-    for (addr, ticker) in remap.clone().into_iter() {
+    let remap = read_token_remap();
+    for (addr, ticker) in remap.iter() {
         // Skip stables
         if [USD_TICKER, USDC_TICKER, USDT_TICKER].contains(&ticker.as_str()) {
             continue;
         }
 
-        let base_token = Token::from_addr(&addr);
+        let base_token = Token::from_addr(addr);
         let supported_exchanges = get_supported_exchanges(&base_token, config);
         for exchange in supported_exchanges.into_iter() {
             let quote_token = default_exchange_stable(&exchange);

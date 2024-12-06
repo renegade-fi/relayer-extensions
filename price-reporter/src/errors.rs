@@ -7,7 +7,6 @@ use std::{
 };
 
 use renegade_price_reporter::errors::ExchangeConnectionError;
-use serde_json::Error as SerdeError;
 
 /// An error that can occur in the price reporter server.
 #[derive(Debug)]
@@ -29,9 +28,13 @@ pub enum ServerError {
     /// An error receiving a message over a websocket
     WebsocketReceive(String),
     /// An error during de/serialization
-    Serde(SerdeError),
+    Serde(String),
     /// An error in the HTTP server execution
     HttpServer(String),
+    /// An error in the authorization of an HTTP request
+    Unauthorized(String),
+    /// An error indicating that the admin key was not provided
+    NoAdminKey,
 }
 
 impl Display for ServerError {

@@ -25,7 +25,9 @@ lto = true
 renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = [
     "rand",
 ] }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
+    "auth",
+] }
 renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
