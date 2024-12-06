@@ -5,7 +5,7 @@ use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 use futures_util::stream::SplitSink;
 use matchit::Router;
 use renegade_arbitrum_client::constants::Chain;
-use renegade_common::types::{exchange::Exchange, token::Token, Price};
+use renegade_common::types::{exchange::Exchange, token::Token, wallet::keychain::HmacKey, Price};
 use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
@@ -69,6 +69,9 @@ const CB_API_SECRET_ENV_VAR: &str = "CB_API_SECRET";
 /// The name of the environment variable specifying the Ethereum
 /// RPC node websocket address
 const ETH_WS_ADDR_ENV_VAR: &str = "ETH_WS_ADDR";
+/// The name of the environment variable specifying the HMAC key for the admin
+/// API
+const ADMIN_KEY_ENV_VAR: &str = "ADMIN_KEY";
 
 // ---------
 // | TYPES |
@@ -128,6 +131,9 @@ pub struct PriceReporterConfig {
     pub remap_chain: Chain,
     /// The configuration options that may be used by exchange connections
     pub exchange_conn_config: ExchangeConnectionsConfig,
+    /// The HMAC key for the admin API. If one is not provided, the admin API
+    /// will be disabled.
+    pub admin_key: Option<HmacKey>,
 }
 
 // -----------
@@ -155,6 +161,9 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let coinbase_api_key = env::var(CB_API_KEY_ENV_VAR).ok();
     let coinbase_api_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
     let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
+    let admin_key = env::var(ADMIN_KEY_ENV_VAR)
+        .ok()
+        .map(|key_str| HmacKey::from_base64_string(&key_str).expect("Invalid admin HMAC key"));
 
     PriceReporterConfig {
         ws_port,
@@ -166,6 +175,7 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
             coinbase_api_secret,
             eth_websocket_addr,
         },
+        admin_key,
     }
 }
 

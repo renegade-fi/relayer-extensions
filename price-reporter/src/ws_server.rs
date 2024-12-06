@@ -264,7 +264,7 @@ pub async fn handle_connection(
                 // meaning the stream lagged receiving price updates. We can safely ignore this.
                 let topic = get_pair_info_topic(&pair_info);
                 let message = PriceMessage { topic, price };
-                let message_ser = serde_json::to_string(&message).map_err(ServerError::Serde)?;
+                let message_ser = serde_json::to_string(&message).map_err(err_str!(ServerError::Serde))?;
                 write_stream
                     .send(Message::Text(message_ser))
                     .await
@@ -328,7 +328,7 @@ async fn handle_ws_message(
                 )
                 .await
                 {
-                    Ok(res) => serde_json::to_string(&res).map_err(ServerError::Serde)?,
+                    Ok(res) => serde_json::to_string(&res).map_err(err_str!(ServerError::Serde))?,
                     Err(e) => e.to_string(),
                 };
 
