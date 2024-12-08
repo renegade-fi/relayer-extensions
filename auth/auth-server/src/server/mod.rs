@@ -7,7 +7,7 @@ mod handle_key_management;
 mod helpers;
 mod queries;
 
-use crate::{error::AuthServerError, models::ApiKey, ApiError, Cli};
+use crate::{error::AuthServerError, models::ApiKey, relayer_client::RelayerClient, ApiError, Cli};
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
 use bytes::Bytes;
@@ -54,6 +54,8 @@ pub struct Server {
     pub api_key_cache: ApiKeyCache,
     /// The HTTP client
     pub client: Client,
+    /// A client for interacting with the relayer
+    pub relayer_client: RelayerClient,
 }
 
 impl Server {
@@ -74,12 +76,13 @@ impl Server {
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
-            relayer_url: args.relayer_url,
+            relayer_url: args.relayer_url.clone(),
             relayer_admin_key,
             management_key,
             encryption_key,
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
+            relayer_client: RelayerClient::new(&args.relayer_url),
         })
     }
 

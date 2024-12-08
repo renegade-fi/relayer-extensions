@@ -14,23 +14,24 @@
 
 pub(crate) mod error;
 pub(crate) mod models;
+pub mod relayer_client;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;
 mod server;
+mod telemetry;
 
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
+use server::Server;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
-
-use server::Server;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
@@ -116,10 +117,10 @@ async fn main() {
     configure_telemetry(
         args.datadog_logging, // datadog_enabled
         false,                // otlp_enabled
-        false,                // metrics_enabled
+        true,                 // metrics_enabled
         "".to_string(),       // collector_endpoint
-        "",                   // statsd_host
-        0,                    // statsd_port
+        "127.0.0.1",          // statsd_host
+        8125,                 // statsd_port
     )
     .expect("failed to setup telemetry");
 
@@ -244,4 +245,26 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 fn json_error(msg: &str, code: StatusCode) -> impl Reply {
     let json = json!({ "error": msg });
     warp::reply::with_status(warp::reply::json(&json), code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metrics_buffer_filling() {
+        std::env::set_var("DD_SERVICE", "local-auth-server");
+        std::env::set_var("DD_ENV", "local");
+
+        // Configure telemetry for testing
+        configure_telemetry(true, false, true, "".to_string(), "127.0.0.1", 8125)
+            .expect("failed to setup telemetry");
+
+        // Send enough metrics to fill 1024 byte buffer
+        for _ in 0..50 {
+            metrics::counter!("auth_server.test.buffer").increment(1);
+            metrics::counter!("auth_server.test.buffer.second").increment(1);
+            metrics::counter!("auth_server.test.buffer.third").increment(1);
+        }
+    }
 }

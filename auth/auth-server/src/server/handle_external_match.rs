@@ -5,13 +5,18 @@
 
 use bytes::Bytes;
 use http::Method;
-use renegade_api::http::external_match::{ExternalMatchResponse, ExternalQuoteResponse};
+use renegade_api::http::external_match::{
+    ExternalMatchRequest, ExternalMatchResponse, ExternalQuoteResponse,
+};
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::error::AuthServerError;
-
 use super::Server;
+use crate::error::AuthServerError;
+use crate::telemetry::helpers::{
+    record_external_match_request_metrics, record_external_match_response_metrics,
+};
+use crate::telemetry::labels::KEY_DESCRIPTION_METRIC_TAG;
 
 /// Handle a proxied request
 impl Server {
@@ -66,15 +71,35 @@ impl Server {
         body: Bytes,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp =
+            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
             warn!("Error logging bundle: {e}");
         }
+
+        let labels = [(KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description)];
+
+        // Parse and record request metrics
+        let req = serde_json::from_slice::<ExternalMatchRequest>(&body)
+            .map_err(AuthServerError::serde)?;
+        if let Err(e) =
+            record_external_match_request_metrics(&self.relayer_client, &req, &labels).await
+        {
+            warn!("Error recording request metrics: {e}");
+        }
+
+        // Parse and record response metrics
+        let match_response = serde_json::from_slice::<ExternalMatchResponse>(&resp.body())
+            .map_err(AuthServerError::serde)?;
+        if let Err(e) = record_external_match_response_metrics(&match_response, &labels) {
+            warn!("Error recording response metrics: {e}");
+        }
+
         Ok(resp)
     }
 

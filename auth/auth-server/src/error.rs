@@ -19,6 +19,12 @@ pub enum AuthServerError {
     /// Decryption error
     #[error("Decryption error: {0}")]
     Decryption(String),
+    /// An error executing an HTTP request
+    #[error("Error executing an HTTP request: {0}")]
+    Http(String),
+    /// An error parsing a value
+    #[error("Error parsing a value: {0}")]
+    Parse(String),
     /// Error serializing or deserializing a stored value
     #[error("Error serializing/deserializing a stored value: {0}")]
     Serde(String),
@@ -28,6 +34,9 @@ pub enum AuthServerError {
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    /// A miscellaneous error
+    #[error("Miscellaneous error: {0}")]
+    Custom(String),
 }
 
 impl AuthServerError {
