@@ -1,28 +1,90 @@
 //! Client code for interacting with a configured relayer
-use http::HeaderMap;
+use bytes::Bytes;
+use http::{HeaderMap, Method, Response};
+use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_api::http::price_report::{
     GetPriceReportRequest, GetPriceReportResponse, PRICE_REPORT_ROUTE,
 };
+use renegade_common::types::wallet::keychain::HmacKey;
 use renegade_common::types::{exchange::PriceReporterState, token::Token};
 // use renegade_constants::Scalar;
+use crate::error::AuthServerError;
+use crate::ApiError;
 use renegade_util::err_str;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use std::time::Duration;
+use tracing::{error, warn};
 
-use crate::error::AuthServerError;
+/// The duration for which the admin authentication is valid
+const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
 
 /// A client for interacting with a configured relayer
 #[derive(Clone)]
 pub struct RelayerClient {
     /// The base URL of the relayer
     base_url: String,
+    /// The HTTP client
+    client: Client,
+    /// The admin key for the relayer
+    relayer_admin_key: HmacKey,
 }
 
 impl RelayerClient {
     /// Create a new relayer client
-    pub fn new(base_url: &str) -> Self {
-        Self { base_url: base_url.to_string() }
+    pub fn new(base_url: &str, relayer_admin_key: HmacKey) -> Self {
+        Self {
+            base_url: base_url.to_string(),
+            client: reqwest_client().expect("Failed to create HTTP client"),
+            relayer_admin_key,
+        }
+    }
+
+    /// Send a proxied request to the relayer with admin authentication
+    pub async fn send_admin_request(
+        &self,
+        method: Method,
+        path: &str,
+        mut headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<Response<Bytes>, ApiError> {
+        // Admin authenticate the request
+        self.admin_authenticate(path, &mut headers, &body)?;
+
+        // Forward the request to the relayer
+        let url = format!("{}{}", self.base_url, path);
+        let req = self.client.request(method, &url).headers(headers).body(body);
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let headers = resp.headers().clone();
+                let body = resp.bytes().await.map_err(|e| {
+                    ApiError::internal(format!("Failed to read response body: {e}"))
+                })?;
+
+                let mut response = warp::http::Response::new(body);
+                *response.status_mut() = status;
+                *response.headers_mut() = headers;
+
+                Ok(response)
+            },
+            Err(e) => {
+                error!("Error proxying request: {}", e);
+                Err(ApiError::internal(e))
+            },
+        }
+    }
+
+    /// Admin authenticate a request
+    pub fn admin_authenticate(
+        &self,
+        path: &str,
+        headers: &mut HeaderMap,
+        body: &[u8],
+    ) -> Result<(), ApiError> {
+        let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
+        add_expiring_auth_to_headers(path, headers, body, &self.relayer_admin_key, expiration);
+        Ok(())
     }
 
     /// Get the price for a given mint

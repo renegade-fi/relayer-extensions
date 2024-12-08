@@ -7,29 +7,22 @@ mod handle_key_management;
 mod helpers;
 mod queries;
 
-use crate::{error::AuthServerError, models::ApiKey, relayer_client::RelayerClient, ApiError, Cli};
+use crate::{error::AuthServerError, models::ApiKey, relayer_client::RelayerClient, Cli};
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
-use bytes::Bytes;
 use cached::{Cached, UnboundCache};
 use diesel::ConnectionError;
 use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
-use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_common::types::wallet::keychain::HmacKey;
-use reqwest::Client;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::error;
 use uuid::Uuid;
-
-/// The duration for which the admin authentication is valid
-const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
 
 /// The DB connection type
 pub type DbConn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgConnection>>;
@@ -42,18 +35,12 @@ pub type ApiKeyCache = Arc<RwLock<UnboundCache<Uuid, ApiKey>>>;
 pub struct Server {
     /// The database connection pool
     pub db_pool: Arc<DbPool>,
-    /// The URL of the relayer
-    pub relayer_url: String,
-    /// The admin key for the relayer
-    pub relayer_admin_key: HmacKey,
     /// The management key for the auth server
     pub management_key: HmacKey,
     /// The encryption key for storing API secrets
     pub encryption_key: Vec<u8>,
     /// The api key cache
     pub api_key_cache: ApiKeyCache,
-    /// The HTTP client
-    pub client: Client,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
 }
@@ -64,8 +51,7 @@ impl Server {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
-        // Parse the decryption key, management key, and relayer admin key as
-        // base64 encoded strings
+        // Parse the decryption key, management key, and relayer admin key
         let encryption_key = general_purpose::STANDARD
             .decode(&args.encryption_key)
             .map_err(AuthServerError::encryption)?;
@@ -76,67 +62,16 @@ impl Server {
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
-            relayer_url: args.relayer_url.clone(),
-            relayer_admin_key,
             management_key,
             encryption_key,
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
-            client: Client::new(),
-            relayer_client: RelayerClient::new(&args.relayer_url),
+            relayer_client: RelayerClient::new(&args.relayer_url, relayer_admin_key),
         })
     }
 
     /// Get a db connection from the pool
     pub async fn get_db_conn(&self) -> Result<DbConn, AuthServerError> {
         self.db_pool.get().await.map_err(AuthServerError::db)
-    }
-
-    /// Send a proxied request to the relayer with admin authentication
-    pub(crate) async fn send_admin_request(
-        &self,
-        method: Method,
-        path: &str,
-        mut headers: HeaderMap,
-        body: Bytes,
-    ) -> Result<Response<Bytes>, ApiError> {
-        // Admin authenticate the request
-        self.admin_authenticate(path, &mut headers, &body)?;
-
-        // Forward the request to the relayer
-        let url = format!("{}{}", self.relayer_url, path);
-        let req = self.client.request(method, &url).headers(headers).body(body);
-        match req.send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                let headers = resp.headers().clone();
-                let body = resp.bytes().await.map_err(|e| {
-                    ApiError::internal(format!("Failed to read response body: {e}"))
-                })?;
-
-                let mut response = warp::http::Response::new(body);
-                *response.status_mut() = status;
-                *response.headers_mut() = headers;
-
-                Ok(response)
-            },
-            Err(e) => {
-                error!("Error proxying request: {}", e);
-                Err(ApiError::internal(e))
-            },
-        }
-    }
-
-    /// Admin authenticate a request
-    pub fn admin_authenticate(
-        &self,
-        path: &str,
-        headers: &mut HeaderMap,
-        body: &[u8],
-    ) -> Result<(), ApiError> {
-        let key = self.relayer_admin_key;
-        let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
-        add_expiring_auth_to_headers(path, headers, body, &key, expiration);
-        Ok(())
     }
 
     // --- Caching --- //

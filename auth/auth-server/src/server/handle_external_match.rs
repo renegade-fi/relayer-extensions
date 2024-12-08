@@ -32,7 +32,10 @@ impl Server {
         self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp = self
+            .relayer_client
+            .send_admin_request(Method::POST, path.as_str(), headers, body)
+            .await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_quote(resp.body()) {
@@ -53,7 +56,10 @@ impl Server {
         self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp = self
+            .relayer_client
+            .send_admin_request(Method::POST, path.as_str(), headers, body)
+            .await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
@@ -74,8 +80,10 @@ impl Server {
         let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp =
-            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+        let resp = self
+            .relayer_client
+            .send_admin_request(Method::POST, path.as_str(), headers, body.clone())
+            .await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
