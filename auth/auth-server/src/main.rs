@@ -22,6 +22,9 @@ mod telemetry;
 
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
+use renegade_arbitrum_client::constants::Chain;
+use renegade_config::setup_token_remaps;
+use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -44,6 +47,9 @@ const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
+    // -----------------------
+    // | Environment Configs |
+    // -----------------------
     /// The database url
     #[arg(long, env = "DATABASE_URL")]
     pub database_url: String,
@@ -63,9 +69,30 @@ pub struct Cli {
     /// The port to run the server on
     #[arg(long, env = "PORT", default_value = "3000")]
     pub port: u16,
-    /// Whether to enable datadog logging
-    #[arg(long, env = "DATADOG_LOGGING_ENABLED")]
-    pub datadog_logging: bool,
+    /// The chain that the relayer settles to
+    #[arg(long, env = "CHAIN_ID")]
+    pub chain_id: Chain,
+    /// The path to the file containing token remaps for the given chain
+    ///
+    /// See https://github.com/renegade-fi/token-mappings for more information on the format of this file
+    #[arg(long, env = "TOKEN_REMAP_FILE")]
+    pub token_remap_file: Option<String>,
+
+    // -------------
+    // | Telemetry |
+    // -------------
+    /// Whether or not to enable Datadog-formatted logs
+    #[arg(long, env = "ENABLE_DATADOG")]
+    pub datadog_enabled: bool,
+    /// Whether or not to enable metrics collection
+    #[arg(long, env = "ENABLE_METRICS")]
+    pub metrics_enabled: bool,
+    /// The StatsD recorder host to send metrics to
+    #[arg(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
+    pub statsd_host: String,
+    /// The StatsD recorder port to send metrics to
+    #[arg(long, env = "STATSD_PORT", default_value = "8125")]
+    pub statsd_port: u16,
 }
 
 // -------------
@@ -115,14 +142,25 @@ async fn main() {
 
     // Setup logging
     configure_telemetry(
-        args.datadog_logging, // datadog_enabled
+        args.datadog_enabled, // datadog_enabled
         false,                // otlp_enabled
-        true,                 // metrics_enabled
+        args.metrics_enabled, // metrics_enabled
         "".to_string(),       // collector_endpoint
-        "127.0.0.1",          // statsd_host
-        8125,                 // statsd_port
+        &args.statsd_host,    // statsd_host
+        args.statsd_port,     // statsd_port
     )
     .expect("failed to setup telemetry");
+
+    // Set up the token remapping
+    let chain_id = args.chain_id;
+    let token_remap_file = args.token_remap_file.clone();
+    tokio::task::spawn_blocking(move || {
+        setup_token_remaps(token_remap_file, chain_id)
+            .map_err(err_str!(error::AuthServerError::TokenRemap))
+    })
+    .await
+    .unwrap()
+    .expect("Failed to setup token remaps");
 
     // Create the server
     let server = Server::new(args).await.expect("Failed to create server");
@@ -245,26 +283,4 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 fn json_error(msg: &str, code: StatusCode) -> impl Reply {
     let json = json!({ "error": msg });
     warp::reply::with_status(warp::reply::json(&json), code)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_metrics_buffer_filling() {
-        std::env::set_var("DD_SERVICE", "local-auth-server");
-        std::env::set_var("DD_ENV", "local");
-
-        // Configure telemetry for testing
-        configure_telemetry(true, false, true, "".to_string(), "127.0.0.1", 8125)
-            .expect("failed to setup telemetry");
-
-        // Send enough metrics to fill 1024 byte buffer
-        for _ in 0..50 {
-            metrics::counter!("auth_server.test.buffer").increment(1);
-            metrics::counter!("auth_server.test.buffer.second").increment(1);
-            metrics::counter!("auth_server.test.buffer.third").increment(1);
-        }
-    }
 }

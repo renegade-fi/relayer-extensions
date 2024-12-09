@@ -724,6 +724,7 @@ name = "auth-server"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "arbitrum-client",
  "auth-server-api",
  "base64 0.22.1",
  "bb8",
@@ -733,6 +734,7 @@ dependencies = [
  "circuit-types",
  "clap",
  "common",
+ "config",
  "diesel",
  "diesel-async",
  "external-api",
@@ -743,8 +745,6 @@ dependencies = [
  "native-tls",
  "postgres-native-tls",
  "rand 0.8.5",
- "renegade-crypto",
- "renegade-metrics",
  "reqwest 0.11.27",
  "serde",
  "serde_json",

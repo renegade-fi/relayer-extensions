@@ -31,6 +31,9 @@ pub enum AuthServerError {
     /// Error setting up the auth server
     #[error("Error setting up the auth server: {0}")]
     Setup(String),
+    /// An error setting up the token remapping
+    #[error("Error setting up the token remapping: {0}")]
+    TokenRemap(String),
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),

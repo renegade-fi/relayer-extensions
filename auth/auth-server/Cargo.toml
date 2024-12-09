@@ -26,14 +26,14 @@ rand = "0.8.5"
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
+renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-metrics = { package = "renegade-metrics", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
     "auth",
 ] }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Misc Dependencies === #
 base64 = "0.22.1"

@@ -24,11 +24,6 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
     (asset, volume)
 }
 
-/// Record a volume metric (e.g. deposit, withdrawal, trade)
-fn record_volume(mint: &str, amount: u128, volume_metric_name: &'static str) {
-    record_volume_with_tags(mint, amount, volume_metric_name, &[] /* extra_labels */);
-}
-
 /// Record a volume metric with the given extra tags
 pub fn record_volume_with_tags(
     mint: &str,
@@ -40,6 +35,8 @@ pub fn record_volume_with_tags(
     let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
     let extra_labels = extra_labels.iter().map(|(k, v)| (k.clone(), v.clone()));
     labels.extend(extra_labels);
+    println!("volume: {:?}", volume);
+    println!("labels: {:?}", labels);
 
     // We use a gauge metric here to be able to capture a float value
     // for the volume

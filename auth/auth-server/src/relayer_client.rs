@@ -1,4 +1,6 @@
 //! Client code for interacting with a configured relayer
+use crate::error::AuthServerError;
+use crate::ApiError;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response};
 use renegade_api::auth::add_expiring_auth_to_headers;
@@ -7,9 +9,6 @@ use renegade_api::http::price_report::{
 };
 use renegade_common::types::wallet::keychain::HmacKey;
 use renegade_common::types::{exchange::PriceReporterState, token::Token};
-// use renegade_constants::Scalar;
-use crate::error::AuthServerError;
-use crate::ApiError;
 use renegade_util::err_str;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -33,11 +32,7 @@ pub struct RelayerClient {
 impl RelayerClient {
     /// Create a new relayer client
     pub fn new(base_url: &str, relayer_admin_key: HmacKey) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            client: reqwest_client().expect("Failed to create HTTP client"),
-            relayer_admin_key,
-        }
+        Self { base_url: base_url.to_string(), client: Client::new(), relayer_admin_key }
     }
 
     /// Send a proxied request to the relayer with admin authentication
@@ -132,10 +127,9 @@ impl RelayerClient {
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
-        // Send a request
-        let client = reqwest_client()?;
         let route = format!("{}{}", self.base_url, path);
-        let resp = client
+        let resp = self
+            .client
             .post(route)
             .json(body)
             .headers(headers.clone())
@@ -155,53 +149,4 @@ impl RelayerClient {
 
         resp.json::<Resp>().await.map_err(err_str!(AuthServerError::Parse))
     }
-
-    /// Get from the relayer URL
-    async fn get_relayer<Resp>(&self, path: &str) -> Result<Resp, AuthServerError>
-    where
-        Resp: for<'de> Deserialize<'de>,
-    {
-        self.get_relayer_with_headers(path, &HeaderMap::new()).await
-    }
-
-    /// Get from the relayer URL with given headers
-    async fn get_relayer_with_headers<Resp>(
-        &self,
-        path: &str,
-        headers: &HeaderMap,
-    ) -> Result<Resp, AuthServerError>
-    where
-        Resp: for<'de> Deserialize<'de>,
-    {
-        let client = reqwest_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let resp = client
-            .get(url)
-            .headers(headers.clone())
-            .send()
-            .await
-            .map_err(err_str!(AuthServerError::Http))?;
-
-        // Parse the response
-        if !resp.status().is_success() {
-            return Err(AuthServerError::Http(format!(
-                "Failed to get relayer path: {}",
-                resp.status()
-            )));
-        }
-
-        resp.json::<Resp>().await.map_err(err_str!(AuthServerError::Parse))
-    }
-}
-
-// -----------
-// | Helpers |
-// -----------
-
-/// Build a reqwest client
-fn reqwest_client() -> Result<Client, AuthServerError> {
-    Client::builder()
-        .user_agent("fee-sweeper")
-        .build()
-        .map_err(|_| AuthServerError::Custom("Failed to create reqwest client".to_string()))
 }

@@ -51,7 +51,8 @@ impl Server {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
-        // Parse the decryption key, management key, and relayer admin key
+        // Parse the decryption key, management key, and relayer admin key as
+        // base64 encoded strings
         let encryption_key = general_purpose::STANDARD
             .decode(&args.encryption_key)
             .map_err(AuthServerError::encryption)?;
