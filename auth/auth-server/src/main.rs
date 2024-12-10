@@ -14,7 +14,6 @@
 
 pub(crate) mod error;
 pub(crate) mod models;
-pub mod relayer_client;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;
 mod server;
@@ -28,13 +27,14 @@ use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
-use server::Server;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
+
+use server::Server;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
