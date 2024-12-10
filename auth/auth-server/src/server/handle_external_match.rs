@@ -9,9 +9,9 @@ use renegade_api::http::external_match::{ExternalMatchResponse, ExternalQuoteRes
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::error::AuthServerError;
-
 use super::Server;
+use crate::error::AuthServerError;
+use crate::telemetry::helpers::record_external_match_metrics;
 
 /// Handle a proxied request
 impl Server {
@@ -66,15 +66,25 @@ impl Server {
         body: Bytes,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp =
+            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
             warn!("Error logging bundle: {e}");
         }
+
+        // Record metrics in a blocking task
+        let resp_clone = resp.body().to_vec();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = record_external_match_metrics(&body, &resp_clone, key_description) {
+                warn!("Error recording metrics: {e}");
+            }
+        });
+
         Ok(resp)
     }
 

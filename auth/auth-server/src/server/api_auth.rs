@@ -25,12 +25,15 @@ impl Server {
     }
 
     /// Authorize a request
+    ///
+    /// Returns the description for the API key, i.e. a human readable name for
+    /// the entity that is making the request
     pub(crate) async fn authorize_request(
         &self,
         path: &str,
         headers: &HeaderMap,
         body: &[u8],
-    ) -> Result<(), ApiError> {
+    ) -> Result<String, ApiError> {
         // Check API auth
         let api_key = headers
             .get(RENEGADE_API_KEY_HEADER)
@@ -40,7 +43,7 @@ impl Server {
 
         let key_description = self.check_api_key_auth(api_key, path, headers, body).await?;
         info!("Authorized request for entity: {key_description}");
-        Ok(())
+        Ok(key_description)
     }
 
     /// Check that a request is authorized with a given API key and an HMAC of

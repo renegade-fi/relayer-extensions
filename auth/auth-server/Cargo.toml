@@ -26,7 +26,10 @@ rand = "0.8.5"
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
+renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
     "auth",
@@ -38,6 +41,7 @@ bytes = "1.0"
 cached = "0.53"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
+metrics = "=0.22.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
