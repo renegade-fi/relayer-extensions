@@ -25,6 +25,9 @@ impl Server {
     }
 
     /// Authorize a request
+    ///
+    /// Returns the description for the API key, i.e. a human readable name for
+    /// the entity that is making the request
     pub(crate) async fn authorize_request(
         &self,
         path: &str,

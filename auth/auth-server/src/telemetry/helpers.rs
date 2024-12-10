@@ -1,15 +1,20 @@
+//! Helper methods for capturing telemetry information throughout the auth
+//! server
+
 use crate::error::AuthServerError;
-use crate::relayer_client::RelayerClient;
 use crate::telemetry::labels::{
-    EXTERNAL_MATCH_BUNDLE_VOLUME, EXTERNAL_ORDER_VOLUME, NUM_ATOMIC_MATCH_REQUESTS,
+    ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_QUOTE_VOLUME,
+    EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
+    NUM_EXTERNAL_MATCH_REQUESTS,
 };
-use renegade_api::http::external_match::{ExternalMatchRequest, ExternalMatchResponse};
+use renegade_api::http::external_match::{
+    AtomicMatchApiBundle, ExternalMatchRequest, ExternalMatchResponse,
+};
+use renegade_circuit_types::fixed_point::FixedPoint;
+use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
-use renegade_common::types::TimestampedPrice;
 use renegade_util::hex::biguint_to_hex_addr;
 use tracing::warn;
-
-use super::labels::{ASSET_METRIC_TAG, KEY_DESCRIPTION_METRIC_TAG};
 
 /// Get the human-readable asset and volume of
 /// the given mint and amount.
@@ -25,15 +30,30 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
     (asset, volume)
 }
 
+/// Calculates the quote per base price from a match bundle
+/// Returns the price as an f64 decimal adjusted value
+fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> f64 {
+    let (quote, base) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
+        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
+    };
+
+    let quote_amt = Token::from_addr(&quote.mint).convert_to_decimal(quote.amount);
+    let base_amt = Token::from_addr(&base.mint).convert_to_decimal(base.amount);
+    quote_amt / base_amt
+}
+
 /// Converts a decimal amount to token native units, accounting for the token's
 /// decimals. This is the inverse operation of convert_to_decimal.
 fn convert_from_decimal(token: &Token, decimal_amount: f64) -> u128 {
     let decimals = token.get_decimals().unwrap_or_default();
-    (decimal_amount * (10u128.pow(decimals as u32) as f64)) as u128
+    let decimal_correction = 10f64.powi(decimals as i32);
+    let corrected_amount = decimal_amount * decimal_correction;
+    corrected_amount as u128
 }
 
 /// Record a volume metric with the given extra tags
-pub fn record_volume_with_tags(
+fn record_volume_with_tags(
     mint: &str,
     amount: u128,
     volume_metric_name: &'static str,
@@ -50,50 +70,59 @@ pub fn record_volume_with_tags(
 }
 
 /// Records metrics for the incoming external match request
-pub async fn record_external_match_request_metrics(
-    relayer_client: &RelayerClient,
+fn record_external_match_request_metrics(
     req: &ExternalMatchRequest,
+    price: f64,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
     // Record external order volume
     let base_mint = biguint_to_hex_addr(&req.external_order.base_mint);
     let quote_mint = biguint_to_hex_addr(&req.external_order.quote_mint);
 
-    if let Some(price) = relayer_client.get_binance_price(&base_mint, &quote_mint).await? {
-        // Calculate amount in base
-        let timestamped_price = TimestampedPrice::new(price);
-        let fixed_point_price = timestamped_price.as_fixed_point();
-        let order = req.external_order.to_order_with_price(fixed_point_price);
+    // Calculate amount in base
+    let fixed_point_price = FixedPoint::from_f64_round_down(price);
+    let order = req.external_order.to_order_with_price(fixed_point_price);
 
-        // Calculate amount in quote
-        let (_, volume) = get_asset_and_volume(&base_mint, order.amount);
-        let quote_token = Token::from_addr(&quote_mint);
-        let quote_amount = convert_from_decimal(&quote_token, volume * fixed_point_price.to_f64());
+    // Calculate amount in quote
+    let (_, volume) = get_asset_and_volume(&base_mint, order.amount);
+    let quote_token = Token::from_addr(&quote_mint);
+    let quote_amount = convert_from_decimal(&quote_token, volume * price);
 
-        record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_VOLUME, labels);
-        record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_VOLUME, labels);
-    }
+    record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
+    record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, labels);
 
     Ok(())
 }
 
 /// Records metrics for the external match response (match bundle)
-pub fn record_external_match_response_metrics(
+fn record_external_match_response_metrics(
     resp: &ExternalMatchResponse,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
-    let recv = &resp.match_bundle.receive;
-    let send = &resp.match_bundle.send;
+    let (quote, base) = match resp.match_bundle.match_result.direction {
+        OrderSide::Buy => (&resp.match_bundle.send, &resp.match_bundle.receive),
+        OrderSide::Sell => (&resp.match_bundle.receive, &resp.match_bundle.send),
+    };
 
-    record_volume_with_tags(recv.mint.as_str(), recv.amount, EXTERNAL_MATCH_BUNDLE_VOLUME, labels);
-    record_volume_with_tags(send.mint.as_str(), send.amount, EXTERNAL_MATCH_BUNDLE_VOLUME, labels);
+    record_volume_with_tags(&quote.mint, quote.amount, EXTERNAL_MATCH_QUOTE_VOLUME, labels);
+    record_volume_with_tags(&base.mint, base.amount, EXTERNAL_MATCH_BASE_VOLUME, labels);
 
     Ok(())
 }
 
+/// Records a counter metric for a given base mint and key description
+fn record_endpoint_metrics(base_mint: &str, key_description: String, metric_name: &'static str) {
+    let (asset, _) = get_asset_and_volume(base_mint, 0);
+    let labels = vec![
+        (ASSET_METRIC_TAG.to_string(), asset),
+        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
+    ];
+
+    metrics::counter!(metric_name, &labels).increment(1);
+}
+
 /// Records all metrics related to an external match request and response
-pub async fn record_external_match_metrics(
-    relayer_client: &RelayerClient,
+pub fn record_external_match_metrics(
     req_body: &[u8],
     resp_body: &[u8],
     key_description: String,
@@ -104,20 +133,17 @@ pub async fn record_external_match_metrics(
     let match_resp = serde_json::from_slice::<ExternalMatchResponse>(resp_body)
         .map_err(AuthServerError::serde)?;
 
-    // Create labels with key description and asset
-    let base_mint = biguint_to_hex_addr(&match_req.external_order.base_mint);
-    let (asset, _) = get_asset_and_volume(&base_mint, 0);
-    let labels = vec![
-        (ASSET_METRIC_TAG.to_string(), asset),
-        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
-    ];
-
     // Record atomic match request counter
-    metrics::counter!(NUM_ATOMIC_MATCH_REQUESTS, &labels).increment(1);
+    let base_mint = biguint_to_hex_addr(&match_req.external_order.base_mint);
+    record_endpoint_metrics(&base_mint, key_description.clone(), NUM_EXTERNAL_MATCH_REQUESTS);
+
+    let labels = vec![(KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description)];
+
+    // Get price
+    let price = calculate_implied_price(&match_resp.match_bundle);
 
     // Record request metrics
-    if let Err(e) = record_external_match_request_metrics(relayer_client, &match_req, &labels).await
-    {
+    if let Err(e) = record_external_match_request_metrics(&match_req, price, &labels) {
         warn!("Error recording request metrics: {e}");
     }
 

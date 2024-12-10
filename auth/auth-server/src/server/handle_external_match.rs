@@ -27,10 +27,7 @@ impl Server {
         self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self
-            .relayer_client
-            .send_admin_request(Method::POST, path.as_str(), headers, body)
-            .await?;
+        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_quote(resp.body()) {
@@ -51,10 +48,7 @@ impl Server {
         self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self
-            .relayer_client
-            .send_admin_request(Method::POST, path.as_str(), headers, body)
-            .await?;
+        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
@@ -75,23 +69,21 @@ impl Server {
         let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self
-            .relayer_client
-            .send_admin_request(Method::POST, path.as_str(), headers, body.clone())
-            .await?;
+        let resp =
+            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
         // Log the bundle parameters
         if let Err(e) = self.log_bundle(resp.body()) {
             warn!("Error logging bundle: {e}");
         }
 
-        // Record metrics
-        if let Err(e) =
-            record_external_match_metrics(&self.relayer_client, &body, resp.body(), key_description)
-                .await
-        {
-            warn!("Error recording metrics: {e}");
-        }
+        // Record metrics in a blocking task
+        let resp_clone = resp.body().to_vec();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = record_external_match_metrics(&body, &resp_clone, key_description) {
+                warn!("Error recording metrics: {e}");
+            }
+        });
 
         Ok(resp)
     }

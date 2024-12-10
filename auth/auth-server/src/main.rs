@@ -10,11 +10,11 @@
 #![deny(unsafe_code)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::needless_pass_by_value)]
+#![deny(clippy::unused_async)]
 #![feature(trivial_bounds)]
 
 pub(crate) mod error;
 pub(crate) mod models;
-pub mod relayer_client;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;
 mod server;
@@ -28,13 +28,14 @@ use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
-use server::Server;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
+
+use server::Server;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
@@ -156,7 +157,7 @@ async fn main() {
     let token_remap_file = args.token_remap_file.clone();
     tokio::task::spawn_blocking(move || {
         setup_token_remaps(token_remap_file, chain_id)
-            .map_err(err_str!(error::AuthServerError::TokenRemap))
+            .map_err(err_str!(error::AuthServerError::Setup))
     })
     .await
     .unwrap()

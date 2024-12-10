@@ -4,14 +4,19 @@
 // | METRIC NAMES |
 // ----------------
 
-/// Metric describing the number of atomic matches requested
-pub const NUM_ATOMIC_MATCH_REQUESTS: &str = "num_atomic_match_requests";
+/// Metric describing the number of external matches requested
+pub const NUM_EXTERNAL_MATCH_REQUESTS: &str = "num_external_match_requests";
 
-/// Metric describing the volume of requested external orders
-pub const EXTERNAL_ORDER_VOLUME: &str = "external_order_volume";
+/// Metric describing the volume of the base asset in an external order request
+pub const EXTERNAL_ORDER_BASE_VOLUME: &str = "external_order_base_volume";
+/// Metric describing the volume of the quote asset in an external order request
+pub const EXTERNAL_ORDER_QUOTE_VOLUME: &str = "external_order_quote_volume";
 
-/// Metric describing the volume of atomic match bundles
-pub const EXTERNAL_MATCH_BUNDLE_VOLUME: &str = "external_match_bundle_volume";
+/// Metric describing the volume of the base asset in an external match response
+pub const EXTERNAL_MATCH_BASE_VOLUME: &str = "external_match_base_volume";
+/// Metric describing the volume of the quote asset in an external match
+/// response
+pub const EXTERNAL_MATCH_QUOTE_VOLUME: &str = "external_match_quote_volume";
 
 // ---------------
 // | METRIC TAGS |
