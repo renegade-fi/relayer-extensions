@@ -5,18 +5,13 @@
 
 use bytes::Bytes;
 use http::Method;
-use renegade_api::http::external_match::{
-    ExternalMatchRequest, ExternalMatchResponse, ExternalQuoteResponse,
-};
+use renegade_api::http::external_match::{ExternalMatchResponse, ExternalQuoteResponse};
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::{
-    record_external_match_request_metrics, record_external_match_response_metrics,
-};
-use crate::telemetry::labels::KEY_DESCRIPTION_METRIC_TAG;
+use crate::telemetry::helpers::record_external_match_metrics;
 
 /// Handle a proxied request
 impl Server {
@@ -90,22 +85,12 @@ impl Server {
             warn!("Error logging bundle: {e}");
         }
 
-        let labels = [(KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description)];
-
-        // Parse and record request metrics
-        let req = serde_json::from_slice::<ExternalMatchRequest>(&body)
-            .map_err(AuthServerError::serde)?;
+        // Record metrics
         if let Err(e) =
-            record_external_match_request_metrics(&self.relayer_client, &req, &labels).await
+            record_external_match_metrics(&self.relayer_client, &body, resp.body(), key_description)
+                .await
         {
-            warn!("Error recording request metrics: {e}");
-        }
-
-        // Parse and record response metrics
-        let match_response = serde_json::from_slice::<ExternalMatchResponse>(&resp.body())
-            .map_err(AuthServerError::serde)?;
-        if let Err(e) = record_external_match_response_metrics(&match_response, &labels) {
-            warn!("Error recording response metrics: {e}");
+            warn!("Error recording metrics: {e}");
         }
 
         Ok(resp)
