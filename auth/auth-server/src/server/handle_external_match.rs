@@ -77,10 +77,14 @@ impl Server {
             warn!("Error logging bundle: {e}");
         }
 
-        // Record metrics in a blocking task
+        // Record metrics
         let resp_clone = resp.body().to_vec();
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = record_external_match_metrics(&body, &resp_clone, key_description) {
+        let arbitrum_client = self.arbitrum_client.clone();
+        tokio::spawn(async move {
+            if let Err(e) =
+                record_external_match_metrics(&body, &resp_clone, key_description, &arbitrum_client)
+                    .await
+            {
                 warn!("Error recording metrics: {e}");
             }
         });
