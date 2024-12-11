@@ -724,6 +724,7 @@ name = "auth-server"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "alloy-sol-types",
  "arbitrum-client",
  "auth-server-api",
  "base64 0.22.1",
@@ -735,8 +736,11 @@ dependencies = [
  "clap",
  "common",
  "config",
+ "constants",
+ "contracts-common",
  "diesel",
  "diesel-async",
+ "ethers",
  "external-api",
  "futures-util",
  "http 0.2.12",
