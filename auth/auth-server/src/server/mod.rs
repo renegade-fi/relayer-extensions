@@ -21,6 +21,7 @@ use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use renegade_api::auth::add_expiring_auth_to_headers;
+use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::wallet::keychain::HmacKey;
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
@@ -39,6 +40,7 @@ pub type DbPool = Pool<AsyncDieselConnectionManager<AsyncPgConnection>>;
 pub type ApiKeyCache = Arc<RwLock<UnboundCache<Uuid, ApiKey>>>;
 
 /// The server struct that holds all the necessary components
+#[derive(Clone)]
 pub struct Server {
     /// The database connection pool
     pub db_pool: Arc<DbPool>,
@@ -54,11 +56,13 @@ pub struct Server {
     pub api_key_cache: ApiKeyCache,
     /// The HTTP client
     pub client: Client,
+    /// The Arbitrum client
+    pub arbitrum_client: ArbitrumClient,
 }
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(args: Cli) -> Result<Self, AuthServerError> {
+    pub async fn new(args: Cli, arbitrum_client: ArbitrumClient) -> Result<Self, AuthServerError> {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
@@ -80,6 +84,7 @@ impl Server {
             encryption_key,
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
+            arbitrum_client,
         })
     }
 

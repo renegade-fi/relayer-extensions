@@ -18,6 +18,11 @@ pub const EXTERNAL_MATCH_BASE_VOLUME: &str = "external_match_base_volume";
 /// response
 pub const EXTERNAL_MATCH_QUOTE_VOLUME: &str = "external_match_quote_volume";
 
+/// Metric describing the volume of the base asset in an external match
+pub const EXTERNAL_MATCH_SETTLED_BASE_VOLUME: &str = "external_match_settled_base_volume";
+/// Metric describing the volume of the quote asset in an external match
+pub const EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME: &str = "external_match_settled_quote_volume";
+
 // ---------------
 // | METRIC TAGS |
 // ---------------
@@ -26,3 +31,5 @@ pub const EXTERNAL_MATCH_QUOTE_VOLUME: &str = "external_match_quote_volume";
 pub const ASSET_METRIC_TAG: &str = "asset";
 /// Metric tag for the description of the API key used to make the request
 pub const KEY_DESCRIPTION_METRIC_TAG: &str = "key_description";
+/// Metric tag for the settlement status of an external match
+pub const SETTLEMENT_STATUS_TAG: &str = "did_settle";
