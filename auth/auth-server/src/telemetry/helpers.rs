@@ -1,20 +1,37 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use crate::error::AuthServerError;
-use crate::telemetry::labels::{
-    ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_QUOTE_VOLUME,
-    EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
-    NUM_EXTERNAL_MATCH_REQUESTS,
-};
+use std::time::Duration;
+
+use alloy_sol_types::SolCall;
+use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchRequest, ExternalMatchResponse,
 };
-use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_circuit_types::order::OrderSide;
+use renegade_arbitrum_client::{
+    abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
+    client::ArbitrumClient,
+    helpers::deserialize_calldata,
+};
+use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
 use renegade_common::types::token::Token;
+use renegade_constants::Scalar;
 use renegade_util::hex::biguint_to_hex_addr;
-use tracing::warn;
+use serde_json;
+use tracing::{info, warn};
+
+use crate::{
+    error::AuthServerError,
+    telemetry::labels::{
+        ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_QUOTE_VOLUME,
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
+        EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
+        NUM_EXTERNAL_MATCH_REQUESTS, SETTLEMENT_STATUS_TAG,
+    },
+};
+
+/// The duration to await an atomic match settlement
+pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Get the human-readable asset and volume of
 /// the given mint and amount.
@@ -96,12 +113,12 @@ fn record_external_match_request_metrics(
 
 /// Records metrics for the external match response (match bundle)
 fn record_external_match_response_metrics(
-    resp: &ExternalMatchResponse,
+    match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
-    let (quote, base) = match resp.match_bundle.match_result.direction {
-        OrderSide::Buy => (&resp.match_bundle.send, &resp.match_bundle.receive),
-        OrderSide::Sell => (&resp.match_bundle.receive, &resp.match_bundle.send),
+    let (quote, base) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
+        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
     };
 
     record_volume_with_tags(&quote.mint, quote.amount, EXTERNAL_MATCH_QUOTE_VOLUME, labels);
@@ -110,32 +127,68 @@ fn record_external_match_response_metrics(
     Ok(())
 }
 
-/// Records a counter metric for a given base mint and key description
-fn record_endpoint_metrics(base_mint: &str, key_description: String, metric_name: &'static str) {
-    let (asset, _) = get_asset_and_volume(base_mint, 0);
-    let labels = vec![
-        (ASSET_METRIC_TAG.to_string(), asset),
-        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
-    ];
+/// Records metrics for the settlement of an external match
+fn record_external_match_settlement_metrics(
+    match_bundle: &AtomicMatchApiBundle,
+    did_settle: bool,
+    extra_labels: &[(String, String)],
+) -> Result<(), AuthServerError> {
+    let (quote, base) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
+        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
+    };
 
+    let mut labels = vec![(SETTLEMENT_STATUS_TAG.to_string(), did_settle.to_string())];
+    labels.extend(extra_labels.iter().cloned());
+
+    record_endpoint_metrics(
+        &match_bundle.match_result.base_mint,
+        NUM_EXTERNAL_MATCH_REQUESTS,
+        &labels,
+    );
+
+    if did_settle {
+        record_volume_with_tags(
+            &quote.mint,
+            quote.amount,
+            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
+            &labels,
+        );
+        record_volume_with_tags(
+            &base.mint,
+            base.amount,
+            EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+            &labels,
+        );
+    }
+
+    Ok(())
+}
+
+/// Records a counter metric with the given labels
+fn record_endpoint_metrics(
+    mint: &str,
+    metric_name: &'static str,
+    extra_labels: &[(String, String)],
+) {
+    let (asset, _) = get_asset_and_volume(mint, 0);
+    let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
+    labels.extend(extra_labels.iter().cloned());
     metrics::counter!(metric_name, &labels).increment(1);
 }
 
 /// Records all metrics related to an external match request and response
-pub fn record_external_match_metrics(
+pub async fn record_external_match_metrics(
     req_body: &[u8],
     resp_body: &[u8],
     key_description: String,
+    arbitrum_client: &ArbitrumClient,
 ) -> Result<(), AuthServerError> {
     // Parse request and response
     let match_req =
         serde_json::from_slice::<ExternalMatchRequest>(req_body).map_err(AuthServerError::serde)?;
     let match_resp = serde_json::from_slice::<ExternalMatchResponse>(resp_body)
         .map_err(AuthServerError::serde)?;
-
-    // Record atomic match request counter
-    let base_mint = biguint_to_hex_addr(&match_req.external_order.base_mint);
-    record_endpoint_metrics(&base_mint, key_description.clone(), NUM_EXTERNAL_MATCH_REQUESTS);
 
     let labels = vec![(KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description)];
 
@@ -148,9 +201,66 @@ pub fn record_external_match_metrics(
     }
 
     // Record response metrics
-    if let Err(e) = record_external_match_response_metrics(&match_resp, &labels) {
+    if let Err(e) = record_external_match_response_metrics(&match_resp.match_bundle, &labels) {
         warn!("Error recording response metrics: {e}");
     }
 
+    // Record settlement metrics
+    let did_settle = await_settlement(&match_resp.match_bundle, arbitrum_client).await?;
+    if let Err(e) =
+        record_external_match_settlement_metrics(&match_resp.match_bundle, did_settle, &labels)
+    {
+        warn!("Error recording settlement metrics: {e}");
+    }
+
     Ok(())
+}
+
+/// Await the result of the atomic match settlement to be submitted on-chain
+///
+/// Returns `true` if the settlement succeeded on-chain, `false` otherwise
+async fn await_settlement(
+    match_bundle: &AtomicMatchApiBundle,
+    arbitrum_client: &ArbitrumClient,
+) -> Result<bool, AuthServerError> {
+    let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
+    let res = arbitrum_client.await_nullifier_spent(nullifier, ATOMIC_SETTLEMENT_TIMEOUT).await;
+
+    let did_settle = res.is_ok();
+    if !did_settle {
+        info!("atomic match settlement not observed on-chain");
+    }
+    Ok(did_settle)
+}
+
+/// Extracts the nullifier from a match bundle's settlement transaction
+///
+/// This function attempts to decode the settlement transaction data in two
+/// ways:
+/// 1. As a standard atomic match settle call
+/// 2. As a match settle with receiver call
+fn extract_nullifier_from_match_bundle(
+    match_bundle: &AtomicMatchApiBundle,
+) -> Result<Nullifier, AuthServerError> {
+    let tx_data = match_bundle
+        .settlement_tx
+        .data()
+        .ok_or_else(|| AuthServerError::Serde("No data in settlement tx".to_string()))?;
+
+    // Retrieve serialized match payload from the transaction data
+    let serialized_match_payload =
+        if let Ok(decoded) = processAtomicMatchSettleCall::abi_decode(tx_data, false) {
+            decoded.internal_party_match_payload
+        } else {
+            let decoded = processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
+                .map_err(AuthServerError::serde)?;
+            decoded.internal_party_match_payload
+        };
+
+    // Extract nullifier from the payload
+    let match_payload = deserialize_calldata::<MatchPayload>(&serialized_match_payload)
+        .map_err(AuthServerError::serde)?;
+    let nullifier = Scalar::new(match_payload.valid_reblind_statement.original_shares_nullifier);
+
+    Ok(nullifier)
 }

@@ -72,15 +72,24 @@ impl Server {
         let resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
-        // Log the bundle parameters
-        if let Err(e) = self.log_bundle(resp.body()) {
-            warn!("Error logging bundle: {e}");
-        }
-
-        // Record metrics in a blocking task
         let resp_clone = resp.body().to_vec();
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = record_external_match_metrics(&body, &resp_clone, key_description) {
+        let server_clone = self.clone();
+
+        tokio::spawn(async move {
+            // Log the bundle parameters
+            if let Err(e) = server_clone.log_bundle(&resp_clone) {
+                warn!("Error logging bundle: {e}");
+            }
+
+            // Record metrics
+            if let Err(e) = record_external_match_metrics(
+                &body,
+                &resp_clone,
+                key_description,
+                &server_clone.arbitrum_client,
+            )
+            .await
+            {
                 warn!("Error recording metrics: {e}");
             }
         });

@@ -22,13 +22,18 @@ mod telemetry;
 
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
-use renegade_arbitrum_client::constants::Chain;
+use ethers::signers::LocalWallet;
+use renegade_arbitrum_client::{
+    client::{ArbitrumClient, ArbitrumClientConfig},
+    constants::Chain,
+};
 use renegade_config::setup_token_remaps;
 use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
@@ -39,6 +44,12 @@ use server::Server;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
+/// The dummy private key used to instantiate the arbitrum client
+///
+/// We don't need any client functionality using a real private key, so instead
+/// we use the key deployed by Arbitrum on local devnets
+const DUMMY_PRIVATE_KEY: &str =
+    "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
 
 // -------
 // | CLI |
@@ -163,8 +174,22 @@ async fn main() {
     .unwrap()
     .expect("Failed to setup token remaps");
 
+    // Build an Arbitrum client
+    let wallet =
+        LocalWallet::from_str(DUMMY_PRIVATE_KEY).expect("Failed to create wallet from private key");
+    let arbitrum_client = ArbitrumClient::new(ArbitrumClientConfig {
+        darkpool_addr: "0x9af58f1ff20ab22e819e40b57ffd784d115a9ef5".to_string(),
+        chain: args.chain_id,
+        rpc_url: "https://arb-sepolia.g.alchemy.com/v2/nnNuwdTdUm-M2xoUq11wq7brieciW-98"
+            .to_string(),
+        arb_priv_keys: vec![wallet],
+        block_polling_interval_ms: 100,
+    })
+    .await
+    .unwrap();
+
     // Create the server
-    let server = Server::new(args).await.expect("Failed to create server");
+    let server = Server::new(args, arbitrum_client).await.expect("Failed to create server");
     let server = Arc::new(server);
 
     // --- Management Routes --- //
