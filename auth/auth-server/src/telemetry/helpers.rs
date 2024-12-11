@@ -23,10 +23,11 @@ use tracing::{info, warn};
 use crate::{
     error::AuthServerError,
     telemetry::labels::{
-        ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_QUOTE_VOLUME,
-        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-        EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
-        NUM_EXTERNAL_MATCH_REQUESTS, SETTLEMENT_STATUS_TAG,
+        ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
+        EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+        EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
+        EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS,
+        REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG,
     },
 };
 
@@ -69,6 +70,18 @@ fn convert_from_decimal(token: &Token, decimal_amount: f64) -> u128 {
     corrected_amount as u128
 }
 
+/// Extends the given labels with a base asset tag
+fn extend_labels_with_base_asset(
+    base_mint: &str,
+    mut labels: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    let base_token = Token::from_addr(base_mint);
+    let base_asset = base_token.get_ticker().unwrap_or(base_mint.to_string());
+
+    labels.insert(0, (BASE_ASSET_METRIC_TAG.to_string(), base_asset));
+    labels
+}
+
 /// Record a volume metric with the given extra tags
 fn record_volume_with_tags(
     mint: &str,
@@ -106,7 +119,9 @@ fn record_external_match_request_metrics(
     let quote_amount = convert_from_decimal(&quote_token, volume * price);
 
     record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
-    record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, labels);
+
+    let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
+    record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
 
     Ok(())
 }
@@ -116,13 +131,15 @@ fn record_external_match_response_metrics(
     match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
-    let (quote, base) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
-        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
+    let (base, quote) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
+        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
     };
 
-    record_volume_with_tags(&quote.mint, quote.amount, EXTERNAL_MATCH_QUOTE_VOLUME, labels);
     record_volume_with_tags(&base.mint, base.amount, EXTERNAL_MATCH_BASE_VOLUME, labels);
+
+    let labels = extend_labels_with_base_asset(&base.mint, labels.to_vec());
+    record_volume_with_tags(&quote.mint, quote.amount, EXTERNAL_MATCH_QUOTE_VOLUME, &labels);
 
     Ok(())
 }
@@ -133,9 +150,9 @@ fn record_external_match_settlement_metrics(
     did_settle: bool,
     extra_labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
-    let (quote, base) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
-        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
+    let (base, quote) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
+        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
     };
 
     let mut labels = vec![(SETTLEMENT_STATUS_TAG.to_string(), did_settle.to_string())];
@@ -149,15 +166,17 @@ fn record_external_match_settlement_metrics(
 
     if did_settle {
         record_volume_with_tags(
-            &quote.mint,
-            quote.amount,
-            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-            &labels,
-        );
-        record_volume_with_tags(
             &base.mint,
             base.amount,
             EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+            &labels,
+        );
+
+        let labels = extend_labels_with_base_asset(&base.mint, labels.to_vec());
+        record_volume_with_tags(
+            &quote.mint,
+            quote.amount,
+            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             &labels,
         );
     }
@@ -190,7 +209,11 @@ pub async fn record_external_match_metrics(
     let match_resp = serde_json::from_slice::<ExternalMatchResponse>(resp_body)
         .map_err(AuthServerError::serde)?;
 
-    let labels = vec![(KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description)];
+    let request_id = uuid::Uuid::new_v4();
+    let labels = vec![
+        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
+        (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
+    ];
 
     // Get price
     let price = calculate_implied_price(&match_resp.match_bundle);

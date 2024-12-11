@@ -33,3 +33,8 @@ pub const ASSET_METRIC_TAG: &str = "asset";
 pub const KEY_DESCRIPTION_METRIC_TAG: &str = "key_description";
 /// Metric tag for the settlement status of an external match
 pub const SETTLEMENT_STATUS_TAG: &str = "did_settle";
+/// Metric tag that contains a unique identifier for tracking a single request
+/// through its entire lifecycle.
+pub const REQUEST_ID_METRIC_TAG: &str = "request_id";
+/// Metric tag for the base asset of an external order or match
+pub const BASE_ASSET_METRIC_TAG: &str = "base_asset";
