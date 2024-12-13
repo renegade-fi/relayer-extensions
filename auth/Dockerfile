@@ -53,4 +53,3 @@ RUN apt-get update && \
 COPY --from=builder /build/target/release/auth-server /bin/auth-server
 
 ENTRYPOINT ["/bin/auth-server"]
-CMD ["--datadog-logging"]
