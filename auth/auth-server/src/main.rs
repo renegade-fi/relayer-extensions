@@ -89,6 +89,12 @@ pub struct Cli {
     /// See https://github.com/renegade-fi/token-mappings for more information on the format of this file
     #[arg(long, env = "TOKEN_REMAP_FILE")]
     pub token_remap_file: Option<String>,
+    /// The Arbitrum RPC url to use
+    #[clap(short, long, env = "RPC_URL")]
+    rpc_url: String,
+    /// The address of the darkpool contract
+    #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
+    darkpool_address: String,
 
     // -------------
     // | Telemetry |
@@ -178,10 +184,9 @@ async fn main() {
     let wallet =
         LocalWallet::from_str(DUMMY_PRIVATE_KEY).expect("Failed to create wallet from private key");
     let arbitrum_client = ArbitrumClient::new(ArbitrumClientConfig {
-        darkpool_addr: "0x9af58f1ff20ab22e819e40b57ffd784d115a9ef5".to_string(),
+        darkpool_addr: args.darkpool_address.clone(),
         chain: args.chain_id,
-        rpc_url: "https://arb-sepolia.g.alchemy.com/v2/nnNuwdTdUm-M2xoUq11wq7brieciW-98"
-            .to_string(),
+        rpc_url: args.rpc_url.clone(),
         arb_priv_keys: vec![wallet],
         block_polling_interval_ms: 100,
     })
