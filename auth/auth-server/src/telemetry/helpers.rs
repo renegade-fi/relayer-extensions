@@ -48,17 +48,33 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
     (asset, volume)
 }
 
-/// Calculates the quote per base price from a match bundle
-/// Returns the price as an f64 decimal adjusted value
-fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> f64 {
-    let (quote, base) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.send, &match_bundle.receive),
-        OrderSide::Sell => (&match_bundle.receive, &match_bundle.send),
+/// Calculates the decimal-corrected quote per base price from a match bundle
+/// Returns the price as an f64 decimal adjusted value, accounting for the
+/// difference in decimal places between quote and base tokens
+fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> Result<f64, AuthServerError> {
+    let (base, quote) = match match_bundle.match_result.direction {
+        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
+        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
     };
 
-    let quote_amt = Token::from_addr(&quote.mint).convert_to_decimal(quote.amount);
-    let base_amt = Token::from_addr(&base.mint).convert_to_decimal(base.amount);
-    quote_amt / base_amt
+    let base_token = Token::from_addr(&base.mint);
+    let quote_token = Token::from_addr(&quote.mint);
+
+    let base_decimals = base_token.get_decimals().ok_or_else(|| {
+        AuthServerError::Serde(format!("No decimals for {}", base_token.get_addr()))
+    })?;
+    let quote_decimals = quote_token.get_decimals().ok_or_else(|| {
+        AuthServerError::Serde(format!("No decimals for {}", quote_token.get_addr()))
+    })?;
+
+    let base_amt = base_token.convert_to_decimal(base.amount);
+    let quote_amt = quote_token.convert_to_decimal(quote.amount);
+
+    let uncorrected_price = quote_amt / base_amt;
+    let decimal_diff = quote_decimals as i32 - base_decimals as i32;
+    let corrected_price = uncorrected_price * 10f64.powi(decimal_diff);
+
+    Ok(corrected_price)
 }
 
 /// Converts a decimal amount to token native units, accounting for the token's
@@ -215,8 +231,8 @@ pub async fn record_external_match_metrics(
         (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
     ];
 
-    // Get price
-    let price = calculate_implied_price(&match_resp.match_bundle);
+    // Get decimal-corrected price
+    let price = calculate_implied_price(&match_resp.match_bundle)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(&match_req, price, &labels) {
