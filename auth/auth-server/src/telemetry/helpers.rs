@@ -120,8 +120,8 @@ fn record_external_match_request_metrics(
     let fixed_point_price = FixedPoint::from_f64_round_down(price);
     let order = req.external_order.to_order_with_price(fixed_point_price);
 
-    // Calculate amount in quote
-    let quote_amount = order.amount * price as u128;
+    // Calculate amount in quote using fixed point arithmetic
+    let quote_amount = req.external_order.get_quote_amount(fixed_point_price);
 
     record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
 
