@@ -28,16 +28,14 @@ rand = "0.8.5"
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
-renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = ["rand"]}
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
-contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
-    "auth",
-] }
+contracts-common = { workspace = true }
+renegade-arbitrum-client = { workspace = true }
+renegade-circuit-types = { workspace = true }
+renegade-common = { workspace = true }
+renegade-constants = { workspace = true }
+renegade-config = { workspace = true }
+renegade-util = { workspace = true }
+renegade-api = { workspace = true }
 
 # === Misc Dependencies === #
 base64 = "0.22.1"
