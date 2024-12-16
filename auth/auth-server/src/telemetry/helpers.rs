@@ -77,15 +77,6 @@ fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> Result<f64, A
     Ok(corrected_price)
 }
 
-/// Converts a decimal amount to token native units, accounting for the token's
-/// decimals. This is the inverse operation of convert_to_decimal.
-fn convert_from_decimal(token: &Token, decimal_amount: f64) -> u128 {
-    let decimals = token.get_decimals().unwrap_or_default();
-    let decimal_correction = 10f64.powi(decimals as i32);
-    let corrected_amount = decimal_amount * decimal_correction;
-    corrected_amount as u128
-}
-
 /// Extends the given labels with a base asset tag
 fn extend_labels_with_base_asset(
     base_mint: &str,
@@ -130,9 +121,7 @@ fn record_external_match_request_metrics(
     let order = req.external_order.to_order_with_price(fixed_point_price);
 
     // Calculate amount in quote
-    let (_, volume) = get_asset_and_volume(&base_mint, order.amount);
-    let quote_token = Token::from_addr(&quote_mint);
-    let quote_amount = convert_from_decimal(&quote_token, volume * price);
+    let quote_amount = order.amount * price as u128;
 
     record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
 
