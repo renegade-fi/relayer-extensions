@@ -22,6 +22,7 @@ lto = true
 
 [workspace.dependencies]
 # === Renegade Dependencies === #
+contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
 renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = [
     "rand",
 ] }
