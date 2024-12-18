@@ -23,11 +23,11 @@ use tracing::{info, warn};
 use crate::{
     error::AuthServerError,
     telemetry::labels::{
-        ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
-        EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-        EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS,
-        REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG,
+        ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, DECIMAL_CORRECTION_FIXED_METRIC_TAG,
+        EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_QUOTE_VOLUME,
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
+        EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
+        NUM_EXTERNAL_MATCH_REQUESTS, REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG,
     },
 };
 
@@ -97,7 +97,10 @@ fn record_volume_with_tags(
     extra_labels: &[(String, String)],
 ) {
     let (asset, volume) = get_asset_and_volume(mint, amount);
-    let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
+    let mut labels = vec![
+        (ASSET_METRIC_TAG.to_string(), asset),
+        (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+    ];
     let extra_labels = extra_labels.iter().map(|(k, v)| (k.clone(), v.clone()));
     labels.extend(extra_labels);
 
