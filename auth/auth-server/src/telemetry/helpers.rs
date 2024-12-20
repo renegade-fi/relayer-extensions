@@ -199,7 +199,10 @@ fn record_endpoint_metrics(
     extra_labels: &[(String, String)],
 ) {
     let (asset, _) = get_asset_and_volume(mint, 0);
-    let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
+    let mut labels = vec![
+        (ASSET_METRIC_TAG.to_string(), asset),
+        (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+    ];
     labels.extend(extra_labels.iter().cloned());
     metrics::counter!(metric_name, &labels).increment(1);
 }
