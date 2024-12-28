@@ -5,13 +5,16 @@
 
 use bytes::Bytes;
 use http::Method;
-use renegade_api::http::external_match::{ExternalMatchResponse, ExternalQuoteResponse};
+use renegade_api::http::external_match::{
+    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
+    ExternalQuoteResponse,
+};
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::record_external_match_metrics;
+use crate::telemetry::helpers::{await_settlement, record_external_match_metrics};
 
 /// Handle a proxied request
 impl Server {
@@ -45,15 +48,24 @@ impl Server {
         body: Bytes,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_desc = self.authorize_request(path.as_str(), &headers, &body).await?;
+        self.check_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp =
+            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
-        // Log the bundle parameters
-        if let Err(e) = self.log_bundle(resp.body()) {
-            warn!("Error logging bundle: {e}");
-        }
+        let resp_clone = resp.body().to_vec();
+        let server_clone = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = server_clone
+                .handle_quote_assembly_bundle_response(key_desc, &body, &resp_clone)
+                .await
+            {
+                warn!("Error handling bundle: {e}");
+            };
+        });
+
         Ok(resp)
     }
 
@@ -67,34 +79,77 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
+        self.check_rate_limit(key_description.clone()).await?;
 
         // Send the request to the relayer
         let resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
+        // Watch the bundle for settlement
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
-
         tokio::spawn(async move {
-            // Log the bundle parameters
-            if let Err(e) = server_clone.log_bundle(&resp_clone) {
-                warn!("Error logging bundle: {e}");
-            }
-
-            // Record metrics
-            if let Err(e) = record_external_match_metrics(
-                &body,
-                &resp_clone,
-                key_description,
-                &server_clone.arbitrum_client,
-            )
-            .await
+            if let Err(e) = server_clone
+                .handle_direct_match_bundle_response(key_description, &body, &resp_clone)
+                .await
             {
-                warn!("Error recording metrics: {e}");
-            }
+                warn!("Error handling bundle: {e}");
+            };
         });
 
         Ok(resp)
+    }
+
+    // --- Bundle Tracking --- //
+
+    /// Handle a bundle response from a quote assembly request
+    async fn handle_quote_assembly_bundle_response(
+        &self,
+        key: String,
+        req: &[u8],
+        resp: &[u8],
+    ) -> Result<(), AuthServerError> {
+        let req: AssembleExternalMatchRequest =
+            serde_json::from_slice(req).map_err(AuthServerError::serde)?;
+        let order = req.signed_quote.quote.order;
+        self.handle_bundle_response(key, order, resp).await
+    }
+
+    /// Handle a bundle response from a direct match request
+    async fn handle_direct_match_bundle_response(
+        &self,
+        key: String,
+        req: &[u8],
+        resp: &[u8],
+    ) -> Result<(), AuthServerError> {
+        let req: ExternalMatchRequest =
+            serde_json::from_slice(req).map_err(AuthServerError::serde)?;
+        let order = req.external_order;
+        self.handle_bundle_response(key, order, resp).await
+    }
+
+    /// Record and watch a bundle that was forwarded to the client
+    ///
+    /// This method will await settlement and update metrics, rate limits, etc
+    async fn handle_bundle_response(
+        &self,
+        key: String,
+        order: ExternalOrder,
+        resp: &[u8],
+    ) -> Result<(), AuthServerError> {
+        // Deserialize the response
+        let match_resp: ExternalMatchResponse =
+            serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
+
+        // If the bundle settles, increase the API user's a rate limit token balance
+        let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
+        if did_settle {
+            self.add_rate_limit_token(key.clone()).await;
+        }
+
+        // Log the bundle and record metrics
+        self.log_bundle(resp)?;
+        record_external_match_metrics(&order, match_resp, key, did_settle).await
     }
 
     // --- Logging --- //

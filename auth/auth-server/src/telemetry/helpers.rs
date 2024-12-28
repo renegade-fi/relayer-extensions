@@ -6,7 +6,7 @@ use std::time::Duration;
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{
-    AtomicMatchApiBundle, ExternalMatchRequest, ExternalMatchResponse,
+    AtomicMatchApiBundle, ExternalMatchResponse, ExternalOrder,
 };
 use renegade_arbitrum_client::{
     abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
@@ -17,7 +17,6 @@ use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::
 use renegade_common::types::token::Token;
 use renegade_constants::Scalar;
 use renegade_util::hex::biguint_to_hex_addr;
-use serde_json;
 use tracing::{info, warn};
 
 use crate::{
@@ -111,22 +110,20 @@ fn record_volume_with_tags(
 
 /// Records metrics for the incoming external match request
 fn record_external_match_request_metrics(
-    req: &ExternalMatchRequest,
+    order: &ExternalOrder,
     price: f64,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
     // Record external order volume
-    let base_mint = biguint_to_hex_addr(&req.external_order.base_mint);
-    let quote_mint = biguint_to_hex_addr(&req.external_order.quote_mint);
-
-    // Calculate amount in base
-    let fixed_point_price = FixedPoint::from_f64_round_down(price);
-    let order = req.external_order.to_order_with_price(fixed_point_price);
+    let base_mint = biguint_to_hex_addr(&order.base_mint);
+    let quote_mint = biguint_to_hex_addr(&order.quote_mint);
 
     // Calculate amount in quote using fixed point arithmetic
-    let quote_amount = req.external_order.get_quote_amount(fixed_point_price);
+    let fixed_point_price = FixedPoint::from_f64_round_down(price);
+    let quote_amount = order.get_quote_amount(fixed_point_price);
+    let base_amount = order.get_base_amount(fixed_point_price);
 
-    record_volume_with_tags(&base_mint, order.amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
+    record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
 
     let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
     record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
@@ -153,7 +150,7 @@ fn record_external_match_response_metrics(
 }
 
 /// Records metrics for the settlement of an external match
-fn record_external_match_settlement_metrics(
+pub(crate) fn record_external_match_settlement_metrics(
     match_bundle: &AtomicMatchApiBundle,
     did_settle: bool,
     extra_labels: &[(String, String)],
@@ -208,18 +205,12 @@ fn record_endpoint_metrics(
 }
 
 /// Records all metrics related to an external match request and response
-pub async fn record_external_match_metrics(
-    req_body: &[u8],
-    resp_body: &[u8],
+pub(crate) async fn record_external_match_metrics(
+    order: &ExternalOrder,
+    match_resp: ExternalMatchResponse,
     key_description: String,
-    arbitrum_client: &ArbitrumClient,
+    did_settle: bool,
 ) -> Result<(), AuthServerError> {
-    // Parse request and response
-    let match_req =
-        serde_json::from_slice::<ExternalMatchRequest>(req_body).map_err(AuthServerError::serde)?;
-    let match_resp = serde_json::from_slice::<ExternalMatchResponse>(resp_body)
-        .map_err(AuthServerError::serde)?;
-
     let request_id = uuid::Uuid::new_v4();
     let labels = vec![
         (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
@@ -230,7 +221,7 @@ pub async fn record_external_match_metrics(
     let price = calculate_implied_price(&match_resp.match_bundle)?;
 
     // Record request metrics
-    if let Err(e) = record_external_match_request_metrics(&match_req, price, &labels) {
+    if let Err(e) = record_external_match_request_metrics(order, price, &labels) {
         warn!("Error recording request metrics: {e}");
     }
 
@@ -239,8 +230,6 @@ pub async fn record_external_match_metrics(
         warn!("Error recording response metrics: {e}");
     }
 
-    // Record settlement metrics
-    let did_settle = await_settlement(&match_resp.match_bundle, arbitrum_client).await?;
     if let Err(e) =
         record_external_match_settlement_metrics(&match_resp.match_bundle, did_settle, &labels)
     {
@@ -253,7 +242,7 @@ pub async fn record_external_match_metrics(
 /// Await the result of the atomic match settlement to be submitted on-chain
 ///
 /// Returns `true` if the settlement succeeded on-chain, `false` otherwise
-async fn await_settlement(
+pub(crate) async fn await_settlement(
     match_bundle: &AtomicMatchApiBundle,
     arbitrum_client: &ArbitrumClient,
 ) -> Result<bool, AuthServerError> {
