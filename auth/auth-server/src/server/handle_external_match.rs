@@ -5,16 +5,26 @@
 
 use bytes::Bytes;
 use http::Method;
+use tracing::{info, instrument, warn};
+use warp::{reject::Rejection, reply::Reply};
+
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
     ExternalQuoteResponse,
 };
-use tracing::{info, instrument, warn};
-use warp::{reject::Rejection, reply::Reply};
+use renegade_circuit_types::fixed_point::FixedPoint;
+use renegade_common::types::{token::Token, TimestampedPrice};
 
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::{await_settlement, record_external_match_metrics};
+use crate::telemetry::{
+    helpers::{
+        await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
+    },
+    labels::{
+        EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+    },
+};
 
 /// Handle a proxied request
 impl Server {
@@ -27,15 +37,20 @@ impl Server {
         body: Bytes,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_desc = self.authorize_request(path.as_str(), &headers, &body).await?;
 
         // Send the request to the relayer
-        let resp = self.send_admin_request(Method::POST, path.as_str(), headers, body).await?;
+        let resp =
+            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
-        // Log the bundle parameters
-        if let Err(e) = self.log_quote(resp.body()) {
-            warn!("Error logging quote: {e}");
-        }
+        let resp_clone = resp.body().to_vec();
+        let server_clone = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = server_clone.handle_quote_response(key_desc, &body, &resp_clone) {
+                warn!("Error handling quote: {e}");
+            }
+        });
+
         Ok(resp)
     }
 
@@ -184,6 +199,47 @@ impl Server {
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
             is_buy, recv.amount, recv.mint, send.amount, send.mint
         );
+
+        Ok(())
+    }
+
+    /// Handle a quote response
+    fn handle_quote_response(
+        &self,
+        key: String,
+        req: &[u8],
+        resp: &[u8],
+    ) -> Result<(), AuthServerError> {
+        // Log the quote parameters
+        self.log_quote(resp)?;
+
+        // Parse request and response for metrics
+        let req: ExternalMatchRequest =
+            serde_json::from_slice(req).map_err(AuthServerError::serde)?;
+        let quote_resp: ExternalQuoteResponse =
+            serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
+
+        // Get the decimal-corrected price
+        let price: TimestampedPrice = quote_resp.signed_quote.quote.price.clone().into();
+        let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
+        let quote_token = Token::from_addr_biguint(&req.external_order.quote_mint);
+        let decimal_price = price.get_decimal_corrected_price(&base_token, &quote_token).unwrap();
+
+        // Calculate requested and matched quote amounts
+        let requested_quote_amount = req
+            .external_order
+            .get_quote_amount(FixedPoint::from_f64_round_down(decimal_price.price));
+        let matched_quote_amount = quote_resp.signed_quote.quote.match_result.quote_amount;
+
+        // Record fill ratio metric
+        let labels = vec![
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
+            (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
+        ];
+        record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
+
+        // Record endpoint metrics
+        record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
 
         Ok(())
     }

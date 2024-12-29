@@ -190,7 +190,7 @@ pub(crate) fn record_external_match_settlement_metrics(
 }
 
 /// Records a counter metric with the given labels
-fn record_endpoint_metrics(
+pub(crate) fn record_endpoint_metrics(
     mint: &str,
     metric_name: &'static str,
     extra_labels: &[(String, String)],
@@ -204,27 +204,14 @@ fn record_endpoint_metrics(
     metrics::counter!(metric_name, &labels).increment(1);
 }
 
-/// Records the fill ratio (match quote amount / order quote amount)
-fn record_fill_ratio_metrics(
-    match_bundle: &AtomicMatchApiBundle,
-    requested_order_quote_amount: u128,
+/// Records the fill ratio (matched quote amount / requested quote amount)
+pub(crate) fn record_fill_ratio(
+    requested_quote_amount: u128,
+    matched_quote_amount: u128,
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
-    let (_, matched_quote) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
-        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
-    };
-
-    // Convert both amounts to decimal for accurate ratio calculation
-    let quote_token = Token::from_addr(&matched_quote.mint);
-    let matched_quote_amount = quote_token.convert_to_decimal(matched_quote.amount);
-    let requested_quote_amount = quote_token.convert_to_decimal(requested_order_quote_amount);
-
-    let fill_ratio = matched_quote_amount / requested_quote_amount;
-
-    // Record the gauge metric
+    let fill_ratio = matched_quote_amount as f64 / requested_quote_amount as f64;
     metrics::gauge!(EXTERNAL_MATCH_FILL_RATIO, labels).set(fill_ratio);
-
     Ok(())
 }
 
@@ -249,9 +236,10 @@ pub(crate) async fn record_external_match_metrics(
         warn!("Error recording request metrics: {e}");
     }
 
-    let quote_amount = order.get_quote_amount(FixedPoint::from_f64_round_down(price));
     // Record fill ratio metric
-    if let Err(e) = record_fill_ratio_metrics(&match_resp.match_bundle, quote_amount, &labels) {
+    let requested_quote_amount = order.get_quote_amount(FixedPoint::from_f64_round_down(price));
+    let matched_quote_amount = match_resp.match_bundle.match_result.quote_amount;
+    if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels) {
         warn!("Error recording fill ratio metric: {e}");
     }
 
