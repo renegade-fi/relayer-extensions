@@ -126,6 +126,9 @@ pub enum ApiError {
     /// A bad request error
     #[error("Bad request: {0}")]
     BadRequest(String),
+    /// A rate limit exceeded error
+    #[error("Rate limit exceeded")]
+    TooManyRequests,
     /// An unauthorized error
     #[error("Unauthorized")]
     Unauthorized,
@@ -294,6 +297,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
                 (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
             },
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
+            ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
         };
 

@@ -6,6 +6,7 @@ mod handle_external_match;
 mod handle_key_management;
 mod helpers;
 mod queries;
+mod rate_limiter;
 
 use crate::{error::AuthServerError, models::ApiKey, ApiError, Cli};
 use base64::{engine::general_purpose, Engine};
@@ -20,6 +21,7 @@ use diesel_async::{
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
+use rate_limiter::BundleRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::wallet::keychain::HmacKey;
@@ -58,6 +60,8 @@ pub struct Server {
     pub client: Client,
     /// The Arbitrum client
     pub arbitrum_client: ArbitrumClient,
+    /// The rate limiter
+    pub rate_limiter: BundleRateLimiter,
 }
 
 impl Server {
@@ -85,6 +89,7 @@ impl Server {
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
             arbitrum_client,
+            rate_limiter: BundleRateLimiter::new(),
         })
     }
 
@@ -139,6 +144,21 @@ impl Server {
         let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
         add_expiring_auth_to_headers(path, headers, body, &key, expiration);
         Ok(())
+    }
+
+    // --- Rate Limiting --- //
+
+    /// Check the rate limiter
+    pub async fn check_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
+        if !self.rate_limiter.check(key_description).await {
+            return Err(ApiError::TooManyRequests);
+        }
+        Ok(())
+    }
+
+    /// Increment the token balance for a given API user
+    pub async fn add_rate_limit_token(&self, key_description: String) {
+        self.rate_limiter.add_token(key_description).await;
     }
 
     // --- Caching --- //
