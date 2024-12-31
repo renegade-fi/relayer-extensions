@@ -4,6 +4,12 @@
 // | METRIC NAMES |
 // ----------------
 
+/// Metric describing the ratio of matched quote amount to requested quote
+/// amount for quotes and matches
+pub const EXTERNAL_MATCH_FILL_RATIO: &str = "external_match.fill_ratio";
+
+/// Metric describing the number of external quote requests
+pub const EXTERNAL_MATCH_QUOTE_REQUEST_COUNT: &str = "num_external_match_quote_requests";
 /// Metric describing the number of external matches requested
 pub const NUM_EXTERNAL_MATCH_REQUESTS: &str = "num_external_match_requests";
 
