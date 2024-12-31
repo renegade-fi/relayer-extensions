@@ -80,6 +80,8 @@ impl Server {
         let relayer_admin_key =
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
+        let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
+
         Ok(Self {
             db_pool: Arc::new(db_pool),
             relayer_url: args.relayer_url,
@@ -89,7 +91,7 @@ impl Server {
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
             arbitrum_client,
-            rate_limiter: BundleRateLimiter::new(),
+            rate_limiter,
         })
     }
 

@@ -84,6 +84,9 @@ pub struct Cli {
     /// The chain that the relayer settles to
     #[arg(long, env = "CHAIN_ID")]
     pub chain_id: Chain,
+    /// The bundle rate limit in bundles per minute
+    #[arg(long, env = "BUNDLE_RATE_LIMIT", default_value = "4")]
+    pub bundle_rate_limit: u64,
     /// The path to the file containing token remaps for the given chain
     ///
     /// See https://github.com/renegade-fi/token-mappings for more information on the format of this file
