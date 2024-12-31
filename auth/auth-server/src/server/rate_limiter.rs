@@ -15,29 +15,29 @@ use tokio::sync::Mutex;
 /// A type alias for a per-user rate limiter
 type BucketMap = HashMap<String, Ratelimiter>;
 
-/// The number of bundles allowed per minute
-const BUNDLES_LIMIT_PER_MINUTE: u64 = 4;
 /// One minute duration
 const ONE_MINUTE: Duration = Duration::from_secs(60);
 
 /// The bundle rate limiter
 #[derive(Clone)]
 pub struct BundleRateLimiter {
+    /// The number of bundles allowed per minute
+    rate_limit: u64,
     /// A per-user rate limiter
     bucket_map: Arc<Mutex<BucketMap>>,
 }
 
 impl BundleRateLimiter {
     /// Create a new bundle rate limiter
-    pub fn new() -> Self {
-        Self { bucket_map: Arc::new(Mutex::new(HashMap::new())) }
+    pub fn new(rate_limit: u64) -> Self {
+        Self { rate_limit, bucket_map: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     /// Create a new rate limiter
-    fn new_rate_limiter() -> Ratelimiter {
-        Ratelimiter::builder(BUNDLES_LIMIT_PER_MINUTE, ONE_MINUTE)
-            .initial_available(BUNDLES_LIMIT_PER_MINUTE)
-            .max_tokens(BUNDLES_LIMIT_PER_MINUTE)
+    fn new_rate_limiter(&self) -> Ratelimiter {
+        Ratelimiter::builder(self.rate_limit, ONE_MINUTE)
+            .initial_available(self.rate_limit)
+            .max_tokens(self.rate_limit)
             .build()
             .expect("invalid rate limit configuration")
     }
@@ -48,7 +48,7 @@ impl BundleRateLimiter {
     /// false, otherwise true
     pub async fn check(&self, user_id: String) -> bool {
         let mut map = self.bucket_map.lock().await;
-        let entry = map.entry(user_id).or_insert_with(Self::new_rate_limiter);
+        let entry = map.entry(user_id).or_insert_with(|| self.new_rate_limiter());
 
         let available = entry.available();
         entry.set_available(available.saturating_sub(1)).expect("rate limit range should be valid");
@@ -59,7 +59,7 @@ impl BundleRateLimiter {
     #[allow(unused_must_use)]
     pub async fn add_token(&self, user_id: String) {
         let mut map = self.bucket_map.lock().await;
-        let entry = map.entry(user_id).or_insert_with(Self::new_rate_limiter);
+        let entry = map.entry(user_id).or_insert_with(|| self.new_rate_limiter());
 
         // Set the available tokens
         // The underlying rate limiter will error if this exceeds the configured
