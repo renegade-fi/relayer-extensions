@@ -22,7 +22,8 @@ use crate::telemetry::{
         await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
     },
     labels::{
-        EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+        DECIMAL_CORRECTION_FIXED_METRIC_TAG, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT,
+        KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
     },
 };
 
@@ -221,24 +222,23 @@ impl Server {
 
         // Get the decimal-corrected price
         let price: TimestampedPrice = quote_resp.signed_quote.quote.price.clone().into();
-        let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
-        let quote_token = Token::from_addr_biguint(&req.external_order.quote_mint);
-        let decimal_price = price.get_decimal_corrected_price(&base_token, &quote_token).unwrap();
 
         // Calculate requested and matched quote amounts
-        let requested_quote_amount = req
-            .external_order
-            .get_quote_amount(FixedPoint::from_f64_round_down(decimal_price.price));
+        let requested_quote_amount =
+            req.external_order.get_quote_amount(FixedPoint::from_f64_round_down(price.price));
         let matched_quote_amount = quote_resp.signed_quote.quote.match_result.quote_amount;
 
         // Record fill ratio metric
+        let request_id = uuid::Uuid::new_v4();
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
-            (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
+            (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
         ];
         record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
 
         // Record endpoint metrics
+        let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
         record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
 
         Ok(())
