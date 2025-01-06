@@ -8,7 +8,12 @@ mod helpers;
 mod queries;
 mod rate_limiter;
 
-use crate::{error::AuthServerError, models::ApiKey, ApiError, Cli};
+use crate::{
+    error::AuthServerError,
+    models::ApiKey,
+    telemetry::{quote_comparison::QuoteComparisonHandler, sources::MockQuoteSource},
+    ApiError, Cli,
+};
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
 use bytes::Bytes;
@@ -62,6 +67,8 @@ pub struct Server {
     pub arbitrum_client: ArbitrumClient,
     /// The rate limiter
     pub rate_limiter: BundleRateLimiter,
+    /// The quote metrics recorder
+    pub quote_metrics: QuoteComparisonHandler,
 }
 
 impl Server {
@@ -81,6 +88,10 @@ impl Server {
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
+        let quote_metrics = QuoteComparisonHandler::new(vec![
+            MockQuoteSource::new("binance"),
+            MockQuoteSource::new("coinbase"),
+        ]);
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
@@ -92,6 +103,7 @@ impl Server {
             client: Client::new(),
             arbitrum_client,
             rate_limiter,
+            quote_metrics,
         })
     }
 
