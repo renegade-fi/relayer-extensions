@@ -28,8 +28,10 @@ use renegade_arbitrum_client::{
     constants::Chain,
 };
 use renegade_config::setup_token_remaps;
-use renegade_util::err_str;
-use renegade_util::telemetry::configure_telemetry;
+use renegade_util::{
+    err_str,
+    telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig},
+};
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -50,6 +52,15 @@ const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
 /// we use the key deployed by Arbitrum on local devnets
 const DUMMY_PRIVATE_KEY: &str =
     "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
+
+/// The metrics prefix for the auth server
+///
+/// Set to "renegade_relayer" to match existing metrics
+const METRICS_PREFIX: &str = "renegade_relayer";
+/// The buffer size for the metrics queue
+const BUFFER_SIZE: usize = 1024;
+/// The queue size for the metrics queue
+const QUEUE_SIZE: usize = 1024 * 1024;
 
 // -------
 // | CLI |
@@ -164,14 +175,22 @@ async fn main() {
     let args = Cli::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
 
+    // Configure metrics
+    let metrics_config = MetricsConfig {
+        metrics_prefix: METRICS_PREFIX.to_string(),
+        buffer_size: BUFFER_SIZE,
+        queue_size: QUEUE_SIZE,
+    };
+
     // Setup logging
-    configure_telemetry(
+    configure_telemetry_with_metrics_config(
         args.datadog_enabled, // datadog_enabled
         false,                // otlp_enabled
         args.metrics_enabled, // metrics_enabled
         "".to_string(),       // collector_endpoint
         &args.statsd_host,    // statsd_host
         args.statsd_port,     // statsd_port
+        Some(metrics_config),
     )
     .expect("failed to setup telemetry");
 
