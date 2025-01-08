@@ -50,9 +50,7 @@ impl BundleRateLimiter {
         let mut map = self.bucket_map.lock().await;
         let entry = map.entry(user_id).or_insert_with(|| self.new_rate_limiter());
 
-        let available = entry.available();
-        entry.set_available(available.saturating_sub(1)).expect("rate limit range should be valid");
-        available >= 1
+        entry.try_wait().is_ok()
     }
 
     /// Increment the number of tokens available to a given user
