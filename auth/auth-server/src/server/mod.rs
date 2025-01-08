@@ -28,7 +28,7 @@ use renegade_common::types::wallet::keychain::HmacKey;
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 /// The duration for which the admin authentication is valid
@@ -153,6 +153,7 @@ impl Server {
     /// Check the rate limiter
     pub async fn check_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
         if !self.rate_limiter.check(key_description).await {
+            warn!("Rate limit exceeded for key: {key_description}");
             return Err(ApiError::TooManyRequests);
         }
         Ok(())
