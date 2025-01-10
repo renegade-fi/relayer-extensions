@@ -241,6 +241,9 @@ impl Server {
         let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
         record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
 
+        // Record quote comparison metrics
+        self.quote_metrics.record_quote_comparison(&quote_resp, labels.as_slice());
+
         Ok(())
     }
 }

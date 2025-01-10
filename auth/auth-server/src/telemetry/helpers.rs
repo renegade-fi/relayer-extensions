@@ -26,12 +26,22 @@ use crate::{
         EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME,
         EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
         EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
-        NUM_EXTERNAL_MATCH_REQUESTS, REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG,
+        NUM_EXTERNAL_MATCH_REQUESTS, OUR_PRICE_TAG, QUOTE_PRICE_DIFF_BPS_METRIC,
+        REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_PRICE_TAG,
     },
 };
 
+use super::quote_comparison::QuoteComparison;
+
+// --- Constants --- //
+
 /// The duration to await an atomic match settlement
 pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Multiplier to convert decimal to basis points (1 basis point = 0.01%)
+const DECIMAL_TO_BPS: f64 = 10_000.0;
+
+// --- Asset and Volume Helpers --- //
 
 /// Get the human-readable asset and volume of
 /// the given mint and amount.
@@ -46,6 +56,8 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
 
     (asset, volume)
 }
+
+// --- Price Calculation --- //
 
 /// Calculates the decimal-corrected quote per base price from a match bundle
 /// Returns the price as an f64 decimal adjusted value, accounting for the
@@ -76,8 +88,27 @@ fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> Result<f64, A
     Ok(corrected_price)
 }
 
+/// Reverses the decimal correction applied by
+/// TimestampedPrice::get_decimal_corrected_price
+///
+/// Potentially could be moved to TimestampedPrice
+pub fn reverse_decimal_correction(
+    corrected_price: f64,
+    base_token: &Token,
+    quote_token: &Token,
+) -> Result<f64, String> {
+    let base_decimals =
+        base_token.get_decimals().ok_or(format!("No decimals for {}", base_token.get_addr()))?;
+    let quote_decimals =
+        quote_token.get_decimals().ok_or(format!("No decimals for {}", quote_token.get_addr()))?;
+    let decimal_diff = quote_decimals as i32 - base_decimals as i32;
+    Ok(corrected_price / 10f64.powi(decimal_diff))
+}
+
+// --- Metrics Recording --- //
+
 /// Extends the given labels with a base asset tag
-fn extend_labels_with_base_asset(
+pub(crate) fn extend_labels_with_base_asset(
     base_mint: &str,
     mut labels: Vec<(String, String)>,
 ) -> Vec<(String, String)> {
@@ -257,6 +288,8 @@ pub(crate) async fn record_external_match_metrics(
     Ok(())
 }
 
+// --- Settlement Processing --- //
+
 /// Await the result of the atomic match settlement to be submitted on-chain
 ///
 /// Returns `true` if the settlement succeeded on-chain, `false` otherwise
@@ -304,4 +337,31 @@ fn extract_nullifier_from_match_bundle(
     let nullifier = Scalar::new(match_payload.valid_reblind_statement.original_shares_nullifier);
 
     Ok(nullifier)
+}
+
+// --- Quote Comparison --- //
+
+/// Calculate the price difference in basis points (bps).
+/// Positive bps indicates a better quote for the given side:
+/// - Sell: our price > source price
+/// - Buy: source price > our price
+pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, is_sell: bool) -> i32 {
+    let price_diff_ratio = if is_sell {
+        (our_price - source_price) / source_price
+    } else {
+        (source_price - our_price) / our_price
+    };
+
+    (price_diff_ratio * DECIMAL_TO_BPS) as i32
+}
+
+/// Record a single quote comparison metric with all data as tags
+pub(crate) fn record_comparison(comparison: &QuoteComparison, base_labels: &[(String, String)]) {
+    let mut labels = base_labels.to_vec();
+    labels.push((SOURCE_NAME_TAG.to_string(), comparison.source_name.clone()));
+    labels.push((OUR_PRICE_TAG.to_string(), comparison.our_price.to_string()));
+    labels.push((SOURCE_PRICE_TAG.to_string(), comparison.source_price.to_string()));
+
+    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice())
+        .set(comparison.price_diff_bips as f64);
 }
