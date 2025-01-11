@@ -41,7 +41,7 @@ impl QuoteComparisonHandler {
         amount: u128,
         labels: Vec<(String, String)>,
     ) {
-        let quote = source.get_quote(base_token, quote_token, side, amount, our_price).await;
+        let quote = source.get_quote(base_token, quote_token, side, amount).await;
         let price_diff_bips = calculate_price_diff_bps(our_price, quote.price, side);
         let comparison = QuoteComparison {
             our_price,

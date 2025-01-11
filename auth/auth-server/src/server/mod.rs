@@ -11,7 +11,7 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{quote_comparison::QuoteComparisonHandler, sources::mock::MockQuoteSource},
+    telemetry::{quote_comparison::QuoteComparisonHandler, sources::odos::OdosQuoteSource},
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -88,10 +88,10 @@ impl Server {
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
-        let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![
-            MockQuoteSource::new("binance"),
-            MockQuoteSource::new("coinbase"),
-        ]));
+
+        // Setup the quote metrics recorder and sources
+        let odos_source = OdosQuoteSource::new();
+        let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![odos_source]));
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
