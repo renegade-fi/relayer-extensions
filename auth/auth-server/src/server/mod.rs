@@ -89,8 +89,8 @@ impl Server {
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
         let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![
-            Box::new(MockQuoteSource::new("binance")),
-            Box::new(MockQuoteSource::new("coinbase")),
+            MockQuoteSource::new("binance"),
+            MockQuoteSource::new("coinbase"),
         ]));
 
         Ok(Self {

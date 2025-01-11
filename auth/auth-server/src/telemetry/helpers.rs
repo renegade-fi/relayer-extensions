@@ -249,7 +249,7 @@ pub(crate) async fn record_external_match_metrics(
     ];
 
     // Get decimal-corrected price
-    let price = calculate_implied_price(&match_resp.match_bundle, true)?;
+    let price = calculate_implied_price(&match_resp.match_bundle, true /* decimal_correct */)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, &labels) {

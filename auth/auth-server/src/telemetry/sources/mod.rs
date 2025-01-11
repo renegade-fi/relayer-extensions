@@ -15,7 +15,7 @@ pub struct QuoteResponse {
 
 /// A trait defining the interface for quote sources
 #[async_trait]
-pub trait QuoteSource: Send + Sync {
+pub trait QuoteSource: Send + Sync + Clone {
     fn name(&self) -> &'static str;
 
     async fn get_quote(
@@ -30,7 +30,7 @@ pub trait QuoteSource: Send + Sync {
 
 /// A mock quote source that generates random prices within 2% of the input
 /// price
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MockQuoteSource {
     name: &'static str,
 }

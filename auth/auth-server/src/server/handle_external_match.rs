@@ -163,9 +163,17 @@ impl Server {
             (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
         ];
-        self.quote_metrics
-            .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
-            .await;
+
+        // Spawn quote comparisons and collect handles
+        let comparison_handles =
+            self.quote_metrics.record_quote_comparison(&match_resp.match_bundle, labels.as_slice());
+
+        // Handle quote comparison results
+        for handle in comparison_handles {
+            if let Err(e) = handle.await {
+                warn!("Quote comparison failed: {e}");
+            }
+        }
 
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
@@ -175,7 +183,7 @@ impl Server {
 
         // Log the bundle and record metrics
         self.log_bundle(resp)?;
-        record_external_match_metrics(&order, match_resp.clone(), key, did_settle).await?;
+        record_external_match_metrics(&order, match_resp, key, did_settle).await?;
 
         Ok(())
     }
