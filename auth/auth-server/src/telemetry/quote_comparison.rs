@@ -1,16 +1,16 @@
 use futures_util::future::join_all;
 use renegade_circuit_types::order::OrderSide;
-use renegade_common::types::{token::Token, TimestampedPrice};
+use renegade_common::types::token::Token;
 
 use super::{
     helpers::{
-        calculate_price_diff_bps, extend_labels_with_base_asset, record_comparison,
-        reverse_decimal_correction,
+        calculate_implied_price, calculate_price_diff_bps, extend_labels_with_base_asset,
+        record_comparison,
     },
     labels::SIDE_TAG,
     sources::QuoteSource,
 };
-use renegade_api::http::external_match::ExternalQuoteResponse;
+use renegade_api::http::external_match::AtomicMatchApiBundle;
 
 /// Represents a single quote comparison between quotes from different sources
 pub struct QuoteComparison {
@@ -34,17 +34,16 @@ impl QuoteComparisonHandler {
     /// Records metrics comparing quotes from different sources
     pub async fn record_quote_comparison(
         &self,
-        quote_resp: &ExternalQuoteResponse,
+        match_bundle: &AtomicMatchApiBundle,
         extra_labels: &[(String, String)],
     ) {
-        let base_token = Token::from_addr_biguint(&quote_resp.signed_quote.quote.order.base_mint);
-        let quote_token = Token::from_addr_biguint(&quote_resp.signed_quote.quote.order.quote_mint);
+        let base_token = Token::from_addr(&match_bundle.match_result.base_mint);
+        let quote_token = Token::from_addr(&match_bundle.match_result.quote_mint);
 
-        let ts_price: TimestampedPrice = quote_resp.signed_quote.quote.price.clone().into();
-        let our_price = reverse_decimal_correction(ts_price.price, &base_token, &quote_token)
-            .expect("Price correction should not fail");
+        let our_price = calculate_implied_price(match_bundle, false)
+            .expect("Price calculation should not fail");
 
-        let is_sell = quote_resp.signed_quote.quote.order.side == OrderSide::Sell;
+        let is_sell = match_bundle.match_result.direction == OrderSide::Sell;
         let side_label = if is_sell { "sell" } else { "buy" };
 
         let mut labels = vec![(SIDE_TAG.to_string(), side_label.to_string())];
@@ -52,16 +51,16 @@ impl QuoteComparisonHandler {
         labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
 
         let amount = if is_sell {
-            quote_resp.signed_quote.quote.order.base_amount
+            match_bundle.match_result.base_amount
         } else {
-            quote_resp.signed_quote.quote.order.quote_amount
+            match_bundle.match_result.quote_amount
         };
 
         // Create all quote futures
         let quote_futures = self.sources.iter().map(|source| {
             let base_token = base_token.clone();
             let quote_token = quote_token.clone();
-            let side = quote_resp.signed_quote.quote.order.side;
+            let side = match_bundle.match_result.direction;
             let source_name = source.name().to_string();
 
             async move {
@@ -83,7 +82,6 @@ impl QuoteComparisonHandler {
                 source_name,
                 price_diff_bips,
             };
-
             record_comparison(&comparison, &labels);
         }
     }

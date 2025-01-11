@@ -47,7 +47,7 @@ impl Server {
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone.handle_quote_response(key_desc, &body, &resp_clone).await {
+            if let Err(e) = server_clone.handle_quote_response(key_desc, &body, &resp_clone) {
                 warn!("Error handling quote: {e}");
             }
         });
@@ -157,6 +157,16 @@ impl Server {
         let match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
+        // Record quote comparison metrics before settlement
+        let labels = vec![
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
+            (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
+            (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+        ];
+        self.quote_metrics
+            .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
+            .await;
+
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
         if did_settle {
@@ -165,7 +175,9 @@ impl Server {
 
         // Log the bundle and record metrics
         self.log_bundle(resp)?;
-        record_external_match_metrics(&order, match_resp, key, did_settle).await
+        record_external_match_metrics(&order, match_resp.clone(), key, did_settle).await?;
+
+        Ok(())
     }
 
     // --- Logging --- //
@@ -205,7 +217,7 @@ impl Server {
     }
 
     /// Handle a quote response
-    async fn handle_quote_response(
+    fn handle_quote_response(
         &self,
         key: String,
         req: &[u8],
@@ -240,9 +252,6 @@ impl Server {
         // Record endpoint metrics
         let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
         record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
-
-        // Record quote comparison metrics
-        self.quote_metrics.record_quote_comparison(&quote_resp, labels.as_slice()).await;
 
         Ok(())
     }
