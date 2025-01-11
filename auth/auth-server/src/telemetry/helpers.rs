@@ -334,11 +334,10 @@ fn extract_nullifier_from_match_bundle(
 /// Positive bps indicates a better quote for the given side:
 /// - Sell: our price > source price
 /// - Buy: source price > our price
-pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, is_sell: bool) -> i32 {
-    let price_diff_ratio = if is_sell {
-        (our_price - source_price) / source_price
-    } else {
-        (source_price - our_price) / our_price
+pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, side: OrderSide) -> i32 {
+    let price_diff_ratio = match side {
+        OrderSide::Sell => (our_price - source_price) / source_price,
+        OrderSide::Buy => (source_price - our_price) / our_price,
     };
 
     (price_diff_ratio * DECIMAL_TO_BPS) as i32

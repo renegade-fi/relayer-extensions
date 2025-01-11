@@ -164,16 +164,10 @@ impl Server {
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
         ];
 
-        // Spawn quote comparisons and collect handles
-        let comparison_handles =
-            self.quote_metrics.record_quote_comparison(&match_resp.match_bundle, labels.as_slice());
-
-        // Handle quote comparison results
-        for handle in comparison_handles {
-            if let Err(e) = handle.await {
-                warn!("Quote comparison failed: {e}");
-            }
-        }
+        // Record quote comparisons
+        self.quote_metrics
+            .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
+            .await;
 
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;

@@ -39,7 +39,6 @@ renegade-util = { workspace = true }
 renegade-api = { workspace = true }
 
 # === Misc Dependencies === #
-async-trait = "0.1"
 base64 = "0.22.1"
 bytes = "1.0"
 cached = "0.53"

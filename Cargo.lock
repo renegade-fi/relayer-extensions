@@ -726,7 +726,6 @@ dependencies = [
  "aes-gcm",
  "alloy-sol-types",
  "arbitrum-client",
- "async-trait",
  "auth-server-api",
  "base64 0.22.1",
  "bb8",

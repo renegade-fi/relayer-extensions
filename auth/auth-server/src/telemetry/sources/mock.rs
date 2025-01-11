@@ -12,12 +12,8 @@ pub struct MockQuoteSource {
 }
 
 impl MockQuoteSource {
-    pub fn builder() -> MockQuoteSourceBuilder {
-        MockQuoteSourceBuilder::default()
-    }
-
-    pub(crate) fn new(name: &'static str) -> Self {
-        Self { name }
+    pub fn new(name: &'static str) -> QuoteSource {
+        QuoteSource::Mock(Self { name })
     }
 
     pub fn name(&self) -> &'static str {
@@ -39,23 +35,5 @@ impl MockQuoteSource {
             quote_address: quote_token.get_addr().to_string(),
             price: our_price * (1.0 + price_diff_percent),
         }
-    }
-}
-
-#[derive(Default)]
-pub struct MockQuoteSourceBuilder {
-    name: Option<&'static str>,
-}
-
-impl MockQuoteSourceBuilder {
-    pub fn name(mut self, name: &'static str) -> Self {
-        self.name = Some(name);
-        self
-    }
-
-    pub fn build(self) -> QuoteSource {
-        QuoteSource::Mock(MockQuoteSource::new(
-            self.name.expect("name is required for MockQuoteSource"),
-        ))
     }
 }

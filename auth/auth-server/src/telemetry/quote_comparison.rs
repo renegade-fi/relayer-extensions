@@ -1,6 +1,6 @@
+use futures_util::future::join_all;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
-use tokio::task::JoinHandle;
 
 use super::{
     helpers::{
@@ -31,12 +31,33 @@ impl QuoteComparisonHandler {
         Self { sources }
     }
 
+    /// Records a comparison for a single source
+    async fn record_comparison_for_source(
+        source: QuoteSource,
+        our_price: f64,
+        base_token: Token,
+        quote_token: Token,
+        side: OrderSide,
+        amount: u128,
+        labels: Vec<(String, String)>,
+    ) {
+        let quote = source.get_quote(base_token, quote_token, side, amount, our_price).await;
+        let price_diff_bips = calculate_price_diff_bps(our_price, quote.price, side);
+        let comparison = QuoteComparison {
+            our_price,
+            source_price: quote.price,
+            source_name: source.name().to_string(),
+            price_diff_bips,
+        };
+        record_comparison(&comparison, &labels);
+    }
+
     /// Records metrics comparing quotes from different sources
-    pub fn record_quote_comparison(
+    pub async fn record_quote_comparison(
         &self,
         match_bundle: &AtomicMatchApiBundle,
         extra_labels: &[(String, String)],
-    ) -> Vec<JoinHandle<()>> {
+    ) {
         let base_token = Token::from_addr(&match_bundle.match_result.base_mint);
         let quote_token = Token::from_addr(&match_bundle.match_result.quote_mint);
 
@@ -56,30 +77,20 @@ impl QuoteComparisonHandler {
             match_bundle.match_result.quote_amount
         };
 
-        // Spawn parallel quote fetching and comparison tasks
-        self.sources
-            .iter()
-            .map(|source| {
-                let source = source.clone();
-                let base_token = base_token.clone();
-                let quote_token = quote_token.clone();
-                let labels = labels.clone();
-                let side = match_bundle.match_result.direction;
+        let mut futures = Vec::with_capacity(self.sources.len());
+        for source in &self.sources {
+            futures.push(Self::record_comparison_for_source(
+                source.clone(),
+                our_price,
+                base_token.clone(),
+                quote_token.clone(),
+                match_bundle.match_result.direction,
+                amount,
+                labels.clone(),
+            ));
+        }
 
-                tokio::spawn(async move {
-                    let quote =
-                        source.get_quote(base_token, quote_token, side, amount, our_price).await;
-
-                    let price_diff_bips = calculate_price_diff_bps(our_price, quote.price, is_sell);
-                    let comparison = QuoteComparison {
-                        our_price,
-                        source_price: quote.price,
-                        source_name: source.name().to_string(),
-                        price_diff_bips,
-                    };
-                    record_comparison(&comparison, &labels);
-                })
-            })
-            .collect()
+        // Execute all futures concurrently and wait for them to complete
+        join_all(futures).await;
     }
 }

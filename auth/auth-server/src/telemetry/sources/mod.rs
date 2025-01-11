@@ -24,7 +24,6 @@ impl QuoteSource {
     pub fn name(&self) -> &'static str {
         match self {
             QuoteSource::Mock(source) => source.name(),
-            // Add other source types here
         }
     }
 
@@ -39,7 +38,7 @@ impl QuoteSource {
         match self {
             QuoteSource::Mock(source) => {
                 source.get_quote(base_token, quote_token, side, amount, our_price).await
-            }, // Add other source types here
+            },
         }
     }
 }
