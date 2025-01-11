@@ -11,7 +11,7 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{quote_comparison::QuoteComparisonHandler, sources::MockQuoteSource},
+    telemetry::{quote_comparison::QuoteComparisonHandler, sources::mock::MockQuoteSource},
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -89,8 +89,8 @@ impl Server {
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
         let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![
-            MockQuoteSource::new("binance"),
-            MockQuoteSource::new("coinbase"),
+            MockQuoteSource::builder().name("binance").build(),
+            MockQuoteSource::builder().name("coinbase").build(),
         ]));
 
         Ok(Self {

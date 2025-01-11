@@ -1,7 +1,7 @@
-//! Mock quote source for price comparison metrics
+//! Quote source implementations for price comparison metrics
 
-use async_trait::async_trait;
-use rand::Rng;
+pub mod mock;
+
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
@@ -13,55 +13,33 @@ pub struct QuoteResponse {
     pub price: f64,
 }
 
-/// A trait defining the interface for quote sources
-#[async_trait]
-pub trait QuoteSource: Send + Sync + Clone {
-    fn name(&self) -> &'static str;
+/// Enum representing different types of quote sources
+#[derive(Clone)]
+pub enum QuoteSource {
+    Mock(mock::MockQuoteSource),
+    // Add other quote source types here as needed
+}
 
-    async fn get_quote(
+impl QuoteSource {
+    pub fn name(&self) -> &'static str {
+        match self {
+            QuoteSource::Mock(source) => source.name(),
+            // Add other source types here
+        }
+    }
+
+    pub async fn get_quote(
         &self,
         base_token: Token,
         quote_token: Token,
         side: OrderSide,
         amount: u128,
         our_price: f64,
-    ) -> QuoteResponse;
-}
-
-/// A mock quote source that generates random prices within 2% of the input
-/// price
-#[derive(Debug, Clone)]
-pub struct MockQuoteSource {
-    name: &'static str,
-}
-
-impl MockQuoteSource {
-    pub fn new(name: &'static str) -> Self {
-        Self { name }
-    }
-}
-
-#[async_trait]
-impl QuoteSource for MockQuoteSource {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
-    async fn get_quote(
-        &self,
-        base_token: Token,
-        quote_token: Token,
-        _side: OrderSide,
-        _amount: u128,
-        our_price: f64,
     ) -> QuoteResponse {
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-
-        let price_diff_percent = rand::thread_rng().gen_range(-0.02..=0.02);
-        QuoteResponse {
-            base_address: base_token.get_addr().to_string(),
-            quote_address: quote_token.get_addr().to_string(),
-            price: our_price * (1.0 + price_diff_percent),
+        match self {
+            QuoteSource::Mock(source) => {
+                source.get_quote(base_token, quote_token, side, amount, our_price).await
+            }, // Add other source types here
         }
     }
 }

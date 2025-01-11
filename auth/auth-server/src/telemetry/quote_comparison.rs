@@ -1,4 +1,3 @@
-use super::sources::MockQuoteSource;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use tokio::task::JoinHandle;
@@ -23,12 +22,12 @@ pub struct QuoteComparison {
 
 /// Records metrics comparing quotes from different sources
 pub struct QuoteComparisonHandler {
-    sources: Vec<MockQuoteSource>,
+    sources: Vec<QuoteSource>,
 }
 
 impl QuoteComparisonHandler {
     /// Create a new QuoteComparisonHandler with the given sources
-    pub fn new(sources: Vec<MockQuoteSource>) -> Self {
+    pub fn new(sources: Vec<QuoteSource>) -> Self {
         Self { sources }
     }
 
