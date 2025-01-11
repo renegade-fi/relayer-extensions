@@ -47,7 +47,7 @@ impl Server {
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone.handle_quote_response(key_desc, &body, &resp_clone) {
+            if let Err(e) = server_clone.handle_quote_response(key_desc, &body, &resp_clone).await {
                 warn!("Error handling quote: {e}");
             }
         });
@@ -205,7 +205,7 @@ impl Server {
     }
 
     /// Handle a quote response
-    fn handle_quote_response(
+    async fn handle_quote_response(
         &self,
         key: String,
         req: &[u8],
@@ -242,7 +242,7 @@ impl Server {
         record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
 
         // Record quote comparison metrics
-        self.quote_metrics.record_quote_comparison(&quote_resp, labels.as_slice());
+        self.quote_metrics.record_quote_comparison(&quote_resp, labels.as_slice()).await;
 
         Ok(())
     }

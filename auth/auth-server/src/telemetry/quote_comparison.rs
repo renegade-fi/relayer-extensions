@@ -1,6 +1,6 @@
+use futures_util::future::join_all;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::{token::Token, TimestampedPrice};
-use std::sync::Arc;
 
 use super::{
     helpers::{
@@ -57,23 +57,30 @@ impl QuoteComparisonHandler {
             quote_resp.signed_quote.quote.order.quote_amount
         };
 
-        // Compare with each source
-        for source in &self.sources {
-            let other_quote = source
-                .get_quote(
-                    base_token.clone(),
-                    quote_token.clone(),
-                    quote_resp.signed_quote.quote.order.side,
-                    amount,
-                    our_price,
-                )
-                .await;
+        // Create all quote futures
+        let quote_futures = self.sources.iter().map(|source| {
+            let base_token = base_token.clone();
+            let quote_token = quote_token.clone();
+            let side = quote_resp.signed_quote.quote.order.side;
+            let source_name = source.name().to_string();
 
-            let price_diff_bips = calculate_price_diff_bps(our_price, other_quote.price, is_sell);
+            async move {
+                let quote =
+                    source.get_quote(base_token, quote_token, side, amount, our_price).await;
+                (source_name, quote)
+            }
+        });
+
+        // Run all quotes in parallel and collect results
+        let quotes = join_all(quote_futures).await;
+
+        // Process results
+        for (source_name, quote) in quotes {
+            let price_diff_bips = calculate_price_diff_bps(our_price, quote.price, is_sell);
             let comparison = QuoteComparison {
                 our_price,
-                source_price: other_quote.price,
-                source_name: source.name().to_string(),
+                source_price: quote.price,
+                source_name,
                 price_diff_bips,
             };
 

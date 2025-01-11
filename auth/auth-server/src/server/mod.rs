@@ -68,7 +68,7 @@ pub struct Server {
     /// The rate limiter
     pub rate_limiter: BundleRateLimiter,
     /// The quote metrics recorder
-    pub quote_metrics: QuoteComparisonHandler,
+    pub quote_metrics: Arc<QuoteComparisonHandler>,
 }
 
 impl Server {
@@ -88,10 +88,10 @@ impl Server {
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
-        let quote_metrics = QuoteComparisonHandler::new(vec![
-            MockQuoteSource::new("binance"),
-            MockQuoteSource::new("coinbase"),
-        ]);
+        let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![
+            Box::new(MockQuoteSource::new("binance")),
+            Box::new(MockQuoteSource::new("coinbase")),
+        ]));
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
