@@ -1,39 +1,44 @@
-//! Mock quote source for price comparison metrics
+//! Quote source implementations for price comparison metrics
 
-use rand::Rng;
+pub mod mock;
+
+use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
 /// A quote response containing price data
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct QuoteResponse {
-    pub base_token: Token,
-    pub quote_token: Token,
+    pub base_address: String,
+    pub quote_address: String,
     pub price: f64,
 }
 
-/// A mock quote source that generates random prices within 2% of the input
-/// price
+/// Enum representing different types of quote sources
 #[derive(Clone)]
-pub struct MockQuoteSource {
-    name: &'static str,
+pub enum QuoteSource {
+    Mock(mock::MockQuoteSource),
+    // Add other quote source types here as needed
 }
 
-impl MockQuoteSource {
-    pub fn new(name: &'static str) -> Self {
-        Self { name }
-    }
-
+impl QuoteSource {
     pub fn name(&self) -> &'static str {
-        self.name
+        match self {
+            QuoteSource::Mock(source) => source.name(),
+        }
     }
 
-    pub fn get_quote(
+    pub async fn get_quote(
         &self,
         base_token: Token,
         quote_token: Token,
+        side: OrderSide,
+        amount: u128,
         our_price: f64,
     ) -> QuoteResponse {
-        let price_diff_percent = rand::thread_rng().gen_range(-0.02..=0.02);
-        QuoteResponse { base_token, quote_token, price: our_price * (1.0 + price_diff_percent) }
+        match self {
+            QuoteSource::Mock(source) => {
+                source.get_quote(base_token, quote_token, side, amount, our_price).await
+            },
+        }
     }
 }

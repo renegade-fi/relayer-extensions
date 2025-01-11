@@ -61,8 +61,12 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
 
 /// Calculates the decimal-corrected quote per base price from a match bundle
 /// Returns the price as an f64 decimal adjusted value, accounting for the
-/// difference in decimal places between quote and base tokens
-fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> Result<f64, AuthServerError> {
+/// difference in decimal places between quote and base tokens if
+/// decimal_correct is true
+pub(crate) fn calculate_implied_price(
+    match_bundle: &AtomicMatchApiBundle,
+    decimal_correct: bool,
+) -> Result<f64, AuthServerError> {
     let (base, quote) = match match_bundle.match_result.direction {
         OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
         OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
@@ -82,27 +86,12 @@ fn calculate_implied_price(match_bundle: &AtomicMatchApiBundle) -> Result<f64, A
     let quote_amt = quote_token.convert_to_decimal(quote.amount);
 
     let uncorrected_price = quote_amt / base_amt;
-    let decimal_diff = quote_decimals as i32 - base_decimals as i32;
-    let corrected_price = uncorrected_price * 10f64.powi(decimal_diff);
-
-    Ok(corrected_price)
-}
-
-/// Reverses the decimal correction applied by
-/// TimestampedPrice::get_decimal_corrected_price
-///
-/// Potentially could be moved to TimestampedPrice
-pub fn reverse_decimal_correction(
-    corrected_price: f64,
-    base_token: &Token,
-    quote_token: &Token,
-) -> Result<f64, String> {
-    let base_decimals =
-        base_token.get_decimals().ok_or(format!("No decimals for {}", base_token.get_addr()))?;
-    let quote_decimals =
-        quote_token.get_decimals().ok_or(format!("No decimals for {}", quote_token.get_addr()))?;
-    let decimal_diff = quote_decimals as i32 - base_decimals as i32;
-    Ok(corrected_price / 10f64.powi(decimal_diff))
+    if decimal_correct {
+        let decimal_diff = quote_decimals as i32 - base_decimals as i32;
+        Ok(uncorrected_price * 10f64.powi(decimal_diff))
+    } else {
+        Ok(uncorrected_price)
+    }
 }
 
 // --- Metrics Recording --- //
@@ -260,7 +249,7 @@ pub(crate) async fn record_external_match_metrics(
     ];
 
     // Get decimal-corrected price
-    let price = calculate_implied_price(&match_resp.match_bundle)?;
+    let price = calculate_implied_price(&match_resp.match_bundle, true /* decimal_correct */)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, &labels) {
@@ -345,11 +334,10 @@ fn extract_nullifier_from_match_bundle(
 /// Positive bps indicates a better quote for the given side:
 /// - Sell: our price > source price
 /// - Buy: source price > our price
-pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, is_sell: bool) -> i32 {
-    let price_diff_ratio = if is_sell {
-        (our_price - source_price) / source_price
-    } else {
-        (source_price - our_price) / our_price
+pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, side: OrderSide) -> i32 {
+    let price_diff_ratio = match side {
+        OrderSide::Sell => (our_price - source_price) / source_price,
+        OrderSide::Buy => (source_price - our_price) / our_price,
     };
 
     (price_diff_ratio * DECIMAL_TO_BPS) as i32
