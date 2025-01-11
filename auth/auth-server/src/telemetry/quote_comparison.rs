@@ -1,5 +1,6 @@
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::{token::Token, TimestampedPrice};
+use std::sync::Arc;
 
 use super::{
     helpers::{
@@ -7,7 +8,7 @@ use super::{
         reverse_decimal_correction,
     },
     labels::SIDE_TAG,
-    sources::MockQuoteSource,
+    sources::QuoteSource,
 };
 use renegade_api::http::external_match::ExternalQuoteResponse;
 
@@ -20,19 +21,18 @@ pub struct QuoteComparison {
 }
 
 /// Records metrics comparing quotes from different sources
-#[derive(Clone)]
 pub struct QuoteComparisonHandler {
-    sources: Vec<MockQuoteSource>,
+    sources: Vec<Box<dyn QuoteSource>>,
 }
 
 impl QuoteComparisonHandler {
     /// Create a new QuoteComparisonHandler with the given sources
-    pub fn new(sources: Vec<MockQuoteSource>) -> Self {
+    pub fn new(sources: Vec<Box<dyn QuoteSource>>) -> Self {
         Self { sources }
     }
 
     /// Records metrics comparing quotes from different sources
-    pub fn record_quote_comparison(
+    pub async fn record_quote_comparison(
         &self,
         quote_resp: &ExternalQuoteResponse,
         extra_labels: &[(String, String)],
@@ -51,12 +51,25 @@ impl QuoteComparisonHandler {
         labels.extend(extra_labels.iter().cloned());
         labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
 
+        let amount = if is_sell {
+            quote_resp.signed_quote.quote.order.base_amount
+        } else {
+            quote_resp.signed_quote.quote.order.quote_amount
+        };
+
         // Compare with each source
         for source in &self.sources {
-            let other_quote = source.get_quote(base_token.clone(), quote_token.clone(), our_price);
-            // See calculate_price_diff_bps for detailed comparison logic
-            let price_diff_bips = calculate_price_diff_bps(our_price, other_quote.price, is_sell);
+            let other_quote = source
+                .get_quote(
+                    base_token.clone(),
+                    quote_token.clone(),
+                    quote_resp.signed_quote.quote.order.side,
+                    amount,
+                    our_price,
+                )
+                .await;
 
+            let price_diff_bips = calculate_price_diff_bps(our_price, other_quote.price, is_sell);
             let comparison = QuoteComparison {
                 our_price,
                 source_price: other_quote.price,
