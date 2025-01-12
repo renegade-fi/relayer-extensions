@@ -114,6 +114,9 @@ pub struct Cli {
     /// The StatsD recorder port to send metrics to
     #[arg(long, env = "STATSD_PORT", default_value = "8125")]
     pub statsd_port: u16,
+    /// Whether or not to enable quote comparison functionality
+    #[arg(long, env = "ENABLE_QUOTE_COMPARISON", default_value = "false")]
+    pub enable_quote_comparison: bool,
 }
 
 // -------------

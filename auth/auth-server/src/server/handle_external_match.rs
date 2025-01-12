@@ -157,17 +157,18 @@ impl Server {
         let match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
-        // Record quote comparison metrics before settlement
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
             (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
         ];
 
-        // Record quote comparisons
-        self.quote_metrics
-            .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
-            .await;
+        // Record quote comparisons before settlement, if enabled
+        if let Some(quote_metrics) = &self.quote_metrics {
+            quote_metrics
+                .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
+                .await;
+        }
 
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;

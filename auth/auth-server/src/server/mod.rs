@@ -68,7 +68,7 @@ pub struct Server {
     /// The rate limiter
     pub rate_limiter: BundleRateLimiter,
     /// The quote metrics recorder
-    pub quote_metrics: Arc<QuoteComparisonHandler>,
+    pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
 }
 
 impl Server {
@@ -89,9 +89,13 @@ impl Server {
 
         let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
 
-        // Setup the quote metrics recorder and sources
-        let odos_source = OdosQuoteSource::new();
-        let quote_metrics = Arc::new(QuoteComparisonHandler::new(vec![odos_source]));
+        // Setup the quote metrics recorder and sources if enabled
+        let quote_metrics = if args.enable_quote_comparison {
+            let odos_source = OdosQuoteSource::new();
+            Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source])))
+        } else {
+            None
+        };
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
