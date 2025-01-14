@@ -26,6 +26,7 @@ use diesel_async::{
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
+use rand::Rng;
 use rate_limiter::BundleRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
@@ -69,6 +70,8 @@ pub struct Server {
     pub rate_limiter: BundleRateLimiter,
     /// The quote metrics recorder
     pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
+    /// Rate at which to sample metrics (0.0 to 1.0)
+    pub metrics_sampling_rate: f64,
 }
 
 impl Server {
@@ -108,6 +111,9 @@ impl Server {
             arbitrum_client,
             rate_limiter,
             quote_metrics,
+            metrics_sampling_rate: args
+                .metrics_sampling_rate
+                .unwrap_or(1.0 /* default no sampling */),
         })
     }
 
@@ -200,6 +206,12 @@ impl Server {
         if let Some(key) = cache.cache_get_mut(&id) {
             key.is_active = false;
         }
+    }
+
+    /// Determines if the current request should be sampled for metrics
+    /// collection
+    pub fn should_sample_metrics(&self) -> bool {
+        rand::thread_rng().gen_bool(self.metrics_sampling_rate)
     }
 }
 

@@ -117,6 +117,9 @@ pub struct Cli {
     /// Whether or not to enable quote comparison functionality
     #[arg(long, env = "ENABLE_QUOTE_COMPARISON", default_value = "false")]
     pub enable_quote_comparison: bool,
+    /// Rate at which to sample metrics (0.0 to 1.0)
+    #[arg(long, env = "METRICS_SAMPLING_RATE")]
+    pub metrics_sampling_rate: Option<f64>,
 }
 
 // -------------
