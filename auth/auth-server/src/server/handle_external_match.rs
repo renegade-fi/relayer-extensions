@@ -229,6 +229,11 @@ impl Server {
         // Log the quote parameters
         self.log_quote(resp)?;
 
+        // Only proceed with metrics recording if sampled
+        if !self.should_sample_metrics() {
+            return Ok(());
+        }
+
         // Parse request and response for metrics
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
