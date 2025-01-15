@@ -31,15 +31,12 @@ use crate::{
     },
 };
 
-use super::quote_comparison::QuoteComparison;
+use super::{labels::SIDE_TAG, quote_comparison::QuoteComparison};
 
 // --- Constants --- //
 
 /// The duration to await an atomic match settlement
 pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Multiplier to convert decimal to basis points (1 basis point = 0.01%)
-const DECIMAL_TO_BPS: f64 = 10_000.0;
 
 // --- Asset and Volume Helpers --- //
 
@@ -330,26 +327,24 @@ fn extract_nullifier_from_match_bundle(
 
 // --- Quote Comparison --- //
 
-/// Calculate the price difference in basis points (bps).
-/// Positive bps indicates a better quote for the given side:
-/// - Sell: our price > source price
-/// - Buy: source price > our price
-pub(crate) fn calculate_price_diff_bps(our_price: f64, source_price: f64, side: OrderSide) -> i32 {
-    let price_diff_ratio = match side {
-        OrderSide::Sell => (our_price - source_price) / source_price,
-        OrderSide::Buy => (source_price - our_price) / our_price,
-    };
-
-    (price_diff_ratio * DECIMAL_TO_BPS) as i32
-}
-
 /// Record a single quote comparison metric with all data as tags
-pub(crate) fn record_comparison(comparison: &QuoteComparison, base_labels: &[(String, String)]) {
-    let mut labels = base_labels.to_vec();
-    labels.push((SOURCE_NAME_TAG.to_string(), comparison.source_name.clone()));
-    labels.push((OUR_PRICE_TAG.to_string(), comparison.our_price.to_string()));
-    labels.push((SOURCE_PRICE_TAG.to_string(), comparison.source_price.to_string()));
+pub(crate) fn record_comparison(
+    comparison: &QuoteComparison,
+    side: OrderSide,
+    extra_labels: &[(String, String)],
+) {
+    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
+    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
 
-    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice())
-        .set(comparison.price_diff_bips as f64);
+    let mut labels = vec![
+        (SIDE_TAG.to_string(), side_label.to_string()),
+        (SOURCE_NAME_TAG.to_string(), comparison.source_name.to_string()),
+        (OUR_PRICE_TAG.to_string(), comparison.our_quote.price().to_string()),
+        (SOURCE_PRICE_TAG.to_string(), comparison.source_quote.price().to_string()),
+    ];
+    labels.extend(extra_labels.iter().cloned());
+    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
+
+    let price_diff_bps = comparison.price_diff_bps(side);
+    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice()).set(price_diff_bps as f64);
 }

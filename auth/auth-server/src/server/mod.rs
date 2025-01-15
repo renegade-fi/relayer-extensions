@@ -11,7 +11,9 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{quote_comparison::QuoteComparisonHandler, sources::odos::OdosQuoteSource},
+    telemetry::{
+        quote_comparison::handler::QuoteComparisonHandler, sources::odos::OdosQuoteSource,
+    },
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
