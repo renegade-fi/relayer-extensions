@@ -1,5 +1,6 @@
 //! Defines the quote comparison struct and handler
 pub mod handler;
+pub mod relayer_client;
 
 use renegade_circuit_types::order::OrderSide;
 
@@ -10,9 +11,12 @@ const DECIMAL_TO_BPS: f64 = 10_000.0;
 
 /// Represents a single quote comparison between quotes from different sources
 pub struct QuoteComparison<'a> {
+    /// Our quote
     pub our_quote: &'a QuoteResponse,
+    /// The quote from the source
     pub source_quote: &'a QuoteResponse,
-    pub source_name: &'a str,
+    /// USDC per unit of gas
+    pub usdc_per_gas: f64,
 }
 
 impl<'a> QuoteComparison<'a> {
@@ -29,5 +33,20 @@ impl<'a> QuoteComparison<'a> {
         };
 
         (price_diff_ratio * DECIMAL_TO_BPS) as i32
+    }
+
+    /// Calculate the output value net of gas difference in basis points (bps).
+    /// Positive bps indicates our quote is better.
+    pub fn output_value_net_of_gas_diff_bps(&self, usdc_per_gas: f64, side: OrderSide) -> i32 {
+        let our_output_value_net_of_gas =
+            self.our_quote.output_value_net_of_gas(usdc_per_gas, side);
+        let source_output_value_net_of_gas =
+            self.source_quote.output_value_net_of_gas(usdc_per_gas, side);
+
+        let diff_ratio = (our_output_value_net_of_gas - source_output_value_net_of_gas)
+            / source_output_value_net_of_gas;
+        let bps_diff = diff_ratio * DECIMAL_TO_BPS;
+
+        bps_diff as i32
     }
 }

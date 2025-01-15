@@ -11,7 +11,10 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
+    telemetry::{
+        quote_comparison::{handler::QuoteComparisonHandler, relayer_client::RelayerClient},
+        sources::QuoteSource,
+    },
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -30,7 +33,7 @@ use rand::Rng;
 use rate_limiter::BundleRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
-use renegade_common::types::wallet::keychain::HmacKey;
+use renegade_common::types::{token::Token, wallet::keychain::HmacKey};
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -94,8 +97,14 @@ impl Server {
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
+            let usdc_mint = Token::from_ticker("USDC").get_addr();
+            let relayer_client = RelayerClient::new(&args.relayer_url, &usdc_mint);
             let odos_source = QuoteSource::odos_default();
-            Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source])))
+            Some(Arc::new(QuoteComparisonHandler::new(
+                vec![odos_source],
+                relayer_client,
+                arbitrum_client.clone(),
+            )))
         } else {
             None
         };
