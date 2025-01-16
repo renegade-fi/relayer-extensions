@@ -3,11 +3,8 @@ mod error;
 mod types;
 
 use super::{QuoteResponse, QuoteSource};
-use error::OdosError;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
-use std::result::Result;
-use types::OdosQuoteResponse;
 
 use client::{OdosClient, OdosConfig};
 
@@ -56,52 +53,31 @@ impl OdosQuoteSource {
         amount: u128,
     ) -> QuoteResponse {
         let (in_token, out_token) = match side {
-            OrderSide::Buy => {
-                (quote_token.get_addr().to_string(), base_token.get_addr().to_string())
-            },
-            OrderSide::Sell => {
-                (base_token.get_addr().to_string(), quote_token.get_addr().to_string())
-            },
+            OrderSide::Buy => (quote_token, base_token),
+            OrderSide::Sell => (base_token, quote_token),
         };
 
+        // Fetch quote from Odos
         let quote = self
             .client
-            .get_quote(&in_token, amount, &out_token)
+            .get_quote(&in_token.get_addr().to_string(), amount, &out_token.get_addr().to_string())
             .await
             .expect("Failed to get quote from Odos");
 
-        let price =
-            calculate_price_from_quote(&quote, side).expect("Failed to calculate price from quote");
+        // When buying, we input the quote token and receive the base token
+        // When selling, we input the base token and receive the quote token
+        let (base_mint, quote_mint) = match side {
+            OrderSide::Buy => (quote.get_out_token().unwrap(), quote.get_in_token().unwrap()),
+            OrderSide::Sell => (quote.get_in_token().unwrap(), quote.get_out_token().unwrap()),
+        };
 
-        QuoteResponse { price }
+        let (base_amount, quote_amount) = match side {
+            OrderSide::Buy => (quote.get_out_amount().unwrap(), quote.get_in_amount().unwrap()),
+            OrderSide::Sell => (quote.get_in_amount().unwrap(), quote.get_out_amount().unwrap()),
+        };
+
+        QuoteResponse { base_amount, quote_amount, base_mint, quote_mint }
     }
-}
-
-// ------------
-// | Helpers |
-// ------------
-
-/// Calculates the effective price from an Odos quote response by taking the
-/// ratio of input to output amounts adjusted for their respective token
-/// decimals. For buys, price is in_amount/out_amount (quote/base),
-/// for sells price is out_amount/in_amount (quote/base).
-fn calculate_price_from_quote(
-    quote: &OdosQuoteResponse,
-    side: OrderSide,
-) -> Result<f64, OdosError> {
-    let in_amount = quote.get_in_amount()?;
-    let out_amount = quote.get_out_amount()?;
-
-    let in_token = Token::from_addr(&quote.in_tokens[0]);
-    let out_token = Token::from_addr(&quote.out_tokens[0]);
-
-    let in_amount_decimal = in_token.convert_to_decimal(in_amount);
-    let out_amount_decimal = out_token.convert_to_decimal(out_amount);
-
-    Ok(match side {
-        OrderSide::Buy => in_amount_decimal / out_amount_decimal,
-        OrderSide::Sell => out_amount_decimal / in_amount_decimal,
-    })
 }
 
 #[cfg(test)]
@@ -137,7 +113,7 @@ mod tests {
                 buy_amount,
             )
             .await;
-        assert!(buy_response.price > 0.0);
+        assert!(buy_response.price() > 0.0);
 
         // Test sell quote (selling WETH for USDC)
         let sell_amount = to_token_amount(BASE_AMOUNT, WETH_DECIMALS); // Amount in WETH
@@ -149,6 +125,6 @@ mod tests {
                 sell_amount,
             )
             .await;
-        assert!(sell_response.price > 0.0);
+        assert!(sell_response.price() > 0.0);
     }
 }

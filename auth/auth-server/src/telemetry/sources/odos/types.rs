@@ -40,6 +40,8 @@ pub(crate) struct OutputToken {
 }
 
 impl OdosQuoteRequest {
+    /// Creates a new `OdosQuoteRequest` with the given configuration and
+    /// tokens.
     pub fn new(
         config: &OdosConfig,
         input_token: String,
@@ -76,5 +78,21 @@ impl OdosQuoteResponse {
             .ok_or_else(|| OdosError::Input("No output amount available".to_string()))?
             .parse()
             .map_err(|e| OdosError::Input(format!("Failed to parse output amount: {}", e)))
+    }
+
+    /// Gets the input token from the first token in the quote.
+    pub fn get_in_token(&self) -> Result<String, OdosError> {
+        self.in_tokens
+            .first()
+            .ok_or_else(|| OdosError::Input("No input token available".to_string()))
+            .map(|token| token.to_string())
+    }
+
+    /// Gets the output token from the first token in the quote.
+    pub fn get_out_token(&self) -> Result<String, OdosError> {
+        self.out_tokens
+            .first()
+            .ok_or_else(|| OdosError::Input("No output token available".to_string()))
+            .map(|token| token.to_string())
     }
 }
