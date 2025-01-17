@@ -22,12 +22,11 @@ use tracing::{info, warn};
 use crate::{
     error::AuthServerError,
     telemetry::labels::{
-        ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, DECIMAL_CORRECTION_FIXED_METRIC_TAG,
-        EXTERNAL_MATCH_BASE_VOLUME, EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME,
-        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-        EXTERNAL_ORDER_BASE_VOLUME, EXTERNAL_ORDER_QUOTE_VOLUME, KEY_DESCRIPTION_METRIC_TAG,
-        NUM_EXTERNAL_MATCH_REQUESTS, OUR_PRICE_TAG, QUOTE_PRICE_DIFF_BPS_METRIC,
-        REQUEST_ID_METRIC_TAG, SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_PRICE_TAG,
+        ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
+        EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+        EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
+        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_PRICE_TAG,
+        QUOTE_PRICE_DIFF_BPS_METRIC, SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_PRICE_TAG,
     },
 };
 
@@ -113,10 +112,7 @@ fn record_volume_with_tags(
     extra_labels: &[(String, String)],
 ) {
     let (asset, volume) = get_asset_and_volume(mint, amount);
-    let mut labels = vec![
-        (ASSET_METRIC_TAG.to_string(), asset),
-        (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
-    ];
+    let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
     let extra_labels = extra_labels.iter().map(|(k, v)| (k.clone(), v.clone()));
     labels.extend(extra_labels);
 
@@ -213,10 +209,7 @@ pub(crate) fn record_endpoint_metrics(
     extra_labels: &[(String, String)],
 ) {
     let (asset, _) = get_asset_and_volume(mint, 0);
-    let mut labels = vec![
-        (ASSET_METRIC_TAG.to_string(), asset),
-        (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
-    ];
+    let mut labels = vec![(ASSET_METRIC_TAG.to_string(), asset)];
     labels.extend(extra_labels.iter().cloned());
     metrics::counter!(metric_name, &labels).increment(1);
 }
@@ -236,37 +229,31 @@ pub(crate) fn record_fill_ratio(
 pub(crate) async fn record_external_match_metrics(
     order: &ExternalOrder,
     match_resp: ExternalMatchResponse,
-    key_description: String,
+    labels: &[(String, String)],
     did_settle: bool,
 ) -> Result<(), AuthServerError> {
-    let request_id = uuid::Uuid::new_v4();
-    let labels = vec![
-        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
-        (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
-    ];
-
     // Get decimal-corrected price
     let price = calculate_implied_price(&match_resp.match_bundle, true /* decimal_correct */)?;
 
     // Record request metrics
-    if let Err(e) = record_external_match_request_metrics(order, price, &labels) {
+    if let Err(e) = record_external_match_request_metrics(order, price, labels) {
         warn!("Error recording request metrics: {e}");
     }
 
     // Record fill ratio metric
     let requested_quote_amount = order.get_quote_amount(FixedPoint::from_f64_round_down(price));
     let matched_quote_amount = match_resp.match_bundle.match_result.quote_amount;
-    if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels) {
+    if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, labels) {
         warn!("Error recording fill ratio metric: {e}");
     }
 
     // Record response metrics
-    if let Err(e) = record_external_match_response_metrics(&match_resp.match_bundle, &labels) {
+    if let Err(e) = record_external_match_response_metrics(&match_resp.match_bundle, labels) {
         warn!("Error recording response metrics: {e}");
     }
 
     if let Err(e) =
-        record_external_match_settlement_metrics(&match_resp.match_bundle, did_settle, &labels)
+        record_external_match_settlement_metrics(&match_resp.match_bundle, did_settle, labels)
     {
         warn!("Error recording settlement metrics: {e}");
     }
