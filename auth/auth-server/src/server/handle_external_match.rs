@@ -17,6 +17,7 @@ use renegade_common::types::{token::Token, TimestampedPrice};
 
 use super::Server;
 use crate::error::AuthServerError;
+use crate::telemetry::helpers::calculate_implied_price;
 use crate::telemetry::{
     helpers::{
         await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
@@ -177,7 +178,7 @@ impl Server {
         }
 
         // Log the bundle and record metrics
-        self.log_bundle(resp)?;
+        self.log_bundle(&order, resp)?;
         record_external_match_metrics(&order, match_resp, key, did_settle).await?;
 
         Ok(())
@@ -203,17 +204,46 @@ impl Server {
     }
 
     /// Log the bundle parameters
-    fn log_bundle(&self, bundle_bytes: &[u8]) -> Result<(), AuthServerError> {
+    fn log_bundle(
+        &self,
+        order: &ExternalOrder,
+        bundle_bytes: &[u8],
+    ) -> Result<(), AuthServerError> {
         let resp = serde_json::from_slice::<ExternalMatchResponse>(bundle_bytes)
             .map_err(AuthServerError::serde)?;
+
+        // Get the decimal-corrected price
+        let price = calculate_implied_price(&resp.match_bundle, true /* decimal_correct */)?;
+        let price_fixed = FixedPoint::from_f64_round_down(price);
 
         let match_result = resp.match_bundle.match_result;
         let is_buy = match_result.direction;
         let recv = resp.match_bundle.receive;
         let send = resp.match_bundle.send;
+
+        // Get the base fill ratio
+        let requested_base_amount = order.get_base_amount(price_fixed);
+        let response_base_amount = match_result.base_amount;
+        let base_fill_ratio = response_base_amount as f64 / requested_base_amount as f64;
+
+        // Get the quote fill ratio
+        let requested_quote_amount = order.get_quote_amount(price_fixed);
+        let matched_quote_amount = match_result.quote_amount;
+        let quote_fill_ratio = matched_quote_amount as f64 / requested_quote_amount as f64;
+
         info!(
+            requested_base_amount = requested_base_amount,
+            response_base_amount = response_base_amount,
+            requested_quote_amount = requested_quote_amount,
+            matched_quote_amount = matched_quote_amount,
+            base_fill_ratio = base_fill_ratio,
+            quote_fill_ratio = quote_fill_ratio,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
-            is_buy, recv.amount, recv.mint, send.amount, send.mint
+            is_buy,
+            recv.amount,
+            recv.mint,
+            send.amount,
+            send.mint
         );
 
         Ok(())
