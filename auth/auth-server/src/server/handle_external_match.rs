@@ -154,11 +154,14 @@ impl Server {
         order: ExternalOrder,
         resp: &[u8],
     ) -> Result<(), AuthServerError> {
+        // Log the bundle
+        let request_id = uuid::Uuid::new_v4();
+        self.log_bundle(&order, resp, &key, &request_id.to_string())?;
+
         // Deserialize the response
         let match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
-        let request_id = uuid::Uuid::new_v4();
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
@@ -178,8 +181,7 @@ impl Server {
             self.add_rate_limit_token(key.clone()).await;
         }
 
-        // Log the bundle and record metrics
-        self.log_bundle(&order, resp, &request_id.to_string())?;
+        // Record metrics
         record_external_match_metrics(&order, match_resp, &labels, did_settle).await?;
 
         Ok(())
@@ -209,6 +211,7 @@ impl Server {
         &self,
         order: &ExternalOrder,
         bundle_bytes: &[u8],
+        key_description: &str,
         request_id: &str,
     ) -> Result<(), AuthServerError> {
         let resp = serde_json::from_slice::<ExternalMatchResponse>(bundle_bytes)
@@ -230,16 +233,17 @@ impl Server {
 
         // Get the quote fill ratio
         let requested_quote_amount = order.get_quote_amount(price_fixed);
-        let matched_quote_amount = match_result.quote_amount;
-        let quote_fill_ratio = matched_quote_amount as f64 / requested_quote_amount as f64;
+        let response_quote_amount = match_result.quote_amount;
+        let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
 
         info!(
             requested_base_amount = requested_base_amount,
             response_base_amount = response_base_amount,
             requested_quote_amount = requested_quote_amount,
-            matched_quote_amount = matched_quote_amount,
+            response_quote_amount = response_quote_amount,
             base_fill_ratio = base_fill_ratio,
             quote_fill_ratio = quote_fill_ratio,
+            key_description = key_description,
             request_id = request_id,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
             is_buy,
