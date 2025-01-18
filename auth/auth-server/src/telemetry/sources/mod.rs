@@ -76,3 +76,13 @@ impl QuoteSource {
         }
     }
 }
+
+impl QuoteSource {
+    pub fn odos(config: odos::OdosConfig) -> Self {
+        QuoteSource::Odos(odos::OdosQuoteSource::new(config))
+    }
+
+    pub fn odos_default() -> Self {
+        Self::odos(odos::OdosConfig::default())
+    }
+}

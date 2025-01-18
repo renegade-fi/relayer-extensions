@@ -18,11 +18,8 @@ pub(crate) struct OdosQuoteRequest {
 pub(crate) struct OdosQuoteResponse {
     pub in_amounts: Vec<String>,
     pub in_tokens: Vec<String>,
-    pub in_values: Vec<f64>,
     pub out_amounts: Vec<String>,
     pub out_tokens: Vec<String>,
-    pub out_values: Vec<f64>,
-    pub net_out_value: f64,
 }
 
 #[derive(Debug, Serialize)]

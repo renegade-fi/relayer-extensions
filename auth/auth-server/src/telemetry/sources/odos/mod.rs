@@ -2,11 +2,13 @@ mod client;
 mod error;
 mod types;
 
-use super::{QuoteResponse, QuoteSource};
+use super::QuoteResponse;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
-use client::{OdosClient, OdosConfig};
+use client::OdosClient;
+
+pub use client::OdosConfig;
 
 // -------------
 // | Constants |
@@ -29,14 +31,9 @@ pub struct OdosQuoteSource {
 }
 
 impl OdosQuoteSource {
-    /// Creates a new OdosQuoteSource instance with default configuration
-    pub fn new() -> QuoteSource {
-        Self::with_config(OdosConfig::default())
-    }
-
     /// Creates a new OdosQuoteSource instance with custom configuration
-    pub fn with_config(config: OdosConfig) -> QuoteSource {
-        QuoteSource::Odos(Self { name: NAME, client: OdosClient::new(config) })
+    pub fn new(config: OdosConfig) -> Self {
+        Self { name: NAME, client: OdosClient::new(config) }
     }
 
     /// Returns the name of this quote source
@@ -100,7 +97,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_fetch_real_quotes() {
-        let source = OdosQuoteSource::new();
+        let source = OdosQuoteSource::new(OdosConfig::default());
 
         // Test buy quote (buying WETH with USDC)
 
