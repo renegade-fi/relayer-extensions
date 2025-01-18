@@ -158,9 +158,10 @@ impl Server {
         let match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
+        let request_id = uuid::Uuid::new_v4();
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-            (REQUEST_ID_METRIC_TAG.to_string(), uuid::Uuid::new_v4().to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
         ];
 
@@ -178,8 +179,8 @@ impl Server {
         }
 
         // Log the bundle and record metrics
-        self.log_bundle(&order, resp)?;
-        record_external_match_metrics(&order, match_resp, key, did_settle).await?;
+        self.log_bundle(&order, resp, &request_id.to_string())?;
+        record_external_match_metrics(&order, match_resp, &labels, did_settle).await?;
 
         Ok(())
     }
@@ -208,6 +209,7 @@ impl Server {
         &self,
         order: &ExternalOrder,
         bundle_bytes: &[u8],
+        request_id: &str,
     ) -> Result<(), AuthServerError> {
         let resp = serde_json::from_slice::<ExternalMatchResponse>(bundle_bytes)
             .map_err(AuthServerError::serde)?;
@@ -238,6 +240,7 @@ impl Server {
             matched_quote_amount = matched_quote_amount,
             base_fill_ratio = base_fill_ratio,
             quote_fill_ratio = quote_fill_ratio,
+            request_id = request_id,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
             is_buy,
             recv.amount,
