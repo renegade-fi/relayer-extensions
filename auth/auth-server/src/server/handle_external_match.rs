@@ -128,8 +128,16 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let req: AssembleExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
-        let order = req.signed_quote.quote.order;
-        self.handle_bundle_response(key, order, resp).await
+
+        let original_order = &req.signed_quote.quote.order;
+        let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
+
+        let request_id = uuid::Uuid::new_v4().to_string();
+        if req.updated_order.is_some() {
+            self.log_updated_order(&key, original_order, updated_order, &request_id);
+        }
+
+        self.handle_bundle_response(key, updated_order.clone(), resp, Some(request_id)).await
     }
 
     /// Handle a bundle response from a direct match request
@@ -142,7 +150,7 @@ impl Server {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
         let order = req.external_order;
-        self.handle_bundle_response(key, order, resp).await
+        self.handle_bundle_response(key, order, resp, None).await
     }
 
     /// Record and watch a bundle that was forwarded to the client
@@ -153,10 +161,11 @@ impl Server {
         key: String,
         order: ExternalOrder,
         resp: &[u8],
+        request_id: Option<String>,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
-        let request_id = uuid::Uuid::new_v4();
-        self.log_bundle(&order, resp, &key, &request_id.to_string())?;
+        let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        self.log_bundle(&order, resp, &key, &request_id)?;
 
         // Deserialize the response
         let match_resp: ExternalMatchResponse =
@@ -204,6 +213,26 @@ impl Server {
         );
 
         Ok(())
+    }
+
+    /// Log an updated order
+    fn log_updated_order(
+        &self,
+        key: &str,
+        original_order: &ExternalOrder,
+        updated_order: &ExternalOrder,
+        request_id: &str,
+    ) {
+        let original_base_amount = original_order.base_amount;
+        let updated_base_amount = updated_order.base_amount;
+        let original_quote_amount = original_order.quote_amount;
+        let updated_quote_amount = updated_order.quote_amount;
+        info!(
+            key_description = key,
+            request_id = request_id,
+            "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
+            original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
+        );
     }
 
     /// Log the bundle parameters
