@@ -154,11 +154,14 @@ impl Server {
         order: ExternalOrder,
         resp: &[u8],
     ) -> Result<(), AuthServerError> {
+        // Log the bundle
+        let request_id = uuid::Uuid::new_v4();
+        self.log_bundle(&order, resp, &key, &request_id.to_string())?;
+
         // Deserialize the response
         let match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
-        let request_id = uuid::Uuid::new_v4();
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
@@ -178,8 +181,7 @@ impl Server {
             self.add_rate_limit_token(key.clone()).await;
         }
 
-        // Log the bundle and record metrics
-        self.log_bundle(&order, resp, &key, &request_id.to_string())?;
+        // Record metrics
         record_external_match_metrics(&order, match_resp, &labels, did_settle).await?;
 
         Ok(())
