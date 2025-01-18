@@ -11,9 +11,7 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{
-        quote_comparison::handler::QuoteComparisonHandler, sources::odos::OdosQuoteSource,
-    },
+    telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -96,7 +94,7 @@ impl Server {
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
-            let odos_source = OdosQuoteSource::new();
+            let odos_source = QuoteSource::odos_default();
             Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source])))
         } else {
             None
