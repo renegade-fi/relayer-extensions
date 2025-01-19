@@ -1,6 +1,6 @@
 //! Quote source implementations for price comparison metrics
 
-mod http_utils;
+pub mod http_utils;
 pub mod odos;
 
 use renegade_api::http::external_match::AtomicMatchApiBundle;

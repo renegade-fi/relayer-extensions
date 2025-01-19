@@ -16,23 +16,23 @@ use crate::{
     },
 };
 
-use super::{relayer_client::RelayerClient, QuoteComparison};
+use super::{price_reporter_client::PriceReporterClient, QuoteComparison};
 
 /// Records metrics comparing quotes from different sources
 pub struct QuoteComparisonHandler {
     sources: Vec<QuoteSource>,
-    relayer_client: RelayerClient,
     arbitrum_client: ArbitrumClient,
+    price_reporter_client: PriceReporterClient,
 }
 
 impl QuoteComparisonHandler {
     /// Create a new QuoteComparisonHandler with the given sources
     pub fn new(
         sources: Vec<QuoteSource>,
-        relayer_client: RelayerClient,
         arbitrum_client: ArbitrumClient,
+        price_reporter_client: PriceReporterClient,
     ) -> Self {
-        Self { sources, relayer_client, arbitrum_client }
+        Self { sources, arbitrum_client, price_reporter_client }
     }
 
     /// Records metrics comparing quotes from different sources
@@ -119,7 +119,7 @@ impl QuoteComparisonHandler {
     /// WETH.
     async fn fetch_eth_price(&self) -> Result<f64, AuthServerError> {
         let eth = Token::from_ticker("WETH");
-        let price_result = self.relayer_client.get_binance_price(&eth.get_addr()).await;
+        let price_result = self.price_reporter_client.get_binance_price(&eth.get_addr()).await;
 
         match price_result {
             Ok(Some(price)) => Ok(price),
