@@ -1,5 +1,5 @@
 use super::types::{OdosQuoteRequest, OdosQuoteResponse};
-use crate::telemetry::sources::http_utils::{send_request, HttpError};
+use crate::telemetry::sources::http_utils::{send_post_request, HttpError};
 
 // -------------
 // | Constants |
@@ -72,7 +72,7 @@ impl OdosClient {
         );
 
         let url = format!("{}{}", BASE_URL, QUOTE_ROUTE);
-        let response = send_request(&url, request, self.config.timeout_secs).await?;
+        let response = send_post_request(&url, Some(request), self.config.timeout_secs).await?;
 
         response
             .json::<OdosQuoteResponse>()

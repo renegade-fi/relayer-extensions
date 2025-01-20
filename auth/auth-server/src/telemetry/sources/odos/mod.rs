@@ -14,8 +14,8 @@ pub use client::OdosConfig;
 // | Constants |
 // -------------
 
-/// Identifier for this quote source
-const NAME: &str = "odos";
+/// The name of the Odos quote source
+const SOURCE_NAME: &str = "odos";
 
 // ----------
 // | Source |
@@ -24,8 +24,6 @@ const NAME: &str = "odos";
 /// Implementation of the Odos quote source for fetching price quotes
 #[derive(Debug, Clone)]
 pub struct OdosQuoteSource {
-    /// Identifier for this quote source
-    name: &'static str,
     /// HTTP client for Odos API
     client: OdosClient,
 }
@@ -33,12 +31,7 @@ pub struct OdosQuoteSource {
 impl OdosQuoteSource {
     /// Creates a new OdosQuoteSource instance with custom configuration
     pub fn new(config: OdosConfig) -> Self {
-        Self { name: NAME, client: OdosClient::new(config) }
-    }
-
-    /// Returns the name of this quote source
-    pub fn name(&self) -> &'static str {
-        self.name
+        Self { client: OdosClient::new(config) }
     }
 
     /// Fetches a price quote for a token pair
@@ -73,7 +66,14 @@ impl OdosQuoteSource {
             OrderSide::Sell => (quote.get_in_amount().unwrap(), quote.get_out_amount().unwrap()),
         };
 
-        QuoteResponse { base_amount, quote_amount, base_mint, quote_mint }
+        QuoteResponse {
+            base_amount,
+            base_mint,
+            quote_amount,
+            quote_mint,
+            gas: quote.gas_estimate as u64,
+            name: SOURCE_NAME.to_string(),
+        }
     }
 }
 

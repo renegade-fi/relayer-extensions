@@ -29,8 +29,12 @@ pub const EXTERNAL_MATCH_SETTLED_BASE_VOLUME: &str = "external_match_settled_bas
 /// Metric describing the volume of the quote asset in an external match
 pub const EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME: &str = "external_match_settled_quote_volume";
 
-/// Consolidated metric for quote comparison analysis with all data as tags
+/// Metric describing the difference in price between our quote and the source
+/// quote, in basis points
 pub const QUOTE_PRICE_DIFF_BPS_METRIC: &str = "quote.price_diff_bps";
+/// Metric describing the difference in net output value between our quote and
+/// the source quote, in basis points
+pub const QUOTE_NET_OUT_VALUE_DIFF_BPS_METRIC: &str = "quote.net_out_value_diff_bps";
 
 // ---------------
 // | METRIC TAGS |
@@ -52,12 +56,13 @@ pub const DECIMAL_CORRECTION_FIXED_METRIC_TAG: &str = "post_decimal_fix";
 
 /// Metric tag for identifying the source of a quote (our server or competitor)
 pub const SOURCE_NAME_TAG: &str = "source_name";
-
 /// Metric tag for identifying the order side (buy/sell)
 pub const SIDE_TAG: &str = "side";
-
 /// Metric tag for our quoted price
 pub const OUR_PRICE_TAG: &str = "our_price";
-
 /// Metric tag for the comparison source's price
 pub const SOURCE_PRICE_TAG: &str = "source_price";
+/// Metric tag for our output net of gas
+pub const OUR_OUTPUT_NET_OF_GAS_TAG: &str = "our_output_net_of_gas";
+/// Metric tag for the comparison source's output net of gas
+pub const SOURCE_OUTPUT_NET_OF_GAS_TAG: &str = "source_output_net_of_gas";

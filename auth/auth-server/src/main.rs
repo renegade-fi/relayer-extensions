@@ -98,6 +98,9 @@ pub struct Cli {
     /// The address of the darkpool contract
     #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
+    /// The URL of the price reporter
+    #[arg(long, env = "PRICE_REPORTER_URL")]
+    pub price_reporter_url: String,
 
     // -------------
     // | Telemetry |

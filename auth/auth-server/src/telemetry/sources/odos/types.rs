@@ -20,6 +20,7 @@ pub(crate) struct OdosQuoteResponse {
     pub in_tokens: Vec<String>,
     pub out_amounts: Vec<String>,
     pub out_tokens: Vec<String>,
+    pub gas_estimate: f64,
 }
 
 #[derive(Debug, Serialize)]

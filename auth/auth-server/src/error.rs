@@ -28,6 +28,12 @@ pub enum AuthServerError {
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    /// An error executing an HTTP request
+    #[error("Http: {0}")]
+    Http(String),
+    /// A miscellaneous error
+    #[error("Error: {0}")]
+    Custom(String),
 }
 
 impl AuthServerError {

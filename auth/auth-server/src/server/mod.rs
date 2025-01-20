@@ -11,7 +11,12 @@ mod rate_limiter;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
+    telemetry::{
+        quote_comparison::{
+            handler::QuoteComparisonHandler, price_reporter_client::PriceReporterClient,
+        },
+        sources::QuoteSource,
+    },
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -94,8 +99,13 @@ impl Server {
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
+            let price_reporter_client = PriceReporterClient::new(&args.price_reporter_url);
             let odos_source = QuoteSource::odos_default();
-            Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source])))
+            Some(Arc::new(QuoteComparisonHandler::new(
+                vec![odos_source],
+                arbitrum_client.clone(),
+                price_reporter_client,
+            )))
         } else {
             None
         };
