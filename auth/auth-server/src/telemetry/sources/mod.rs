@@ -28,6 +28,8 @@ pub struct QuoteResponse {
     pub gas: u64,
     /// The name of the source that provided the quote
     pub name: String,
+    /// The fee taken by the source, in units of the received token
+    pub fee_take: Amount,
 }
 
 impl QuoteResponse {
@@ -48,26 +50,43 @@ impl QuoteResponse {
         gas_total * usdc_per_gas
     }
 
-    /// Calculates the net output value of a trade, accounting for gas costs.
-    pub fn output_value_net_of_gas(&self, usdc_per_gas: f64, side: OrderSide) -> f64 {
-        // Get decimal corrected amounts
-        let base_token = Token::from_addr(&self.base_mint);
-        let quote_token = Token::from_addr(&self.quote_mint);
+    /// Calculates output value with gas costs deducted
+    pub fn output_net_of_gas(&self, usdc_per_gas: f64, side: OrderSide) -> f64 {
+        let (amount, token) = self.get_receive_amount_mint(side);
+        let value = token.convert_to_decimal(amount);
+        self.deduct_gas(value, side, usdc_per_gas)
+    }
 
-        let base_amt = base_token.convert_to_decimal(self.base_amount);
-        let quote_amt = quote_token.convert_to_decimal(self.quote_amount);
+    /// Calculates output value with fees deducted
+    pub fn output_net_of_fee(&self, side: OrderSide) -> f64 {
+        let (amount, token) = self.get_receive_amount_mint(side);
+        self.deduct_fees(amount, &token)
+    }
 
-        // Get gas cost in USDC
-        let usdc_gas_cost = self.gas_cost(usdc_per_gas);
-
-        // Subtract gas cost from net output value
+    /// Helper to apply gas cost deduction based on order side
+    fn deduct_gas(&self, value: f64, side: OrderSide, usdc_per_gas: f64) -> f64 {
+        let gas_cost_usdc = self.gas_cost(usdc_per_gas);
         match side {
-            OrderSide::Sell => quote_amt - usdc_gas_cost,
+            OrderSide::Sell => value - gas_cost_usdc,
             OrderSide::Buy => {
                 let usdc_per_base = self.price();
-                let gas_cost_in_base = usdc_gas_cost / usdc_per_base;
-                base_amt - gas_cost_in_base
+                let gas_cost_in_base = gas_cost_usdc / usdc_per_base;
+                value - gas_cost_in_base
             },
+        }
+    }
+
+    /// Helper to apply fee deduction
+    fn deduct_fees(&self, amount: Amount, token: &Token) -> f64 {
+        let net_amount = amount - self.fee_take;
+        token.convert_to_decimal(net_amount)
+    }
+
+    /// Gets the amount and token that would be received based on order side
+    fn get_receive_amount_mint(&self, side: OrderSide) -> (Amount, Token) {
+        match side {
+            OrderSide::Sell => (self.quote_amount, Token::from_addr(&self.quote_mint)),
+            OrderSide::Buy => (self.base_amount, Token::from_addr(&self.base_mint)),
         }
     }
 }
@@ -76,6 +95,7 @@ impl QuoteResponse {
 impl From<&AtomicMatchApiBundle> for QuoteResponse {
     fn from(bundle: &AtomicMatchApiBundle) -> Self {
         let gas = bundle.settlement_tx.gas().map_or(DEFAULT_GAS_ESTIMATION, |gas| gas.as_u64());
+        let fee_take = bundle.fees.total();
         Self {
             quote_mint: bundle.match_result.quote_mint.clone(),
             base_mint: bundle.match_result.base_mint.clone(),
@@ -83,6 +103,7 @@ impl From<&AtomicMatchApiBundle> for QuoteResponse {
             base_amount: bundle.match_result.base_amount,
             gas,
             name: RENEGADE_SOURCE_NAME.to_string(),
+            fee_take,
         }
     }
 }

@@ -11,7 +11,7 @@ use crate::telemetry::helpers::record_output_value_net_of_gas_comparison;
 use crate::{
     error::AuthServerError,
     telemetry::{
-        helpers::record_comparison,
+        helpers::{record_comparison, record_output_value_net_of_fee_comparison},
         sources::{QuoteResponse, QuoteSource},
     },
 };
@@ -82,6 +82,7 @@ impl QuoteComparisonHandler {
 
         record_comparison(&comparison, side, &labels);
         record_output_value_net_of_gas_comparison(&comparison, side, &labels);
+        record_output_value_net_of_fee_comparison(&comparison, side, &labels);
         Ok(())
     }
 }

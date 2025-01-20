@@ -35,6 +35,7 @@ renegade-circuit-types = { workspace = true }
 renegade-common = { workspace = true }
 renegade-constants = { workspace = true }
 renegade-config = { workspace = true }
+renegade-crypto = { workspace = true }
 renegade-util = { workspace = true }
 renegade-api = { workspace = true }
 
