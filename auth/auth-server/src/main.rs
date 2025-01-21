@@ -87,6 +87,9 @@ pub struct Cli {
     /// The bundle rate limit in bundles per minute
     #[arg(long, env = "BUNDLE_RATE_LIMIT", default_value = "4")]
     pub bundle_rate_limit: u64,
+    /// The quote rate limit in quotes per minute
+    #[arg(long, env = "QUOTE_RATE_LIMIT", default_value = "100")]
+    pub quote_rate_limit: u64,
     /// The path to the file containing token remaps for the given chain
     ///
     /// See https://github.com/renegade-fi/token-mappings for more information on the format of this file
