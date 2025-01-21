@@ -25,9 +25,11 @@ use crate::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
         EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_OUTPUT_NET_OF_GAS_TAG,
-        OUR_PRICE_TAG, QUOTE_NET_OUT_VALUE_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
-        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
+        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_OUTPUT_NET_OF_FEE_TAG,
+        OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG, QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC,
+        QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
+        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_OUTPUT_NET_OF_FEE_TAG,
+        SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
     },
 };
 
@@ -334,7 +336,7 @@ pub(crate) fn record_comparison(
     labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
 
     let price_diff_bps = comparison.price_diff_bps(side);
-    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice()).set(price_diff_bps as f64);
+    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice()).set(price_diff_bps);
 }
 
 /// Record a quote comparison net of gas cost
@@ -346,9 +348,8 @@ pub(crate) fn record_output_value_net_of_gas_comparison(
     let usdc_per_gas = comparison.usdc_per_gas;
     let output_diff_bps = comparison.output_value_net_of_gas_diff_bps(usdc_per_gas, side);
 
-    let our_output_net_of_gas = comparison.our_quote.output_value_net_of_gas(usdc_per_gas, side);
-    let source_output_net_of_gas =
-        comparison.source_quote.output_value_net_of_gas(usdc_per_gas, side);
+    let our_output_net_of_gas = comparison.our_quote.output_net_of_gas(usdc_per_gas, side);
+    let source_output_net_of_gas = comparison.source_quote.output_net_of_gas(usdc_per_gas, side);
 
     let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
     let base_token = Token::from_addr(&comparison.our_quote.base_mint);
@@ -361,5 +362,31 @@ pub(crate) fn record_output_value_net_of_gas_comparison(
     labels.extend(extra_labels.iter().cloned());
     labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
 
-    metrics::gauge!(QUOTE_NET_OUT_VALUE_DIFF_BPS_METRIC, labels.as_slice()).set(output_diff_bps);
+    metrics::gauge!(QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, labels.as_slice())
+        .set(output_diff_bps);
+}
+
+/// Record a quote comparison net of fee
+pub(crate) fn record_output_value_net_of_fee_comparison(
+    comparison: &QuoteComparison,
+    side: OrderSide,
+    extra_labels: &[(String, String)],
+) {
+    let fee_diff_bps = comparison.output_value_net_of_fee_diff_bps(side);
+
+    let our_output_net_of_fee = comparison.our_quote.output_net_of_fee(side);
+    let source_output_net_of_fee = comparison.source_quote.output_net_of_fee(side);
+
+    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
+    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
+    let mut labels = vec![
+        (SIDE_TAG.to_string(), side_label.to_string()),
+        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
+        (OUR_OUTPUT_NET_OF_FEE_TAG.to_string(), our_output_net_of_fee.to_string()),
+        (SOURCE_OUTPUT_NET_OF_FEE_TAG.to_string(), source_output_net_of_fee.to_string()),
+    ];
+    labels.extend(extra_labels.iter().cloned());
+    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
+
+    metrics::gauge!(QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, labels.as_slice()).set(fee_diff_bps);
 }

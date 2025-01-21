@@ -751,6 +751,7 @@ dependencies = [
  "postgres-native-tls",
  "rand 0.8.5",
  "ratelimit",
+ "renegade-crypto",
  "reqwest 0.11.27",
  "serde",
  "serde_json",

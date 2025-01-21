@@ -32,9 +32,12 @@ pub const EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME: &str = "external_match_settled_qu
 /// Metric describing the difference in price between our quote and the source
 /// quote, in basis points
 pub const QUOTE_PRICE_DIFF_BPS_METRIC: &str = "quote.price_diff_bps";
-/// Metric describing the difference in net output value between our quote and
-/// the source quote, in basis points
-pub const QUOTE_NET_OUT_VALUE_DIFF_BPS_METRIC: &str = "quote.net_out_value_diff_bps";
+/// Metric describing the difference in output value net of gas between our
+/// quote and the source quote, in basis points
+pub const QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC: &str = "quote.output_net_of_gas_diff_bps";
+/// Metric describing the difference in output value net of fee between our
+/// quote and the source quote, in basis points
+pub const QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC: &str = "quote.output_net_of_fee_diff_bps";
 
 // ---------------
 // | METRIC TAGS |
@@ -66,3 +69,7 @@ pub const SOURCE_PRICE_TAG: &str = "source_price";
 pub const OUR_OUTPUT_NET_OF_GAS_TAG: &str = "our_output_net_of_gas";
 /// Metric tag for the comparison source's output net of gas
 pub const SOURCE_OUTPUT_NET_OF_GAS_TAG: &str = "source_output_net_of_gas";
+/// Metric tag for our output net of fee
+pub const OUR_OUTPUT_NET_OF_FEE_TAG: &str = "our_output_net_of_fee";
+/// Metric tag for the comparison source's output net of fee
+pub const SOURCE_OUTPUT_NET_OF_FEE_TAG: &str = "source_output_net_of_fee";

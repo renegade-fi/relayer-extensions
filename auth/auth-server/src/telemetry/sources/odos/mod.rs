@@ -5,12 +5,14 @@ mod error;
 mod types;
 
 use super::QuoteResponse;
-use renegade_circuit_types::order::OrderSide;
+use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 
 use client::OdosClient;
 
 pub use client::OdosConfig;
+use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 
 // -------------
 // | Constants |
@@ -18,6 +20,11 @@ pub use client::OdosConfig;
 
 /// The name of the Odos quote source
 const SOURCE_NAME: &str = "odos";
+
+/// The fee rate for Odos Simple Swap using "volatile tokens".
+///
+/// This is defined in https://docs.odos.xyz/build/fees#swap-fees
+const ODOS_FEE_RATE: f64 = 0.0025; // 0.25%
 
 // ----------
 // | Source |
@@ -68,6 +75,11 @@ impl OdosQuoteSource {
             OrderSide::Sell => (quote.get_in_amount().unwrap(), quote.get_out_amount().unwrap()),
         };
 
+        // Calculate the fee take
+        let fee_rate = FixedPoint::from_f64_round_down(ODOS_FEE_RATE);
+        let receive_amount = Scalar::from(quote.get_out_amount().unwrap());
+        let fee_take = (fee_rate * receive_amount).floor();
+
         QuoteResponse {
             base_amount,
             base_mint,
@@ -75,6 +87,7 @@ impl OdosQuoteSource {
             quote_mint,
             gas: quote.gas_estimate as u64,
             name: SOURCE_NAME.to_string(),
+            fee_take: scalar_to_u128(&fee_take),
         }
     }
 }
