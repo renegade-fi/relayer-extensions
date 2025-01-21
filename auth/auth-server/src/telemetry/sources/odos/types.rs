@@ -1,9 +1,12 @@
+//! Types for the Odos API
+
 use super::{client::OdosConfig, error::OdosError};
 use serde::{Deserialize, Serialize};
 
 /// Request structure for the Odos API quote endpoint.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(crate) struct OdosQuoteRequest {
     pub chain_id: u64,
     pub input_tokens: Vec<InputToken>,
@@ -15,6 +18,7 @@ pub(crate) struct OdosQuoteRequest {
 /// Response structure from the Odos API quote endpoint.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(crate) struct OdosQuoteResponse {
     pub in_amounts: Vec<String>,
     pub in_tokens: Vec<String>,
@@ -25,6 +29,7 @@ pub(crate) struct OdosQuoteResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(crate) struct InputToken {
     pub token_address: String,
     pub amount: String,
@@ -32,6 +37,7 @@ pub(crate) struct InputToken {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(crate) struct OutputToken {
     pub token_address: String,
     pub proportion: f32,

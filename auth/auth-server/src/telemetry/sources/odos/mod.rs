@@ -1,3 +1,5 @@
+//! A client for the Odos API
+
 mod client;
 mod error;
 mod types;

@@ -1,3 +1,5 @@
+//! A client for the Odos API
+
 use super::types::{OdosQuoteRequest, OdosQuoteResponse};
 use crate::telemetry::sources::http_utils::{send_post_request, HttpError};
 
@@ -11,9 +13,13 @@ const BASE_URL: &str = "https://api.odos.xyz";
 const QUOTE_ROUTE: &str = "/sor/quote/v2";
 
 // Default configuration values
-const DEFAULT_CHAIN_ID: u64 = 42161; // Arbitrum
+/// Default chain ID for the target blockchain (Arbitrum)
+const DEFAULT_CHAIN_ID: u64 = 42161;
+/// Default value for disabling RFQs
 const DEFAULT_DISABLE_RFQS: bool = false;
+/// Default slippage limit as a percentage
 const DEFAULT_SLIPPAGE_LIMIT_PERCENT: f64 = 0.3;
+/// Default request timeout in seconds
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
 
 /// Configuration options for the Odos client
