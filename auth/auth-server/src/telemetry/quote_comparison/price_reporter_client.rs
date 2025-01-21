@@ -1,3 +1,5 @@
+//! A client for the price reporter
+
 use renegade_common::types::{exchange::Exchange, token::Token};
 
 use crate::telemetry::sources::http_utils::{send_get_request, HttpError};
@@ -7,16 +9,19 @@ pub const PRICE_ROUTE: &str = "/price";
 /// Default timeout for requests to the price reporter
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
 
+/// A client for the price reporter
 pub struct PriceReporterClient {
     /// The base URL of the price reporter
     base_url: String,
 }
 
 impl PriceReporterClient {
+    /// Create a new PriceReporterClient
     pub fn new(base_url: &str) -> Self {
         Self { base_url: base_url.to_string() }
     }
 
+    /// Get the price of a token from the price reporter
     pub async fn get_binance_price(&self, mint: &str) -> Result<Option<f64>, HttpError> {
         let exchange = Exchange::Binance;
         let quote_mint = Token::from_ticker("USDT").get_addr();

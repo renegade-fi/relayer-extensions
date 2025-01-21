@@ -1,17 +1,23 @@
+//! Utilities for HTTP requests
+
 use reqwest::{Client, Response};
 use serde::Serialize;
 use std::time::Duration;
 use thiserror::Error;
 
+/// An error with the HTTP client
 #[derive(Debug, Error)]
 pub enum HttpError {
+    /// A network error
     #[error("Network error: {0}")]
     Network(String, #[source] reqwest::Error),
 
+    /// An API error
     #[error("API error: {0}")]
     Api(String),
 }
 
+/// Sends a basic GET request
 pub async fn send_get_request(url: &str, timeout_secs: u64) -> Result<Response, HttpError> {
     let client = Client::builder()
         .timeout(Duration::from_secs(timeout_secs))

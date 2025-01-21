@@ -113,10 +113,12 @@ impl QuoteSource {
 }
 
 impl QuoteSource {
+    /// Creates a new quote source for the Odos API
     pub fn odos(config: odos::OdosConfig) -> Self {
         QuoteSource::Odos(odos::OdosQuoteSource::new(config))
     }
 
+    /// Creates a new quote source for the Odos API with default configuration
     pub fn odos_default() -> Self {
         Self::odos(odos::OdosConfig::default())
     }

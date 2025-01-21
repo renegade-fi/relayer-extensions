@@ -1,3 +1,5 @@
+//! Defines the quote comparison handler
+
 use ethers::utils::format_units;
 use ethers::{providers::Middleware, types::U256};
 use futures_util::future::join_all;
@@ -20,8 +22,11 @@ use super::{price_reporter_client::PriceReporterClient, QuoteComparison};
 
 /// Records metrics comparing quotes from different sources
 pub struct QuoteComparisonHandler {
+    /// The sources to compare quotes from
     sources: Vec<QuoteSource>,
+    /// The arbitrum client
     arbitrum_client: ArbitrumClient,
+    /// The price reporter client
     price_reporter_client: PriceReporterClient,
 }
 

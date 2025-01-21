@@ -32,7 +32,7 @@ use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use rand::Rng;
-use rate_limiter::BundleRateLimiter;
+use rate_limiter::AuthServerRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::wallet::keychain::HmacKey;
@@ -72,7 +72,7 @@ pub struct Server {
     /// The Arbitrum client
     pub arbitrum_client: ArbitrumClient,
     /// The rate limiter
-    pub rate_limiter: BundleRateLimiter,
+    pub rate_limiter: AuthServerRateLimiter,
     /// The quote metrics recorder
     pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
     /// Rate at which to sample metrics (0.0 to 1.0)
@@ -95,7 +95,8 @@ impl Server {
         let relayer_admin_key =
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
-        let rate_limiter = BundleRateLimiter::new(args.bundle_rate_limit);
+        let rate_limiter =
+            AuthServerRateLimiter::new(args.quote_rate_limit, args.bundle_rate_limit);
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
@@ -182,18 +183,27 @@ impl Server {
 
     // --- Rate Limiting --- //
 
-    /// Check the rate limiter
-    pub async fn check_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
-        if !self.rate_limiter.check(key_description.clone()).await {
-            warn!("Rate limit exceeded for key: {key_description}");
+    /// Check the quote rate limiter
+    pub async fn check_quote_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
+        if !self.rate_limiter.check_quote_token(key_description.clone()).await {
+            warn!("Quote rate limit exceeded for key: {key_description}");
+            return Err(ApiError::TooManyRequests);
+        }
+        Ok(())
+    }
+
+    /// Check the bundle rate limiter
+    pub async fn check_bundle_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
+        if !self.rate_limiter.check_bundle_token(key_description.clone()).await {
+            warn!("Bundle rate limit exceeded for key: {key_description}");
             return Err(ApiError::TooManyRequests);
         }
         Ok(())
     }
 
     /// Increment the token balance for a given API user
-    pub async fn add_rate_limit_token(&self, key_description: String) {
-        self.rate_limiter.add_token(key_description).await;
+    pub async fn add_bundle_rate_limit_token(&self, key_description: String) {
+        self.rate_limiter.add_bundle_token(key_description).await;
     }
 
     // --- Caching --- //

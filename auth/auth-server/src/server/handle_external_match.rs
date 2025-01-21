@@ -40,6 +40,7 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let key_desc = self.authorize_request(path.as_str(), &headers, &body).await?;
+        self.check_quote_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer
         let resp =
@@ -66,7 +67,7 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let key_desc = self.authorize_request(path.as_str(), &headers, &body).await?;
-        self.check_rate_limit(key_desc.clone()).await?;
+        self.check_bundle_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer
         let resp =
@@ -96,7 +97,7 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
-        self.check_rate_limit(key_description.clone()).await?;
+        self.check_bundle_rate_limit(key_description.clone()).await?;
 
         // Send the request to the relayer
         let resp =
@@ -187,7 +188,7 @@ impl Server {
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
         if did_settle {
-            self.add_rate_limit_token(key.clone()).await;
+            self.add_bundle_rate_limit_token(key.clone()).await;
         }
 
         // Record metrics
