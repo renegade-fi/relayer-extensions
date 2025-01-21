@@ -63,6 +63,12 @@ impl QuoteResponse {
         self.deduct_fees(amount, &token)
     }
 
+    /// Calculates output value with gas and fees deducted
+    pub fn output_net_of_gas_and_fee(&self, side: OrderSide, usdc_per_gas: f64) -> f64 {
+        let value = self.output_net_of_fee(side);
+        self.deduct_gas(value, side, usdc_per_gas)
+    }
+
     /// Helper to apply gas cost deduction based on order side
     fn deduct_gas(&self, value: f64, side: OrderSide, usdc_per_gas: f64) -> f64 {
         let gas_cost_usdc = self.gas_cost(usdc_per_gas);
