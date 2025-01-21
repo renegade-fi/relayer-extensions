@@ -9,11 +9,13 @@ use renegade_common::types::token::Token;
 
 use renegade_api::http::external_match::AtomicMatchApiBundle;
 
-use crate::telemetry::helpers::record_output_value_net_of_gas_comparison;
 use crate::{
     error::AuthServerError,
     telemetry::{
-        helpers::{record_comparison, record_output_value_net_of_fee_comparison},
+        helpers::{
+            record_net_output_value_comparison, record_output_value_net_of_fee_comparison,
+            record_output_value_net_of_gas_comparison, record_quote_price_comparison,
+        },
         sources::{QuoteResponse, QuoteSource},
     },
 };
@@ -85,9 +87,10 @@ impl QuoteComparisonHandler {
         let usdc_per_gas = self.get_usdc_per_gas().await?;
         let comparison = QuoteComparison { our_quote, source_quote: &quote, usdc_per_gas };
 
-        record_comparison(&comparison, side, &labels);
+        record_quote_price_comparison(&comparison, side, &labels);
         record_output_value_net_of_gas_comparison(&comparison, side, &labels);
         record_output_value_net_of_fee_comparison(&comparison, side, &labels);
+        record_net_output_value_comparison(&comparison, side, &labels);
         Ok(())
     }
 }

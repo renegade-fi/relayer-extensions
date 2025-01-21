@@ -63,4 +63,13 @@ impl<'a> QuoteComparison<'a> {
 
         calc_bps_diff(our_output_value_net_of_fee, source_output_value_net_of_fee)
     }
+
+    /// Calculate the net output value difference in basis points (bps).
+    /// Positive bps indicates our quote is better.
+    pub fn net_output_value_diff_bps(&self, usdc_per_gas: f64, side: OrderSide) -> f64 {
+        let our_net_output = self.our_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
+        let source_net_output = self.source_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
+
+        calc_bps_diff(our_net_output, source_net_output)
+    }
 }

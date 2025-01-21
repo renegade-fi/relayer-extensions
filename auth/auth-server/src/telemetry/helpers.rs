@@ -25,11 +25,12 @@ use crate::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
         EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_OUTPUT_NET_OF_FEE_TAG,
-        OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG, QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC,
+        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_NET_OUTPUT_TAG,
+        OUR_OUTPUT_NET_OF_FEE_TAG, OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG,
+        QUOTE_NET_OUTPUT_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC,
         QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
-        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_OUTPUT_NET_OF_FEE_TAG,
-        SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
+        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
+        SOURCE_OUTPUT_NET_OF_FEE_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
     },
 };
 
@@ -318,7 +319,7 @@ fn extract_nullifier_from_match_bundle(
 // --- Quote Comparison --- //
 
 /// Record a single quote comparison metric with all data as tags
-pub(crate) fn record_comparison(
+pub(crate) fn record_quote_price_comparison(
     comparison: &QuoteComparison,
     side: OrderSide,
     extra_labels: &[(String, String)],
@@ -389,4 +390,30 @@ pub(crate) fn record_output_value_net_of_fee_comparison(
     labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
 
     metrics::gauge!(QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, labels.as_slice()).set(fee_diff_bps);
+}
+
+/// Record a quote comparison net of gas and fee
+pub(crate) fn record_net_output_value_comparison(
+    comparison: &QuoteComparison,
+    side: OrderSide,
+    extra_labels: &[(String, String)],
+) {
+    let usdc_per_gas = comparison.usdc_per_gas;
+    let net_output_diff_bps = comparison.net_output_value_diff_bps(usdc_per_gas, side);
+
+    let our_net_output = comparison.our_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
+    let source_net_output = comparison.source_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
+
+    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
+    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
+    let mut labels = vec![
+        (SIDE_TAG.to_string(), side_label.to_string()),
+        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
+        (OUR_NET_OUTPUT_TAG.to_string(), our_net_output.to_string()),
+        (SOURCE_NET_OUTPUT_TAG.to_string(), source_net_output.to_string()),
+    ];
+    labels.extend(extra_labels.iter().cloned());
+    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
+
+    metrics::gauge!(QUOTE_NET_OUTPUT_DIFF_BPS_METRIC, labels.as_slice()).set(net_output_diff_bps);
 }

@@ -38,6 +38,9 @@ pub const QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC: &str = "quote.output_net_of_g
 /// Metric describing the difference in output value net of fee between our
 /// quote and the source quote, in basis points
 pub const QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC: &str = "quote.output_net_of_fee_diff_bps";
+/// Metric describing the difference in output value net of gas and fee between
+/// our quote and the source quote, in basis points
+pub const QUOTE_NET_OUTPUT_DIFF_BPS_METRIC: &str = "quote.net_output_diff_bps";
 
 // ---------------
 // | METRIC TAGS |
@@ -73,3 +76,7 @@ pub const SOURCE_OUTPUT_NET_OF_GAS_TAG: &str = "source_output_net_of_gas";
 pub const OUR_OUTPUT_NET_OF_FEE_TAG: &str = "our_output_net_of_fee";
 /// Metric tag for the comparison source's output net of fee
 pub const SOURCE_OUTPUT_NET_OF_FEE_TAG: &str = "source_output_net_of_fee";
+/// Metric tag for our output net of gas and fee
+pub const OUR_NET_OUTPUT_TAG: &str = "our_net_output";
+/// Metric tag for the comparison source's output net of gas and fee
+pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
