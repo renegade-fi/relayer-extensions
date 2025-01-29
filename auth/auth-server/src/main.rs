@@ -20,7 +20,7 @@ pub(crate) mod schema;
 mod server;
 mod telemetry;
 
-use auth_server_api::API_KEYS_PATH;
+use auth_server_api::{ExternalQuoteAssemblyQueryParams, API_KEYS_PATH};
 use clap::Parser;
 use ethers::signers::LocalWallet;
 use renegade_arbitrum_client::{
@@ -99,11 +99,21 @@ pub struct Cli {
     #[clap(short, long, env = "RPC_URL")]
     rpc_url: String,
     /// The address of the darkpool contract
-    #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
+    #[clap(short, long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
     /// The URL of the price reporter
     #[arg(long, env = "PRICE_REPORTER_URL")]
     pub price_reporter_url: String,
+
+    // -------------------
+    // | Gas Sponsorship |
+    // -------------------
+    /// The address of the gas sponsor contract
+    #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
+    gas_sponsor_address: String,
+    /// The auth private key used for gas sponsorship, encoded as a hex string
+    #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
+    gas_sponsor_auth_key: String,
 
     // -------------
     // | Telemetry |
@@ -267,9 +277,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
+        .and(warp::query::<ExternalQuoteAssemblyQueryParams>())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, server: Arc<Server>| async move {
-            server.handle_external_quote_assembly_request(path, headers, body).await
+        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
+            server.handle_external_quote_assembly_request(path, headers, body, query_params).await
         });
 
     let atomic_match_path = warp::path("v0")

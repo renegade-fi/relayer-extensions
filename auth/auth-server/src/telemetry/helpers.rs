@@ -15,12 +15,15 @@ use renegade_arbitrum_client::{
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
 use renegade_common::types::token::Token;
-use renegade_constants::Scalar;
-use renegade_util::hex::biguint_to_hex_addr;
+use renegade_constants::{Scalar, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER};
+use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::{info, warn};
 
 use crate::{
     error::AuthServerError,
+    server::handle_external_match::{
+        sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall,
+    },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
@@ -72,7 +75,14 @@ pub(crate) fn calculate_implied_price(
         OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
     };
 
-    let base_token = Token::from_addr(&base.mint);
+    let trades_native_asset =
+        biguint_from_hex_string(&base.mint) == biguint_from_hex_string(NATIVE_ASSET_ADDRESS);
+    let base_token = if trades_native_asset {
+        Token::from_ticker(NATIVE_ASSET_WRAPPER_TICKER)
+    } else {
+        Token::from_addr(&base.mint)
+    };
+
     let quote_token = Token::from_addr(&quote.mint);
 
     let base_decimals = base_token.get_decimals().ok_or_else(|| {
@@ -296,17 +306,41 @@ fn extract_nullifier_from_match_bundle(
     let tx_data = match_bundle
         .settlement_tx
         .data()
-        .ok_or_else(|| AuthServerError::Serde("No data in settlement tx".to_string()))?;
+        .ok_or(AuthServerError::serde("No data in settlement tx"))?;
+
+    let selector: [u8; 4] = tx_data
+        .as_ref()
+        .get(0..4)
+        .ok_or(AuthServerError::serde("expected selector"))?
+        .try_into()
+        .unwrap();
 
     // Retrieve serialized match payload from the transaction data
-    let serialized_match_payload =
-        if let Ok(decoded) = processAtomicMatchSettleCall::abi_decode(tx_data, false) {
-            decoded.internal_party_match_payload
-        } else {
-            let decoded = processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
-                .map_err(AuthServerError::serde)?;
-            decoded.internal_party_match_payload
-        };
+    let serialized_match_payload = match selector {
+        processAtomicMatchSettleCall::SELECTOR => {
+            processAtomicMatchSettleCall::abi_decode(tx_data, false)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
+        processAtomicMatchSettleWithReceiverCall::SELECTOR => {
+            processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
+        sponsorAtomicMatchSettleCall::SELECTOR => {
+            sponsorAtomicMatchSettleCall::abi_decode(tx_data, false)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
+        sponsorAtomicMatchSettleWithReceiverCall::SELECTOR => {
+            sponsorAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
+        _ => {
+            return Err(AuthServerError::serde("Invalid selector for settlement tx"));
+        },
+    };
 
     // Extract nullifier from the payload
     let match_payload = deserialize_calldata::<MatchPayload>(&serialized_match_payload)

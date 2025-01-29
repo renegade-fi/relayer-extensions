@@ -2,7 +2,7 @@
 //!
 //! The server is a dependency injection container for the authentication server
 mod api_auth;
-mod handle_external_match;
+pub(crate) mod handle_external_match;
 mod handle_key_management;
 mod helpers;
 mod queries;
@@ -28,6 +28,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
+use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -77,6 +78,10 @@ pub struct Server {
     pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
     /// Rate at which to sample metrics (0.0 to 1.0)
     pub metrics_sampling_rate: f64,
+    /// The address of the gas sponsor address
+    pub gas_sponsor_address: Address,
+    /// The auth key for the gas sponsor
+    pub gas_sponsor_auth_key: SigningKey,
 }
 
 impl Server {
@@ -111,6 +116,15 @@ impl Server {
             None
         };
 
+        let gas_sponsor_address_bytes =
+            hex::decode(&args.gas_sponsor_address).map_err(AuthServerError::setup)?;
+        let gas_sponsor_address = Address::from_slice(&gas_sponsor_address_bytes);
+
+        let gas_sponsor_auth_key_bytes =
+            hex::decode(&args.gas_sponsor_auth_key).map_err(AuthServerError::setup)?;
+        let gas_sponsor_auth_key =
+            SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
+
         Ok(Self {
             db_pool: Arc::new(db_pool),
             relayer_url: args.relayer_url,
@@ -125,6 +139,8 @@ impl Server {
             metrics_sampling_rate: args
                 .metrics_sampling_rate
                 .unwrap_or(1.0 /* default no sampling */),
+            gas_sponsor_address,
+            gas_sponsor_auth_key,
         })
     }
 

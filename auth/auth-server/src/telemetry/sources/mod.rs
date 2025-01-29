@@ -7,9 +7,8 @@ use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::{order::OrderSide, Amount};
 use renegade_common::types::token::Token;
 
-/// The gas estimation to use if fetching a gas estimation fails
-/// From https://github.com/renegade-fi/renegade/blob/main/workers/api-server/src/http/external_match.rs/#L62
-const DEFAULT_GAS_ESTIMATION: u64 = 4_000_000; // 4m
+use crate::server::handle_external_match::DEFAULT_GAS_ESTIMATION;
+
 /// The name of our quote source
 const RENEGADE_SOURCE_NAME: &str = "renegade";
 

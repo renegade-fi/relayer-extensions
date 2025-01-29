@@ -37,3 +37,12 @@ pub struct CreateApiKeyRequest {
     /// A description of the API key's purpose
     pub description: String,
 }
+
+/// The query parameters accepted by the external quote assembly endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExternalQuoteAssemblyQueryParams {
+    /// Whether to use gas sponsorship for the assembled quote
+    pub use_gas_sponsorship: Option<bool>,
+    /// The address to refund gas to
+    pub refund_address: Option<String>,
+}
