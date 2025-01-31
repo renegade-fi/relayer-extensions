@@ -100,8 +100,11 @@ impl Server {
         let relayer_admin_key =
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
-        let rate_limiter =
-            AuthServerRateLimiter::new(args.quote_rate_limit, args.bundle_rate_limit);
+        let rate_limiter = AuthServerRateLimiter::new(
+            args.quote_rate_limit,
+            args.bundle_rate_limit,
+            args.max_gas_sponsorship_value,
+        );
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
