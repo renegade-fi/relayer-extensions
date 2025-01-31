@@ -20,7 +20,7 @@ pub(crate) mod schema;
 mod server;
 mod telemetry;
 
-use auth_server_api::{ExternalQuoteAssemblyQueryParams, API_KEYS_PATH};
+use auth_server_api::{GasSponsorshipQueryParams, API_KEYS_PATH};
 use clap::Parser;
 use ethers::signers::LocalWallet;
 use renegade_arbitrum_client::{
@@ -277,7 +277,7 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::query::<ExternalQuoteAssemblyQueryParams>())
+        .and(warp::query::<GasSponsorshipQueryParams>())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
             server.handle_external_quote_assembly_request(path, headers, body, query_params).await
@@ -290,9 +290,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
+        .and(warp::query::<GasSponsorshipQueryParams>())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, server: Arc<Server>| async move {
-            server.handle_external_match_request(path, headers, body).await
+        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
+            server.handle_external_match_request(path, headers, body, query_params).await
         });
 
     // Bind the server and listen
