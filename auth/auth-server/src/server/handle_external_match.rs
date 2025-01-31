@@ -5,7 +5,7 @@
 
 use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall};
-use auth_server_api::ExternalQuoteAssemblyQueryParams;
+use auth_server_api::GasSponsorshipQueryParams;
 use bytes::Bytes;
 use http::header::CONTENT_LENGTH;
 use http::{Method, Response};
@@ -94,7 +94,7 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: ExternalQuoteAssemblyQueryParams,
+        query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
         // Serialize the path + query params for auth
         let query_str = serde_urlencoded::to_string(&query_params).unwrap();
@@ -148,14 +148,38 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
+        query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
+        // Serialize the path + query params for auth
+        let query_str = serde_urlencoded::to_string(&query_params).unwrap();
+        let auth_path = if query_str.is_empty() {
+            path.as_str().to_string()
+        } else {
+            format!("{}?{}", path.as_str(), query_str)
+        };
+
         // Authorize the request
-        let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
         // Send the request to the relayer
-        let resp =
+        let mut resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+
+        if query_params.use_gas_sponsorship.unwrap_or(false) {
+            // If gas sponsorship is requested, mutate the calldata in the response
+            // to invoke the gas sponsor contract
+
+            info!("Redirecting match bundle through gas sponsor");
+            let refund_address = query_params
+                .refund_address
+                .map(|s| s.parse())
+                .transpose()
+                .map_err(AuthServerError::serde)?
+                .unwrap_or(Address::ZERO);
+
+            self.mutate_response_for_gas_sponsorship(&mut resp, refund_address)?;
+        }
 
         // Watch the bundle for settlement
         let resp_clone = resp.body().to_vec();

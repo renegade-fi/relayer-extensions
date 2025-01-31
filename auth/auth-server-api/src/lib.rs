@@ -38,10 +38,10 @@ pub struct CreateApiKeyRequest {
     pub description: String,
 }
 
-/// The query parameters accepted by the external quote assembly endpoint
+/// The query parameters used for gas sponsorship
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExternalQuoteAssemblyQueryParams {
-    /// Whether to use gas sponsorship for the assembled quote
+pub struct GasSponsorshipQueryParams {
+    /// Whether to use gas sponsorship for the external match
     pub use_gas_sponsorship: Option<bool>,
     /// The address to refund gas to
     pub refund_address: Option<String>,
