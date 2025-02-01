@@ -49,7 +49,11 @@ async fn main() -> Result<(), ServerError> {
 
     let (closure_tx, mut closure_rx) = unbounded_channel();
     let global_price_streams = GlobalPriceStreams::new(closure_tx);
-    init_default_price_streams(&global_price_streams, &price_reporter_config.exchange_conn_config)?;
+    init_default_price_streams(
+        &global_price_streams,
+        &price_reporter_config.exchange_conn_config,
+        price_reporter_config.disabled_exchanges.clone(),
+    )?;
 
     // Bind the server to the given port
     let addr: SocketAddr = format!("0.0.0.0:{:?}", price_reporter_config.ws_port).parse().unwrap();
@@ -88,8 +92,11 @@ async fn main() -> Result<(), ServerError> {
 pub fn init_default_price_streams(
     global_price_streams: &GlobalPriceStreams,
     config: &ExchangeConnectionsConfig,
+    disabled_exchanges: Vec<Exchange>,
 ) -> Result<(), ServerError> {
     info!("Initializing default price streams");
+
+    let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
 
     // Get the default token remap
     let remap = read_token_remap();
@@ -100,8 +107,12 @@ pub fn init_default_price_streams(
         }
 
         let base_token = Token::from_addr(addr);
-        let supported_exchanges = get_supported_exchanges(&base_token, config);
-        for exchange in supported_exchanges.into_iter() {
+        let supported_exchanges: Vec<Exchange> = get_supported_exchanges(&base_token, config)
+            .difference(&disabled_exchanges_set)
+            .copied()
+            .collect();
+
+        for exchange in supported_exchanges {
             let quote_token = default_exchange_stable(&exchange);
             // We assume that the exchange has a market between the base token
             // and its default stable token

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
 use renegade_api::auth::validate_expiring_auth;
 use renegade_arbitrum_client::constants::Chain;
-use renegade_common::types::{wallet::keychain::HmacKey, Price};
+use renegade_common::types::{exchange::Exchange, wallet::keychain::HmacKey, Price};
 use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
@@ -124,6 +124,8 @@ pub struct RefreshTokenMappingHandler {
     price_streams: GlobalPriceStreams,
     /// The configuration for the exchange connections
     config: ExchangeConnectionsConfig,
+    /// The exchanges for which to disable price reporting
+    disabled_exchanges: Vec<Exchange>,
 }
 
 impl RefreshTokenMappingHandler {
@@ -134,8 +136,9 @@ impl RefreshTokenMappingHandler {
         remap_chain: Chain,
         price_streams: GlobalPriceStreams,
         config: ExchangeConnectionsConfig,
+        disabled_exchanges: Vec<Exchange>,
     ) -> Self {
-        Self { admin_key, token_remap_path, remap_chain, price_streams, config }
+        Self { admin_key, token_remap_path, remap_chain, price_streams, config, disabled_exchanges }
     }
 
     /// Authenticate a token mapping refresh request using the admin HMAC key.
@@ -161,7 +164,11 @@ impl RefreshTokenMappingHandler {
             .and_then(|res| res.map_err(err_str!(ServerError::TokenRemap)))?;
 
         // Re-initialize the default price streams after refreshing the token mapping
-        init_default_price_streams(&self.price_streams, &self.config)
+        init_default_price_streams(
+            &self.price_streams,
+            &self.config,
+            self.disabled_exchanges.clone(),
+        )
     }
 }
 
