@@ -100,7 +100,8 @@ impl QuoteComparisonHandler {
     async fn get_usdc_per_gas(&self) -> Result<f64, AuthServerError> {
         let gas_price_eth = self.fetch_gas_price_eth().await?;
 
-        let usdc_per_eth = self.fetch_eth_price().await?;
+        let usdc_per_eth =
+            self.price_reporter_client.get_eth_price().await.map_err(AuthServerError::custom)?;
 
         Ok(usdc_per_eth * gas_price_eth)
     }
@@ -120,20 +121,5 @@ impl QuoteComparisonHandler {
             format_units(gas_price, "eth").map_err(|e| AuthServerError::Custom(e.to_string()))?;
 
         eth_string.parse::<f64>().map_err(|e| AuthServerError::Custom(e.to_string()))
-    }
-
-    /// Fetches the current price of ETH in USDC
-    ///
-    /// Under the hood, the price reporter fetches the ETH price instead of
-    /// WETH.
-    async fn fetch_eth_price(&self) -> Result<f64, AuthServerError> {
-        let eth = Token::from_ticker("WETH");
-        let price_result = self.price_reporter_client.get_binance_price(&eth.get_addr()).await;
-
-        match price_result {
-            Ok(Some(price)) => Ok(price),
-            Ok(None) => Err(AuthServerError::Custom("ETH price not available".to_string())),
-            Err(e) => Err(AuthServerError::Custom(e.to_string())),
-        }
     }
 }
