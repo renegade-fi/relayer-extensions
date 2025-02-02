@@ -8,8 +8,8 @@ use alloy_sol_types::{sol, SolCall};
 use auth_server_api::{ExternalMatchResponse, GasSponsorshipQueryParams};
 use bytes::Bytes;
 use ethers::contract::abigen;
-use ethers::types::transaction::eip2718::TypedTransaction;
-use ethers::types::U256;
+use ethers::types::{transaction::eip2718::TypedTransaction, TxHash, U256};
+use ethers::utils::format_ether;
 use http::header::CONTENT_LENGTH;
 use http::{Method, Response, StatusCode};
 use renegade_arbitrum_client::abi::{
@@ -28,7 +28,8 @@ use renegade_common::types::{token::Token, TimestampedPrice};
 use super::helpers::{gen_signed_sponsorship_nonce, get_selector};
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::calculate_implied_price;
+use crate::telemetry::helpers::{calculate_implied_price, record_gas_sponsorship_metrics};
+use crate::telemetry::labels::GAS_SPONSORED_METRIC_TAG;
 use crate::telemetry::{
     helpers::{
         await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
@@ -261,8 +262,9 @@ impl Server {
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+            (GAS_SPONSORED_METRIC_TAG.to_string(), match_resp.is_sponsored.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled
@@ -276,12 +278,7 @@ impl Server {
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
         if did_settle {
             self.add_bundle_rate_limit_token(key.clone()).await;
-            if match_resp.is_sponsored
-                && let Some(gas_cost) =
-                    self.get_sponsorship_amount(&match_resp.match_bundle.settlement_tx).await?
-            {
-                self.record_gas_sponsorship(key.clone(), gas_cost).await?;
-            }
+            self.record_settled_match_sponsorship(&match_resp, key, request_id).await?;
         }
 
         // Record metrics
@@ -547,11 +544,11 @@ impl Server {
     }
 
     /// Get the amount of Ether spent to sponsor the given settlement
-    /// transaction
-    async fn get_sponsorship_amount(
+    /// transaction, and the associated transaction hash
+    async fn get_sponsorship_amount_and_tx(
         &self,
         settlement_tx: &TypedTransaction,
-    ) -> Result<Option<U256>, AuthServerError> {
+    ) -> Result<Option<(U256, TxHash)>, AuthServerError> {
         // Parse the nonce from the TX calldata
         let calldata =
             settlement_tx.data().ok_or(AuthServerError::gas_sponsorship("expected calldata"))?;
@@ -578,13 +575,46 @@ impl Server {
                 .topic2(nonce)
                 .from_block(self.start_block_num);
 
-        let events = filter.query().await.map_err(AuthServerError::gas_sponsorship)?;
+        let events = filter.query_with_meta().await.map_err(AuthServerError::gas_sponsorship)?;
 
         // If no event was found, we assume that gas was not sponsored for this nonce.
         // This could be the case if the gas sponsor was underfunded or paused.
-        let amount_sponsored = events.last().map(|event| event.amount);
+        let amount_sponsored_with_tx =
+            events.last().map(|(event, meta)| (event.amount, meta.transaction_hash));
 
-        Ok(amount_sponsored)
+        Ok(amount_sponsored_with_tx)
+    }
+
+    /// Record the gas sponsorship rate limit & metrics for a given settled
+    /// match
+    async fn record_settled_match_sponsorship(
+        &self,
+        match_resp: &ExternalMatchResponse,
+        key: String,
+        request_id: String,
+    ) -> Result<(), AuthServerError> {
+        if match_resp.is_sponsored
+            && let Some((gas_cost, tx_hash)) =
+                self.get_sponsorship_amount_and_tx(&match_resp.match_bundle.settlement_tx).await?
+        {
+            // Convert wei to ether using format_ether, then parse to f64
+            let gas_cost_eth: f64 =
+                format_ether(gas_cost).parse().map_err(AuthServerError::custom)?;
+
+            let eth_price: f64 = self
+                .price_reporter_client
+                .get_eth_price()
+                .await
+                .map_err(AuthServerError::custom)?;
+
+            let gas_sponsorship_value = eth_price * gas_cost_eth;
+
+            self.record_gas_sponsorship_rate_limit(key, gas_sponsorship_value).await?;
+
+            record_gas_sponsorship_metrics(gas_sponsorship_value, tx_hash, request_id);
+        }
+
+        Ok(())
     }
 
     /// Get the nonce from `sponsorAtomicMatchSettle` calldata

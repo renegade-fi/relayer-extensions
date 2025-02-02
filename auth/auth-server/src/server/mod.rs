@@ -28,12 +28,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::{
-    abi::Address,
-    core::k256::ecdsa::SigningKey,
-    types::{BlockNumber, U256},
-    utils::{format_ether, hex},
-};
+use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -253,19 +248,12 @@ impl Server {
         true
     }
 
-    /// Record a gas sponsorship value for a given user
-    pub async fn record_gas_sponsorship(
+    /// Record a gas sponsorship value for a given user's rate limit
+    pub async fn record_gas_sponsorship_rate_limit(
         &self,
         key_description: String,
-        gas_cost: U256,
+        gas_sponsorship_value: f64,
     ) -> Result<(), AuthServerError> {
-        // Convert wei to ether using format_ether, then parse to f64
-        let gas_cost_eth: f64 = format_ether(gas_cost).parse().map_err(AuthServerError::custom)?;
-
-        let eth_price: f64 =
-            self.price_reporter_client.get_eth_price().await.map_err(AuthServerError::custom)?;
-
-        let gas_sponsorship_value = eth_price * gas_cost_eth;
         self.rate_limiter.record_gas_sponsorship(key_description, gas_sponsorship_value).await;
         Ok(())
     }
