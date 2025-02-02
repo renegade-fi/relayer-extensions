@@ -4,7 +4,7 @@
 mod api_auth;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
-mod helpers;
+pub(crate) mod helpers;
 mod queries;
 mod rate_limiter;
 
@@ -246,16 +246,6 @@ impl Server {
             return false;
         }
         true
-    }
-
-    /// Record a gas sponsorship value for a given user's rate limit
-    pub async fn record_gas_sponsorship_rate_limit(
-        &self,
-        key_description: String,
-        gas_sponsorship_value: f64,
-    ) -> Result<(), AuthServerError> {
-        self.rate_limiter.record_gas_sponsorship(key_description, gas_sponsorship_value).await;
-        Ok(())
     }
 
     // --- Caching --- //
