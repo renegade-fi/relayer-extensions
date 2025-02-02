@@ -61,6 +61,7 @@ impl HttpServer {
                     config.remap_chain,
                     price_streams,
                     config.exchange_conn_config.clone(),
+                    config.disabled_exchanges.clone(),
                 )),
             )
             .unwrap();

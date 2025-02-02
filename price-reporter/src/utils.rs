@@ -72,6 +72,8 @@ const ETH_WS_ADDR_ENV_VAR: &str = "ETH_WS_ADDR";
 /// The name of the environment variable specifying the HMAC key for the admin
 /// API
 const ADMIN_KEY_ENV_VAR: &str = "ADMIN_KEY";
+/// The name of the environment variable specifying the disabled exchanges
+const DISABLED_EXCHANGES_ENV_VAR: &str = "DISABLED_EXCHANGES";
 
 // ---------
 // | TYPES |
@@ -134,6 +136,8 @@ pub struct PriceReporterConfig {
     /// The HMAC key for the admin API. If one is not provided, the admin API
     /// will be disabled.
     pub admin_key: Option<HmacKey>,
+    /// Exchanges for which to disable price reporting
+    pub disabled_exchanges: Vec<Exchange>,
 }
 
 // -----------
@@ -165,6 +169,15 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
         .ok()
         .map(|key_str| HmacKey::from_base64_string(&key_str).expect("Invalid admin HMAC key"));
 
+    let disabled_exchanges = match env::var(DISABLED_EXCHANGES_ENV_VAR) {
+        Err(_) => vec![],
+        Ok(exchanges) => exchanges
+            .split(',')
+            .map(Exchange::from_str)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default(),
+    };
+
     PriceReporterConfig {
         ws_port,
         http_port,
@@ -176,6 +189,7 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
             eth_websocket_addr,
         },
         admin_key,
+        disabled_exchanges,
     }
 }
 
