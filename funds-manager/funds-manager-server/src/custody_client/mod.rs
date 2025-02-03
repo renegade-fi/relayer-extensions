@@ -1,5 +1,6 @@
 //! Manages the custody backend for the funds manager
 pub mod deposit;
+pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;
 mod queries;
@@ -74,6 +75,8 @@ pub struct CustodyClient {
     db_pool: Arc<DbPool>,
     /// The AWS config
     aws_config: AwsConfig,
+    /// The gas sponsor contract address
+    gas_sponsor_address: Address,
 }
 
 impl CustodyClient {
@@ -86,6 +89,7 @@ impl CustodyClient {
         arbitrum_rpc_url: String,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
+        gas_sponsor_address: Address,
     ) -> Self {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
         Self {
@@ -95,6 +99,7 @@ impl CustodyClient {
             arbitrum_rpc_url,
             db_pool,
             aws_config,
+            gas_sponsor_address,
         }
     }
 
