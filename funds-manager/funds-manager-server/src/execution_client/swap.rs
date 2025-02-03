@@ -3,7 +3,7 @@
 use ethers::{
     providers::Middleware,
     signers::LocalWallet,
-    types::{Eip1559TransactionRequest, TransactionReceipt},
+    types::{BlockNumber, Eip1559TransactionRequest, TransactionReceipt},
 };
 use funds_manager_api::quoters::ExecutionQuote;
 use tracing::info;
@@ -33,11 +33,24 @@ impl ExecutionClient {
         wallet: &LocalWallet,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
         let client = self.get_signer(wallet.clone());
+
+        let latest_block = client
+            .get_block(BlockNumber::Latest)
+            .await
+            .map_err(ExecutionClientError::arbitrum)?
+            .ok_or(ExecutionClientError::arbitrum("No latest block found"))?;
+
+        let latest_basefee = latest_block
+            .base_fee_per_gas
+            .ok_or(ExecutionClientError::arbitrum("No basefee found"))?;
+
         let tx = Eip1559TransactionRequest::new()
             .to(quote.to)
             .from(quote.from)
             .value(quote.value)
-            .data(quote.data);
+            .data(quote.data)
+            .max_fee_per_gas(latest_basefee * 2)
+            .max_priority_fee_per_gas(latest_basefee * 2);
 
         // Send the transaction
         let pending_tx = client
