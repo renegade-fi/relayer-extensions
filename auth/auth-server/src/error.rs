@@ -31,6 +31,12 @@ pub enum AuthServerError {
     /// An error executing an HTTP request
     #[error("Http: {0}")]
     Http(String),
+    /// An error mutating calldata for gas sponsorship
+    #[error("Calldata mutation error: {0}")]
+    CalldataMutation(String),
+    /// An error signing a message
+    #[error("Signing error: {0}")]
+    Signing(String),
     /// A miscellaneous error
     #[error("Error: {0}")]
     Custom(String),
@@ -71,6 +77,18 @@ impl AuthServerError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn unauthorized<T: ToString>(msg: T) -> Self {
         Self::Unauthorized(msg.to_string())
+    }
+
+    /// Create a new calldata mutation error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn calldata_mutation<T: ToString>(msg: T) -> Self {
+        Self::CalldataMutation(msg.to_string())
+    }
+
+    /// Create a new signing error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn signing<T: ToString>(msg: T) -> Self {
+        Self::Signing(msg.to_string())
     }
 }
 
