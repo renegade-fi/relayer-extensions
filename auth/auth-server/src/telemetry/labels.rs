@@ -42,6 +42,9 @@ pub const QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC: &str = "quote.output_net_of_f
 /// our quote and the source quote, in basis points
 pub const QUOTE_NET_OUTPUT_DIFF_BPS_METRIC: &str = "quote.net_output_diff_bps";
 
+/// Metric describing the value of gas sponsorship for a given request
+pub const GAS_SPONSORSHIP_VALUE: &str = "gas_sponsorship_value";
+
 // ---------------
 // | METRIC TAGS |
 // ---------------
@@ -80,3 +83,8 @@ pub const SOURCE_OUTPUT_NET_OF_FEE_TAG: &str = "source_output_net_of_fee";
 pub const OUR_NET_OUTPUT_TAG: &str = "our_net_output";
 /// Metric tag for the comparison source's output net of gas and fee
 pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
+
+/// Metric tag to indicate that a match had its gas costs sponsored
+pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";
+/// Metric tag for a transaction hash
+pub const TX_HASH_METRIC_TAG: &str = "tx_hash";

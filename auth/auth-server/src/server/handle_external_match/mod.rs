@@ -3,29 +3,21 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-use alloy_primitives::Address;
-use alloy_sol_types::{sol, SolCall};
-use auth_server_api::ExternalQuoteAssemblyQueryParams;
+use auth_server_api::{ExternalMatchResponse, GasSponsorshipQueryParams};
 use bytes::Bytes;
-use http::header::CONTENT_LENGTH;
-use http::{Method, Response};
-use renegade_arbitrum_client::abi::{
-    processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
-};
-use tracing::{info, instrument, warn};
-use warp::{reject::Rejection, reply::Reply};
-
+use http::{Method, StatusCode};
 use renegade_api::http::external_match::{
-    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
-    ExternalQuoteResponse,
+    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalOrder, ExternalQuoteResponse,
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
+use tracing::{info, instrument, warn};
+use warp::{reject::Rejection, reply::Reply};
 
-use super::helpers::{gen_signed_sponsorship_nonce, get_selector};
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::calculate_implied_price;
+use crate::telemetry::labels::GAS_SPONSORED_METRIC_TAG;
 use crate::telemetry::{
     helpers::{
         await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
@@ -36,23 +28,8 @@ use crate::telemetry::{
     },
 };
 
-// -------------
-// | Constants |
-// -------------
-
-/// The gas estimation to use if fetching a gas estimation fails
-/// From https://github.com/renegade-fi/renegade/blob/main/workers/api-server/src/http/external_match.rs/#L62
-pub const DEFAULT_GAS_ESTIMATION: u64 = 4_000_000; // 4m
-
-// -------
-// | ABI |
-// -------
-
-// The ABI for gas sponsorship functions
-sol! {
-    function sponsorAtomicMatchSettle(bytes memory internal_party_match_payload, bytes memory valid_match_settle_atomic_statement, bytes memory match_proofs, bytes memory match_linking_proofs, address memory refund_address, uint256 memory nonce, bytes memory signature) external payable;
-    function sponsorAtomicMatchSettleWithReceiver(address receiver, bytes memory internal_party_match_payload, bytes memory valid_match_settle_atomic_statement, bytes memory match_proofs, bytes memory match_linking_proofs, address memory refund_address, uint256 memory nonce, bytes memory signature) external payable;
-}
+mod gas_sponsorship;
+pub use gas_sponsorship::{sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall};
 
 // ---------------
 // | Server Impl |
@@ -94,7 +71,7 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: ExternalQuoteAssemblyQueryParams,
+        query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
         // Serialize the path + query params for auth
         let query_str = serde_urlencoded::to_string(&query_params).unwrap();
@@ -108,24 +85,23 @@ impl Server {
         let key_desc = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
-        // Send the request to the relayer
+        let is_sponsored = query_params.use_gas_sponsorship.unwrap_or(false)
+            && self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
+
+        let refund_address = query_params.get_refund_address().map_err(AuthServerError::serde)?;
+
+        // Send the request to the relayer, potentially sponsoring the gas costs
+
         let mut resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
-        if query_params.use_gas_sponsorship.unwrap_or(false) {
-            // If gas sponsorship is requested, mutate the calldata in the response
-            // to invoke the gas sponsor contract
-
-            info!("Redirecting match bundle through gas sponsor");
-            let refund_address = query_params
-                .refund_address
-                .map(|s| s.parse())
-                .transpose()
-                .map_err(AuthServerError::serde)?
-                .unwrap_or(Address::ZERO);
-
-            self.mutate_response_for_gas_sponsorship(&mut resp, refund_address)?;
+        let status = resp.status();
+        if status != StatusCode::OK {
+            warn!("Non-200 response from relayer: {}", status);
+            return Ok(resp);
         }
+
+        self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
 
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
@@ -148,14 +124,37 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
+        query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
+        // Serialize the path + query params for auth
+        let query_str = serde_urlencoded::to_string(&query_params).unwrap();
+        let auth_path = if query_str.is_empty() {
+            path.as_str().to_string()
+        } else {
+            format!("{}?{}", path.as_str(), query_str)
+        };
+
         // Authorize the request
-        let key_description = self.authorize_request(path.as_str(), &headers, &body).await?;
+        let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
-        // Send the request to the relayer
-        let resp =
+        let is_sponsored = query_params.use_gas_sponsorship.unwrap_or(false)
+            && self.check_gas_sponsorship_rate_limit(key_description.clone()).await;
+
+        let refund_address = query_params.get_refund_address().map_err(AuthServerError::serde)?;
+
+        // Send the request to the relayer, potentially sponsoring the gas costs
+
+        let mut resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+
+        let status = resp.status();
+        if status != StatusCode::OK {
+            warn!("Non-200 response from relayer: {}", status);
+            return Ok(resp);
+        }
+
+        self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
 
         // Watch the bundle for settlement
         let resp_clone = resp.body().to_vec();
@@ -228,8 +227,9 @@ impl Server {
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+            (GAS_SPONSORED_METRIC_TAG.to_string(), match_resp.is_sponsored.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled
@@ -243,10 +243,11 @@ impl Server {
         let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
         if did_settle {
             self.add_bundle_rate_limit_token(key.clone()).await;
+            self.record_settled_match_sponsorship(&match_resp, key, request_id).await?;
         }
 
         // Record metrics
-        record_external_match_metrics(&order, match_resp, &labels, did_settle).await?;
+        record_external_match_metrics(&order, match_resp.match_bundle, &labels, did_settle).await?;
 
         Ok(())
     }
@@ -383,115 +384,5 @@ impl Server {
         record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
 
         Ok(())
-    }
-
-    /// Mutate a quote assembly response to invoke gas sponsorship
-    fn mutate_response_for_gas_sponsorship(
-        &self,
-        resp: &mut Response<Bytes>,
-        refund_address: Address,
-    ) -> Result<(), AuthServerError> {
-        let mut external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
-
-        let gas_sponsor_calldata =
-            self.generate_gas_sponsor_calldata(&external_match_resp, refund_address)?.into();
-
-        external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
-        external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
-
-        let body =
-            Bytes::from(serde_json::to_vec(&external_match_resp).map_err(AuthServerError::serde)?);
-
-        resp.headers_mut().insert(CONTENT_LENGTH, body.len().into());
-        *resp.body_mut() = body;
-
-        Ok(())
-    }
-
-    /// Generate the calldata for sponsoring the given match via the gas sponsor
-    fn generate_gas_sponsor_calldata(
-        &self,
-        external_match_resp: &ExternalMatchResponse,
-        refund_address: Address,
-    ) -> Result<Bytes, AuthServerError> {
-        let calldata = external_match_resp
-            .match_bundle
-            .settlement_tx
-            .data()
-            .ok_or(AuthServerError::calldata_mutation("expected calldata"))?;
-
-        let selector = get_selector(calldata)?;
-
-        let gas_sponsor_calldata = match selector {
-            processAtomicMatchSettleCall::SELECTOR => {
-                self.sponsor_atomic_match_settle_call(calldata, refund_address)
-            },
-            processAtomicMatchSettleWithReceiverCall::SELECTOR => {
-                self.sponsor_atomic_match_settle_with_receiver_call(calldata, refund_address)
-            },
-            _ => {
-                return Err(AuthServerError::calldata_mutation("invalid selector"));
-            },
-        }?;
-
-        Ok(gas_sponsor_calldata)
-    }
-
-    /// Create a `sponsorAtomicMatchSettle` call from `processAtomicMatchSettle`
-    /// calldata
-    fn sponsor_atomic_match_settle_call(
-        &self,
-        calldata: &[u8],
-        refund_address: Address,
-    ) -> Result<Bytes, AuthServerError> {
-        let call = processAtomicMatchSettleCall::abi_decode(
-            calldata, true, // validate
-        )
-        .map_err(AuthServerError::calldata_mutation)?;
-
-        let (nonce, signature) =
-            gen_signed_sponsorship_nonce(refund_address, &self.gas_sponsor_auth_key)?;
-
-        let sponsored_call = sponsorAtomicMatchSettleCall {
-            internal_party_match_payload: call.internal_party_match_payload,
-            valid_match_settle_atomic_statement: call.valid_match_settle_atomic_statement,
-            match_proofs: call.match_proofs,
-            match_linking_proofs: call.match_linking_proofs,
-            refund_address,
-            nonce,
-            signature,
-        };
-
-        Ok(sponsored_call.abi_encode().into())
-    }
-
-    /// Create a `sponsorAtomicMatchSettleWithReceiver` call from
-    /// `processAtomicMatchSettleWithReceiver` calldata
-    fn sponsor_atomic_match_settle_with_receiver_call(
-        &self,
-        calldata: &[u8],
-        refund_address: Address,
-    ) -> Result<Bytes, AuthServerError> {
-        let call = processAtomicMatchSettleWithReceiverCall::abi_decode(
-            calldata, true, // validate
-        )
-        .map_err(AuthServerError::calldata_mutation)?;
-
-        let (nonce, signature) =
-            gen_signed_sponsorship_nonce(refund_address, &self.gas_sponsor_auth_key)?;
-
-        let sponsored_call = sponsorAtomicMatchSettleWithReceiverCall {
-            receiver: call.receiver,
-            internal_party_match_payload: call.internal_party_match_payload,
-            valid_match_settle_atomic_statement: call.valid_match_settle_atomic_statement,
-            match_proofs: call.match_proofs,
-            match_linking_proofs: call.match_linking_proofs,
-            refund_address,
-            nonce,
-            signature,
-        };
-
-        Ok(sponsored_call.abi_encode().into())
     }
 }

@@ -4,7 +4,7 @@
 mod api_auth;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
-mod helpers;
+pub(crate) mod helpers;
 mod queries;
 mod rate_limiter;
 
@@ -28,7 +28,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
+use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -82,6 +82,11 @@ pub struct Server {
     pub gas_sponsor_address: Address,
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
+    /// The block number at which the server started, used to filter gas
+    /// sponsorship events for rate limiting
+    pub start_block_num: BlockNumber,
+    /// The price reporter client
+    pub price_reporter_client: PriceReporterClient,
 }
 
 impl Server {
@@ -100,17 +105,21 @@ impl Server {
         let relayer_admin_key =
             HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
 
-        let rate_limiter =
-            AuthServerRateLimiter::new(args.quote_rate_limit, args.bundle_rate_limit);
+        let rate_limiter = AuthServerRateLimiter::new(
+            args.quote_rate_limit,
+            args.bundle_rate_limit,
+            args.max_gas_sponsorship_value,
+        );
+
+        let price_reporter_client = PriceReporterClient::new(&args.price_reporter_url);
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {
-            let price_reporter_client = PriceReporterClient::new(&args.price_reporter_url);
             let odos_source = QuoteSource::odos_default();
             Some(Arc::new(QuoteComparisonHandler::new(
                 vec![odos_source],
                 arbitrum_client.clone(),
-                price_reporter_client,
+                price_reporter_client.clone(),
             )))
         } else {
             None
@@ -124,6 +133,9 @@ impl Server {
             hex::decode(&args.gas_sponsor_auth_key).map_err(AuthServerError::setup)?;
         let gas_sponsor_auth_key =
             SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
+
+        let start_block_num =
+            arbitrum_client.block_number().await.map_err(AuthServerError::setup)?;
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
@@ -141,6 +153,8 @@ impl Server {
                 .unwrap_or(1.0 /* default no sampling */),
             gas_sponsor_address,
             gas_sponsor_auth_key,
+            start_block_num,
+            price_reporter_client,
         })
     }
 
@@ -220,6 +234,18 @@ impl Server {
     /// Increment the token balance for a given API user
     pub async fn add_bundle_rate_limit_token(&self, key_description: String) {
         self.rate_limiter.add_bundle_token(key_description).await;
+    }
+
+    /// Check the gas sponsorship rate limiter
+    ///
+    /// Returns a boolean indicating whether or not the gas sponsorship rate
+    /// limit has been exceeded.
+    pub async fn check_gas_sponsorship_rate_limit(&self, key_description: String) -> bool {
+        if !self.rate_limiter.check_gas_sponsorship(key_description.clone()).await {
+            warn!("Gas sponsorship rate limit exceeded for key: {key_description}");
+            return false;
+        }
+        true
     }
 
     // --- Caching --- //

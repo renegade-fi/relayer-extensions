@@ -15,6 +15,18 @@ pub enum HttpError {
     /// An API error
     #[error("API error: {0}")]
     Api(String),
+
+    /// A response parsing error
+    #[error("Response parsing error: {0}")]
+    Parsing(String),
+}
+
+impl HttpError {
+    /// Create a new parsing error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn parsing<T: ToString>(msg: T) -> Self {
+        Self::Parsing(msg.to_string())
+    }
 }
 
 /// Sends a basic GET request

@@ -5,9 +5,8 @@ use std::time::Duration;
 
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
-use renegade_api::http::external_match::{
-    AtomicMatchApiBundle, ExternalMatchResponse, ExternalOrder,
-};
+use ethers::types::TxHash;
+use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_arbitrum_client::{
     abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
     client::ArbitrumClient,
@@ -37,7 +36,10 @@ use crate::{
     },
 };
 
-use super::{labels::SIDE_TAG, quote_comparison::QuoteComparison};
+use super::{
+    labels::{GAS_SPONSORSHIP_VALUE, REQUEST_ID_METRIC_TAG, SIDE_TAG, TX_HASH_METRIC_TAG},
+    quote_comparison::QuoteComparison,
+};
 
 // --- Constants --- //
 
@@ -242,12 +244,12 @@ pub(crate) fn record_fill_ratio(
 /// Records all metrics related to an external match request and response
 pub(crate) async fn record_external_match_metrics(
     order: &ExternalOrder,
-    match_resp: ExternalMatchResponse,
+    match_bundle: AtomicMatchApiBundle,
     labels: &[(String, String)],
     did_settle: bool,
 ) -> Result<(), AuthServerError> {
     // Get decimal-corrected price
-    let price = calculate_implied_price(&match_resp.match_bundle, true /* decimal_correct */)?;
+    let price = calculate_implied_price(&match_bundle, true /* decimal_correct */)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, labels) {
@@ -256,23 +258,34 @@ pub(crate) async fn record_external_match_metrics(
 
     // Record fill ratio metric
     let requested_quote_amount = order.get_quote_amount(FixedPoint::from_f64_round_down(price));
-    let matched_quote_amount = match_resp.match_bundle.match_result.quote_amount;
+    let matched_quote_amount = match_bundle.match_result.quote_amount;
     if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, labels) {
         warn!("Error recording fill ratio metric: {e}");
     }
 
     // Record response metrics
-    if let Err(e) = record_external_match_response_metrics(&match_resp.match_bundle, labels) {
+    if let Err(e) = record_external_match_response_metrics(&match_bundle, labels) {
         warn!("Error recording response metrics: {e}");
     }
 
-    if let Err(e) =
-        record_external_match_settlement_metrics(&match_resp.match_bundle, did_settle, labels)
-    {
+    if let Err(e) = record_external_match_settlement_metrics(&match_bundle, did_settle, labels) {
         warn!("Error recording settlement metrics: {e}");
     }
 
     Ok(())
+}
+
+/// Record the dollar value of sponsored gas for a given settled match
+pub(crate) fn record_gas_sponsorship_metrics(
+    gas_sponsorship_value: f64,
+    tx_hash: TxHash,
+    request_id: String,
+) {
+    let labels = vec![
+        (REQUEST_ID_METRIC_TAG.to_string(), request_id),
+        (TX_HASH_METRIC_TAG.to_string(), format!("{:#x}", tx_hash)),
+    ];
+    metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
 }
 
 // --- Settlement Processing --- //

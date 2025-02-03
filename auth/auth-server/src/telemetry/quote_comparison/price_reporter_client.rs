@@ -10,6 +10,7 @@ pub const PRICE_ROUTE: &str = "/price";
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
 
 /// A client for the price reporter
+#[derive(Clone)]
 pub struct PriceReporterClient {
     /// The base URL of the price reporter
     base_url: String,
@@ -22,7 +23,7 @@ impl PriceReporterClient {
     }
 
     /// Get the price of a token from the price reporter
-    pub async fn get_binance_price(&self, mint: &str) -> Result<Option<f64>, HttpError> {
+    pub async fn get_binance_price(&self, mint: &str) -> Result<f64, HttpError> {
         let exchange = Exchange::Binance;
         let quote_mint = Token::from_ticker("USDT").get_addr();
         let price_topic = format!("{}-{}-{}", exchange, mint, quote_mint);
@@ -30,13 +31,22 @@ impl PriceReporterClient {
         let url = format!("{}{}/{}", self.base_url, PRICE_ROUTE, price_topic);
         let response = send_get_request(&url, DEFAULT_TIMEOUT_SECS).await?;
 
-        response
+        let res_text = response
             .text()
             .await
-            .map(|text| {
-                let price: f64 = text.parse().unwrap();
-                Some(price)
-            })
-            .map_err(|e| HttpError::Network("Failed to parse response".to_string(), e))
+            .map_err(|e| HttpError::Network("Failed to get response text".to_string(), e))?;
+
+        let price: f64 = res_text.parse().map_err(HttpError::parsing)?;
+
+        Ok(price)
+    }
+
+    /// Fetch the current price of ETH in USDC.
+    ///
+    /// Under the hood, the price reporter fetches the ETH price instead of
+    /// WETH.
+    pub async fn get_eth_price(&self) -> Result<f64, HttpError> {
+        let eth = Token::from_ticker("WETH");
+        self.get_binance_price(&eth.get_addr()).await
     }
 }

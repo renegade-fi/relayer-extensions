@@ -4,7 +4,7 @@
 use std::{error::Error, str::FromStr, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
-use ethers::signers::LocalWallet;
+use ethers::{signers::LocalWallet, types::Address};
 use renegade_arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
     constants::Chain,
@@ -97,6 +97,8 @@ impl Server {
         let db_pool = create_db_pool(&args.db_url).await?;
         let arc_pool = Arc::new(db_pool);
 
+        let gas_sponsor_address = Address::from_str(&args.gas_sponsor_address)?;
+
         let custody_client = CustodyClient::new(
             chain_id,
             args.fireblocks_api_key,
@@ -104,6 +106,7 @@ impl Server {
             args.rpc_url.clone(),
             arc_pool.clone(),
             config.clone(),
+            gas_sponsor_address,
         );
 
         let execution_client = ExecutionClient::new(
