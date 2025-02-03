@@ -13,6 +13,8 @@ pub const REFILL_GAS_ROUTE: &str = "refill-gas";
 pub const REGISTER_GAS_WALLET_ROUTE: &str = "register-gas-wallet";
 /// The route to report active peers
 pub const REPORT_ACTIVE_PEERS_ROUTE: &str = "report-active-peers";
+/// The route to refill the gas sponsor contract
+pub const REFILL_GAS_SPONSOR_ROUTE: &str = "refill-gas-sponsor";
 
 // -------------
 // | Api Types |
@@ -66,4 +68,11 @@ pub struct RegisterGasWalletResponse {
 pub struct ReportActivePeersRequest {
     /// The list of active peers
     pub peers: Vec<String>,
+}
+
+/// The request body for refilling gas for the gas sponsor contract
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RefillGasSponsorRequest {
+    /// The amount of gas to top up the gas sponsor contract to
+    pub amount: f64,
 }

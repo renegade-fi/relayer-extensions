@@ -7,7 +7,7 @@ use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::{order::OrderSide, Amount};
 use renegade_common::types::token::Token;
 
-use crate::server::handle_external_match::DEFAULT_GAS_ESTIMATION;
+use crate::server::helpers::DEFAULT_GAS_ESTIMATION;
 
 /// The name of our quote source
 const RENEGADE_SOURCE_NAME: &str = "renegade";

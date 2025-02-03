@@ -12,6 +12,8 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 #![feature(trivial_bounds)]
+#![feature(let_chains)]
+#![feature(duration_constructors)]
 
 pub(crate) mod error;
 pub(crate) mod models;
@@ -114,6 +116,9 @@ pub struct Cli {
     /// The auth private key used for gas sponsorship, encoded as a hex string
     #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
     gas_sponsor_auth_key: String,
+    /// The maximum dollar value of gas sponsorship funds per day
+    #[arg(long, env = "MAX_GAS_SPONSORSHIP_VALUE", default_value = "100.0")]
+    max_gas_sponsorship_value: f64,
 
     // -------------
     // | Telemetry |
