@@ -15,7 +15,7 @@ use http::Response;
 use renegade_arbitrum_client::abi::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use renegade_api::http::external_match::ExternalMatchResponse as RelayerExternalMatchResponse;
 
@@ -208,6 +208,10 @@ impl Server {
         // This could be the case if the gas sponsor was underfunded or paused.
         let amount_sponsored_with_tx =
             events.last().map(|(event, meta)| (event.amount, meta.transaction_hash));
+
+        if amount_sponsored_with_tx.is_none() {
+            warn!("No gas sponsorship event found for nonce: {}", nonce);
+        }
 
         Ok(amount_sponsored_with_tx)
     }
