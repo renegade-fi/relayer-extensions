@@ -40,9 +40,9 @@ pub struct CreateApiKeyRequest {
     pub description: String,
 }
 
-/// An external match response from the auth server
+/// A sponsored match response from the auth server
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExternalMatchResponse {
+pub struct SponsoredMatchResponse {
     /// The external match bundle
     pub match_bundle: AtomicMatchApiBundle,
     /// Whether or not the match was sponsored

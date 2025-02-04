@@ -5,7 +5,7 @@
 
 use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall};
-use auth_server_api::ExternalMatchResponse;
+use auth_server_api::SponsoredMatchResponse;
 use bytes::Bytes;
 use ethers::contract::abigen;
 use ethers::types::{transaction::eip2718::TypedTransaction, TxHash, U256};
@@ -17,7 +17,7 @@ use renegade_arbitrum_client::abi::{
 };
 use tracing::{info, warn};
 
-use renegade_api::http::external_match::ExternalMatchResponse as RelayerExternalMatchResponse;
+use renegade_api::http::external_match::ExternalMatchResponse;
 
 use super::Server;
 use crate::error::AuthServerError;
@@ -55,7 +55,7 @@ impl Server {
         is_sponsored: bool,
         refund_address: Address,
     ) -> Result<(), AuthServerError> {
-        let mut relayer_external_match_resp: RelayerExternalMatchResponse =
+        let mut relayer_external_match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
 
         relayer_external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
@@ -70,7 +70,7 @@ impl Server {
             relayer_external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
         }
 
-        let external_match_resp = ExternalMatchResponse {
+        let external_match_resp = SponsoredMatchResponse {
             match_bundle: relayer_external_match_resp.match_bundle,
             is_sponsored,
         };
@@ -87,7 +87,7 @@ impl Server {
     /// Generate the calldata for sponsoring the given match via the gas sponsor
     fn generate_gas_sponsor_calldata(
         &self,
-        external_match_resp: &RelayerExternalMatchResponse,
+        external_match_resp: &ExternalMatchResponse,
         refund_address: Address,
     ) -> Result<Bytes, AuthServerError> {
         let calldata = external_match_resp
@@ -220,7 +220,7 @@ impl Server {
     /// match
     pub async fn record_settled_match_sponsorship(
         &self,
-        match_resp: &ExternalMatchResponse,
+        match_resp: &SponsoredMatchResponse,
         key: String,
         request_id: String,
     ) -> Result<(), AuthServerError> {

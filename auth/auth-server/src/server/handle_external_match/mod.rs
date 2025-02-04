@@ -3,7 +3,7 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-use auth_server_api::{ExternalMatchResponse, GasSponsorshipQueryParams};
+use auth_server_api::{GasSponsorshipQueryParams, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use renegade_api::http::external_match::{
@@ -85,10 +85,9 @@ impl Server {
         let key_desc = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
-        let is_sponsored = query_params.use_gas_sponsorship.unwrap_or(false)
-            && self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
-
-        let refund_address = query_params.get_refund_address().map_err(AuthServerError::serde)?;
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(false);
+        let is_sponsored =
+            sponsorship_requested && self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
 
         // Send the request to the relayer, potentially sponsoring the gas costs
 
@@ -101,7 +100,14 @@ impl Server {
             return Ok(resp);
         }
 
-        self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+        // We redirect the TX to the gas sponsor contract if the user explicitly
+        // requested sponsorship, regardless of whether they are rate-limited.
+        if sponsorship_requested {
+            let refund_address =
+                query_params.get_refund_address().map_err(AuthServerError::serde)?;
+
+            self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+        }
 
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
@@ -138,10 +144,9 @@ impl Server {
         let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
-        let is_sponsored = query_params.use_gas_sponsorship.unwrap_or(false)
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(false);
+        let is_sponsored = sponsorship_requested
             && self.check_gas_sponsorship_rate_limit(key_description.clone()).await;
-
-        let refund_address = query_params.get_refund_address().map_err(AuthServerError::serde)?;
 
         // Send the request to the relayer, potentially sponsoring the gas costs
 
@@ -154,7 +159,14 @@ impl Server {
             return Ok(resp);
         }
 
-        self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+        // We redirect the TX to the gas sponsor contract if the user explicitly
+        // requested sponsorship, regardless of whether they are rate-limited.
+        if sponsorship_requested {
+            let refund_address =
+                query_params.get_refund_address().map_err(AuthServerError::serde)?;
+
+            self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+        }
 
         // Watch the bundle for settlement
         let resp_clone = resp.body().to_vec();
@@ -222,7 +234,7 @@ impl Server {
         self.log_bundle(&order, resp, &key, &request_id)?;
 
         // Deserialize the response
-        let match_resp: ExternalMatchResponse =
+        let match_resp: SponsoredMatchResponse =
             serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
 
         let labels = vec![
@@ -300,7 +312,7 @@ impl Server {
         key_description: &str,
         request_id: &str,
     ) -> Result<(), AuthServerError> {
-        let resp = serde_json::from_slice::<ExternalMatchResponse>(bundle_bytes)
+        let resp = serde_json::from_slice::<SponsoredMatchResponse>(bundle_bytes)
             .map_err(AuthServerError::serde)?;
 
         // Get the decimal-corrected price
