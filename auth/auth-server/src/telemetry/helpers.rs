@@ -244,12 +244,12 @@ pub(crate) fn record_fill_ratio(
 /// Records all metrics related to an external match request and response
 pub(crate) async fn record_external_match_metrics(
     order: &ExternalOrder,
-    match_bundle: AtomicMatchApiBundle,
+    match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
     did_settle: bool,
 ) -> Result<(), AuthServerError> {
     // Get decimal-corrected price
-    let price = calculate_implied_price(&match_bundle, true /* decimal_correct */)?;
+    let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, labels) {
@@ -264,11 +264,11 @@ pub(crate) async fn record_external_match_metrics(
     }
 
     // Record response metrics
-    if let Err(e) = record_external_match_response_metrics(&match_bundle, labels) {
+    if let Err(e) = record_external_match_response_metrics(match_bundle, labels) {
         warn!("Error recording response metrics: {e}");
     }
 
-    if let Err(e) = record_external_match_settlement_metrics(&match_bundle, did_settle, labels) {
+    if let Err(e) = record_external_match_settlement_metrics(match_bundle, did_settle, labels) {
         warn!("Error recording settlement metrics: {e}");
     }
 

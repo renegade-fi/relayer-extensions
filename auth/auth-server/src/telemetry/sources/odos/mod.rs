@@ -5,6 +5,7 @@ mod error;
 mod types;
 
 use super::QuoteResponse;
+use error::OdosError;
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 
@@ -50,7 +51,7 @@ impl OdosQuoteSource {
         quote_token: Token,
         side: OrderSide,
         amount: u128,
-    ) -> QuoteResponse {
+    ) -> Result<QuoteResponse, OdosError> {
         let (in_token, out_token) = match side {
             OrderSide::Buy => (quote_token, base_token),
             OrderSide::Sell => (base_token, quote_token),
@@ -61,7 +62,7 @@ impl OdosQuoteSource {
             .client
             .get_quote(&in_token.get_addr().to_string(), amount, &out_token.get_addr().to_string())
             .await
-            .expect("Failed to get quote from Odos");
+            .map_err(OdosError::api)?;
 
         // When buying, we input the quote token and receive the base token
         // When selling, we input the base token and receive the quote token
@@ -80,7 +81,7 @@ impl OdosQuoteSource {
         let receive_amount = Scalar::from(quote.get_out_amount().unwrap());
         let fee_take = (fee_rate * receive_amount).floor();
 
-        QuoteResponse {
+        Ok(QuoteResponse {
             base_amount,
             base_mint,
             quote_amount,
@@ -88,7 +89,7 @@ impl OdosQuoteSource {
             gas: quote.gas_estimate as u64,
             name: SOURCE_NAME.to_string(),
             fee_take: scalar_to_u128(&fee_take),
-        }
+        })
     }
 }
 
@@ -124,7 +125,9 @@ mod tests {
                 OrderSide::Buy,
                 buy_amount,
             )
-            .await;
+            .await
+            .unwrap();
+
         assert!(buy_response.price() > 0.0);
 
         // Test sell quote (selling WETH for USDC)
@@ -136,7 +139,9 @@ mod tests {
                 OrderSide::Sell,
                 sell_amount,
             )
-            .await;
+            .await
+            .unwrap();
+
         assert!(sell_response.price() > 0.0);
     }
 }

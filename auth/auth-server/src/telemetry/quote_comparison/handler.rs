@@ -8,6 +8,7 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
 use renegade_api::http::external_match::AtomicMatchApiBundle;
+use tracing::warn;
 
 use crate::{
     error::AuthServerError,
@@ -68,7 +69,10 @@ impl QuoteComparisonHandler {
         }
 
         // Execute all futures concurrently and wait for them to complete
-        join_all(futures).await;
+        let res = join_all(futures).await.into_iter().collect::<Result<Vec<_>, _>>();
+        if let Err(e) = res {
+            warn!("Error recording quote comparison: {e}");
+        }
     }
 
     /// Records a comparison for a single source
@@ -83,7 +87,7 @@ impl QuoteComparisonHandler {
         let base_token = Token::from_addr(&our_quote.base_mint);
         let quote_token = Token::from_addr(&our_quote.quote_mint);
 
-        let quote = source.get_quote(base_token, quote_token, side, amount).await;
+        let quote = source.get_quote(base_token, quote_token, side, amount).await?;
         let usdc_per_gas = self.get_usdc_per_gas().await?;
         let comparison = QuoteComparison { our_quote, source_quote: &quote, usdc_per_gas };
 

@@ -37,6 +37,9 @@ pub enum AuthServerError {
     /// An error signing a message
     #[error("Signing error: {0}")]
     Signing(String),
+    /// An error comparing quotes
+    #[error("Quote comparison error: {0}")]
+    QuoteComparison(String),
     /// A miscellaneous error
     #[error("Error: {0}")]
     Custom(String),
@@ -89,6 +92,12 @@ impl AuthServerError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn signing<T: ToString>(msg: T) -> Self {
         Self::Signing(msg.to_string())
+    }
+
+    /// Create a new quote comparison error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn quote_comparison<T: ToString>(msg: T) -> Self {
+        Self::QuoteComparison(msg.to_string())
     }
 
     /// Create a new custom error
