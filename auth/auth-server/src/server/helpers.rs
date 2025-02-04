@@ -111,7 +111,7 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
 
 #[cfg(test)]
 mod tests {
-    use renegade_common::types::wallet::keychain::HmacKey;
+    use renegade_common::types::hmac::HmacKey;
 
     use super::*;
 

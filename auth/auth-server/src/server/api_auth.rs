@@ -3,7 +3,7 @@
 use auth_server_api::RENEGADE_API_KEY_HEADER;
 use http::HeaderMap;
 use renegade_api::auth::validate_expiring_auth;
-use renegade_common::types::wallet::keychain::HmacKey;
+use renegade_common::types::hmac::HmacKey;
 use tracing::info;
 use uuid::Uuid;
 use warp::filters::path::FullPath;

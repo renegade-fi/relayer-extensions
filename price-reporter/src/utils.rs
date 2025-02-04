@@ -5,7 +5,7 @@ use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 use futures_util::stream::SplitSink;
 use matchit::Router;
 use renegade_arbitrum_client::constants::Chain;
-use renegade_common::types::{exchange::Exchange, token::Token, wallet::keychain::HmacKey, Price};
+use renegade_common::types::{exchange::Exchange, hmac::HmacKey, token::Token, Price};
 use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
