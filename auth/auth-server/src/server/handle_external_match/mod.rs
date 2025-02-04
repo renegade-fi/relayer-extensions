@@ -247,7 +247,8 @@ impl Server {
         }
 
         // Record metrics
-        record_external_match_metrics(&order, match_resp.match_bundle, &labels, did_settle).await?;
+        record_external_match_metrics(&order, &match_resp.match_bundle, &labels, did_settle)
+            .await?;
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::{order::OrderSide, Amount};
 use renegade_common::types::token::Token;
 
-use crate::server::helpers::DEFAULT_GAS_ESTIMATION;
+use crate::{error::AuthServerError, server::helpers::DEFAULT_GAS_ESTIMATION};
 
 /// The name of our quote source
 const RENEGADE_SOURCE_NAME: &str = "renegade";
@@ -129,11 +129,12 @@ impl QuoteSource {
         quote_token: Token,
         side: OrderSide,
         amount: u128,
-    ) -> QuoteResponse {
+    ) -> Result<QuoteResponse, AuthServerError> {
         match self {
-            QuoteSource::Odos(source) => {
-                source.get_quote(base_token, quote_token, side, amount).await
-            },
+            QuoteSource::Odos(source) => source
+                .get_quote(base_token, quote_token, side, amount)
+                .await
+                .map_err(AuthServerError::quote_comparison),
         }
     }
 }
