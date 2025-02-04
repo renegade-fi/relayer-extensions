@@ -21,12 +21,12 @@ use renegade_api::{
 };
 use renegade_common::types::{
     exchange::PriceReporterState,
+    hmac::HmacKey,
     token::Token,
     wallet::{
         derivation::{
             derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
         },
-        keychain::HmacKey,
         Wallet, WalletIdentifier,
     },
 };

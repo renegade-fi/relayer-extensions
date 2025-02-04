@@ -36,7 +36,7 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
-use renegade_common::types::wallet::keychain::HmacKey;
+use renegade_common::types::hmac::HmacKey;
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
