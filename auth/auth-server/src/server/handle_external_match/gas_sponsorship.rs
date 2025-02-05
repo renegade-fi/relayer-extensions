@@ -17,7 +17,7 @@ use renegade_arbitrum_client::abi::{
 };
 use tracing::{info, warn};
 
-use renegade_api::http::external_match::ExternalMatchResponse;
+use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalMatchResponse};
 
 use super::Server;
 use crate::error::AuthServerError;
@@ -220,13 +220,14 @@ impl Server {
     /// match
     pub async fn record_settled_match_sponsorship(
         &self,
-        match_resp: &SponsoredMatchResponse,
+        match_bundle: &AtomicMatchApiBundle,
+        is_sponsored: bool,
         key: String,
         request_id: String,
     ) -> Result<(), AuthServerError> {
-        if match_resp.is_sponsored
+        if is_sponsored
             && let Some((gas_cost, tx_hash)) =
-                self.get_sponsorship_amount_and_tx(&match_resp.match_bundle.settlement_tx).await?
+                self.get_sponsorship_amount_and_tx(&match_bundle.settlement_tx).await?
         {
             // Convert wei to ether using format_ether, then parse to f64
             let gas_cost_eth: f64 =

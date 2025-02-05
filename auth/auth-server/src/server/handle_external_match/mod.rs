@@ -7,7 +7,8 @@ use auth_server_api::{GasSponsorshipQueryParams, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use renegade_api::http::external_match::{
-    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalOrder, ExternalQuoteResponse,
+    AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalMatchRequest,
+    ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
@@ -113,7 +114,12 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
-                .handle_quote_assembly_bundle_response(key_desc, &body, &resp_clone)
+                .handle_quote_assembly_bundle_response(
+                    key_desc,
+                    &body,
+                    &resp_clone,
+                    sponsorship_requested,
+                )
                 .await
             {
                 warn!("Error handling bundle: {e}");
@@ -173,7 +179,12 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
-                .handle_direct_match_bundle_response(key_description, &body, &resp_clone)
+                .handle_direct_match_bundle_response(
+                    key_description,
+                    &body,
+                    &resp_clone,
+                    sponsorship_requested,
+                )
                 .await
             {
                 warn!("Error handling bundle: {e}");
@@ -191,6 +202,7 @@ impl Server {
         key: String,
         req: &[u8],
         resp: &[u8],
+        sponsorship_requested: bool,
     ) -> Result<(), AuthServerError> {
         let req: AssembleExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
@@ -203,7 +215,14 @@ impl Server {
             self.log_updated_order(&key, original_order, updated_order, &request_id);
         }
 
-        self.handle_bundle_response(key, updated_order.clone(), resp, Some(request_id)).await
+        self.handle_bundle_response(
+            key,
+            updated_order.clone(),
+            resp,
+            Some(request_id),
+            sponsorship_requested,
+        )
+        .await
     }
 
     /// Handle a bundle response from a direct match request
@@ -212,11 +231,12 @@ impl Server {
         key: String,
         req: &[u8],
         resp: &[u8],
+        sponsorship_requested: bool,
     ) -> Result<(), AuthServerError> {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
         let order = req.external_order;
-        self.handle_bundle_response(key, order, resp, None).await
+        self.handle_bundle_response(key, order, resp, None, sponsorship_requested).await
     }
 
     /// Record and watch a bundle that was forwarded to the client
@@ -228,39 +248,48 @@ impl Server {
         order: ExternalOrder,
         resp: &[u8],
         request_id: Option<String>,
+        sponsorship_requested: bool,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        self.log_bundle(&order, resp, &key, &request_id)?;
 
         // Deserialize the response
-        let match_resp: SponsoredMatchResponse =
-            serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
+        let (is_sponsored, match_bundle) = if sponsorship_requested {
+            let match_resp: SponsoredMatchResponse =
+                serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
+
+            (match_resp.is_sponsored, match_resp.match_bundle)
+        } else {
+            let match_resp: ExternalMatchResponse =
+                serde_json::from_slice(resp).map_err(AuthServerError::serde)?;
+
+            (false, match_resp.match_bundle)
+        };
+
+        self.log_bundle(&order, &match_bundle, &key, &request_id)?;
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
-            (GAS_SPONSORED_METRIC_TAG.to_string(), match_resp.is_sponsored.to_string()),
+            (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled
         if let Some(quote_metrics) = &self.quote_metrics {
-            quote_metrics
-                .record_quote_comparison(&match_resp.match_bundle, labels.as_slice())
-                .await;
+            quote_metrics.record_quote_comparison(&match_bundle, labels.as_slice()).await;
         }
 
         // If the bundle settles, increase the API user's a rate limit token balance
-        let did_settle = await_settlement(&match_resp.match_bundle, &self.arbitrum_client).await?;
+        let did_settle = await_settlement(&match_bundle, &self.arbitrum_client).await?;
         if did_settle {
             self.add_bundle_rate_limit_token(key.clone()).await;
-            self.record_settled_match_sponsorship(&match_resp, key, request_id).await?;
+            self.record_settled_match_sponsorship(&match_bundle, is_sponsored, key, request_id)
+                .await?;
         }
 
         // Record metrics
-        record_external_match_metrics(&order, &match_resp.match_bundle, &labels, did_settle)
-            .await?;
+        record_external_match_metrics(&order, &match_bundle, &labels, did_settle).await?;
 
         Ok(())
     }
@@ -308,21 +337,18 @@ impl Server {
     fn log_bundle(
         &self,
         order: &ExternalOrder,
-        bundle_bytes: &[u8],
+        match_bundle: &AtomicMatchApiBundle,
         key_description: &str,
         request_id: &str,
     ) -> Result<(), AuthServerError> {
-        let resp = serde_json::from_slice::<SponsoredMatchResponse>(bundle_bytes)
-            .map_err(AuthServerError::serde)?;
-
         // Get the decimal-corrected price
-        let price = calculate_implied_price(&resp.match_bundle, true /* decimal_correct */)?;
+        let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
         let price_fixed = FixedPoint::from_f64_round_down(price);
 
-        let match_result = resp.match_bundle.match_result;
+        let match_result = &match_bundle.match_result;
         let is_buy = match_result.direction;
-        let recv = resp.match_bundle.receive;
-        let send = resp.match_bundle.send;
+        let recv = &match_bundle.receive;
+        let send = &match_bundle.send;
 
         // Get the base fill ratio
         let requested_base_amount = order.get_base_amount(price_fixed);
