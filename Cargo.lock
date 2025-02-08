@@ -283,7 +283,7 @@ dependencies = [
 [[package]]
 name = "arbitrum-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -1701,7 +1701,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -1712,7 +1712,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -1743,7 +1743,7 @@ dependencies = [
 [[package]]
 name = "circuits"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-crypto-primitives",
  "ark-ec",
@@ -1897,7 +1897,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-mpc",
  "async-trait",
@@ -1961,7 +1961,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "arbitrum-client",
  "base64 0.13.1",
@@ -2013,7 +2013,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3069,7 +3069,7 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "base64 0.22.1",
  "circuit-types",
@@ -3535,7 +3535,7 @@ dependencies = [
 [[package]]
 name = "gossip-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "bincode",
  "circuit-types",
@@ -3737,12 +3737,6 @@ checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
 ]
-
-[[package]]
-name = "hmac-sha256"
-version = "1.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a8575493d277c9092b988c780c94737fb9fd8651a1001e16bee3eccfc1baedb"
 
 [[package]]
 name = "home"
@@ -4356,7 +4350,7 @@ dependencies = [
 [[package]]
 name = "job-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-mpc",
  "circuit-types",
@@ -5828,7 +5822,7 @@ dependencies = [
 [[package]]
 name = "price-reporter"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "async-trait",
  "atomic_float 0.1.0",
@@ -5839,15 +5833,16 @@ dependencies = [
  "futures",
  "futures-util",
  "hex 0.3.2",
- "hmac-sha256",
  "itertools 0.11.0",
  "job-types",
+ "jsonwebtoken 9.3.0",
  "lazy_static",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
  "statrs",
  "system-bus",
+ "thiserror 2.0.11",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.18.0",
@@ -6383,7 +6378,7 @@ dependencies = [
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
@@ -6434,7 +6429,7 @@ dependencies = [
 [[package]]
 name = "renegade-metrics"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "atomic_float 1.1.0",
  "circuit-types",
@@ -6461,6 +6456,7 @@ dependencies = [
  "price-reporter",
  "serde",
  "serde_json",
+ "thiserror 2.0.11",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.18.0",
@@ -7686,7 +7682,7 @@ dependencies = [
 [[package]]
 name = "system-bus"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "bus",
  "common",
@@ -8548,7 +8544,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#ebf5588231b2e3469737945bbfb27aaeb9fbfca3"
+source = "git+https://github.com/renegade-fi/renegade.git#39e6c29ff253a2d3de6704995aa05d35ec65708b"
 dependencies = [
  "ark-ec",
  "ark-serialize 0.4.2",

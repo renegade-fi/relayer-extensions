@@ -162,8 +162,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
     let remap_chain =
         env::var(CHAIN_ID_ENV_VAR).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_CHAIN);
-    let coinbase_api_key = env::var(CB_API_KEY_ENV_VAR).ok();
-    let coinbase_api_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
+    let coinbase_key_name = env::var(CB_API_KEY_ENV_VAR).ok();
+    let coinbase_key_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
     let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
     let admin_key = env::var(ADMIN_KEY_ENV_VAR)
         .ok()
@@ -184,8 +184,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
         token_remap_path,
         remap_chain,
         exchange_conn_config: ExchangeConnectionsConfig {
-            coinbase_api_key,
-            coinbase_api_secret,
+            coinbase_key_name,
+            coinbase_key_secret,
             eth_websocket_addr,
         },
         admin_key,
