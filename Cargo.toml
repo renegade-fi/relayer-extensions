@@ -43,4 +43,5 @@ diesel = { version = "2.1" }
 diesel-async = { version = "0.4" }
 
 # === Misc Dependencies === #
+thiserror = "2.0"
 tracing = "0.1"

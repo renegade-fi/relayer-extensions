@@ -157,11 +157,10 @@ fn get_supported_exchanges(
     config: &ExchangeConnectionsConfig,
 ) -> HashSet<Exchange> {
     let mut supported_exchanges = base_token.supported_exchanges();
-    if config.coinbase_api_key.is_none() || config.coinbase_api_secret.is_none() {
+    if !config.coinbase_configured() {
         supported_exchanges.remove(&Exchange::Coinbase);
     }
-
-    if config.eth_websocket_addr.is_none() {
+    if !config.uniswap_v3_configured() {
         supported_exchanges.remove(&Exchange::UniswapV3);
     }
 
