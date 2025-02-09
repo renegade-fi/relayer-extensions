@@ -20,8 +20,11 @@ use tracing::{info, warn};
 
 use crate::{
     error::AuthServerError,
-    server::handle_external_match::{
-        sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall,
+    server::{
+        handle_external_match::{
+            sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall,
+        },
+        helpers::get_selector,
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
@@ -298,7 +301,16 @@ pub(crate) async fn await_settlement(
     arbitrum_client: &ArbitrumClient,
 ) -> Result<bool, AuthServerError> {
     let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
-    let res = arbitrum_client.await_nullifier_spent(nullifier, ATOMIC_SETTLEMENT_TIMEOUT).await;
+    let res = arbitrum_client
+        .await_nullifier_spent_from_selectors(
+            nullifier,
+            &[
+                processAtomicMatchSettleCall::SELECTOR,
+                processAtomicMatchSettleWithReceiverCall::SELECTOR,
+            ],
+            ATOMIC_SETTLEMENT_TIMEOUT,
+        )
+        .await;
 
     let did_settle = res.is_ok();
     if !did_settle {
@@ -321,12 +333,7 @@ fn extract_nullifier_from_match_bundle(
         .data()
         .ok_or(AuthServerError::serde("No data in settlement tx"))?;
 
-    let selector: [u8; 4] = tx_data
-        .as_ref()
-        .get(0..4)
-        .ok_or(AuthServerError::serde("expected selector"))?
-        .try_into()
-        .unwrap();
+    let selector = get_selector(tx_data)?;
 
     // Retrieve serialized match payload from the transaction data
     let serialized_match_payload = match selector {

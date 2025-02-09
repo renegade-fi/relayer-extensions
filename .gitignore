@@ -15,4 +15,4 @@ target/
 .vscode/
 /.gitattributes
 
-.env
+.env*
