@@ -731,6 +731,7 @@ dependencies = [
  "auth-server-api",
  "base64 0.22.1",
  "bb8",
+ "bigdecimal 0.4.7",
  "bytes",
  "cached",
  "chrono",

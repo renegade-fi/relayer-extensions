@@ -56,6 +56,9 @@ pub struct GasSponsorshipQueryParams {
     pub use_gas_sponsorship: Option<bool>,
     /// The address to refund gas to
     pub refund_address: Option<String>,
+    /// Whether to provide the gas refund in terms of native ETH,
+    /// as opposed to the buy-side token
+    pub refund_native_eth: Option<bool>,
 }
 
 impl GasSponsorshipQueryParams {

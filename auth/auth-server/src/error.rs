@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::ApiError;
+use crate::{telemetry::sources::http_utils::HttpError, ApiError};
 
 /// Custom error type for server errors
 #[derive(Error, Debug)]
@@ -30,7 +30,7 @@ pub enum AuthServerError {
     Unauthorized(String),
     /// An error executing an HTTP request
     #[error("Http: {0}")]
-    Http(String),
+    Http(HttpError),
     /// Gas sponsorship error
     #[error("Gas sponsorship error: {0}")]
     GasSponsorship(String),
@@ -108,6 +108,12 @@ impl AuthServerError {
 }
 
 impl warp::reject::Reject for AuthServerError {}
+
+impl From<HttpError> for AuthServerError {
+    fn from(err: HttpError) -> Self {
+        Self::Http(err)
+    }
+}
 
 impl From<AuthServerError> for ApiError {
     fn from(err: AuthServerError) -> Self {

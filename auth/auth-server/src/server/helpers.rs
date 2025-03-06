@@ -61,21 +61,24 @@ pub fn aes_decrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
     Ok(plaintext)
 }
 
-/// Generate a random nonce for gas sponsorship, signing it and the provided
-/// refund address
+/// Generate a random nonce for gas sponsorship, signing it along with
+/// the provided refund address, and optionally the conversion rate
 pub fn gen_signed_sponsorship_nonce(
     refund_address: Address,
+    conversion_rate: Option<U256>,
     gas_sponsor_auth_key: &SigningKey,
 ) -> Result<(U256, Bytes), AuthServerError> {
     // Generate a random sponsorship nonce
     let mut nonce_bytes = [0u8; U256::BYTES];
     thread_rng().fill(&mut nonce_bytes);
 
-    // Generate a signature over the nonce + refund address using the gas sponsor
-    // key
-    let mut message = [0_u8; U256::BYTES + Address::len_bytes()];
-    message[..U256::BYTES].copy_from_slice(&nonce_bytes);
-    message[U256::BYTES..].copy_from_slice(refund_address.as_ref());
+    // Construct & sign the message
+    let mut message = Vec::new();
+    message.extend_from_slice(&nonce_bytes);
+    message.extend_from_slice(refund_address.as_ref());
+    if let Some(conversion_rate) = conversion_rate {
+        message.extend_from_slice(&conversion_rate.to_be_bytes::<{ U256::BYTES }>());
+    }
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
     let nonce = U256::from_be_bytes(nonce_bytes);

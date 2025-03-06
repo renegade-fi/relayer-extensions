@@ -86,7 +86,7 @@ impl Server {
         let key_desc = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
-        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(false);
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or_default();
         let is_sponsored =
             sponsorship_requested && self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
 
@@ -107,7 +107,15 @@ impl Server {
             let refund_address =
                 query_params.get_refund_address().map_err(AuthServerError::serde)?;
 
-            self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+            let refund_native_eth = query_params.refund_native_eth.unwrap_or_default();
+
+            self.mutate_response_for_gas_sponsorship(
+                &mut resp,
+                is_sponsored,
+                refund_address,
+                refund_native_eth,
+            )
+            .await?;
         }
 
         let resp_clone = resp.body().to_vec();
@@ -150,7 +158,7 @@ impl Server {
         let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
-        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(false);
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or_default();
         let is_sponsored = sponsorship_requested
             && self.check_gas_sponsorship_rate_limit(key_description.clone()).await;
 
@@ -171,7 +179,15 @@ impl Server {
             let refund_address =
                 query_params.get_refund_address().map_err(AuthServerError::serde)?;
 
-            self.mutate_response_for_gas_sponsorship(&mut resp, is_sponsored, refund_address)?;
+            let refund_native_eth = query_params.refund_native_eth.unwrap_or_default();
+
+            self.mutate_response_for_gas_sponsorship(
+                &mut resp,
+                is_sponsored,
+                refund_address,
+                refund_native_eth,
+            )
+            .await?;
         }
 
         // Watch the bundle for settlement
