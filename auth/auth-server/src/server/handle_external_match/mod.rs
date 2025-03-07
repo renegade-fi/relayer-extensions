@@ -30,7 +30,7 @@ use crate::telemetry::{
 };
 
 mod gas_sponsorship;
-pub use gas_sponsorship::{sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall};
+pub use gas_sponsorship::sponsorAtomicMatchSettleWithRefundOptionsCall;
 
 // ---------------
 // | Server Impl |

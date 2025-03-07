@@ -21,10 +21,7 @@ use tracing::{info, warn};
 use crate::{
     error::AuthServerError,
     server::{
-        handle_external_match::{
-            sponsorAtomicMatchSettleCall, sponsorAtomicMatchSettleWithReceiverCall,
-        },
-        helpers::get_selector,
+        handle_external_match::sponsorAtomicMatchSettleWithRefundOptionsCall, helpers::get_selector,
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
@@ -347,13 +344,8 @@ fn extract_nullifier_from_match_bundle(
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
-        sponsorAtomicMatchSettleCall::SELECTOR => {
-            sponsorAtomicMatchSettleCall::abi_decode(tx_data, false)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        sponsorAtomicMatchSettleWithReceiverCall::SELECTOR => {
-            sponsorAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
+        sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
+            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data, false)
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
