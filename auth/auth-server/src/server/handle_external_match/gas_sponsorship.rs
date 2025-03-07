@@ -6,6 +6,7 @@
 use alloy_primitives::{Address, Bytes as AlloyBytes, U256 as AlloyU256};
 use alloy_sol_types::{sol, SolCall};
 use auth_server_api::SponsoredMatchResponse;
+use bigdecimal::One;
 use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive};
 use bytes::Bytes;
 use ethers::contract::abigen;
@@ -171,8 +172,7 @@ impl Server {
 
     /// Fetch the conversion rate from ETH to the buy-side token in the trade
     /// from the price reporter, if necessary.
-    /// The conversion rate is in units of
-    /// `token/wei * 10^CONVERSION_RATE_SCALE`
+    /// The conversion rate is in terms of nominal units of TOKEN per whole ETH.
     #[allow(clippy::unused_async)]
     async fn maybe_fetch_conversion_rate(
         &self,
@@ -180,6 +180,7 @@ impl Server {
         refund_native_eth: bool,
     ) -> Result<Option<AlloyU256>, AuthServerError> {
         let buy_mint = &external_match_resp.match_bundle.receive.mint;
+        let quote_mint = &external_match_resp.match_bundle.match_result.quote_mint;
         let native_eth_buy = buy_mint.to_lowercase() == NATIVE_ASSET_ADDRESS.to_lowercase();
 
         // If we're deliberately refunding via native ETH, or the buy-side token
@@ -189,54 +190,70 @@ impl Server {
         }
 
         // Get ETH price
+        // TODO: Optimize by managing a persistent price stream from the price reporter
         let eth_price_f64 = self.price_reporter_client.get_eth_price().await?;
+        let eth_price = BigDecimal::from_f64(eth_price_f64)
+            .ok_or(AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"))?;
 
-        // Get TOKEN price
-        let buy_token_price_f64 = self.price_reporter_client.get_binance_price(buy_mint).await?;
+        // Compute TOKEN price from match result, in nominal terms
+        // (i.e. units of USDC per unit of TOKEN)
+        let buying_quote = buy_mint.to_lowercase() == quote_mint.to_lowercase();
+        let buy_token_price = if buying_quote {
+            // The quote token is always USDC, so price is 1
+            BigDecimal::one()
+        } else {
+            let base_amount =
+                BigDecimal::from(external_match_resp.match_bundle.match_result.base_amount);
+            let quote_amount =
+                BigDecimal::from(external_match_resp.match_bundle.match_result.quote_amount);
+            quote_amount / base_amount
+        };
 
-        // Get the number of decimals for the buy-side token
-        let buy_token_decimals: u32 = Token::from_addr(buy_mint)
+        // Get the number of decimals for the quote token
+        let quote_token_decimals: u32 = Token::from_addr(quote_mint)
             .get_decimals()
-            .ok_or(AuthServerError::gas_sponsorship("buy-side token does not have known decimals"))?
+            .ok_or(AuthServerError::gas_sponsorship("quote token does not have known decimals"))?
             .into();
 
         // Compute the conversion rate
         let conversion_rate =
-            Self::compute_conversion_rate(eth_price_f64, buy_token_price_f64, buy_token_decimals)?;
+            Self::compute_conversion_rate(eth_price, buy_token_price, quote_token_decimals)?;
 
         Ok(Some(conversion_rate))
     }
 
     /// Given the price of ETH and the buy-side token,
-    /// compute the conversion rate in units of
-    /// `token/wei * 10^CONVERSION_RATE_SCALE`
+    /// compute the conversion rate in terms of
+    /// nominal units of TOKEN per 1 whole ETH.
+    ///
+    /// `eth_price_whole` is expected to be in "whole" terms,
+    /// i.e. whole units of USDC per 1 whole ETH.
+    /// This is because the price reporter returns prices
+    /// in these terms.
+    ///
+    /// `buy_token_price_nominal` is expected to be in "nominal" terms,
+    /// i.e. nominal units of USDC per nominal unit of TOKEN.
+    /// This is because it's expected to be computed from
+    /// the direct amounts in the match result.
     fn compute_conversion_rate(
-        eth_price: f64,
-        buy_token_price: f64,
-        buy_token_decimals: u32,
+        eth_price_whole: BigDecimal,
+        buy_token_price_nominal: BigDecimal,
+        quote_token_decimals: u32,
     ) -> Result<AlloyU256, AuthServerError> {
-        // USDT per ETH
-        let eth_price = BigDecimal::from_f64(eth_price)
-            .ok_or(AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"))?;
+        // Decimal-adjust the buy-side token price to represent *whole* units
+        // of USDC per nominal units of TOKEN. This way, both prices are quoted
+        // in terms of whole units of USDC.
+        let buy_token_price_adjustment: BigDecimal =
+            BigInt::from(10).pow(quote_token_decimals).into();
+        let buy_token_price_adjusted = buy_token_price_nominal / buy_token_price_adjustment;
 
-        // USDT per TOKEN
-        let buy_token_price =
-            BigDecimal::from_f64(buy_token_price).ok_or(AuthServerError::gas_sponsorship(
-                "failed to convert buy-side token price to BigDecimal",
-            ))?;
-
-        // Compute conversion rate of TOKEN per ETH
-        let conversion_rate = eth_price / buy_token_price;
-
-        // Decimal-adjust the rate to represent (smallest-denomination) *units* of TOKEN
-        // per ETH
-        let adjustment: BigDecimal = BigInt::from(10).pow(buy_token_decimals).into();
-        let conversion_rate_adjusted = conversion_rate * adjustment;
+        // Compute conversion rate of nominal units of TOKEN per whole ETH
+        let conversion_rate = eth_price_whole / buy_token_price_adjusted;
 
         // Convert the scaled rate to a U256. We can use the `BigInt` component of the
         // `BigDecimal` directly because we round to 0 digits after the decimal.
         let (conversion_rate_bigint, _) =
-            conversion_rate_adjusted.round(0 /* round_digits */).into_bigint_and_scale();
+            conversion_rate.round(0 /* round_digits */).into_bigint_and_scale();
 
         AlloyU256::try_from(conversion_rate_bigint).map_err(AuthServerError::gas_sponsorship)
     }
@@ -406,59 +423,84 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_conversion_rate_simple() {
-        let eth_price = 1000.0;
-        let token_price = 1.0;
-        let token_decimals: u32 = 18;
-
-        let expected_conversion_rate = AlloyU256::from(1000 * 10_u128.pow(18));
-        let conversion_rate =
-            Server::compute_conversion_rate(eth_price, token_price, token_decimals).unwrap();
-
-        assert_eq!(conversion_rate, expected_conversion_rate);
+    /// Get the token price in terms of nominal units of USDC per nominal
+    /// units of TOKEN.
+    fn get_nominal_token_price(
+        token_price_whole: BigDecimal,
+        token_decimals: u32,
+        quote_token_decimals: u32,
+    ) -> BigDecimal {
+        let adjustment =
+            BigDecimal::from_f64(10_f64.powi(quote_token_decimals as i32 - token_decimals as i32))
+                .unwrap();
+        token_price_whole * adjustment
     }
 
+    /// Test that the conversion rate is computed correctly for a simple case
     #[test]
-    fn test_conversion_rate_diff_decimals() {
-        let eth_price = 2_500.0;
-        let token_price = 100_000.0;
+    fn test_conversion_rate_simple() {
+        let eth_price = BigDecimal::from_f64(2_500.0).unwrap();
+        let token_price_whole = BigDecimal::from_f64(100_000.0).unwrap();
         let token_decimals: u32 = 8;
+        let quote_token_decimals: u32 = 6;
+
+        let token_price_nominal =
+            get_nominal_token_price(token_price_whole, token_decimals, quote_token_decimals);
 
         let expected_conversion_rate = AlloyU256::from(2_500_000);
         let conversion_rate =
-            Server::compute_conversion_rate(eth_price, token_price, token_decimals).unwrap();
+            Server::compute_conversion_rate(eth_price, token_price_nominal, quote_token_decimals)
+                .unwrap();
 
         assert_eq!(conversion_rate, expected_conversion_rate);
     }
 
+    /// Test that the conversion rate is computed correctly for a case where
+    /// the quote token is the same as the buy token
+    #[test]
+    fn test_conversion_rate_buy_quote() {
+        let eth_price = BigDecimal::from_f64(2_500.0).unwrap();
+        let token_price = BigDecimal::from_f64(1.0).unwrap();
+        let quote_token_decimals: u32 = 6;
+
+        let expected_conversion_rate = AlloyU256::from(2_500_000_000_u32);
+        let conversion_rate =
+            Server::compute_conversion_rate(eth_price, token_price, quote_token_decimals).unwrap();
+
+        assert_eq!(conversion_rate, expected_conversion_rate);
+    }
+
+    /// Test that the conversion rate is computed correctly for a random case
     #[test]
     fn test_conversion_rate_random() {
         let mut rng = thread_rng();
-        let eth_price: f64 = rng.gen();
-        let token_price: f64 = rng.gen();
+        let eth_price = BigDecimal::from_f64(rng.gen()).unwrap();
+        let token_price = BigDecimal::from_f64(rng.gen()).unwrap();
         let token_decimals: u32 = rng.gen_range(1..=18);
+        let quote_token_decimals: u32 = rng.gen_range(1..=18);
 
-        let conversion_rate =
-            Server::compute_conversion_rate(eth_price, token_price, token_decimals).unwrap();
+        let token_price_nominal =
+            get_nominal_token_price(token_price, token_decimals, quote_token_decimals);
+
+        let conversion_rate = Server::compute_conversion_rate(
+            eth_price.clone(),
+            token_price_nominal.clone(),
+            quote_token_decimals,
+        )
+        .unwrap();
 
         // Simulate converting 1 ETH to TOKEN, and check that the resulting USD value is
         // the same as 1 ETH worth of USD.
 
         // This is the amount of nominal units of TOKEN for 1 whole ETH
-        let nominal_token_per_eth: f64 = conversion_rate.into();
+        let nominal_token_per_eth: BigDecimal = BigInt::from(conversion_rate).into();
 
-        // The token price is the amount of USD for 1 whole TOKEN, not for 1 nominal
-        // unit. As such, this is effectively the derived amount of USD for 1
-        // whole ETH, scaled by a factor of 10^`token_decimals`. We truncate
-        // this result to compare to the original ETH price up to
-        // `token_decimals` digits of precision.
-        // Even this is not guaranteed to be exact, as the conversion from U256 -> f64
-        // above has unspecified precision, so we scale down by one additional decimal
-        // point.
-        let usd_per_eth_scaled = (nominal_token_per_eth * token_price / 10.0).trunc();
-        let eth_price_scaled = (eth_price * 10_f64.powi(token_decimals as i32 - 1)).trunc();
+        let nominal_usdc_per_eth = nominal_token_per_eth * token_price_nominal;
+        let whole_usdc_per_eth = nominal_usdc_per_eth / 10_f64.powi(quote_token_decimals as i32);
 
-        assert_eq!(usd_per_eth_scaled, eth_price_scaled);
+        let deviation = (whole_usdc_per_eth - eth_price.clone()).abs() / eth_price;
+
+        // The deviation should be well within 1bps
+        assert!(deviation < BigDecimal::from_f64(0.0001).unwrap());
     }
 }
