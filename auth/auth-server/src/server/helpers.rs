@@ -4,11 +4,17 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     AeadCore, Aes128Gcm,
 };
-use alloy_primitives::{Address, Bytes, Parity, Signature, U256};
+use alloy_primitives::{Address, Bytes, Parity, Signature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
+use bigdecimal::{
+    num_bigint::{BigInt, Sign},
+    BigDecimal, One,
+};
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
-use ethers::{core::k256::ecdsa::SigningKey, utils::keccak256};
+use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
 use rand::{thread_rng, Rng};
+use renegade_api::http::external_match::AtomicMatchApiBundle;
+use renegade_common::types::token::Token;
 use serde_json::json;
 use warp::reply::Reply;
 
@@ -61,24 +67,27 @@ pub fn aes_decrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
     Ok(plaintext)
 }
 
-/// Generate a random nonce for gas sponsorship, signing it and the provided
-/// refund address
+/// Generate a random nonce for gas sponsorship, signing it along with
+/// the provided refund address, and optionally the conversion rate
 pub fn gen_signed_sponsorship_nonce(
     refund_address: Address,
+    conversion_rate: Option<AlloyU256>,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(U256, Bytes), AuthServerError> {
+) -> Result<(AlloyU256, Bytes), AuthServerError> {
     // Generate a random sponsorship nonce
-    let mut nonce_bytes = [0u8; U256::BYTES];
+    let mut nonce_bytes = [0u8; AlloyU256::BYTES];
     thread_rng().fill(&mut nonce_bytes);
 
-    // Generate a signature over the nonce + refund address using the gas sponsor
-    // key
-    let mut message = [0_u8; U256::BYTES + Address::len_bytes()];
-    message[..U256::BYTES].copy_from_slice(&nonce_bytes);
-    message[U256::BYTES..].copy_from_slice(refund_address.as_ref());
+    // Construct & sign the message
+    let mut message = Vec::new();
+    message.extend_from_slice(&nonce_bytes);
+    message.extend_from_slice(refund_address.as_ref());
+    if let Some(conversion_rate) = conversion_rate {
+        message.extend_from_slice(&conversion_rate.to_be_bytes::<{ AlloyU256::BYTES }>());
+    }
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
-    let nonce = U256::from_be_bytes(nonce_bytes);
+    let nonce = AlloyU256::from_be_bytes(nonce_bytes);
 
     Ok((nonce, signature))
 }
@@ -107,6 +116,43 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
         .ok_or(AuthServerError::serde("expected selector"))?
         .try_into()
         .map_err(AuthServerError::serde)
+}
+
+/// Convert an ethers U256 to a BigDecimal
+pub fn ethers_u256_to_bigdecimal(value: U256) -> BigDecimal {
+    let mut value_bytes = [0u8; 32];
+    value.to_big_endian(&mut value_bytes);
+    let bigint = BigInt::from_bytes_be(Sign::Plus, &value_bytes);
+    BigDecimal::from(bigint)
+}
+
+/// Get the nominal price of the buy token in USDC,
+/// i.e. whole units of USDC per nominal unit of TOKEN
+pub fn get_nominal_buy_token_price(
+    match_bundle: &AtomicMatchApiBundle,
+) -> Result<BigDecimal, AuthServerError> {
+    let buy_mint = &match_bundle.receive.mint;
+    let quote_mint = &match_bundle.match_result.quote_mint;
+    let buying_quote = buy_mint.to_lowercase() == quote_mint.to_lowercase();
+
+    // Compute TOKEN price from match result, in nominal terms
+    // (i.e. units of USDC per unit of TOKEN)
+    let price = if buying_quote {
+        // The quote token is always USDC, so price is 1
+        BigDecimal::one()
+    } else {
+        let base_amount = BigDecimal::from(match_bundle.match_result.base_amount);
+        let quote_amount = BigDecimal::from(match_bundle.match_result.quote_amount);
+        quote_amount / base_amount
+    };
+
+    let quote_decimals = Token::from_addr(quote_mint)
+        .get_decimals()
+        .ok_or(AuthServerError::custom("quote token has no decimals"))?;
+
+    let adjustment: BigDecimal = BigInt::from(10).pow(quote_decimals as u32).into();
+
+    Ok(price / adjustment)
 }
 
 #[cfg(test)]

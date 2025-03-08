@@ -21,6 +21,8 @@ pub enum FundsManagerError {
     Parse(String),
     /// An error with AWS secrets manager
     SecretsManager(String),
+    /// An error with AWS S3
+    S3(String),
     /// A miscellaneous error
     Custom(String),
 }
@@ -57,6 +59,11 @@ impl FundsManagerError {
         FundsManagerError::SecretsManager(msg.to_string())
     }
 
+    /// Create a S3 error
+    pub fn s3<T: ToString>(msg: T) -> FundsManagerError {
+        FundsManagerError::S3(msg.to_string())
+    }
+
     /// Create a custom error
     pub fn custom<T: ToString>(msg: T) -> FundsManagerError {
         FundsManagerError::Custom(msg.to_string())
@@ -71,6 +78,7 @@ impl Display for FundsManagerError {
             FundsManagerError::Http(e) => write!(f, "HTTP error: {}", e),
             FundsManagerError::Parse(e) => write!(f, "Parse error: {}", e),
             FundsManagerError::SecretsManager(e) => write!(f, "Secrets manager error: {}", e),
+            FundsManagerError::S3(e) => write!(f, "S3 error: {}", e),
             FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
         }

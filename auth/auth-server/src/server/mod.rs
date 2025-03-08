@@ -5,18 +5,15 @@ mod api_auth;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;
+pub mod price_reporter_client;
 mod queries;
 mod rate_limiter;
 
+use crate::server::price_reporter_client::PriceReporterClient;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
-    telemetry::{
-        quote_comparison::{
-            handler::QuoteComparisonHandler, price_reporter_client::PriceReporterClient,
-        },
-        sources::QuoteSource,
-    },
+    telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
     ApiError, Cli,
 };
 use base64::{engine::general_purpose, Engine};
@@ -85,8 +82,8 @@ pub struct Server {
     /// The block number at which the server started, used to filter gas
     /// sponsorship events for rate limiting
     pub start_block_num: BlockNumber,
-    /// The price reporter client
-    pub price_reporter_client: PriceReporterClient,
+    /// The price reporter client with WebSocket streaming support
+    pub price_reporter_client: Arc<PriceReporterClient>,
 }
 
 impl Server {
@@ -111,7 +108,8 @@ impl Server {
             args.max_gas_sponsorship_value,
         );
 
-        let price_reporter_client = PriceReporterClient::new(&args.price_reporter_url);
+        let price_reporter_client =
+            Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
 
         // Setup the quote metrics recorder and sources if enabled
         let quote_metrics = if args.enable_quote_comparison {

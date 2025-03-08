@@ -2,6 +2,7 @@
 
 use thiserror::Error;
 
+use crate::server::price_reporter_client::error::PriceReporterError;
 use crate::ApiError;
 
 /// Custom error type for server errors
@@ -28,9 +29,6 @@ pub enum AuthServerError {
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
-    /// An error executing an HTTP request
-    #[error("Http: {0}")]
-    Http(String),
     /// Gas sponsorship error
     #[error("Gas sponsorship error: {0}")]
     GasSponsorship(String),
@@ -43,6 +41,9 @@ pub enum AuthServerError {
     /// A miscellaneous error
     #[error("Error: {0}")]
     Custom(String),
+    /// Price reporter error
+    #[error("Price reporter error: {0}")]
+    PriceReporter(#[from] PriceReporterError),
 }
 
 impl AuthServerError {

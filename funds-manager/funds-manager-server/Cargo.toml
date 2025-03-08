@@ -21,6 +21,7 @@ warp = "0.3"
 
 # === Infra === #
 aws-sdk-secretsmanager = "1.37"
+aws-sdk-s3 = "1.37"
 aws-config = "1.5"
 bb8 = "0.8"
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
@@ -40,6 +41,7 @@ renegade-arbitrum-client = { package = "arbitrum-client", workspace = true, feat
 ] }
 renegade-api = { package = "external-api", workspace = true }
 renegade-common = { package = "common", workspace = true }
+renegade-config = { package = "config", workspace = true }
 renegade-constants = { package = "constants", workspace = true }
 renegade-circuits = { package = "circuits", workspace = true }
 renegade-circuit-types = { package = "circuit-types", workspace = true }

@@ -1,5 +1,7 @@
 //! Defines the quote comparison handler
 
+use std::sync::Arc;
+
 use ethers::utils::format_units;
 use ethers::{providers::Middleware, types::U256};
 use futures_util::future::join_all;
@@ -21,7 +23,8 @@ use crate::{
     },
 };
 
-use super::{price_reporter_client::PriceReporterClient, QuoteComparison};
+use super::QuoteComparison;
+use crate::server::price_reporter_client::PriceReporterClient;
 
 /// Records metrics comparing quotes from different sources
 pub struct QuoteComparisonHandler {
@@ -30,7 +33,7 @@ pub struct QuoteComparisonHandler {
     /// The arbitrum client
     arbitrum_client: ArbitrumClient,
     /// The price reporter client
-    price_reporter_client: PriceReporterClient,
+    price_reporter_client: Arc<PriceReporterClient>,
 }
 
 impl QuoteComparisonHandler {
@@ -38,7 +41,7 @@ impl QuoteComparisonHandler {
     pub fn new(
         sources: Vec<QuoteSource>,
         arbitrum_client: ArbitrumClient,
-        price_reporter_client: PriceReporterClient,
+        price_reporter_client: Arc<PriceReporterClient>,
     ) -> Self {
         Self { sources, arbitrum_client, price_reporter_client }
     }

@@ -6,8 +6,8 @@ use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
-    CreateGasWalletResponse, RefillGasRequest, RefillGasSponsorRequest, RegisterGasWalletRequest,
-    RegisterGasWalletResponse, ReportActivePeersRequest, WithdrawGasRequest,
+    CreateGasWalletResponse, RefillGasRequest, RegisterGasWalletRequest, RegisterGasWalletResponse,
+    ReportActivePeersRequest, WithdrawGasRequest,
 };
 use funds_manager_api::hot_wallets::{
     CreateHotWalletRequest, CreateHotWalletResponse, HotWalletBalancesResponse,
@@ -32,8 +32,6 @@ pub const GAS_ASSET_NAME: &str = "ETH";
 pub const MAX_GAS_WITHDRAWAL_AMOUNT: f64 = 1.; // ETH
 /// The maximum amount that a request may refill gas to
 pub const MAX_GAS_REFILL_AMOUNT: f64 = 0.1; // ETH
-/// The maximum amount of ETH that a request may refill the gas sponsor to
-pub const MAX_GAS_SPONSOR_REFILL_AMOUNT: f64 = 0.5; // ETH
 /// The maximum value of a quoter withdrawal that can be processed in a single
 /// request
 pub const MAX_WITHDRAWAL_VALUE: f64 = 50_000.; // USD
@@ -263,18 +261,10 @@ pub(crate) async fn report_active_peers_handler(
 
 /// Handler for refilling gas for the gas sponsor contract
 pub(crate) async fn refill_gas_sponsor_handler(
-    req: RefillGasSponsorRequest,
+    _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    // Check that the refill amount is less than the max
-    if req.amount > MAX_GAS_SPONSOR_REFILL_AMOUNT {
-        return Err(warp::reject::custom(ApiError::BadRequest(format!(
-            "Requested amount {} ETH exceeds maximum allowed refill of {} ETH",
-            req.amount, MAX_GAS_SPONSOR_REFILL_AMOUNT
-        ))));
-    }
-
-    server.custody_client.refill_gas_sponsor(req.amount).await?;
+    server.custody_client.refill_gas_sponsor().await?;
     let resp = json!({});
     Ok(warp::reply::json(&resp))
 }
