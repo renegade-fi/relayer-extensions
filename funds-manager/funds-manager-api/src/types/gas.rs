@@ -69,10 +69,3 @@ pub struct ReportActivePeersRequest {
     /// The list of active peers
     pub peers: Vec<String>,
 }
-
-/// The request body for refilling gas for the gas sponsor contract
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RefillGasSponsorRequest {
-    /// The amount of gas to top up the gas sponsor contract to
-    pub amount: f64,
-}

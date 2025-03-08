@@ -1,13 +1,17 @@
 //! Handlers for gas sponsor operations
 
+use std::collections::HashMap;
+
 use alloy_sol_types::SolCall;
+use aws_sdk_s3::Client as S3Client;
 use ethers::{
     middleware::SignerMiddleware,
     providers::Middleware,
     signers::{LocalWallet, Signer},
-    types::{BlockNumber, TransactionRequest},
+    types::{BlockNumber, TransactionReceipt, TransactionRequest},
     utils::parse_ether,
 };
+use renegade_common::types::token::Token;
 use tracing::info;
 
 use crate::error::FundsManagerError;
@@ -18,11 +22,28 @@ use super::{CustodyClient, DepositWithdrawSource};
 // | Constants |
 // -------------
 
-/// The threshold beneath which we skip refilling gas for the gas sponsor
-///
-/// I.e. if the contract's balance is within this amount of the desired fill, we
-/// skip refilling
-pub const GAS_SPONSOR_REFILL_TOLERANCE: f64 = 0.001; // ETH
+/// The suffix used to denote the gas sponsor allocation bucket
+const ALLOCATION_SPONSOR_BUCKET_SUFFIX: &str = "gas-sponsor-allocation";
+
+/// The key used to denote the gas sponsor allocation object
+const ALLOCATION_OBJECT_KEY: &str = "allocation.json";
+
+/// The threshold beneath which we skip refilling gas for the gas sponsor.
+/// If the contract's balance deviates from the desired balance by less than
+/// this proportion, we skip refilling
+const GAS_SPONSOR_REFILL_TOLERANCE: f64 = 0.1; // 10%
+
+/// The ticker used to denote the native ETH allocation
+/// in the gas sponsor allocation
+const NATIVE_ETH_TICKER: &str = "ETH";
+
+// ---------
+// | Types |
+// ---------
+
+/// A type alias describing the format of token allocations, namely a map from
+/// ticker to amount (in units of whole tokens)
+type GasSponsorAllocation = HashMap<String, f64>;
 
 // -------
 // | ABI |
@@ -44,19 +65,129 @@ impl CustodyClient {
     // ------------
 
     /// Refill the gas sponsor
-    pub(crate) async fn refill_gas_sponsor(&self, fill_to: f64) -> Result<(), FundsManagerError> {
-        let gas_sponsor_address = format!("{:#x}", self.gas_sponsor_address);
-        let bal = self.get_ether_balance(&gas_sponsor_address).await?;
-        if bal + GAS_SPONSOR_REFILL_TOLERANCE < fill_to {
-            self.send_eth_to_gas_sponsor(fill_to - bal).await?;
-            info!("Refilled gas sponsor to {fill_to} ETH");
+    pub(crate) async fn refill_gas_sponsor(&self) -> Result<(), FundsManagerError> {
+        // Fetch token allocation from S3
+        let allocation = self.fetch_gas_sponsor_allocation().await?;
+
+        self.refill_gas_sponsor_tokens(&allocation).await?;
+        self.refill_gas_sponsor_eth(&allocation).await
+    }
+
+    /// Fetch the gas sponsor allocation from S3
+    async fn fetch_gas_sponsor_allocation(
+        &self,
+    ) -> Result<GasSponsorAllocation, FundsManagerError> {
+        // Create S3 client
+        let s3_client = S3Client::new(&self.aws_config);
+
+        let bucket = format!("{}-{ALLOCATION_SPONSOR_BUCKET_SUFFIX}", self.chain);
+
+        // Fetch the object from S3
+        let resp = s3_client
+            .get_object()
+            .bucket(bucket)
+            .key(ALLOCATION_OBJECT_KEY)
+            .send()
+            .await
+            .map_err(FundsManagerError::s3)?;
+
+        // Aggregate the response stream into bytes
+        let data = resp.body.collect().await.map_err(FundsManagerError::s3)?;
+
+        // Convert the bytes to a string
+        let json_str =
+            String::from_utf8(data.into_bytes().to_vec()).map_err(FundsManagerError::parse)?;
+
+        // Parse the JSON string to GasSponsorAllocation
+        let allocation: GasSponsorAllocation =
+            serde_json::from_str(&json_str).map_err(FundsManagerError::parse)?;
+
+        Ok(allocation)
+    }
+
+    /// Refill the gas sponsor with ERC-20 tokens for in-kind sponsorship
+    async fn refill_gas_sponsor_tokens(
+        &self,
+        allocation: &GasSponsorAllocation,
+    ) -> Result<(), FundsManagerError> {
+        let gas_sponsor_address = self.gas_sponsor_address();
+
+        for (ticker, desired_amount) in allocation {
+            // Skip the native ETH allocation, that is handled in `refill_gas_sponsor_eth`
+            if ticker == NATIVE_ETH_TICKER {
+                continue;
+            }
+
+            let token = Token::from_ticker(ticker);
+
+            // Get the gas sponsor's balance of the token
+            let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
+
+            if bal < desired_amount * (1.0 - GAS_SPONSOR_REFILL_TOLERANCE) {
+                let amount_to_send = desired_amount - bal;
+                let receipt = self.send_tokens_to_gas_sponsor(&token.addr, amount_to_send).await?;
+                info!(
+                    "Sent {amount_to_send} {ticker} from hot wallet to gas sponsor in tx {:#x}",
+                    receipt.transaction_hash
+                );
+            }
         }
 
         Ok(())
     }
 
+    /// Refill the gas sponsor with ETH
+    async fn refill_gas_sponsor_eth(
+        &self,
+        allocation: &GasSponsorAllocation,
+    ) -> Result<(), FundsManagerError> {
+        let desired_eth_amount = allocation
+            .get(NATIVE_ETH_TICKER)
+            .ok_or(FundsManagerError::custom("Gas sponsor allocation missing ETH entry"))?;
+
+        let bal = self.get_ether_balance(&self.gas_sponsor_address()).await?;
+
+        if bal < desired_eth_amount * (1.0 - GAS_SPONSOR_REFILL_TOLERANCE) {
+            let amount_to_send = desired_eth_amount - bal;
+            let receipt = self.send_eth_to_gas_sponsor(amount_to_send).await?;
+            info!(
+                "Sent {amount_to_send} ETH from hot wallet to gas sponsor in tx {:#x}",
+                receipt.transaction_hash
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Send ERC-20 tokens to the gas sponsor contract
+    async fn send_tokens_to_gas_sponsor(
+        &self,
+        mint: &str,
+        amount: f64,
+    ) -> Result<TransactionReceipt, FundsManagerError> {
+        // Get the quoter hot wallet's private key
+        let source = DepositWithdrawSource::Quoter.vault_name();
+        let quoter_wallet = self.get_hot_wallet_by_vault(source).await?;
+        let signer = self.get_hot_wallet_private_key(&quoter_wallet.address).await?;
+
+        let bal = self.get_erc20_balance(mint, &quoter_wallet.address).await?;
+        if bal < amount {
+            return Err(FundsManagerError::custom(format!(
+                "quoter hot wallet does not have enough {mint} to cover the refill"
+            )));
+        }
+
+        let receipt =
+            self.erc20_transfer(mint, &self.gas_sponsor_address(), amount, signer).await?;
+
+        Ok(receipt)
+    }
+
     /// Send ETH to the gas sponsor contract
-    async fn send_eth_to_gas_sponsor(&self, amount: f64) -> Result<(), FundsManagerError> {
+    async fn send_eth_to_gas_sponsor(
+        &self,
+        amount: f64,
+    ) -> Result<TransactionReceipt, FundsManagerError> {
         // Get the gas hot wallet's private key
         let source = DepositWithdrawSource::Gas.vault_name();
         let gas_wallet = self.get_hot_wallet_by_vault(source).await?;
@@ -80,7 +211,7 @@ impl CustodyClient {
         &self,
         amount: f64,
         signer: LocalWallet,
-    ) -> Result<(), FundsManagerError> {
+    ) -> Result<TransactionReceipt, FundsManagerError> {
         let wallet = signer.with_chain_id(self.chain_id);
         let provider = self.get_rpc_provider()?;
         let client = SignerMiddleware::new(provider, wallet);
@@ -105,16 +236,14 @@ impl CustodyClient {
             .value(amount_units)
             .gas_price(latest_basefee * 2);
 
-        info!("Sending {amount} ETH to the gas sponsor contract");
-
         let pending_tx =
             client.send_transaction(tx, None).await.map_err(FundsManagerError::arbitrum)?;
 
-        pending_tx
+        let receipt = pending_tx
             .await
             .map_err(FundsManagerError::arbitrum)?
             .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))?;
 
-        Ok(())
+        Ok(receipt)
     }
 }

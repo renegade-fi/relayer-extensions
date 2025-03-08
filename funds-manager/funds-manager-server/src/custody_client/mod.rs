@@ -17,6 +17,7 @@ use fireblocks_sdk::{
     types::Account as FireblocksAccount, Client as FireblocksClient,
     ClientBuilder as FireblocksClientBuilder,
 };
+use renegade_arbitrum_client::constants::Chain;
 use renegade_util::err_str;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -63,6 +64,8 @@ impl DepositWithdrawSource {
 /// The client interacting with the custody backend
 #[derive(Clone)]
 pub struct CustodyClient {
+    /// The chain name
+    chain: Chain,
     /// The chain ID
     chain_id: u64,
     /// The API key for the Fireblocks API
@@ -82,7 +85,9 @@ pub struct CustodyClient {
 impl CustodyClient {
     /// Create a new CustodyClient
     #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        chain: Chain,
         chain_id: u64,
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
@@ -93,6 +98,7 @@ impl CustodyClient {
     ) -> Self {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
         Self {
+            chain,
             chain_id,
             fireblocks_api_key,
             fireblocks_api_secret,
@@ -106,6 +112,11 @@ impl CustodyClient {
     /// Get a database connection from the pool
     pub async fn get_db_conn(&self) -> Result<DbConn, FundsManagerError> {
         self.db_pool.get().await.map_err(|e| FundsManagerError::Db(e.to_string()))
+    }
+
+    /// Get the gas sponsor contract address as a string
+    pub fn gas_sponsor_address(&self) -> String {
+        format!("{:#x}", self.gas_sponsor_address)
     }
 
     // --- Fireblocks --- //
