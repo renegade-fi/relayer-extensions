@@ -86,7 +86,7 @@ impl Server {
         let key_desc = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
-        let sponsorship_requested = query_params.omit_sponsorship.unwrap_or_default();
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(true);
         let is_sponsored =
             sponsorship_requested && self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
 
@@ -158,7 +158,7 @@ impl Server {
         let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
-        let sponsorship_requested = query_params.omit_sponsorship.unwrap_or_default();
+        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(true);
         let is_sponsored = sponsorship_requested
             && self.check_gas_sponsorship_rate_limit(key_description.clone()).await;
 

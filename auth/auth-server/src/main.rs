@@ -16,6 +16,7 @@
 #![feature(duration_constructors)]
 
 pub(crate) mod error;
+pub mod http_utils;
 pub(crate) mod models;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub(crate) mod schema;

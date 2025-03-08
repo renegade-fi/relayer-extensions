@@ -52,9 +52,9 @@ pub struct SponsoredMatchResponse {
 /// The query parameters used for gas sponsorship
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GasSponsorshipQueryParams {
-    /// Whether to omit gas sponsorship for the external match.
-    /// Defaults to `false`, meaning gas sponsorship is used.
-    pub omit_sponsorship: Option<bool>,
+    /// Whether to use gas sponsorship for the external match.
+    /// Defaults to `true`.
+    pub use_gas_sponsorship: Option<bool>,
     /// The address to refund gas to.
     /// In the case of a native ETH refund, defaults to `tx::origin`.
     /// In the case of an in-kind refund, defaults to the receiver.

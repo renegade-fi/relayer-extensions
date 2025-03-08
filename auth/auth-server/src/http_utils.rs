@@ -1,8 +1,10 @@
-//! Utilities for HTTP requests
+//! General-purpose HTTP utilities
+
+use std::time::Duration;
 
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::time::Duration;
+
 use thiserror::Error;
 
 /// An error with the HTTP client
@@ -10,14 +12,14 @@ use thiserror::Error;
 pub enum HttpError {
     /// A network error
     #[error("Network error: {0}")]
-    Network(String, #[source] reqwest::Error),
+    Network(#[source] reqwest::Error),
 
-    /// An API error
+    /// API error
     #[error("API error: {0}")]
     Api(String),
 
-    /// A response parsing error
-    #[error("Response parsing error: {0}")]
+    /// Parsing error
+    #[error("Parsing error: {0}")]
     Parsing(String),
 }
 
@@ -34,19 +36,14 @@ pub async fn send_get_request(url: &str, timeout_secs: u64) -> Result<Response, 
     let client = Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .build()
-        .map_err(|e| HttpError::Network("Failed to create HTTP client".to_string(), e))?;
+        .map_err(HttpError::Network)?;
 
-    let response = client.get(url).send().await.map_err(|e| {
-        if e.is_timeout() {
-            HttpError::Network(format!("Request timed out after {} seconds", timeout_secs), e)
-        } else {
-            HttpError::Network("Failed to send request".to_string(), e)
-        }
-    })?;
+    let response = client.get(url).send().await.map_err(HttpError::Network)?;
 
     if !response.status().is_success() {
         let status = response.status();
-        let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let message = response.text().await.map_err(HttpError::parsing)?;
+
         return Err(HttpError::Api(format!("Status {}: {}", status, message)));
     }
 
@@ -62,7 +59,7 @@ pub async fn send_post_request<T: Serialize>(
     let client = Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .build()
-        .map_err(|e| HttpError::Network("Failed to create HTTP client".to_string(), e))?;
+        .map_err(HttpError::Network)?;
 
     let response = client
         .post(url)
@@ -70,17 +67,11 @@ pub async fn send_post_request<T: Serialize>(
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                HttpError::Network(format!("Request timed out after {} seconds", timeout_secs), e)
-            } else {
-                HttpError::Network("Failed to send request".to_string(), e)
-            }
-        })?;
+        .map_err(HttpError::Network)?;
 
     if !response.status().is_success() {
         let status = response.status();
-        let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let message = response.text().await.map_err(HttpError::parsing)?;
         return Err(HttpError::Api(format!("Status {}: {}", status, message)));
     }
 

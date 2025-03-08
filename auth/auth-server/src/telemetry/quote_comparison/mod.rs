@@ -1,7 +1,6 @@
 //! Defines the quote comparison struct and handler
 
 pub mod handler;
-pub mod price_reporter_client;
 
 use renegade_circuit_types::order::OrderSide;
 
