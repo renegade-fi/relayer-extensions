@@ -1,7 +1,8 @@
 //! A client for the Odos API
 
+use crate::http_utils::{send_post_request, HttpError};
+
 use super::types::{OdosQuoteRequest, OdosQuoteResponse};
-use crate::telemetry::sources::http_utils::{send_post_request, HttpError};
 
 // -------------
 // | Constants |
@@ -80,9 +81,6 @@ impl OdosClient {
         let url = format!("{}{}", BASE_URL, QUOTE_ROUTE);
         let response = send_post_request(&url, Some(request), self.config.timeout_secs).await?;
 
-        response
-            .json::<OdosQuoteResponse>()
-            .await
-            .map_err(|e| HttpError::Network("Failed to parse response".to_string(), e))
+        response.json::<OdosQuoteResponse>().await.map_err(HttpError::parsing)
     }
 }

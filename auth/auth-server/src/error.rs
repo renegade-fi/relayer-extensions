@@ -2,7 +2,8 @@
 
 use thiserror::Error;
 
-use crate::{telemetry::sources::http_utils::HttpError, ApiError};
+use crate::server::price_reporter_client::error::PriceReporterError;
+use crate::ApiError;
 
 /// Custom error type for server errors
 #[derive(Error, Debug)]
@@ -28,9 +29,6 @@ pub enum AuthServerError {
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
-    /// An error executing an HTTP request
-    #[error("Http: {0}")]
-    Http(HttpError),
     /// Gas sponsorship error
     #[error("Gas sponsorship error: {0}")]
     GasSponsorship(String),
@@ -43,6 +41,9 @@ pub enum AuthServerError {
     /// A miscellaneous error
     #[error("Error: {0}")]
     Custom(String),
+    /// Price reporter error
+    #[error("Price reporter error: {0}")]
+    PriceReporter(#[from] PriceReporterError),
 }
 
 impl AuthServerError {
@@ -108,12 +109,6 @@ impl AuthServerError {
 }
 
 impl warp::reject::Reject for AuthServerError {}
-
-impl From<HttpError> for AuthServerError {
-    fn from(err: HttpError) -> Self {
-        Self::Http(err)
-    }
-}
 
 impl From<AuthServerError> for ApiError {
     fn from(err: AuthServerError) -> Self {

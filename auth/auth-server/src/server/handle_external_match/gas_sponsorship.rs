@@ -188,7 +188,6 @@ impl Server {
         }
 
         // Get ETH price
-        // TODO: Optimize by managing a persistent price stream from the price reporter
         let eth_price_f64 = self.price_reporter_client.get_eth_price().await?;
         let eth_price = BigDecimal::from_f64(eth_price_f64)
             .ok_or(AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"))?;
@@ -322,8 +321,6 @@ impl Server {
         {
             let nominal_price = if token_addr == Address::zero() {
                 // The zero address indicates that the gas was sponsored via native ETH.
-
-                // TODO: Fetch price from global stream, once that is implemented
                 let price_f64: f64 = self
                     .price_reporter_client
                     .get_eth_price()
