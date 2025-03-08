@@ -10,6 +10,7 @@ use renegade_arbitrum_client::{
     constants::Chain,
 };
 use renegade_circuit_types::elgamal::DecryptionKey;
+use renegade_config::setup_token_remaps;
 use renegade_util::raw_err_str;
 
 use crate::{
@@ -65,6 +66,12 @@ pub(crate) struct Server {
 impl Server {
     /// Build a server from the CLI
     pub async fn build_from_cli(args: Cli) -> Result<Self, Box<dyn Error>> {
+        tokio::task::spawn_blocking(move || {
+            setup_token_remaps(None /* token_remap_file */, args.chain)
+        })
+        .await
+        .unwrap()?;
+
         // Parse an AWS config
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(DEFAULT_REGION))
@@ -100,6 +107,7 @@ impl Server {
         let gas_sponsor_address = Address::from_str(&args.gas_sponsor_address)?;
 
         let custody_client = CustodyClient::new(
+            args.chain,
             chain_id,
             args.fireblocks_api_key,
             args.fireblocks_api_secret,

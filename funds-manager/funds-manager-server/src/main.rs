@@ -23,8 +23,8 @@ use funds_manager_api::fees::{
     WITHDRAW_FEE_BALANCE_ROUTE,
 };
 use funds_manager_api::gas::{
-    RefillGasRequest, RefillGasSponsorRequest, RegisterGasWalletRequest, ReportActivePeersRequest,
-    WithdrawGasRequest, REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE, REGISTER_GAS_WALLET_ROUTE,
+    RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest, WithdrawGasRequest,
+    REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE, REGISTER_GAS_WALLET_ROUTE,
     REPORT_ACTIVE_PEERS_ROUTE, WITHDRAW_GAS_ROUTE,
 };
 use funds_manager_api::hot_wallets::{
@@ -315,8 +315,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("gas"))
         .and(warp::path(REFILL_GAS_SPONSOR_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<RefillGasSponsorRequest>)
-        .and_then(identity)
         .and(with_server(server.clone()))
         .and_then(refill_gas_sponsor_handler);
 
