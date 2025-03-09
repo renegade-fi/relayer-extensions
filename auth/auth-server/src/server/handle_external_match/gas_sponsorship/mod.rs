@@ -29,6 +29,8 @@ use crate::server::helpers::{
 use crate::telemetry::helpers::record_gas_sponsorship_metrics;
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
+pub mod gas_estimation;
+
 // -------
 // | ABI |
 // -------
