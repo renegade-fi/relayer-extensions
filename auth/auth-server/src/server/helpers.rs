@@ -24,10 +24,6 @@ use crate::error::AuthServerError;
 // | Constants |
 // -------------
 
-/// The gas estimation to use if fetching a gas estimation fails
-/// From https://github.com/renegade-fi/renegade/blob/main/workers/api-server/src/http/external_match.rs/#L62
-pub const DEFAULT_GAS_ESTIMATION: u64 = 4_000_000; // 4m
-
 /// The nonce size for AES128-GCM
 const NONCE_SIZE: usize = 12; // 12 bytes, 96 bits
 
