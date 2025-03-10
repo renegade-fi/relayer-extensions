@@ -37,6 +37,7 @@ renegade-circuit-types = { package = "circuit-types", git = "https://github.com/
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Database Dependencies === #
 diesel = { version = "2.1" }

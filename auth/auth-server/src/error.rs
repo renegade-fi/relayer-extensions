@@ -47,6 +47,9 @@ pub enum AuthServerError {
     /// Arbitrum client error
     #[error("Arbitrum client error: {0}")]
     ArbitrumClient(String),
+    /// Gas cost sampler error
+    #[error("Gas cost sampler error: {0}")]
+    GasCostSampler(String),
 }
 
 impl AuthServerError {
