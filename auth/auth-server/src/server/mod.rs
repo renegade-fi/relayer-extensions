@@ -2,6 +2,7 @@
 //!
 //! The server is a dependency injection container for the authentication server
 mod api_auth;
+pub mod gas_estimation;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;
@@ -26,6 +27,7 @@ use diesel_async::{
     AsyncPgConnection,
 };
 use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
+use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -34,6 +36,7 @@ use rate_limiter::AuthServerRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::hmac::HmacKey;
+use renegade_system_clock::SystemClock;
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -84,6 +87,10 @@ pub struct Server {
     pub start_block_num: BlockNumber,
     /// The price reporter client with WebSocket streaming support
     pub price_reporter_client: Arc<PriceReporterClient>,
+    /// The gas cost sampler
+    pub gas_cost_sampler: Arc<GasCostSampler>,
+    /// The system clock
+    pub system_clock: SystemClock,
 }
 
 impl Server {
@@ -135,6 +142,16 @@ impl Server {
         let start_block_num =
             arbitrum_client.block_number().await.map_err(AuthServerError::setup)?;
 
+        let system_clock = SystemClock::new().await;
+        let gas_cost_sampler = Arc::new(
+            GasCostSampler::new(
+                arbitrum_client.client().clone(),
+                gas_sponsor_address,
+                system_clock.clone(),
+            )
+            .await?,
+        );
+
         Ok(Self {
             db_pool: Arc::new(db_pool),
             relayer_url: args.relayer_url,
@@ -153,6 +170,8 @@ impl Server {
             gas_sponsor_auth_key,
             start_block_num,
             price_reporter_client,
+            gas_cost_sampler,
+            system_clock,
         })
     }
 

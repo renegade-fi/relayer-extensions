@@ -47,6 +47,8 @@ impl QuoteComparisonHandler {
     }
 
     /// Records metrics comparing quotes from different sources
+    // TODO(@akirillo / @sehyunc): Use gas estimation module to estimate quote gas
+    // costs
     pub async fn record_quote_comparison(
         &self,
         match_bundle: &AtomicMatchApiBundle,

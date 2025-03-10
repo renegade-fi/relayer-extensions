@@ -14,7 +14,9 @@ use renegade_arbitrum_client::{
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
 use renegade_common::types::token::Token;
-use renegade_constants::{Scalar, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER};
+use renegade_constants::{
+    Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
+};
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::{info, warn};
 
@@ -147,10 +149,12 @@ fn record_external_match_request_metrics(
     let base_mint = biguint_to_hex_addr(&order.base_mint);
     let quote_mint = biguint_to_hex_addr(&order.quote_mint);
 
+    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+
     // Calculate amount in quote using fixed point arithmetic
     let fixed_point_price = FixedPoint::from_f64_round_down(price);
-    let quote_amount = order.get_quote_amount(fixed_point_price);
-    let base_amount = order.get_base_amount(fixed_point_price);
+    let quote_amount = order.get_quote_amount(fixed_point_price, relayer_fee);
+    let base_amount = order.get_base_amount(fixed_point_price, relayer_fee);
 
     record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
 
@@ -256,8 +260,12 @@ pub(crate) async fn record_external_match_metrics(
         warn!("Error recording request metrics: {e}");
     }
 
+    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+
     // Record fill ratio metric
-    let requested_quote_amount = order.get_quote_amount(FixedPoint::from_f64_round_down(price));
+    let requested_quote_amount =
+        order.get_quote_amount(FixedPoint::from_f64_round_down(price), relayer_fee);
+
     let matched_quote_amount = match_bundle.match_result.quote_amount;
     if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, labels) {
         warn!("Error recording fill ratio metric: {e}");
