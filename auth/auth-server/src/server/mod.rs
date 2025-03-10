@@ -89,13 +89,15 @@ pub struct Server {
     pub price_reporter_client: Arc<PriceReporterClient>,
     /// The gas cost sampler
     pub gas_cost_sampler: Arc<GasCostSampler>,
-    /// The system clock
-    pub system_clock: SystemClock,
 }
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(args: Cli, arbitrum_client: ArbitrumClient) -> Result<Self, AuthServerError> {
+    pub async fn new(
+        args: Cli,
+        arbitrum_client: ArbitrumClient,
+        system_clock: &SystemClock,
+    ) -> Result<Self, AuthServerError> {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
@@ -142,12 +144,11 @@ impl Server {
         let start_block_num =
             arbitrum_client.block_number().await.map_err(AuthServerError::setup)?;
 
-        let system_clock = SystemClock::new().await;
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
                 arbitrum_client.client().clone(),
                 gas_sponsor_address,
-                system_clock.clone(),
+                system_clock,
             )
             .await?,
         );
@@ -171,7 +172,6 @@ impl Server {
             start_block_num,
             price_reporter_client,
             gas_cost_sampler,
-            system_clock,
         })
     }
 

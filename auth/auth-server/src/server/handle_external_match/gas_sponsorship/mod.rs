@@ -24,7 +24,8 @@ use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalMatchResp
 
 use super::Server;
 use crate::server::helpers::{
-    gen_signed_sponsorship_nonce, get_nominal_buy_token_price, get_selector,
+    ethers_u256_to_alloy_u256, gen_signed_sponsorship_nonce, get_nominal_buy_token_price,
+    get_selector,
 };
 use crate::telemetry::helpers::record_gas_sponsorship_metrics;
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
@@ -35,7 +36,7 @@ use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
 // The ABI for gas sponsorship functions
 sol! {
-    function sponsorAtomicMatchSettleWithRefundOptions(address receiver, bytes internal_party_match_payload, bytes valid_match_settle_atomic_statement, bytes match_proofs, bytes match_linking_proofs, address refund_address, uint256 nonce, bool refund_native_eth, uint256 conversion_rate, bytes signature) external payable;
+    function sponsorAtomicMatchSettleWithRefundOptions(address receiver, bytes internal_party_match_payload, bytes valid_match_settle_atomic_statement, bytes match_proofs, bytes match_linking_proofs, address refund_address, uint256 nonce, bool refund_native_eth, uint256 sponsorship_amount, bytes signature) external payable;
 }
 
 // The ABI for gas sponsorship events
@@ -54,7 +55,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
         refund_address: AlloyAddress,
         nonce: AlloyU256,
         refund_native_eth: bool,
-        conversion_rate: AlloyU256,
+        sponsorship_amount: AlloyU256,
         signature: AlloyBytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleCall {
@@ -76,7 +77,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             refund_address,
             nonce,
             refund_native_eth,
-            conversion_rate,
+            sponsorship_amount,
             signature,
         })
     }
@@ -88,7 +89,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
         refund_address: AlloyAddress,
         nonce: AlloyU256,
         refund_native_eth: bool,
-        conversion_rate: AlloyU256,
+        sponsorship_amount: AlloyU256,
         signature: AlloyBytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleWithReceiverCall {
@@ -111,7 +112,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             refund_address,
             nonce,
             refund_native_eth,
-            conversion_rate,
+            sponsorship_amount,
             signature,
         })
     }
@@ -143,12 +144,21 @@ impl Server {
                 .maybe_fetch_conversion_rate(&relayer_external_match_resp, refund_native_eth)
                 .await?;
 
+            let estimated_gas_cost = ethers_u256_to_alloy_u256(self.get_gas_cost_estimate().await);
+
+            let sponsorship_amount = if let Some(conversion_rate) = conversion_rate {
+                let wei_in_eth = ethers_u256_to_alloy_u256(WEI_IN_ETHER);
+                (estimated_gas_cost / wei_in_eth) * conversion_rate
+            } else {
+                estimated_gas_cost
+            };
+
             let gas_sponsor_calldata = self
                 .generate_gas_sponsor_calldata(
                     &relayer_external_match_resp,
                     refund_address,
                     refund_native_eth,
-                    conversion_rate,
+                    sponsorship_amount,
                 )?
                 .into();
 
@@ -214,15 +224,13 @@ impl Server {
         external_match_resp: &ExternalMatchResponse,
         refund_address: AlloyAddress,
         refund_native_eth: bool,
-        conversion_rate: Option<AlloyU256>,
+        sponsorship_amount: AlloyU256,
     ) -> Result<Bytes, AuthServerError> {
         let (nonce, signature) = gen_signed_sponsorship_nonce(
             refund_address,
-            conversion_rate,
+            sponsorship_amount,
             &self.gas_sponsor_auth_key,
         )?;
-
-        let conversion_rate = conversion_rate.unwrap_or_default();
 
         let calldata = external_match_resp
             .match_bundle
@@ -239,7 +247,7 @@ impl Server {
                     refund_address,
                     nonce,
                     refund_native_eth,
-                    conversion_rate,
+                    sponsorship_amount,
                     signature,
                 )
             },
@@ -249,7 +257,7 @@ impl Server {
                     refund_address,
                     nonce,
                     refund_native_eth,
-                    conversion_rate,
+                    sponsorship_amount,
                     signature,
                 )
             },

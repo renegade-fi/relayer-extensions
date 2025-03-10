@@ -31,6 +31,7 @@ use renegade_arbitrum_client::{
     constants::Chain,
 };
 use renegade_config::setup_token_remaps;
+use renegade_system_clock::SystemClock;
 use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
@@ -227,8 +228,12 @@ async fn main() {
     .await
     .unwrap();
 
+    let system_clock = SystemClock::new().await;
+
     // Create the server
-    let server = Server::new(args, arbitrum_client).await.expect("Failed to create server");
+    let server =
+        Server::new(args, arbitrum_client, &system_clock).await.expect("Failed to create server");
+
     let server = Arc::new(server);
 
     // --- Management Routes --- //

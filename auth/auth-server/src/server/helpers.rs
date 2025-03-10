@@ -64,10 +64,10 @@ pub fn aes_decrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
 }
 
 /// Generate a random nonce for gas sponsorship, signing it along with
-/// the provided refund address, and optionally the conversion rate
+/// the provided refund address and the sponsorship amount
 pub fn gen_signed_sponsorship_nonce(
     refund_address: Address,
-    conversion_rate: Option<AlloyU256>,
+    sponsorship_amount: AlloyU256,
     gas_sponsor_auth_key: &SigningKey,
 ) -> Result<(AlloyU256, Bytes), AuthServerError> {
     // Generate a random sponsorship nonce
@@ -78,9 +78,7 @@ pub fn gen_signed_sponsorship_nonce(
     let mut message = Vec::new();
     message.extend_from_slice(&nonce_bytes);
     message.extend_from_slice(refund_address.as_ref());
-    if let Some(conversion_rate) = conversion_rate {
-        message.extend_from_slice(&conversion_rate.to_be_bytes::<{ AlloyU256::BYTES }>());
-    }
+    message.extend_from_slice(&sponsorship_amount.to_be_bytes::<{ AlloyU256::BYTES }>());
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
     let nonce = AlloyU256::from_be_bytes(nonce_bytes);
@@ -112,6 +110,13 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
         .ok_or(AuthServerError::serde("expected selector"))?
         .try_into()
         .map_err(AuthServerError::serde)
+}
+
+/// Convert an ethers U256 to an alloy U256
+pub fn ethers_u256_to_alloy_u256(value: U256) -> AlloyU256 {
+    let mut value_bytes = [0_u8; 32];
+    value.to_big_endian(&mut value_bytes);
+    AlloyU256::from_be_bytes(value_bytes)
 }
 
 /// Convert an ethers U256 to a BigDecimal
