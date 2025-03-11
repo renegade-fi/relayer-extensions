@@ -49,13 +49,17 @@ impl GasCostSampler {
     pub async fn new(
         client: Arc<MiddlewareStack>,
         gas_sponsor_address: Address,
-        system_clock: SystemClock,
+        system_clock: &SystemClock,
     ) -> Result<Self, AuthServerError> {
         let this = Self {
             latest_estimate: Arc::new(RwLock::new(U256::zero())),
             client,
             gas_sponsor_address,
         };
+
+        // Sample an initial estimate of the gas cost since the timer will not run
+        // until one interval has passed.
+        this.estimate_external_match_gas_cost().await.map_err(AuthServerError::gas_cost_sampler)?;
 
         let this_for_timer = this.clone();
 
@@ -69,14 +73,14 @@ impl GasCostSampler {
                 },
             )
             .await
-            .map_err(|SystemClockError(e)| AuthServerError::GasCostSampler(e))?;
+            .map_err(|SystemClockError(e)| AuthServerError::gas_cost_sampler(e))?;
 
         Ok(this)
     }
 
     /// Get the latest estimate of the gas cost for an external match
     pub async fn get_latest_estimate(&self) -> U256 {
-        self.latest_estimate.read().await.clone()
+        *self.latest_estimate.read().await
     }
 
     /// Estimate the gas cost, in wei, of an external match.

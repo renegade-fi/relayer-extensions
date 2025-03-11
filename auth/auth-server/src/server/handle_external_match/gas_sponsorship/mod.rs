@@ -13,21 +13,33 @@ use ethers::{
     types::{transaction::eip2718::TypedTransaction, Address, TxHash, U256},
     utils::WEI_IN_ETHER,
 };
-use http::{header::CONTENT_LENGTH, Response};
 use renegade_arbitrum_client::abi::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
 };
+use renegade_circuit_types::order::OrderSide;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
 use tracing::{info, warn};
 
-use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalMatchResponse};
+use renegade_api::http::external_match::{
+    ApiExternalMatchResult, AtomicMatchApiBundle, ExternalMatchResponse,
+};
 
 use super::Server;
 use crate::server::helpers::{
-    gen_signed_sponsorship_nonce, get_nominal_buy_token_price, get_selector,
+    ethers_u256_to_alloy_u256, gen_signed_sponsorship_nonce, get_nominal_buy_token_price,
+    get_selector,
 };
 use crate::telemetry::helpers::record_gas_sponsorship_metrics;
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
+
+// -------------
+// | Constants |
+// -------------
+
+/// The number of Wei in 1 ETH, as an `AlloyU256`.
+/// Concretely, this is 10^18
+const ALLOY_WEI_IN_ETHER: AlloyU256 =
+    AlloyU256::from_limbs([1_000_000_000_000_000_000_u64, 0, 0, 0]);
 
 // -------
 // | ABI |
@@ -35,7 +47,7 @@ use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
 // The ABI for gas sponsorship functions
 sol! {
-    function sponsorAtomicMatchSettleWithRefundOptions(address receiver, bytes internal_party_match_payload, bytes valid_match_settle_atomic_statement, bytes match_proofs, bytes match_linking_proofs, address refund_address, uint256 nonce, bool refund_native_eth, uint256 conversion_rate, bytes signature) external payable;
+    function sponsorAtomicMatchSettleWithRefundOptions(address receiver, bytes internal_party_match_payload, bytes valid_match_settle_atomic_statement, bytes match_proofs, bytes match_linking_proofs, address refund_address, uint256 nonce, bool refund_native_eth, uint256 refund_amount, bytes signature) external payable;
 }
 
 // The ABI for gas sponsorship events
@@ -54,7 +66,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
         refund_address: AlloyAddress,
         nonce: AlloyU256,
         refund_native_eth: bool,
-        conversion_rate: AlloyU256,
+        refund_amount: AlloyU256,
         signature: AlloyBytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleCall {
@@ -76,7 +88,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             refund_address,
             nonce,
             refund_native_eth,
-            conversion_rate,
+            refund_amount,
             signature,
         })
     }
@@ -88,7 +100,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
         refund_address: AlloyAddress,
         nonce: AlloyU256,
         refund_native_eth: bool,
-        conversion_rate: AlloyU256,
+        refund_amount: AlloyU256,
         signature: AlloyBytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleWithReceiverCall {
@@ -111,7 +123,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             refund_address,
             nonce,
             refund_native_eth,
-            conversion_rate,
+            refund_amount,
             signature,
         })
     }
@@ -123,50 +135,58 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
 
 /// Handle a proxied request
 impl Server {
-    /// Mutate a quote assembly response to invoke gas sponsorship
-    pub(crate) async fn mutate_response_for_gas_sponsorship(
+    /// Construct a sponsored match response from an external match response
+    pub(crate) fn construct_sponsored_match_response(
         &self,
-        resp: &mut Response<Bytes>,
-        is_sponsored: bool,
+        mut external_match_resp: ExternalMatchResponse,
         refund_address: AlloyAddress,
         refund_native_eth: bool,
-    ) -> Result<(), AuthServerError> {
-        let mut relayer_external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
+        refund_amount: Option<AlloyU256>,
+    ) -> Result<SponsoredMatchResponse, AuthServerError> {
+        external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
 
-        relayer_external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
-
+        let is_sponsored = refund_amount.is_some();
         if is_sponsored {
             info!("Sponsoring match bundle via gas sponsor");
 
-            let conversion_rate = self
-                .maybe_fetch_conversion_rate(&relayer_external_match_resp, refund_native_eth)
-                .await?;
-
             let gas_sponsor_calldata = self
                 .generate_gas_sponsor_calldata(
-                    &relayer_external_match_resp,
+                    &external_match_resp,
                     refund_address,
                     refund_native_eth,
-                    conversion_rate,
+                    refund_amount.unwrap(),
                 )?
                 .into();
 
-            relayer_external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
+            external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
         }
 
-        let external_match_resp = SponsoredMatchResponse {
-            match_bundle: relayer_external_match_resp.match_bundle,
-            is_sponsored,
+        Ok(SponsoredMatchResponse { match_bundle: external_match_resp.match_bundle, is_sponsored })
+    }
+
+    /// Get the amount to refund for a given match result
+    pub async fn get_refund_amount(
+        &self,
+        gas_sponsorship_rate_limited: bool,
+        match_result: &ApiExternalMatchResult,
+        refund_native_eth: bool,
+    ) -> Result<Option<AlloyU256>, AuthServerError> {
+        if gas_sponsorship_rate_limited {
+            return Ok(None);
+        }
+
+        let conversion_rate =
+            self.maybe_fetch_conversion_rate(match_result, refund_native_eth).await?;
+
+        let estimated_gas_cost = ethers_u256_to_alloy_u256(self.get_gas_cost_estimate().await);
+
+        let refund_amount = if let Some(conversion_rate) = conversion_rate {
+            (estimated_gas_cost / ALLOY_WEI_IN_ETHER) * conversion_rate
+        } else {
+            estimated_gas_cost
         };
 
-        let body =
-            Bytes::from(serde_json::to_vec(&external_match_resp).map_err(AuthServerError::serde)?);
-
-        resp.headers_mut().insert(CONTENT_LENGTH, body.len().into());
-        *resp.body_mut() = body;
-
-        Ok(())
+        Ok(Some(refund_amount))
     }
 
     /// Fetch the conversion rate from ETH to the buy-side token in the trade
@@ -175,10 +195,13 @@ impl Server {
     #[allow(clippy::unused_async)]
     async fn maybe_fetch_conversion_rate(
         &self,
-        external_match_resp: &ExternalMatchResponse,
+        match_result: &ApiExternalMatchResult,
         refund_native_eth: bool,
     ) -> Result<Option<AlloyU256>, AuthServerError> {
-        let buy_mint = &external_match_resp.match_bundle.receive.mint;
+        let buy_mint = match match_result.direction {
+            OrderSide::Buy => &match_result.base_mint,
+            OrderSide::Sell => &match_result.quote_mint,
+        };
         let native_eth_buy = buy_mint.to_lowercase() == NATIVE_ASSET_ADDRESS.to_lowercase();
 
         // If we're deliberately refunding via native ETH, or the buy-side token
@@ -192,7 +215,7 @@ impl Server {
         let eth_price = BigDecimal::from_f64(eth_price_f64)
             .ok_or(AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"))?;
 
-        let buy_token_price = get_nominal_buy_token_price(&external_match_resp.match_bundle)?;
+        let buy_token_price = get_nominal_buy_token_price(buy_mint, match_result)?;
 
         // Compute conversion rate of nominal units of TOKEN per whole ETH
         let conversion_rate = eth_price / buy_token_price;
@@ -214,15 +237,13 @@ impl Server {
         external_match_resp: &ExternalMatchResponse,
         refund_address: AlloyAddress,
         refund_native_eth: bool,
-        conversion_rate: Option<AlloyU256>,
+        refund_amount: AlloyU256,
     ) -> Result<Bytes, AuthServerError> {
         let (nonce, signature) = gen_signed_sponsorship_nonce(
             refund_address,
-            conversion_rate,
+            refund_amount,
             &self.gas_sponsor_auth_key,
         )?;
-
-        let conversion_rate = conversion_rate.unwrap_or_default();
 
         let calldata = external_match_resp
             .match_bundle
@@ -239,7 +260,7 @@ impl Server {
                     refund_address,
                     nonce,
                     refund_native_eth,
-                    conversion_rate,
+                    refund_amount,
                     signature,
                 )
             },
@@ -249,7 +270,7 @@ impl Server {
                     refund_address,
                     nonce,
                     refund_native_eth,
-                    conversion_rate,
+                    refund_amount,
                     signature,
                 )
             },
@@ -263,9 +284,9 @@ impl Server {
         Ok(calldata)
     }
 
-    /// Get the token & amount spent to sponsor the given settlement
+    /// Get the token & amount refunded to sponsor the given settlement
     /// transaction, and the associated transaction hash
-    async fn get_sponsorship_amount_and_tx(
+    async fn get_refunded_amount_and_tx(
         &self,
         settlement_tx: &TypedTransaction,
     ) -> Result<Option<(Address, U256, TxHash)>, AuthServerError> {
@@ -317,7 +338,7 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         if is_sponsored
             && let Some((token_addr, amount, tx_hash)) =
-                self.get_sponsorship_amount_and_tx(&match_bundle.settlement_tx).await?
+                self.get_refunded_amount_and_tx(&match_bundle.settlement_tx).await?
         {
             let nominal_price = if token_addr == Address::zero() {
                 // The zero address indicates that the gas was sponsored via native ETH.
@@ -338,7 +359,7 @@ impl Server {
                 // If we did not refund via native ETH, it must have been through the buy-side
                 // token. Thus we compute the nominal price of the buy-side
                 // token from the match result.
-                get_nominal_buy_token_price(match_bundle)?
+                get_nominal_buy_token_price(&match_bundle.receive.mint, &match_bundle.match_result)?
             };
 
             let nominal_amount = ethers_u256_to_bigdecimal(amount);
