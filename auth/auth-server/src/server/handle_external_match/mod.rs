@@ -237,6 +237,7 @@ impl Server {
             resp,
             Some(request_id),
             sponsorship_requested,
+            "assemble-external-match",
         )
         .await
     }
@@ -252,7 +253,15 @@ impl Server {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
         let order = req.external_order;
-        self.handle_bundle_response(key, order, resp, None, sponsorship_requested).await
+        self.handle_bundle_response(
+            key,
+            order,
+            resp,
+            None,
+            sponsorship_requested,
+            "request-external-match",
+        )
+        .await
     }
 
     /// Record and watch a bundle that was forwarded to the client
@@ -265,6 +274,7 @@ impl Server {
         resp: &[u8],
         request_id: Option<String>,
         sponsorship_requested: bool,
+        endpoint: &str,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -282,7 +292,7 @@ impl Server {
             (false, match_resp.match_bundle)
         };
 
-        self.log_bundle(&order, &match_bundle, &key, &request_id)?;
+        self.log_bundle(&order, &match_bundle, &key, &request_id, endpoint)?;
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
@@ -313,7 +323,7 @@ impl Server {
     // --- Logging --- //
 
     /// Log a quote
-    fn log_quote(&self, quote_bytes: &[u8]) -> Result<(), AuthServerError> {
+    fn log_quote(&self, quote_bytes: &[u8], key: &str) -> Result<(), AuthServerError> {
         let resp = serde_json::from_slice::<ExternalQuoteResponse>(quote_bytes)
             .map_err(AuthServerError::serde)?;
 
@@ -322,8 +332,12 @@ impl Server {
         let recv = resp.signed_quote.receive_amount();
         let send = resp.signed_quote.send_amount();
         info!(
+            key_description = key,
             "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({})) to client",
-            recv.amount, recv.mint, send.amount, send.mint
+            recv.amount,
+            recv.mint,
+            send.amount,
+            send.mint
         );
 
         Ok(())
@@ -356,6 +370,7 @@ impl Server {
         match_bundle: &AtomicMatchApiBundle,
         key_description: &str,
         request_id: &str,
+        endpoint: &str,
     ) -> Result<(), AuthServerError> {
         // Get the decimal-corrected price
         let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
@@ -385,6 +400,7 @@ impl Server {
             quote_fill_ratio = quote_fill_ratio,
             key_description = key_description,
             request_id = request_id,
+            endpoint = endpoint,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
             is_buy,
             recv.amount,
@@ -404,7 +420,7 @@ impl Server {
         resp: &[u8],
     ) -> Result<(), AuthServerError> {
         // Log the quote parameters
-        self.log_quote(resp)?;
+        self.log_quote(resp, &key)?;
 
         // Only proceed with metrics recording if sampled
         if !self.should_sample_metrics() {
