@@ -15,7 +15,7 @@ use tokio::sync::RwLock;
 use crate::error::AuthServerError;
 
 use super::constants::{
-    ESTIMATED_CALLDATA_SIZE_BYTES, ESTIMATED_L2_GAS, GAS_COST_SAMPLING_INTERVAL,
+    ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES, ESTIMATED_L2_GAS, GAS_COST_SAMPLING_INTERVAL,
     NODE_INTERFACE_ADDRESS,
 };
 
@@ -94,9 +94,9 @@ impl GasCostSampler {
 
         // The arguments to the `gasEstimateL1Component` call are largely irrelevant.
         // Primarily, we're interested in mocking the calldata,
-        // which we do so by constructing `ESTIMATED_CALLDATA_SIZE_BYTES` random bytes,
-        // as a pessimistic assumption of the compressibility of the calldata.
-        let mut data = [0_u8; ESTIMATED_CALLDATA_SIZE_BYTES];
+        // which we do so by constructing `ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES`
+        // random bytes
+        let mut data = [0_u8; ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES];
         thread_rng().fill_bytes(&mut data);
 
         let (gas_estimate_for_l1, base_fee, _) = node_interface

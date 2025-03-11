@@ -17,6 +17,7 @@ use renegade_arbitrum_client::abi::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
 };
 use renegade_circuit_types::order::OrderSide;
+use renegade_common::types::token::Token;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
 use tracing::{info, warn};
 
@@ -181,7 +182,7 @@ impl Server {
         let estimated_gas_cost = ethers_u256_to_alloy_u256(self.get_gas_cost_estimate().await);
 
         let refund_amount = if let Some(conversion_rate) = conversion_rate {
-            (estimated_gas_cost / ALLOY_WEI_IN_ETHER) * conversion_rate
+            (estimated_gas_cost * conversion_rate) / ALLOY_WEI_IN_ETHER
         } else {
             estimated_gas_cost
         };
@@ -204,9 +205,12 @@ impl Server {
         };
         let native_eth_buy = buy_mint.to_lowercase() == NATIVE_ASSET_ADDRESS.to_lowercase();
 
+        let weth_addr = Token::from_ticker("WETH").get_addr();
+        let weth_buy = buy_mint.to_lowercase() == weth_addr.to_lowercase();
+
         // If we're deliberately refunding via native ETH, or the buy-side token
-        // is native ETH, we don't need to get a conversion rate
-        if refund_native_eth || native_eth_buy {
+        // is native ETH or WETH, we don't need to get a conversion rate
+        if refund_native_eth || native_eth_buy || weth_buy {
             return Ok(None);
         }
 
