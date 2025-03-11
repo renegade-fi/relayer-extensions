@@ -12,6 +12,7 @@ use renegade_api::http::external_match::{
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
+use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -30,9 +31,7 @@ use crate::telemetry::{
 };
 
 mod gas_sponsorship;
-pub use gas_sponsorship::{
-    gas_estimation::ESTIMATED_L2_GAS, sponsorAtomicMatchSettleWithRefundOptionsCall,
-};
+pub use gas_sponsorship::sponsorAtomicMatchSettleWithRefundOptionsCall;
 
 // ---------------
 // | Server Impl |
@@ -383,13 +382,15 @@ impl Server {
         let recv = &match_bundle.receive;
         let send = &match_bundle.send;
 
+        let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+
         // Get the base fill ratio
-        let requested_base_amount = order.get_base_amount(price_fixed);
+        let requested_base_amount = order.get_base_amount(price_fixed, relayer_fee);
         let response_base_amount = match_result.base_amount;
         let base_fill_ratio = response_base_amount as f64 / requested_base_amount as f64;
 
         // Get the quote fill ratio
-        let requested_quote_amount = order.get_quote_amount(price_fixed);
+        let requested_quote_amount = order.get_quote_amount(price_fixed, relayer_fee);
         let response_quote_amount = match_result.quote_amount;
         let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
 
@@ -438,9 +439,13 @@ impl Server {
         // Get the decimal-corrected price
         let price: TimestampedPrice = quote_resp.signed_quote.quote.price.clone().into();
 
+        let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+
         // Calculate requested and matched quote amounts
-        let requested_quote_amount =
-            req.external_order.get_quote_amount(FixedPoint::from_f64_round_down(price.price));
+        let requested_quote_amount = req
+            .external_order
+            .get_quote_amount(FixedPoint::from_f64_round_down(price.price), relayer_fee);
+
         let matched_quote_amount = quote_resp.signed_quote.quote.match_result.quote_amount;
 
         // Record fill ratio metric
