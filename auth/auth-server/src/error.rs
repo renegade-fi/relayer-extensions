@@ -118,6 +118,12 @@ impl AuthServerError {
     pub fn arbitrum_client<T: ToString>(msg: T) -> Self {
         Self::ArbitrumClient(msg.to_string())
     }
+
+    /// Create a new gas cost sampler error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn gas_cost_sampler<T: ToString>(msg: T) -> Self {
+        Self::GasCostSampler(msg.to_string())
+    }
 }
 
 impl warp::reject::Reject for AuthServerError {}
