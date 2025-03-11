@@ -6,7 +6,7 @@ use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::{order::OrderSide, Amount};
 use renegade_common::types::token::Token;
 
-use crate::{error::AuthServerError, server::handle_external_match::ESTIMATED_L2_GAS};
+use crate::{error::AuthServerError, server::gas_estimation::constants::ESTIMATED_L2_GAS};
 
 /// The name of our quote source
 const RENEGADE_SOURCE_NAME: &str = "renegade";
