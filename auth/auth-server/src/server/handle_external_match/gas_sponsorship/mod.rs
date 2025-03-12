@@ -3,7 +3,7 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-use alloy_primitives::Address as AlloyAddress;
+use alloy_primitives::{Address as AlloyAddress, U256};
 use auth_server_api::{
     GasSponsorshipInfo, SignedGasSponsorshipInfo, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
@@ -13,7 +13,7 @@ use ethers::{types::Address, utils::WEI_IN_ETHER};
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchResponse, ExternalQuoteResponse,
 };
-use renegade_util::hex::bytes_to_hex_string;
+use renegade_util::hex::{bytes_from_hex_string, bytes_to_hex_string};
 
 use super::Server;
 use crate::server::helpers::get_nominal_buy_token_price;
@@ -23,6 +23,13 @@ use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 pub mod contract_interaction;
 mod refund_calculation;
 
+// -------------
+// | Constants |
+// -------------
+
+/// The error message for an invalid gas sponsorship info signature
+const ERR_INVALID_GAS_SPONSORSHIP_INFO_SIGNATURE: &str = "invalid gas sponsorship info signature";
+
 // ---------------
 // | Server Impl |
 // ---------------
@@ -30,17 +37,13 @@ mod refund_calculation;
 /// Handle a proxied request
 impl Server {
     /// Construct a sponsored match response from an external match response
-    pub(crate) async fn construct_sponsored_match_response(
+    pub(crate) fn construct_sponsored_match_response(
         &self,
         mut external_match_resp: ExternalMatchResponse,
         refund_native_eth: bool,
         refund_address: AlloyAddress,
+        refund_amount: U256,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
-        // Compute refund amount
-        let refund_amount = self
-            .get_refund_amount(&external_match_resp.match_bundle.match_result, refund_native_eth)
-            .await?;
-
         let gas_sponsor_calldata = self
             .generate_gas_sponsor_calldata(
                 &external_match_resp,
@@ -74,24 +77,19 @@ impl Server {
             )
             .await?;
 
-        let refund_amount: u128 =
-            refund_amount.try_into().map_err(AuthServerError::gas_sponsorship)?;
+        let gas_sponsorship_info =
+            GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
+                .map_err(AuthServerError::gas_sponsorship)?;
 
         // Only update the quote if the refund is in-kind and the refund address is not
         // set
-        if !refund_native_eth && refund_address.is_zero() {
+        if gas_sponsorship_info.requires_quote_update() {
             // Update quote to reflect sponsorship
-            self.apply_sponsorship_to_quote(
+            self.update_quote_with_sponsorship(
                 &mut external_quote_response.signed_quote.quote,
-                refund_amount,
+                gas_sponsorship_info.refund_amount,
             )?;
         }
-
-        let refund_address =
-            if refund_address.is_zero() { None } else { Some(format!("{:#x}", refund_address)) };
-
-        let gas_sponsorship_info =
-            GasSponsorshipInfo { refund_amount, refund_native_eth, refund_address };
 
         let signed_gas_sponsorship_info = self.sign_gas_sponsorship_info(gas_sponsorship_info)?;
 
@@ -113,6 +111,27 @@ impl Server {
         let signature_hex = bytes_to_hex_string(&signature);
 
         Ok(SignedGasSponsorshipInfo { gas_sponsorship_info, signature: signature_hex })
+    }
+
+    /// Validate the given signed gas sponsorship info
+    pub fn validate_gas_sponsorship_info_signature(
+        &self,
+        signed_gas_sponsorship_info: &SignedGasSponsorshipInfo,
+    ) -> Result<(), AuthServerError> {
+        let gas_sponsorship_info_bytes =
+            serde_json::to_vec(&signed_gas_sponsorship_info.gas_sponsorship_info)
+                .map_err(AuthServerError::serde)?;
+
+        let mac_bytes = bytes_from_hex_string(&signed_gas_sponsorship_info.signature)
+            .map_err(AuthServerError::serde)?;
+
+        if !self.management_key.verify_mac(&gas_sponsorship_info_bytes, &mac_bytes) {
+            return Err(AuthServerError::gas_sponsorship(
+                ERR_INVALID_GAS_SPONSORSHIP_INFO_SIGNATURE,
+            ));
+        }
+
+        Ok(())
     }
 
     /// Record the gas sponsorship rate limit & metrics for a given settled
