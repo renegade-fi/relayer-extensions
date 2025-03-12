@@ -4,17 +4,20 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     AeadCore, Aes128Gcm,
 };
-use alloy_primitives::{Address, Bytes, Parity, Signature, U256 as AlloyU256};
+use alloy_primitives::{Address, Bytes as AlloyBytes, Parity, Signature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
 use bigdecimal::{
     num_bigint::{BigInt, Sign},
     BigDecimal, One,
 };
+use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
+use http::{header::CONTENT_LENGTH, Response};
 use rand::{thread_rng, Rng};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_common::types::token::Token;
+use serde::Serialize;
 use serde_json::json;
 use warp::reply::Reply;
 
@@ -69,7 +72,7 @@ pub fn gen_signed_sponsorship_nonce(
     refund_address: Address,
     refund_amount: AlloyU256,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(AlloyU256, Bytes), AuthServerError> {
+) -> Result<(AlloyU256, AlloyBytes), AuthServerError> {
     // Generate a random sponsorship nonce
     let mut nonce_bytes = [0u8; AlloyU256::BYTES];
     thread_rng().fill(&mut nonce_bytes);
@@ -154,6 +157,19 @@ pub fn get_nominal_buy_token_price(
     let adjustment: BigDecimal = BigInt::from(10).pow(quote_decimals as u32).into();
 
     Ok(price / adjustment)
+}
+
+/// Overwrite the body of an HTTP response
+pub fn overwrite_response_body<T: Serialize>(
+    resp: &mut Response<Bytes>,
+    body: T,
+) -> Result<(), AuthServerError> {
+    let body_bytes = Bytes::from(serde_json::to_vec(&body).map_err(AuthServerError::serde)?);
+
+    resp.headers_mut().insert(CONTENT_LENGTH, body_bytes.len().into());
+    *resp.body_mut() = body_bytes;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -31,9 +31,13 @@ impl Server {
     pub(crate) async fn authorize_request(
         &self,
         path: &str,
+        query_str: &str,
         headers: &HeaderMap,
         body: &[u8],
     ) -> Result<String, ApiError> {
+        let auth_path =
+            if query_str.is_empty() { path } else { &format!("{}?{}", path, query_str) };
+
         // Check API auth
         let api_key = headers
             .get(RENEGADE_API_KEY_HEADER)
@@ -41,7 +45,7 @@ impl Server {
             .and_then(|s| Uuid::parse_str(&s).ok()) // Use &s to parse
             .ok_or(AuthServerError::unauthorized("Invalid or missing Renegade API key"))?;
 
-        let key_description = self.check_api_key_auth(api_key, path, headers, body).await?;
+        let key_description = self.check_api_key_auth(api_key, auth_path, headers, body).await?;
         info!("Authorized request for entity: {key_description}");
         Ok(key_description)
     }
