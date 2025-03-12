@@ -97,7 +97,7 @@ impl Server {
     /// Update a quote to reflect a gas sponsorship refund.
     /// This method assumes that the refund was in-kind, i.e. that the refund
     /// amount is in terms of the buy-side token.
-    pub(crate) fn update_quote_with_sponsorship(
+    pub(crate) fn update_quote_with_gas_sponsorship(
         &self,
         quote: &mut ApiExternalQuote,
         refund_amount: u128,
@@ -124,7 +124,7 @@ impl Server {
     }
 
     /// Revert the effect of gas sponsorship from the given quote
-    pub(crate) fn remove_sponsorship_from_quote(
+    pub(crate) fn remove_gas_sponsorship_from_quote(
         &self,
         quote: &mut ApiExternalQuote,
         refund_amount: u128,

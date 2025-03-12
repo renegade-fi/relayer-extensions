@@ -168,4 +168,11 @@ impl GasSponsorshipQueryParams {
             self.refund_native_eth.unwrap_or(false),
         )
     }
+
+    /// Whether any gas sponsorship parameters are explicitly set
+    pub fn is_set(&self) -> bool {
+        self.use_gas_sponsorship.is_some()
+            || self.refund_address.is_some()
+            || self.refund_native_eth.is_some()
+    }
 }

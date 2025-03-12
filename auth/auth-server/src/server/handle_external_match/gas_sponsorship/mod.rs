@@ -81,11 +81,9 @@ impl Server {
             GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
                 .map_err(AuthServerError::gas_sponsorship)?;
 
-        // Only update the quote if the refund is in-kind and the refund address is not
-        // set
         if gas_sponsorship_info.requires_quote_update() {
             // Update quote to reflect sponsorship
-            self.update_quote_with_sponsorship(
+            self.update_quote_with_gas_sponsorship(
                 &mut external_quote_response.signed_quote.quote,
                 gas_sponsorship_info.refund_amount,
             )?;

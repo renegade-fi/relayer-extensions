@@ -70,7 +70,7 @@ impl Server {
         }
 
         let sponsored_quote_response = self
-            .maybe_apply_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
+            .maybe_apply_gas_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
             .await?;
 
         overwrite_response_body(&mut resp, sponsored_quote_response.clone())?;
@@ -128,8 +128,14 @@ impl Server {
             .map(|s| &s.gas_sponsorship_info);
 
         // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_match_resp =
-            self.maybe_apply_sponsorship_to_assembled_quote(resp.body(), gas_sponsorship_info)?;
+        let sponsored_match_resp = self
+            .maybe_apply_gas_sponsorship_to_assembled_quote(
+                key_desc.clone(),
+                resp.body(),
+                &query_params,
+                gas_sponsorship_info,
+            )
+            .await?;
 
         overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
 
@@ -180,7 +186,7 @@ impl Server {
         }
 
         let sponsored_match_resp = self
-            .maybe_apply_sponsorship_to_direct_match(
+            .maybe_apply_gas_sponsorship_to_match(
                 key_description.clone(),
                 resp.body(),
                 &query_params,
@@ -207,7 +213,7 @@ impl Server {
 
     /// Potentially apply gas sponsorship to the given
     /// external quote, returning the resulting `SponsoredQuoteResponse`
-    async fn maybe_apply_sponsorship_to_quote(
+    async fn maybe_apply_gas_sponsorship_to_quote(
         &self,
         key_description: String,
         resp_body: &[u8],
@@ -231,18 +237,23 @@ impl Server {
         // `SponsoredQuoteResponse`. This simply has one extra field,
         // `signed_gas_sponsorship_info`, which we expect clients to ignore if they did
         // not request sponsorship.
-        let sponsored_quote_response = if sponsor_match {
-            info!("Updating quote to reflect gas sponsorship");
 
-            self.construct_sponsored_quote_response(
+        if !sponsor_match {
+            return Ok(SponsoredQuoteResponse {
+                external_quote_response,
+                gas_sponsorship_info: None,
+            });
+        }
+
+        info!("Updating quote to reflect gas sponsorship");
+
+        let sponsored_quote_response = self
+            .construct_sponsored_quote_response(
                 external_quote_response,
                 refund_native_eth,
                 refund_address,
             )
-            .await?
-        } else {
-            SponsoredQuoteResponse { external_quote_response, gas_sponsorship_info: None }
-        };
+            .await?;
 
         Ok(sponsored_quote_response)
     }
@@ -256,22 +267,23 @@ impl Server {
         let mut assemble_sponsored_match_req: AssembleSponsoredMatchRequest =
             serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
 
-        if let Some(ref signed_gas_sponsorship_info) =
-            assemble_sponsored_match_req.gas_sponsorship_info
-        {
-            // Validate sponsorship info signature
-            self.validate_gas_sponsorship_info_signature(signed_gas_sponsorship_info)?;
+        let signed_gas_sponsorship_info = match assemble_sponsored_match_req.gas_sponsorship_info {
+            None => return Ok(assemble_sponsored_match_req),
+            Some(ref signed_gas_sponsorship_info) => signed_gas_sponsorship_info,
+        };
 
-            let gas_sponsorship_info = &signed_gas_sponsorship_info.gas_sponsorship_info;
-            if gas_sponsorship_info.requires_quote_update() {
-                // Reconstruct original signed quote
-                let quote = &mut assemble_sponsored_match_req
-                    .assemble_external_match_request
-                    .signed_quote
-                    .quote;
+        // Validate sponsorship info signature
+        self.validate_gas_sponsorship_info_signature(signed_gas_sponsorship_info)?;
 
-                self.remove_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount)?;
-            }
+        let gas_sponsorship_info = &signed_gas_sponsorship_info.gas_sponsorship_info;
+        if gas_sponsorship_info.requires_quote_update() {
+            // Reconstruct original signed quote
+            let quote = &mut assemble_sponsored_match_req
+                .assemble_external_match_request
+                .signed_quote
+                .quote;
+
+            self.remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount)?;
         }
 
         Ok(assemble_sponsored_match_req)
@@ -281,10 +293,12 @@ impl Server {
     /// resulting `SponsoredMatchResponse`. We don't
     /// check the gas sponsorship rate limit here, since this is checked during
     /// the quote request stage.
-    fn maybe_apply_sponsorship_to_assembled_quote(
+    async fn maybe_apply_gas_sponsorship_to_assembled_quote(
         &self,
+        key_description: String,
         resp_body: &[u8],
-        sponsorship_info: Option<&GasSponsorshipInfo>,
+        query_params: &GasSponsorshipQueryParams,
+        gas_sponsorship_info: Option<&GasSponsorshipInfo>,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         // Parse response body
         let external_match_resp: ExternalMatchResponse =
@@ -294,12 +308,12 @@ impl Server {
         // `SponsoredMatchResponse`. This simply has one extra field,
         // `is_sponsored`, which we expect clients to ignore if they did not
         // request sponsorship.
-        let sponsored_match_resp = if let Some(sponsorship_info) = sponsorship_info {
+        let sponsored_match_resp = if let Some(gas_sponsorship_info) = gas_sponsorship_info {
             info!("Sponsoring assembled quote bundle via gas sponsor");
 
-            let refund_native_eth = sponsorship_info.refund_native_eth;
-            let refund_address = sponsorship_info.get_refund_address();
-            let refund_amount = sponsorship_info.get_refund_amount();
+            let refund_native_eth = gas_sponsorship_info.refund_native_eth;
+            let refund_address = gas_sponsorship_info.get_refund_address();
+            let refund_amount = gas_sponsorship_info.get_refund_amount();
 
             self.construct_sponsored_match_response(
                 external_match_resp,
@@ -307,6 +321,14 @@ impl Server {
                 refund_address,
                 refund_amount,
             )?
+        } else if query_params.is_set() {
+            // Moving forward, we will only support requesting gas sponsorship at the quote
+            // request stage.
+            // However, for backwards compatibility, we continue supporting the gas
+            // sponsorship query parameters here at the assembly stage,
+            // only if sponsorship was not requested at the quote request stage.
+            self.maybe_apply_gas_sponsorship_to_match(key_description, resp_body, query_params)
+                .await?
         } else {
             SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
@@ -319,7 +341,7 @@ impl Server {
 
     /// Potentially apply gas sponsorship to the given
     /// external match, returning the resulting `SponsoredMatchResponse`
-    async fn maybe_apply_sponsorship_to_direct_match(
+    async fn maybe_apply_gas_sponsorship_to_match(
         &self,
         key_description: String,
         resp_body: &[u8],
@@ -343,29 +365,27 @@ impl Server {
         // `SponsoredMatchResponse`. This simply has one extra field,
         // `is_sponsored`, which we expect clients to ignore if they did not
         // request sponsorship.
-        let sponsored_match_resp = if sponsor_match {
-            info!("Sponsoring match bundle via gas sponsor");
 
-            // Compute refund amount
-            let refund_amount = self
-                .get_refund_amount(
-                    &external_match_resp.match_bundle.match_result,
-                    refund_native_eth,
-                )
-                .await?;
-
-            self.construct_sponsored_match_response(
-                external_match_resp,
-                refund_native_eth,
-                refund_address,
-                refund_amount,
-            )?
-        } else {
-            SponsoredMatchResponse {
+        if !sponsor_match {
+            return Ok(SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
                 is_sponsored: false,
-            }
-        };
+            });
+        }
+
+        info!("Sponsoring match bundle via gas sponsor");
+
+        // Compute refund amount
+        let refund_amount = self
+            .get_refund_amount(&external_match_resp.match_bundle.match_result, refund_native_eth)
+            .await?;
+
+        let sponsored_match_resp = self.construct_sponsored_match_response(
+            external_match_resp,
+            refund_native_eth,
+            refund_address,
+            refund_amount,
+        )?;
 
         Ok(sponsored_match_resp)
     }
