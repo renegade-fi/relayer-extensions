@@ -28,6 +28,7 @@ use diesel_async::{
 };
 use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
+use http::header::CONTENT_LENGTH;
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -188,6 +189,10 @@ impl Server {
         mut headers: HeaderMap,
         body: Bytes,
     ) -> Result<Response<Bytes>, ApiError> {
+        // Ensure that the content-length header is set correctly
+        // so that the relayer can deserialize the proxied request
+        headers.insert(CONTENT_LENGTH, body.len().into());
+
         // Admin authenticate the request
         self.admin_authenticate(path, &mut headers, &body)?;
 
