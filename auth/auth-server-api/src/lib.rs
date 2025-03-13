@@ -7,7 +7,9 @@
 #![feature(trivial_bounds)]
 
 use alloy_primitives::Address;
-use renegade_api::http::external_match::AtomicMatchApiBundle;
+use renegade_api::http::external_match::{
+    AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalQuoteResponse,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -40,6 +42,50 @@ pub struct CreateApiKeyRequest {
     pub description: String,
 }
 
+/// An external quote response from the auth server, potentially with
+/// gas sponsorship info
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SponsoredQuoteResponse {
+    /// The external quote response from the relayer, potentially updated to
+    /// reflect the post-sponsorship price and receive amount
+    #[serde(flatten)]
+    pub external_quote_response: ExternalQuoteResponse,
+    /// The signed gas sponsorship info, if sponsorship was requested
+    pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
+}
+
+/// Signed metadata regarding gas sponsorship for a quote
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignedGasSponsorshipInfo {
+    /// The signed gas sponsorship info
+    pub gas_sponsorship_info: GasSponsorshipInfo,
+    /// The auth server's signature over the gas sponsorship info
+    pub signature: String,
+}
+
+/// Metadata regarding gas sponsorship for a quote
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GasSponsorshipInfo {
+    /// The amount to be refunded as a result of gas sponsorship.
+    /// This amount is firm, it will not change when the quote is assembled.
+    pub refund_amount: u128,
+    /// Whether the refund is in terms of native ETH.
+    pub refund_native_eth: bool,
+    /// The address to which the refund will be sent, if set explicitly.
+    pub refund_address: Option<String>,
+}
+
+/// A request to assemble a potentially sponsored quote into a settlement bundle
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AssembleSponsoredMatchRequest {
+    /// The request to assemble the external match
+    #[serde(flatten)]
+    pub assemble_external_match_request: AssembleExternalMatchRequest,
+    /// The gas sponsorship info associated with the quote,
+    /// if sponsorship was requested
+    pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
+}
+
 /// A sponsored match response from the auth server
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SponsoredMatchResponse {
@@ -66,12 +112,22 @@ pub struct GasSponsorshipQueryParams {
 }
 
 impl GasSponsorshipQueryParams {
-    /// Get the refund address, or the default zero address if not provided
-    pub fn get_refund_address(&self) -> Result<Address, String> {
+    /// Get the refund address, defaulting to the zero address if not provided
+    /// or malformed
+    pub fn get_refund_address(&self) -> Address {
         self.refund_address
             .as_ref()
-            .map(|s| s.parse())
-            .unwrap_or(Ok(Address::ZERO))
-            .map_err(|_| "invalid refund address".to_string())
+            .map(|s| s.parse().unwrap_or(Address::ZERO))
+            .unwrap_or(Address::ZERO)
+    }
+
+    /// Get the gas sponsorship parameters, defaulting to the
+    /// server's defaults if not provided
+    pub fn get_or_default(&self) -> (bool, Address, bool) {
+        (
+            self.use_gas_sponsorship.unwrap_or(true),
+            self.get_refund_address(),
+            self.refund_native_eth.unwrap_or(false),
+        )
     }
 }

@@ -3,10 +3,8 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-use alloy_primitives::U256 as AlloyU256;
-use auth_server_api::{GasSponsorshipQueryParams, SponsoredMatchResponse};
+use auth_server_api::{GasSponsorshipQueryParams, SponsoredMatchResponse, SponsoredQuoteResponse};
 use bytes::Bytes;
-use http::header::CONTENT_LENGTH;
 use http::{Method, Response, StatusCode};
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalMatchRequest,
@@ -18,6 +16,7 @@ use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
+use super::helpers::overwrite_response_body;
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::calculate_implied_price;
@@ -33,7 +32,7 @@ use crate::telemetry::{
 };
 
 mod gas_sponsorship;
-pub use gas_sponsorship::sponsorAtomicMatchSettleWithRefundOptionsCall;
+pub use gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall;
 
 // ---------------
 // | Server Impl |
@@ -48,14 +47,26 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
+        query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let key_desc = self.authorize_request(path.as_str(), &headers, &body).await?;
+        let query_str =
+            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
+
+        let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
         self.check_quote_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer
-        let resp =
+        let mut resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+
+        let status = resp.status();
+        if status != StatusCode::OK {
+            warn!("Non-200 response from relayer: {}", status);
+            return Ok(resp);
+        }
+
+        self.maybe_apply_sponsorship_to_quote(key_desc.clone(), &mut resp, &query_params).await?;
 
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
@@ -77,24 +88,16 @@ impl Server {
         body: Bytes,
         query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
-        // Serialize the path + query params for auth
-        let query_str = serde_urlencoded::to_string(&query_params).unwrap();
-        let auth_path = if query_str.is_empty() {
-            path.as_str().to_string()
-        } else {
-            format!("{}?{}", path.as_str(), query_str)
-        };
-
         // Authorize the request
-        let key_desc = self.authorize_request(&auth_path, &headers, &body).await?;
-        self.check_bundle_rate_limit(key_desc.clone()).await?;
+        let query_str =
+            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
 
-        let gas_sponsorship_rate_limited =
-            !self.check_gas_sponsorship_rate_limit(key_desc.clone()).await;
+        let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
+        self.check_bundle_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer, potentially sponsoring the gas costs
 
-        let mut resp =
+        let resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
 
         let status = resp.status();
@@ -103,21 +106,7 @@ impl Server {
             return Ok(resp);
         }
 
-        let external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
-
-        // TODO: Move refund amount calculation to quote request stage, expect amount
-        // in to be re-submitted in the assembly request
-        let refund_native_eth = query_params.refund_native_eth.unwrap_or_default();
-        let refund_amount = self
-            .get_refund_amount(
-                gas_sponsorship_rate_limited,
-                &external_match_resp.match_bundle.match_result,
-                refund_native_eth,
-            )
-            .await?;
-
-        self.maybe_apply_sponsorship(&mut resp, &query_params, external_match_resp, refund_amount)?;
+        // TODO: Handle sponsored quote assembly
 
         let resp_clone = resp.body().to_vec();
         let server_clone = self.clone();
@@ -142,20 +131,14 @@ impl Server {
         body: Bytes,
         query_params: GasSponsorshipQueryParams,
     ) -> Result<impl Reply, Rejection> {
-        // Serialize the path + query params for auth
-        let query_str = serde_urlencoded::to_string(&query_params).unwrap();
-        let auth_path = if query_str.is_empty() {
-            path.as_str().to_string()
-        } else {
-            format!("{}?{}", path.as_str(), query_str)
-        };
-
         // Authorize the request
-        let key_description = self.authorize_request(&auth_path, &headers, &body).await?;
-        self.check_bundle_rate_limit(key_description.clone()).await?;
+        let query_str =
+            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
 
-        let gas_sponsorship_rate_limited =
-            !self.check_gas_sponsorship_rate_limit(key_description.clone()).await;
+        let key_description =
+            self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
+
+        self.check_bundle_rate_limit(key_description.clone()).await?;
 
         // Send the request to the relayer, potentially sponsoring the gas costs
 
@@ -168,19 +151,8 @@ impl Server {
             return Ok(resp);
         }
 
-        let external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
-
-        let refund_native_eth = query_params.refund_native_eth.unwrap_or_default();
-        let refund_amount = self
-            .get_refund_amount(
-                gas_sponsorship_rate_limited,
-                &external_match_resp.match_bundle.match_result,
-                refund_native_eth,
-            )
+        self.maybe_apply_sponsorship_to_match(key_description.clone(), &mut resp, &query_params)
             .await?;
-
-        self.maybe_apply_sponsorship(&mut resp, &query_params, external_match_resp, refund_amount)?;
 
         // Watch the bundle for settlement
         let resp_clone = resp.body().to_vec();
@@ -197,33 +169,87 @@ impl Server {
         Ok(resp)
     }
 
-    /// Potentially apply gas sponsorship of `refund_amount` to the given
-    /// external match, writing the resulting `SponsoredMatchResponse` into
+    /// Potentially apply gas sponsorship to the given
+    /// external quote, writing the resulting `SponsoredQuoteResponse` into
     /// the response body
-    fn maybe_apply_sponsorship(
+    async fn maybe_apply_sponsorship_to_quote(
         &self,
+        key_description: String,
         resp: &mut Response<Bytes>,
         query_params: &GasSponsorshipQueryParams,
-        external_match_resp: ExternalMatchResponse,
-        refund_amount: Option<AlloyU256>,
     ) -> Result<(), AuthServerError> {
+        // Parse query params
+        let (sponsorship_requested, refund_address, refund_native_eth) =
+            query_params.get_or_default();
+
+        // Check gas sponsorship rate limit
+        let gas_sponsorship_rate_limited =
+            !self.check_gas_sponsorship_rate_limit(key_description).await;
+
+        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+
+        // Parse response body
+        let external_quote_response: ExternalQuoteResponse =
+            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
+
+        // Whether or not sponsorship was requested, we return a
+        // `SponsoredQuoteResponse`. This simply has one extra field,
+        // `signed_gas_sponsorship_info`, which we expect clients to ignore if they did
+        // not request sponsorship.
+        let sponsored_quote_response = if sponsor_match {
+            info!("Updating quote to reflect gas sponsorship");
+
+            self.construct_sponsored_quote_response(
+                external_quote_response,
+                refund_native_eth,
+                refund_address,
+            )
+            .await?
+        } else {
+            SponsoredQuoteResponse { external_quote_response, gas_sponsorship_info: None }
+        };
+
+        overwrite_response_body(resp, sponsored_quote_response)?;
+
+        Ok(())
+    }
+
+    /// Potentially apply gas sponsorship to the given
+    /// external match, writing the resulting `SponsoredMatchResponse` into
+    /// the response body
+    async fn maybe_apply_sponsorship_to_match(
+        &self,
+        key_description: String,
+        resp: &mut Response<Bytes>,
+        query_params: &GasSponsorshipQueryParams,
+    ) -> Result<(), AuthServerError> {
+        // Parse query params
+        let (sponsorship_requested, refund_address, refund_native_eth) =
+            query_params.get_or_default();
+
+        // Check gas sponsorship rate limit
+        let gas_sponsorship_rate_limited =
+            !self.check_gas_sponsorship_rate_limit(key_description).await;
+
+        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+
+        // Parse response body
+        let external_match_resp: ExternalMatchResponse =
+            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
+
         // Whether or not sponsorship was requested, we return a
         // `SponsoredMatchResponse`. This simply has one extra field,
         // `is_sponsored`, which we expect clients to ignore if they did not
         // request sponsorship.
-        let sponsorship_requested = query_params.use_gas_sponsorship.unwrap_or(true);
-        let sponsored_match_resp = if sponsorship_requested {
-            let refund_address =
-                query_params.get_refund_address().map_err(AuthServerError::serde)?;
-
-            let refund_native_eth = query_params.refund_native_eth.unwrap_or_default();
+        let sponsored_match_resp = if sponsor_match {
+            info!("Sponsoring match bundle via gas sponsor");
 
             self.construct_sponsored_match_response(
                 external_match_resp,
-                refund_address,
                 refund_native_eth,
-                refund_amount,
-            )?
+                refund_address,
+            )
+            .await?
         } else {
             SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
@@ -231,11 +257,7 @@ impl Server {
             }
         };
 
-        let resp_body =
-            Bytes::from(serde_json::to_vec(&sponsored_match_resp).map_err(AuthServerError::serde)?);
-
-        resp.headers_mut().insert(CONTENT_LENGTH, resp_body.len().into());
-        *resp.body_mut() = resp_body;
+        overwrite_response_body(resp, sponsored_match_resp)?;
 
         Ok(())
     }
