@@ -92,7 +92,7 @@ impl Server {
         let signed_gas_sponsorship_info = self.sign_gas_sponsorship_info(gas_sponsorship_info)?;
 
         Ok(SponsoredQuoteResponse {
-            external_quote_response,
+            signed_quote: external_quote_response.signed_quote,
             gas_sponsorship_info: Some(signed_gas_sponsorship_info),
         })
     }
