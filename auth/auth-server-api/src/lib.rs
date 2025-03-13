@@ -6,7 +6,7 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
-use alloy_primitives::Address;
+use alloy_primitives::{ruint::FromUintError, Address, U256};
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalQuoteResponse,
 };
@@ -75,13 +75,51 @@ pub struct GasSponsorshipInfo {
     pub refund_address: Option<String>,
 }
 
+impl GasSponsorshipInfo {
+    /// Construct a new gas sponsorship info struct from strongly-typed
+    /// parameters
+    pub fn new(
+        refund_amount: U256,
+        refund_native_eth: bool,
+        refund_address: Address,
+    ) -> Result<Self, String> {
+        let refund_amount: u128 =
+            refund_amount.try_into().map_err(|e: FromUintError<u128>| e.to_string())?;
+
+        let refund_address =
+            if refund_address.is_zero() { None } else { Some(format!("{:#x}", refund_address)) };
+
+        Ok(Self { refund_amount, refund_native_eth, refund_address })
+    }
+
+    /// Whether this sponsorship implies an update to the effective price /
+    /// receive amount of the associated quote
+    pub fn requires_quote_update(&self) -> bool {
+        !self.refund_native_eth && self.refund_address.is_none()
+    }
+
+    /// Get the refund amount as an alloy U256
+    pub fn get_refund_amount(&self) -> U256 {
+        U256::from(self.refund_amount)
+    }
+
+    /// Get the refund address as an alloy address, defaulting to the zero
+    /// address if not provided or malformed
+    pub fn get_refund_address(&self) -> Address {
+        self.refund_address
+            .as_ref()
+            .map(|s| s.parse().unwrap_or(Address::ZERO))
+            .unwrap_or(Address::ZERO)
+    }
+}
+
 /// A request to assemble a potentially sponsored quote into a settlement bundle
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AssembleSponsoredMatchRequest {
     /// The request to assemble the external match
     #[serde(flatten)]
     pub assemble_external_match_request: AssembleExternalMatchRequest,
-    /// The gas sponsorship info associated with the quote,
+    /// The signed gas sponsorship info associated with the quote,
     /// if sponsorship was requested
     pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
 }
@@ -129,5 +167,12 @@ impl GasSponsorshipQueryParams {
             self.get_refund_address(),
             self.refund_native_eth.unwrap_or(false),
         )
+    }
+
+    /// Whether any gas sponsorship parameters are explicitly set
+    pub fn is_set(&self) -> bool {
+        self.use_gas_sponsorship.is_some()
+            || self.refund_address.is_some()
+            || self.refund_native_eth.is_some()
     }
 }

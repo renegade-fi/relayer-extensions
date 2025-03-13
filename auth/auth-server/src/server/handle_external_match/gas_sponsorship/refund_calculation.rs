@@ -94,10 +94,10 @@ impl Server {
         Ok(Some(conversion_rate_u256))
     }
 
-    /// Apply a gas sponsorship refund to a quote.
+    /// Update a quote to reflect a gas sponsorship refund.
     /// This method assumes that the refund was in-kind, i.e. that the refund
     /// amount is in terms of the buy-side token.
-    pub(crate) fn apply_sponsorship_to_quote(
+    pub(crate) fn update_quote_with_gas_sponsorship(
         &self,
         quote: &mut ApiExternalQuote,
         refund_amount: u128,
@@ -117,6 +117,33 @@ impl Server {
 
         quote.price.price = price.to_string();
         quote.receive.amount += refund_amount;
+        quote.match_result.base_amount = base_amount;
+        quote.match_result.quote_amount = quote_amount;
+
+        Ok(())
+    }
+
+    /// Revert the effect of gas sponsorship from the given quote
+    pub(crate) fn remove_gas_sponsorship_from_quote(
+        &self,
+        quote: &mut ApiExternalQuote,
+        refund_amount: u128,
+    ) -> Result<(), AuthServerError> {
+        let (base_amount, quote_amount) = match quote.match_result.direction {
+            OrderSide::Buy => {
+                (quote.match_result.base_amount - refund_amount, quote.match_result.quote_amount)
+            },
+            OrderSide::Sell => {
+                (quote.match_result.base_amount, quote.match_result.quote_amount - refund_amount)
+            },
+        };
+
+        let base_amt_f64 = base_amount as f64;
+        let quote_amt_f64 = quote_amount as f64;
+        let price = quote_amt_f64 / base_amt_f64;
+
+        quote.price.price = price.to_string();
+        quote.receive.amount -= refund_amount;
         quote.match_result.base_amount = base_amount;
         quote.match_result.quote_amount = quote_amount;
 
