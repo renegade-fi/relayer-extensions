@@ -108,11 +108,10 @@ impl Server {
         let assemble_sponsored_match_req = self.maybe_update_assembly_request(&body)?;
 
         let req_body =
-            serde_json::to_vec(&assemble_sponsored_match_req.assemble_external_match_request)
+            serde_json::to_vec(&assemble_sponsored_match_req.assemble_external_match_request())
                 .map_err(AuthServerError::serde)?;
 
         // Send the request to the relayer
-
         let mut resp =
             self.send_admin_request(Method::POST, path.as_str(), headers, req_body.into()).await?;
 
@@ -240,7 +239,7 @@ impl Server {
 
         if !sponsor_match {
             return Ok(SponsoredQuoteResponse {
-                external_quote_response,
+                signed_quote: external_quote_response.signed_quote,
                 gas_sponsorship_info: None,
             });
         }
@@ -278,11 +277,7 @@ impl Server {
         let gas_sponsorship_info = &signed_gas_sponsorship_info.gas_sponsorship_info;
         if gas_sponsorship_info.requires_quote_update() {
             // Reconstruct original signed quote
-            let quote = &mut assemble_sponsored_match_req
-                .assemble_external_match_request
-                .signed_quote
-                .quote;
-
+            let quote = &mut assemble_sponsored_match_req.signed_quote.quote;
             self.remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount)?;
         }
 
@@ -399,13 +394,11 @@ impl Server {
         req: &AssembleSponsoredMatchRequest,
         resp: &SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
-        let assemble_external_match_req = &req.assemble_external_match_request;
-        let original_order = &assemble_external_match_req.signed_quote.quote.order;
-        let updated_order =
-            assemble_external_match_req.updated_order.as_ref().unwrap_or(original_order);
+        let original_order = &req.signed_quote.quote.order;
+        let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
         let request_id = uuid::Uuid::new_v4().to_string();
-        if assemble_external_match_req.updated_order.is_some() {
+        if req.updated_order.is_some() {
             self.log_updated_order(&key, original_order, updated_order, &request_id);
         }
 
@@ -472,7 +465,7 @@ impl Server {
 
     /// Log a quote
     fn log_quote(&self, resp: &SponsoredQuoteResponse) -> Result<(), AuthServerError> {
-        let signed_quote = &resp.external_quote_response.signed_quote;
+        let signed_quote = &resp.signed_quote;
         let match_result = signed_quote.match_result();
         let is_buy = match_result.direction;
         let recv = signed_quote.receive_amount();
@@ -580,10 +573,9 @@ impl Server {
         // Parse request and response for metrics
         let req: ExternalQuoteRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
-        let quote_resp = &resp.external_quote_response;
 
         // Get the decimal-corrected price
-        let price: TimestampedPrice = quote_resp.signed_quote.quote.price.clone().into();
+        let price: TimestampedPrice = resp.signed_quote.quote.price.clone().into();
 
         let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
 
@@ -592,7 +584,7 @@ impl Server {
             .external_order
             .get_quote_amount(FixedPoint::from_f64_round_down(price.price), relayer_fee);
 
-        let matched_quote_amount = quote_resp.signed_quote.quote.match_result.quote_amount;
+        let matched_quote_amount = resp.signed_quote.quote.match_result.quote_amount;
 
         // Record fill ratio metric
         let request_id = uuid::Uuid::new_v4();

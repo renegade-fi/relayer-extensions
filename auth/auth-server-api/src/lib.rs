@@ -8,7 +8,7 @@
 
 use alloy_primitives::{ruint::FromUintError, Address, U256};
 use renegade_api::http::external_match::{
-    AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalQuoteResponse,
+    AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalOrder, SignedExternalQuote,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -43,13 +43,18 @@ pub struct CreateApiKeyRequest {
 }
 
 /// An external quote response from the auth server, potentially with
-/// gas sponsorship info
+/// gas sponsorship info.
+///
+/// We manually flatten the fields of
+/// [`renegade_api::http::external_match::ExternalQuoteResponse`]
+/// into this struct, as `serde` does not support `u128`s when using
+/// `#[serde(flatten)]`:
+/// https://github.com/serde-rs/json/issues/625
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SponsoredQuoteResponse {
     /// The external quote response from the relayer, potentially updated to
     /// reflect the post-sponsorship price and receive amount
-    #[serde(flatten)]
-    pub external_quote_response: ExternalQuoteResponse,
+    pub signed_quote: SignedExternalQuote,
     /// The signed gas sponsorship info, if sponsorship was requested
     pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
 }
@@ -114,14 +119,39 @@ impl GasSponsorshipInfo {
 }
 
 /// A request to assemble a potentially sponsored quote into a settlement bundle
+///
+/// We manually flatten the fields of [`AssembleExternalMatchRequest`]
+/// into this struct, as `serde` does not support `u128`s when using
+/// `#[serde(flatten)]`:
+/// https://github.com/serde-rs/json/issues/625
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AssembleSponsoredMatchRequest {
-    /// The request to assemble the external match
-    #[serde(flatten)]
-    pub assemble_external_match_request: AssembleExternalMatchRequest,
+    /// Whether or not to include gas estimation in the response
+    #[serde(default)]
+    pub do_gas_estimation: bool,
+    /// The receiver address of the match, if not the message sender
+    #[serde(default)]
+    pub receiver_address: Option<String>,
+    /// The updated order if any changes have been made
+    #[serde(default)]
+    pub updated_order: Option<ExternalOrder>,
+    /// The signed quote
+    pub signed_quote: SignedExternalQuote,
     /// The signed gas sponsorship info associated with the quote,
     /// if sponsorship was requested
     pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
+}
+
+impl AssembleSponsoredMatchRequest {
+    /// Extract an [`AssembleExternalMatchRequest`]
+    pub fn assemble_external_match_request(&self) -> AssembleExternalMatchRequest {
+        AssembleExternalMatchRequest {
+            do_gas_estimation: self.do_gas_estimation,
+            receiver_address: self.receiver_address.clone(),
+            updated_order: self.updated_order.clone(),
+            signed_quote: self.signed_quote.clone(),
+        }
+    }
 }
 
 /// A sponsored match response from the auth server
