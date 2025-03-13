@@ -276,9 +276,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
+        .and(warp::query::<GasSponsorshipQueryParams>())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, server: Arc<Server>| async move {
-            server.handle_external_quote_request(path, headers, body).await
+        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
+            server.handle_external_quote_request(path, headers, body, query_params).await
         });
 
     let external_quote_assembly_path = warp::path("v0")
