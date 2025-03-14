@@ -50,12 +50,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
         self.check_quote_rate_limit(key_desc.clone()).await?;
 
@@ -68,6 +65,10 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        // Parse query params
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let sponsored_quote_response = self
             .maybe_apply_gas_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
@@ -94,12 +95,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
@@ -120,6 +118,10 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        // Parse query params
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let gas_sponsorship_info = assemble_sponsored_match_req
             .gas_sponsorship_info
@@ -162,12 +164,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_description =
             self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
 
@@ -183,6 +182,9 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let sponsored_match_resp = self
             .maybe_apply_gas_sponsorship_to_match(
@@ -218,15 +220,19 @@ impl Server {
         resp_body: &[u8],
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
-        // Parse query params
-        let (sponsorship_requested, refund_address, refund_native_eth) =
-            query_params.get_or_default();
+        // Parse query params.
+        // For backwards compatibility, we do *not* enable in-kind gas sponsorship by
+        // default for quote requests.
+        // TODO: Once clients have updated, we should enable this by default.
+        let sponsorship_disabled = query_params.disable_gas_sponsorship.unwrap_or(true);
+        let refund_native_eth = query_params.refund_native_eth.unwrap_or(false);
+        let refund_address = query_params.get_refund_address();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
             !self.check_gas_sponsorship_rate_limit(key_description).await;
 
-        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_disabled);
 
         // Parse response body
         let external_quote_response: ExternalQuoteResponse =
@@ -243,8 +249,6 @@ impl Server {
                 gas_sponsorship_info: None,
             });
         }
-
-        info!("Updating quote to reflect gas sponsorship");
 
         let sponsored_quote_response = self
             .construct_sponsored_quote_response(
@@ -344,14 +348,14 @@ impl Server {
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         // Parse query params
-        let (sponsorship_requested, refund_address, refund_native_eth) =
+        let (sponsorship_omitted, refund_address, refund_native_eth) =
             query_params.get_or_default();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
             !self.check_gas_sponsorship_rate_limit(key_description).await;
 
-        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_omitted);
 
         // Parse response body
         let external_match_resp: ExternalMatchResponse =
@@ -404,7 +408,14 @@ impl Server {
             self.log_updated_order(&key, original_order, updated_order, &request_id);
         }
 
-        self.handle_bundle_response(key, updated_order.clone(), resp, Some(request_id)).await
+        self.handle_bundle_response(
+            key,
+            updated_order.clone(),
+            resp,
+            Some(request_id),
+            "assemble-external-match",
+        )
+        .await
     }
 
     /// Handle a bundle response from a direct match request
@@ -417,7 +428,7 @@ impl Server {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
         let order = req.external_order;
-        self.handle_bundle_response(key, order, resp, None).await
+        self.handle_bundle_response(key, order, resp, None, "request-external-match").await
     }
 
     /// Record and watch a bundle that was forwarded to the client
@@ -429,11 +440,12 @@ impl Server {
         order: ExternalOrder,
         resp: SponsoredMatchResponse,
         request_id: Option<String>,
+        endpoint: &str,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        self.log_bundle(&order, &resp, &key, &request_id)?;
+        self.log_bundle(&order, &resp, &key, &request_id, endpoint)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
@@ -475,7 +487,11 @@ impl Server {
     // --- Logging --- //
 
     /// Log a quote
-    fn log_quote(&self, resp: &SponsoredQuoteResponse) -> Result<(), AuthServerError> {
+    fn log_quote(
+        &self,
+        resp: &SponsoredQuoteResponse,
+        key_description: &str,
+    ) -> Result<(), AuthServerError> {
         let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
         let match_result = signed_quote.match_result();
         let is_buy = match_result.direction;
@@ -491,6 +507,7 @@ impl Server {
 
         info!(
             is_sponsored = is_sponsored,
+            key_description = key_description,
             "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             recv.amount,
             recv.mint,
@@ -571,6 +588,7 @@ impl Server {
             key_description = key_description,
             request_id = request_id,
             is_sponsored = is_sponsored,
+            endpoint = endpoint,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             is_buy,
             recv.amount,
