@@ -8,8 +8,11 @@ use auth_server_api::{
     GasSponsorshipInfo, SignedGasSponsorshipInfo, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use ethers::{types::Address, utils::WEI_IN_ETHER};
+use ethers::utils::WEI_IN_ETHER;
 
+use refund_calculation::{
+    update_match_bundle_with_gas_sponsorship, update_quote_with_gas_sponsorship,
+};
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchResponse, ExternalQuoteResponse,
 };
@@ -56,9 +59,24 @@ impl Server {
         external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
         external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
 
+        let gas_sponsorship_info =
+            GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
+                .map_err(AuthServerError::gas_sponsorship)?;
+
+        if gas_sponsorship_info.requires_match_result_update() {
+            // The `ExternalMatchResponse` from the relayer doesn't account for gas
+            // sponsorship, so we need to update the match bundle to reflect the
+            // refund.
+            update_match_bundle_with_gas_sponsorship(
+                &mut external_match_resp.match_bundle,
+                gas_sponsorship_info.refund_amount,
+            );
+        }
+
         Ok(SponsoredMatchResponse {
             match_bundle: external_match_resp.match_bundle,
             is_sponsored: true,
+            gas_sponsorship_info: Some(gas_sponsorship_info),
         })
     }
 
@@ -81,9 +99,9 @@ impl Server {
             GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
                 .map_err(AuthServerError::gas_sponsorship)?;
 
-        if gas_sponsorship_info.requires_quote_update() {
+        if gas_sponsorship_info.requires_match_result_update() {
             // Update quote to reflect sponsorship
-            self.update_quote_with_gas_sponsorship(
+            update_quote_with_gas_sponsorship(
                 &mut external_quote_response.signed_quote.quote,
                 gas_sponsorship_info.refund_amount,
             )?;
@@ -137,47 +155,45 @@ impl Server {
     pub async fn record_settled_match_sponsorship(
         &self,
         match_bundle: &AtomicMatchApiBundle,
-        is_sponsored: bool,
+        gas_sponsorship_info: GasSponsorshipInfo,
         key: String,
         request_id: String,
     ) -> Result<(), AuthServerError> {
-        if is_sponsored
-            && let Some((token_addr, amount, tx_hash)) =
-                self.get_refunded_amount_and_tx(&match_bundle.settlement_tx).await?
-        {
-            let nominal_price = if token_addr == Address::zero() {
-                // The zero address indicates that the gas was sponsored via native ETH.
-                let price_f64: f64 = self
-                    .price_reporter_client
-                    .get_eth_price()
-                    .await
-                    .map_err(AuthServerError::gas_sponsorship)?;
+        let GasSponsorshipInfo { refund_amount, refund_native_eth, .. } = gas_sponsorship_info;
 
-                let price_bigdecimal = BigDecimal::from_f64(price_f64).ok_or(
-                    AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"),
-                )?;
+        let nominal_price = if refund_native_eth {
+            let price_f64: f64 = self
+                .price_reporter_client
+                .get_eth_price()
+                .await
+                .map_err(AuthServerError::gas_sponsorship)?;
 
-                let adjustment = ethers_u256_to_bigdecimal(WEI_IN_ETHER);
+            let price_bigdecimal = BigDecimal::from_f64(price_f64).ok_or(
+                AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"),
+            )?;
 
-                price_bigdecimal / adjustment
-            } else {
-                // If we did not refund via native ETH, it must have been through the buy-side
-                // token. Thus we compute the nominal price of the buy-side
-                // token from the match result.
-                get_nominal_buy_token_price(&match_bundle.receive.mint, &match_bundle.match_result)?
-            };
+            let adjustment = ethers_u256_to_bigdecimal(WEI_IN_ETHER);
 
-            let nominal_amount = ethers_u256_to_bigdecimal(amount);
-            let value_bigdecimal = nominal_amount * nominal_price;
+            price_bigdecimal / adjustment
+        } else {
+            // If we did not refund via native ETH, it must have been through the buy-side
+            // token. Thus we compute the nominal price of the buy-side
+            // token from the match result.
+            get_nominal_buy_token_price(&match_bundle.receive.mint, &match_bundle.match_result)?
+        };
 
-            let value = value_bigdecimal.to_f64().ok_or(AuthServerError::gas_sponsorship(
-                "failed to convert gas sponsorship value to f64",
-            ))?;
+        let nominal_amount = BigDecimal::from_u128(refund_amount)
+            .expect("u128 should be representable as BigDecimal");
 
-            self.rate_limiter.record_gas_sponsorship(key, value).await;
+        let value_bigdecimal = nominal_amount * nominal_price;
 
-            record_gas_sponsorship_metrics(value, tx_hash, request_id);
-        }
+        let value = value_bigdecimal.to_f64().ok_or(AuthServerError::gas_sponsorship(
+            "failed to convert gas sponsorship value to f64",
+        ))?;
+
+        self.rate_limiter.record_gas_sponsorship(key, value).await;
+
+        record_gas_sponsorship_metrics(value, request_id);
 
         Ok(())
     }

@@ -2,7 +2,9 @@
 
 use alloy_primitives::U256 as AlloyU256;
 use bigdecimal::{BigDecimal, FromPrimitive};
-use renegade_api::http::external_match::{ApiExternalMatchResult, ApiExternalQuote};
+use renegade_api::http::external_match::{
+    ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle,
+};
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
@@ -94,36 +96,10 @@ impl Server {
         Ok(Some(conversion_rate_u256))
     }
 
-    /// Update a quote to reflect a gas sponsorship refund.
-    /// This method assumes that the refund was in-kind, i.e. that the refund
-    /// amount is in terms of the buy-side token.
-    pub(crate) fn update_quote_with_gas_sponsorship(
-        &self,
-        quote: &mut ApiExternalQuote,
-        refund_amount: u128,
-    ) -> Result<(), AuthServerError> {
-        let (base_amount, quote_amount) = match quote.match_result.direction {
-            OrderSide::Buy => {
-                (quote.match_result.base_amount + refund_amount, quote.match_result.quote_amount)
-            },
-            OrderSide::Sell => {
-                (quote.match_result.base_amount, quote.match_result.quote_amount + refund_amount)
-            },
-        };
-
-        let base_amt_f64 = base_amount as f64;
-        let quote_amt_f64 = quote_amount as f64;
-        let price = quote_amt_f64 / base_amt_f64;
-
-        quote.price.price = price.to_string();
-        quote.receive.amount += refund_amount;
-        quote.match_result.base_amount = base_amount;
-        quote.match_result.quote_amount = quote_amount;
-
-        Ok(())
-    }
-
     /// Revert the effect of gas sponsorship from the given quote
+    // TODO: This assumes that the `f64` arithmetic done exactly reverts the price.
+    // Keep an eye on this, especially if the auth server / relayer start using a
+    // different Rust version or architecture.
     pub(crate) fn remove_gas_sponsorship_from_quote(
         &self,
         quote: &mut ApiExternalQuote,
@@ -149,4 +125,54 @@ impl Server {
 
         Ok(())
     }
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Update a quote to reflect a gas sponsorship refund.
+/// This method assumes that the refund was in-kind, i.e. that the refund
+/// amount is in terms of the buy-side token.
+pub(crate) fn update_quote_with_gas_sponsorship(
+    quote: &mut ApiExternalQuote,
+    refund_amount: u128,
+) -> Result<(), AuthServerError> {
+    update_match_result_with_gas_sponsorship(&mut quote.match_result, refund_amount);
+
+    let base_amt_f64 = quote.match_result.base_amount as f64;
+    let quote_amt_f64 = quote.match_result.quote_amount as f64;
+    let price = quote_amt_f64 / base_amt_f64;
+
+    quote.price.price = price.to_string();
+    quote.receive.amount += refund_amount;
+
+    Ok(())
+}
+
+/// Update a match bundle to reflect a gas sponsorship refund.
+/// This method assumes that the refund was in-kind, i.e. that the refund
+/// amount is in terms of the buy-side token.
+pub(crate) fn update_match_bundle_with_gas_sponsorship(
+    match_bundle: &mut AtomicMatchApiBundle,
+    refund_amount: u128,
+) {
+    update_match_result_with_gas_sponsorship(&mut match_bundle.match_result, refund_amount);
+    match_bundle.receive.amount += refund_amount;
+}
+
+/// Update a match result to reflect a gas sponsorship refund.
+/// This method assumes that the refund was in-kind, i.e. that the refund
+/// amount is in terms of the buy-side token.
+pub(crate) fn update_match_result_with_gas_sponsorship(
+    match_result: &mut ApiExternalMatchResult,
+    refund_amount: u128,
+) {
+    let (base_amount, quote_amount) = match match_result.direction {
+        OrderSide::Buy => (match_result.base_amount + refund_amount, match_result.quote_amount),
+        OrderSide::Sell => (match_result.base_amount, match_result.quote_amount + refund_amount),
+    };
+
+    match_result.base_amount = base_amount;
+    match_result.quote_amount = quote_amount;
 }
