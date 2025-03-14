@@ -50,12 +50,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
         self.check_quote_rate_limit(key_desc.clone()).await?;
 
@@ -68,6 +65,10 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        // Parse query params
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let sponsored_quote_response = self
             .maybe_apply_gas_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
@@ -94,12 +95,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
@@ -120,6 +118,10 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        // Parse query params
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let gas_sponsorship_info = assemble_sponsored_match_req
             .gas_sponsorship_info
@@ -162,12 +164,9 @@ impl Server {
         path: warp::path::FullPath,
         headers: warp::hyper::HeaderMap,
         body: Bytes,
-        query_params: GasSponsorshipQueryParams,
+        query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let query_str =
-            serde_urlencoded::to_string(&query_params).map_err(AuthServerError::serde)?;
-
         let key_description =
             self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
 
@@ -183,6 +182,9 @@ impl Server {
             warn!("Non-200 response from relayer: {}", status);
             return Ok(resp);
         }
+
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
+            .map_err(AuthServerError::serde)?;
 
         let sponsored_match_resp = self
             .maybe_apply_gas_sponsorship_to_match(
@@ -222,15 +224,15 @@ impl Server {
         // For backwards compatibility, we do *not* enable in-kind gas sponsorship by
         // default for quote requests.
         // TODO: Once clients have updated, we should enable this by default.
-        let sponsorship_requested = query_params.omit_gas_sponsorship.unwrap_or(true);
-        let refund_native_eth = query_params.refund_native_eth.unwrap_or(true);
+        let sponsorship_disabled = query_params.disable_gas_sponsorship.unwrap_or(true);
+        let refund_native_eth = query_params.refund_native_eth.unwrap_or(false);
         let refund_address = query_params.get_refund_address();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
             !self.check_gas_sponsorship_rate_limit(key_description).await;
 
-        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_disabled);
 
         // Parse response body
         let external_quote_response: ExternalQuoteResponse =
@@ -247,8 +249,6 @@ impl Server {
                 gas_sponsorship_info: None,
             });
         }
-
-        info!("Updating quote to reflect gas sponsorship");
 
         let sponsored_quote_response = self
             .construct_sponsored_quote_response(
@@ -348,14 +348,14 @@ impl Server {
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         // Parse query params
-        let (sponsorship_requested, refund_address, refund_native_eth) =
-            query_params.get_or_default_in_kind();
+        let (sponsorship_omitted, refund_address, refund_native_eth) =
+            query_params.get_or_default();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
             !self.check_gas_sponsorship_rate_limit(key_description).await;
 
-        let sponsor_match = !gas_sponsorship_rate_limited && sponsorship_requested;
+        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_omitted);
 
         // Parse response body
         let external_match_resp: ExternalMatchResponse =

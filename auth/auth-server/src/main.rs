@@ -23,7 +23,7 @@ pub(crate) mod schema;
 mod server;
 mod telemetry;
 
-use auth_server_api::{GasSponsorshipQueryParams, API_KEYS_PATH};
+use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
 use ethers::signers::LocalWallet;
 use renegade_arbitrum_client::{
@@ -276,10 +276,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::query::<GasSponsorshipQueryParams>())
+        .and(with_query_string())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
-            server.handle_external_quote_request(path, headers, body, query_params).await
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_external_quote_request(path, headers, body, query_str).await
         });
 
     let external_quote_assembly_path = warp::path("v0")
@@ -289,10 +289,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::query::<GasSponsorshipQueryParams>())
+        .and(with_query_string())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
-            server.handle_external_quote_assembly_request(path, headers, body, query_params).await
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_external_quote_assembly_request(path, headers, body, query_str).await
         });
 
     let atomic_match_path = warp::path("v0")
@@ -302,10 +302,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::query::<GasSponsorshipQueryParams>())
+        .and(with_query_string())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_params, server: Arc<Server>| async move {
-            server.handle_external_match_request(path, headers, body, query_params).await
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_external_match_request(path, headers, body, query_str).await
         });
 
     // Bind the server and listen
@@ -325,6 +325,13 @@ fn with_server(
     server: Arc<Server>,
 ) -> impl Filter<Extract = (Arc<Server>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || server.clone())
+}
+
+/// Helper function to parse the raw query string, returning an empty string
+/// instead of rejecting in the case that no query string is present
+fn with_query_string() -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone
+{
+    warp::query::raw().or_else(|_| async { Ok((String::new(),)) })
 }
 
 /// Handle a rejection from an endpoint handler

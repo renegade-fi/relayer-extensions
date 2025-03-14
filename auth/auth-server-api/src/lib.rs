@@ -169,11 +169,8 @@ pub struct SponsoredMatchResponse {
 /// The query parameters used for gas sponsorship
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GasSponsorshipQueryParams {
-    /// Whether to use gas sponsorship for the external match.
-    #[deprecated(since = "0.1.0", note = "Use `omit_gas_sponsorship` instead")]
-    pub use_gas_sponsorship: Option<bool>,
-    /// Whether to omit gas sponsorship for the external match.
-    pub omit_gas_sponsorship: Option<bool>,
+    /// Whether to disable gas sponsorship for the external match.
+    pub disable_gas_sponsorship: Option<bool>,
     /// The address to refund gas to.
     /// In the case of a native ETH refund, defaults to `tx::origin`.
     /// In the case of an in-kind refund, defaults to the receiver.
@@ -195,9 +192,9 @@ impl GasSponsorshipQueryParams {
 
     /// Get the gas sponsorship parameters, defaulting to in-kind gas
     /// sponsorship
-    pub fn get_or_default_in_kind(&self) -> (bool, Address, bool) {
+    pub fn get_or_default(&self) -> (bool, Address, bool) {
         (
-            self.omit_gas_sponsorship.unwrap_or(false),
+            self.disable_gas_sponsorship.unwrap_or(false),
             self.get_refund_address(),
             self.refund_native_eth.unwrap_or(false),
         )
@@ -205,7 +202,7 @@ impl GasSponsorshipQueryParams {
 
     /// Whether any gas sponsorship parameters are explicitly set
     pub fn is_set(&self) -> bool {
-        self.omit_gas_sponsorship.is_some()
+        self.disable_gas_sponsorship.is_some()
             || self.refund_address.is_some()
             || self.refund_native_eth.is_some()
     }

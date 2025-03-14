@@ -8,6 +8,7 @@ use renegade_api::http::external_match::{
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
+use tracing::info;
 
 use crate::{
     error::AuthServerError,
@@ -138,6 +139,8 @@ pub(crate) fn update_quote_with_gas_sponsorship(
     quote: &mut ApiExternalQuote,
     refund_amount: u128,
 ) -> Result<(), AuthServerError> {
+    info!("Updating quote to reflect gas sponsorship");
+
     update_match_result_with_gas_sponsorship(&mut quote.match_result, refund_amount);
 
     let base_amt_f64 = quote.match_result.base_amount as f64;
@@ -157,6 +160,7 @@ pub(crate) fn update_match_bundle_with_gas_sponsorship(
     match_bundle: &mut AtomicMatchApiBundle,
     refund_amount: u128,
 ) {
+    info!("Updating match bundle to reflect gas sponsorship");
     update_match_result_with_gas_sponsorship(&mut match_bundle.match_result, refund_amount);
     match_bundle.receive.amount += refund_amount;
 }
