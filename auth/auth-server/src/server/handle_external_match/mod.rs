@@ -218,9 +218,13 @@ impl Server {
         resp_body: &[u8],
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
-        // Parse query params
-        let (sponsorship_requested, refund_address, refund_native_eth) =
-            query_params.get_or_default();
+        // Parse query params.
+        // For backwards compatibility, we do *not* enable in-kind gas sponsorship by
+        // default for quote requests.
+        // TODO: Once clients have updated, we should enable this by default.
+        let sponsorship_requested = query_params.omit_gas_sponsorship.unwrap_or(true);
+        let refund_native_eth = query_params.refund_native_eth.unwrap_or(true);
+        let refund_address = query_params.get_refund_address();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
@@ -345,7 +349,7 @@ impl Server {
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         // Parse query params
         let (sponsorship_requested, refund_address, refund_native_eth) =
-            query_params.get_or_default();
+            query_params.get_or_default_in_kind();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
