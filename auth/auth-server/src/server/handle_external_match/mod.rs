@@ -143,8 +143,8 @@ impl Server {
             if let Err(e) = server_clone
                 .handle_quote_assembly_bundle_response(
                     key_desc,
-                    &assemble_sponsored_match_req,
-                    &sponsored_match_resp,
+                    assemble_sponsored_match_req,
+                    sponsored_match_resp,
                 )
                 .await
             {
@@ -198,7 +198,7 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
-                .handle_direct_match_bundle_response(key_description, &body, &sponsored_match_resp)
+                .handle_direct_match_bundle_response(key_description, &body, sponsored_match_resp)
                 .await
             {
                 warn!("Error handling bundle: {e}");
@@ -275,7 +275,7 @@ impl Server {
         self.validate_gas_sponsorship_info_signature(signed_gas_sponsorship_info)?;
 
         let gas_sponsorship_info = &signed_gas_sponsorship_info.gas_sponsorship_info;
-        if gas_sponsorship_info.requires_quote_update() {
+        if gas_sponsorship_info.requires_match_result_update() {
             // Reconstruct original signed quote
             let quote = &mut assemble_sponsored_match_req.signed_quote.quote;
             self.remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount)?;
@@ -328,6 +328,7 @@ impl Server {
             SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
                 is_sponsored: false,
+                gas_sponsorship_info: None,
             }
         };
 
@@ -365,6 +366,7 @@ impl Server {
             return Ok(SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
                 is_sponsored: false,
+                gas_sponsorship_info: None,
             });
         }
 
@@ -391,8 +393,8 @@ impl Server {
     async fn handle_quote_assembly_bundle_response(
         &self,
         key: String,
-        req: &AssembleSponsoredMatchRequest,
-        resp: &SponsoredMatchResponse,
+        req: AssembleSponsoredMatchRequest,
+        resp: SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
@@ -410,7 +412,7 @@ impl Server {
         &self,
         key: String,
         req: &[u8],
-        resp: &SponsoredMatchResponse,
+        resp: SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
@@ -425,15 +427,17 @@ impl Server {
         &self,
         key: String,
         order: ExternalOrder,
-        resp: &SponsoredMatchResponse,
+        resp: SponsoredMatchResponse,
         request_id: Option<String>,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        self.log_bundle(&order, resp, &key, &request_id)?;
+        self.log_bundle(&order, &resp, &key, &request_id)?;
 
-        let SponsoredMatchResponse { match_bundle, is_sponsored } = resp;
+        // Note: if sponsored in-kind w/ refund going to the receiver,
+        // the amounts in the match bundle will have been updated
+        let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
@@ -444,19 +448,26 @@ impl Server {
 
         // Record quote comparisons before settlement, if enabled
         if let Some(quote_metrics) = &self.quote_metrics {
-            quote_metrics.record_quote_comparison(match_bundle, labels.as_slice()).await;
+            quote_metrics.record_quote_comparison(&match_bundle, labels.as_slice()).await;
         }
 
         // If the bundle settles, increase the API user's a rate limit token balance
-        let did_settle = await_settlement(match_bundle, &self.arbitrum_client).await?;
+        let did_settle = await_settlement(&match_bundle, &self.arbitrum_client).await?;
         if did_settle {
             self.add_bundle_rate_limit_token(key.clone()).await;
-            self.record_settled_match_sponsorship(match_bundle, *is_sponsored, key, request_id)
+            if let Some(gas_sponsorship_info) = gas_sponsorship_info {
+                self.record_settled_match_sponsorship(
+                    &match_bundle,
+                    gas_sponsorship_info,
+                    key,
+                    request_id,
+                )
                 .await?;
+            }
         }
 
         // Record metrics
-        record_external_match_metrics(&order, match_bundle, &labels, did_settle).await?;
+        record_external_match_metrics(&order, &match_bundle, &labels, did_settle).await?;
 
         Ok(())
     }
@@ -465,19 +476,28 @@ impl Server {
 
     /// Log a quote
     fn log_quote(&self, resp: &SponsoredQuoteResponse) -> Result<(), AuthServerError> {
-        let signed_quote = &resp.signed_quote;
+        let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
         let match_result = signed_quote.match_result();
         let is_buy = match_result.direction;
         let recv = signed_quote.receive_amount();
         let send = signed_quote.send_amount();
-        let is_sponsored = resp.gas_sponsorship_info.is_some();
+        let is_sponsored = gas_sponsorship_info.is_some();
+        let (refund_amount, refund_native_eth) = gas_sponsorship_info
+            .as_ref()
+            .map(|s| {
+                (s.gas_sponsorship_info.refund_amount, s.gas_sponsorship_info.refund_native_eth)
+            })
+            .unwrap_or((0, false));
+
         info!(
             is_sponsored = is_sponsored,
-            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({})) to client",
+            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             recv.amount,
             recv.mint,
             send.amount,
-            send.mint
+            send.mint,
+            refund_amount,
+            refund_native_eth
         );
 
         Ok(())
@@ -512,7 +532,7 @@ impl Server {
         request_id: &str,
         endpoint: &str,
     ) -> Result<(), AuthServerError> {
-        let SponsoredMatchResponse { match_bundle, is_sponsored } = resp;
+        let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
 
         // Get the decimal-corrected price
         let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
@@ -535,6 +555,12 @@ impl Server {
         let response_quote_amount = match_result.quote_amount;
         let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
 
+        // Get the gas sponsorship info
+        let (refund_amount, refund_native_eth) = gas_sponsorship_info
+            .as_ref()
+            .map(|info| (info.refund_amount, info.refund_native_eth))
+            .unwrap_or((0, false));
+
         info!(
             requested_base_amount = requested_base_amount,
             response_base_amount = response_base_amount,
@@ -545,12 +571,14 @@ impl Server {
             key_description = key_description,
             request_id = request_id,
             is_sponsored = is_sponsored,
-            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({})) to client",
+            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             is_buy,
             recv.amount,
             recv.mint,
             send.amount,
-            send.mint
+            send.mint,
+            refund_amount,
+            refund_native_eth
         );
 
         Ok(())

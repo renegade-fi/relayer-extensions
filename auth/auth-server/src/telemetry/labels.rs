@@ -86,5 +86,3 @@ pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
 
 /// Metric tag to indicate that a match had its gas costs sponsored
 pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";
-/// Metric tag for a transaction hash
-pub const TX_HASH_METRIC_TAG: &str = "tx_hash";
