@@ -8,7 +8,7 @@ use auth_server_api::{
     SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bytes::Bytes;
-use http::{Method, StatusCode};
+use http::{Method, Response, StatusCode};
 use renegade_api::http::external_match::{
     ExternalMatchRequest, ExternalMatchResponse, ExternalOrder, ExternalQuoteRequest,
     ExternalQuoteResponse,
@@ -53,16 +53,17 @@ impl Server {
         query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
+        let path_str = path.as_str();
+        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
         self.check_quote_rate_limit(key_desc.clone()).await?;
 
         // Send the request to the relayer
         let mut resp =
-            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+            self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
 
         let status = resp.status();
         if status != StatusCode::OK {
-            warn!("Non-200 response from relayer: {}", status);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &body);
             return Ok(resp);
         }
 
@@ -98,7 +99,8 @@ impl Server {
         query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let key_desc = self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
+        let path_str = path.as_str();
+        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
         self.check_bundle_rate_limit(key_desc.clone()).await?;
 
         // Update the request to remove the effects of gas sponsorship, if
@@ -110,12 +112,13 @@ impl Server {
                 .map_err(AuthServerError::serde)?;
 
         // Send the request to the relayer
-        let mut resp =
-            self.send_admin_request(Method::POST, path.as_str(), headers, req_body.into()).await?;
+        let mut resp = self
+            .send_admin_request(Method::POST, path_str, headers, req_body.clone().into())
+            .await?;
 
         let status = resp.status();
         if status != StatusCode::OK {
-            warn!("Non-200 response from relayer: {}", status);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body);
             return Ok(resp);
         }
 
@@ -167,19 +170,19 @@ impl Server {
         query_str: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
-        let key_description =
-            self.authorize_request(path.as_str(), &query_str, &headers, &body).await?;
+        let path_str = path.as_str();
+        let key_description = self.authorize_request(path_str, &query_str, &headers, &body).await?;
 
         self.check_bundle_rate_limit(key_description.clone()).await?;
 
         // Send the request to the relayer, potentially sponsoring the gas costs
 
         let mut resp =
-            self.send_admin_request(Method::POST, path.as_str(), headers, body.clone()).await?;
+            self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
 
         let status = resp.status();
         if status != StatusCode::OK {
-            warn!("Non-200 response from relayer: {}", status);
+            log_unsuccessful_relayer_request(&resp, &key_description, path_str, &body);
             return Ok(resp);
         }
 
@@ -405,7 +408,7 @@ impl Server {
 
         let request_id = uuid::Uuid::new_v4().to_string();
         if req.updated_order.is_some() {
-            self.log_updated_order(&key, original_order, updated_order, &request_id);
+            log_updated_order(&key, original_order, updated_order, &request_id);
         }
 
         self.handle_bundle_response(
@@ -445,7 +448,7 @@ impl Server {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        self.log_bundle(&order, &resp, &key, &request_id, endpoint)?;
+        log_bundle(&order, &resp, &key, &request_id, endpoint)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
@@ -484,124 +487,6 @@ impl Server {
         Ok(())
     }
 
-    // --- Logging --- //
-
-    /// Log a quote
-    fn log_quote(
-        &self,
-        resp: &SponsoredQuoteResponse,
-        key_description: &str,
-    ) -> Result<(), AuthServerError> {
-        let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
-        let match_result = signed_quote.match_result();
-        let is_buy = match_result.direction;
-        let recv = signed_quote.receive_amount();
-        let send = signed_quote.send_amount();
-        let is_sponsored = gas_sponsorship_info.is_some();
-        let (refund_amount, refund_native_eth) = gas_sponsorship_info
-            .as_ref()
-            .map(|s| {
-                (s.gas_sponsorship_info.refund_amount, s.gas_sponsorship_info.refund_native_eth)
-            })
-            .unwrap_or((0, false));
-
-        info!(
-            is_sponsored = is_sponsored,
-            key_description = key_description,
-            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-            recv.amount,
-            recv.mint,
-            send.amount,
-            send.mint,
-            refund_amount,
-            refund_native_eth
-        );
-
-        Ok(())
-    }
-
-    /// Log an updated order
-    fn log_updated_order(
-        &self,
-        key: &str,
-        original_order: &ExternalOrder,
-        updated_order: &ExternalOrder,
-        request_id: &str,
-    ) {
-        let original_base_amount = original_order.base_amount;
-        let updated_base_amount = updated_order.base_amount;
-        let original_quote_amount = original_order.quote_amount;
-        let updated_quote_amount = updated_order.quote_amount;
-        info!(
-            key_description = key,
-            request_id = request_id,
-            "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
-            original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
-        );
-    }
-
-    /// Log the bundle parameters
-    fn log_bundle(
-        &self,
-        order: &ExternalOrder,
-        resp: &SponsoredMatchResponse,
-        key_description: &str,
-        request_id: &str,
-        endpoint: &str,
-    ) -> Result<(), AuthServerError> {
-        let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
-
-        // Get the decimal-corrected price
-        let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
-        let price_fixed = FixedPoint::from_f64_round_down(price);
-
-        let match_result = &match_bundle.match_result;
-        let is_buy = match_result.direction;
-        let recv = &match_bundle.receive;
-        let send = &match_bundle.send;
-
-        let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
-
-        // Get the base fill ratio
-        let requested_base_amount = order.get_base_amount(price_fixed, relayer_fee);
-        let response_base_amount = match_result.base_amount;
-        let base_fill_ratio = response_base_amount as f64 / requested_base_amount as f64;
-
-        // Get the quote fill ratio
-        let requested_quote_amount = order.get_quote_amount(price_fixed, relayer_fee);
-        let response_quote_amount = match_result.quote_amount;
-        let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
-
-        // Get the gas sponsorship info
-        let (refund_amount, refund_native_eth) = gas_sponsorship_info
-            .as_ref()
-            .map(|info| (info.refund_amount, info.refund_native_eth))
-            .unwrap_or((0, false));
-
-        info!(
-            requested_base_amount = requested_base_amount,
-            response_base_amount = response_base_amount,
-            requested_quote_amount = requested_quote_amount,
-            response_quote_amount = response_quote_amount,
-            base_fill_ratio = base_fill_ratio,
-            quote_fill_ratio = quote_fill_ratio,
-            key_description = key_description,
-            request_id = request_id,
-            is_sponsored = is_sponsored,
-            endpoint = endpoint,
-            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-            is_buy,
-            recv.amount,
-            recv.mint,
-            send.amount,
-            send.mint,
-            refund_amount,
-            refund_native_eth
-        );
-
-        Ok(())
-    }
-
     /// Handle a quote response
     fn handle_quote_response(
         &self,
@@ -610,7 +495,7 @@ impl Server {
         resp: &SponsoredQuoteResponse,
     ) -> Result<(), AuthServerError> {
         // Log the quote parameters
-        self.log_quote(resp, &key)?;
+        log_quote(resp, &key)?;
 
         // Only proceed with metrics recording if sampled
         if !self.should_sample_metrics() {
@@ -648,4 +533,134 @@ impl Server {
 
         Ok(())
     }
+}
+
+// -------------------
+// | Logging helpers |
+// -------------------
+
+/// Log a non-200 response from the relayer for the given request
+fn log_unsuccessful_relayer_request(
+    resp: &Response<Bytes>,
+    key_description: &str,
+    path: &str,
+    req_body: &[u8],
+) {
+    let status = resp.status();
+    let text = String::from_utf8_lossy(resp.body()).to_string();
+    let req_body = String::from_utf8_lossy(req_body).to_string();
+    warn!(
+        key_description = key_description,
+        path = path,
+        request_body = req_body,
+        "Non-200 response from relayer: {status}: {text}",
+    );
+}
+
+/// Log a quote
+fn log_quote(resp: &SponsoredQuoteResponse, key_description: &str) -> Result<(), AuthServerError> {
+    let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
+    let match_result = signed_quote.match_result();
+    let is_buy = match_result.direction;
+    let recv = signed_quote.receive_amount();
+    let send = signed_quote.send_amount();
+    let is_sponsored = gas_sponsorship_info.is_some();
+    let (refund_amount, refund_native_eth) = gas_sponsorship_info
+        .as_ref()
+        .map(|s| (s.gas_sponsorship_info.refund_amount, s.gas_sponsorship_info.refund_native_eth))
+        .unwrap_or((0, false));
+
+    info!(
+            is_sponsored = is_sponsored,
+            key_description = key_description,
+            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
+            recv.amount,
+            recv.mint,
+            send.amount,
+            send.mint,
+            refund_amount,
+            refund_native_eth
+        );
+
+    Ok(())
+}
+
+/// Log an updated order
+fn log_updated_order(
+    key: &str,
+    original_order: &ExternalOrder,
+    updated_order: &ExternalOrder,
+    request_id: &str,
+) {
+    let original_base_amount = original_order.base_amount;
+    let updated_base_amount = updated_order.base_amount;
+    let original_quote_amount = original_order.quote_amount;
+    let updated_quote_amount = updated_order.quote_amount;
+    info!(
+            key_description = key,
+            request_id = request_id,
+            "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
+            original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
+        );
+}
+
+/// Log the bundle parameters
+fn log_bundle(
+    order: &ExternalOrder,
+    resp: &SponsoredMatchResponse,
+    key_description: &str,
+    request_id: &str,
+    endpoint: &str,
+) -> Result<(), AuthServerError> {
+    let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
+
+    // Get the decimal-corrected price
+    let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
+    let price_fixed = FixedPoint::from_f64_round_down(price);
+
+    let match_result = &match_bundle.match_result;
+    let is_buy = match_result.direction;
+    let recv = &match_bundle.receive;
+    let send = &match_bundle.send;
+
+    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+
+    // Get the base fill ratio
+    let requested_base_amount = order.get_base_amount(price_fixed, relayer_fee);
+    let response_base_amount = match_result.base_amount;
+    let base_fill_ratio = response_base_amount as f64 / requested_base_amount as f64;
+
+    // Get the quote fill ratio
+    let requested_quote_amount = order.get_quote_amount(price_fixed, relayer_fee);
+    let response_quote_amount = match_result.quote_amount;
+    let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
+
+    // Get the gas sponsorship info
+    let (refund_amount, refund_native_eth) = gas_sponsorship_info
+        .as_ref()
+        .map(|info| (info.refund_amount, info.refund_native_eth))
+        .unwrap_or((0, false));
+
+    info!(
+            requested_base_amount = requested_base_amount,
+            response_base_amount = response_base_amount,
+            requested_quote_amount = requested_quote_amount,
+            response_quote_amount = response_quote_amount,
+            base_fill_ratio = base_fill_ratio,
+            quote_fill_ratio = quote_fill_ratio,
+            key_description = key_description,
+            request_id = request_id,
+            is_sponsored = is_sponsored,
+            endpoint = endpoint,
+            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
+            is_buy,
+            recv.amount,
+            recv.mint,
+            send.amount,
+            send.mint,
+            refund_amount,
+            refund_native_eth
+        );
+
+    Ok(())
 }
