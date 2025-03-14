@@ -6,7 +6,7 @@ use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::{order::OrderSide, Amount};
 use renegade_common::types::token::Token;
 
-use crate::{error::AuthServerError, server::helpers::DEFAULT_GAS_ESTIMATION};
+use crate::{error::AuthServerError, server::gas_estimation::constants::ESTIMATED_L2_GAS};
 
 /// The name of our quote source
 const RENEGADE_SOURCE_NAME: &str = "renegade";
@@ -98,7 +98,7 @@ impl QuoteResponse {
 /// Converts the `AtomicMatchApiBundle` into a `QuoteResponse`.
 impl From<&AtomicMatchApiBundle> for QuoteResponse {
     fn from(bundle: &AtomicMatchApiBundle) -> Self {
-        let gas = bundle.settlement_tx.gas().map_or(DEFAULT_GAS_ESTIMATION, |gas| gas.as_u64());
+        let gas = bundle.settlement_tx.gas().map_or(ESTIMATED_L2_GAS, |gas| gas.as_u64());
         let fee_take = bundle.fees.total();
         Self {
             quote_mint: bundle.match_result.quote_mint.clone(),

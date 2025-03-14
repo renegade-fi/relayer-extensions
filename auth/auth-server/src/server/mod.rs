@@ -2,6 +2,7 @@
 //!
 //! The server is a dependency injection container for the authentication server
 mod api_auth;
+pub mod gas_estimation;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;
@@ -25,7 +26,9 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
+use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
+use gas_estimation::gas_cost_sampler::GasCostSampler;
+use http::header::CONTENT_LENGTH;
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -34,6 +37,7 @@ use rate_limiter::AuthServerRateLimiter;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::hmac::HmacKey;
+use renegade_system_clock::SystemClock;
 use reqwest::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -79,16 +83,19 @@ pub struct Server {
     pub gas_sponsor_address: Address,
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
-    /// The block number at which the server started, used to filter gas
-    /// sponsorship events for rate limiting
-    pub start_block_num: BlockNumber,
     /// The price reporter client with WebSocket streaming support
     pub price_reporter_client: Arc<PriceReporterClient>,
+    /// The gas cost sampler
+    pub gas_cost_sampler: Arc<GasCostSampler>,
 }
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(args: Cli, arbitrum_client: ArbitrumClient) -> Result<Self, AuthServerError> {
+    pub async fn new(
+        args: Cli,
+        arbitrum_client: ArbitrumClient,
+        system_clock: &SystemClock,
+    ) -> Result<Self, AuthServerError> {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
 
@@ -132,8 +139,14 @@ impl Server {
         let gas_sponsor_auth_key =
             SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
 
-        let start_block_num =
-            arbitrum_client.block_number().await.map_err(AuthServerError::setup)?;
+        let gas_cost_sampler = Arc::new(
+            GasCostSampler::new(
+                arbitrum_client.client().clone(),
+                gas_sponsor_address,
+                system_clock,
+            )
+            .await?,
+        );
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
@@ -151,8 +164,8 @@ impl Server {
                 .unwrap_or(1.0 /* default no sampling */),
             gas_sponsor_address,
             gas_sponsor_auth_key,
-            start_block_num,
             price_reporter_client,
+            gas_cost_sampler,
         })
     }
 
@@ -169,6 +182,10 @@ impl Server {
         mut headers: HeaderMap,
         body: Bytes,
     ) -> Result<Response<Bytes>, ApiError> {
+        // Ensure that the content-length header is set correctly
+        // so that the relayer can deserialize the proxied request
+        headers.insert(CONTENT_LENGTH, body.len().into());
+
         // Admin authenticate the request
         self.admin_authenticate(path, &mut headers, &body)?;
 

@@ -44,6 +44,12 @@ pub enum AuthServerError {
     /// Price reporter error
     #[error("Price reporter error: {0}")]
     PriceReporter(#[from] PriceReporterError),
+    /// Arbitrum client error
+    #[error("Arbitrum client error: {0}")]
+    ArbitrumClient(String),
+    /// Gas cost sampler error
+    #[error("Gas cost sampler error: {0}")]
+    GasCostSampler(String),
 }
 
 impl AuthServerError {
@@ -105,6 +111,18 @@ impl AuthServerError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn custom<T: ToString>(msg: T) -> Self {
         Self::Custom(msg.to_string())
+    }
+
+    /// Create a new arbitrum client error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn arbitrum_client<T: ToString>(msg: T) -> Self {
+        Self::ArbitrumClient(msg.to_string())
+    }
+
+    /// Create a new gas cost sampler error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn gas_cost_sampler<T: ToString>(msg: T) -> Self {
+        Self::GasCostSampler(msg.to_string())
     }
 }
 
