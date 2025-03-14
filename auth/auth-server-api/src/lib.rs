@@ -98,8 +98,8 @@ impl GasSponsorshipInfo {
     }
 
     /// Whether this sponsorship implies an update to the effective price /
-    /// receive amount of the associated quote
-    pub fn requires_quote_update(&self) -> bool {
+    /// receive amount of the associated match result
+    pub fn requires_match_result_update(&self) -> bool {
         !self.refund_native_eth && self.refund_address.is_none()
     }
 
@@ -157,10 +157,13 @@ impl AssembleSponsoredMatchRequest {
 /// A sponsored match response from the auth server
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SponsoredMatchResponse {
-    /// The external match bundle
+    /// The external match bundle, potentially updated to reflect the
+    /// post-sponsorship receive amount
     pub match_bundle: AtomicMatchApiBundle,
     /// Whether or not the match was sponsored
     pub is_sponsored: bool,
+    /// The gas sponsorship info
+    pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
 }
 
 /// The query parameters used for gas sponsorship

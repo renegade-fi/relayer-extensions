@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
-use ethers::types::TxHash;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_arbitrum_client::{
     abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
@@ -39,7 +38,7 @@ use crate::{
 };
 
 use super::{
-    labels::{GAS_SPONSORSHIP_VALUE, REQUEST_ID_METRIC_TAG, SIDE_TAG, TX_HASH_METRIC_TAG},
+    labels::{GAS_SPONSORSHIP_VALUE, REQUEST_ID_METRIC_TAG, SIDE_TAG},
     quote_comparison::QuoteComparison,
 };
 
@@ -284,15 +283,8 @@ pub(crate) async fn record_external_match_metrics(
 }
 
 /// Record the dollar value of sponsored gas for a given settled match
-pub(crate) fn record_gas_sponsorship_metrics(
-    gas_sponsorship_value: f64,
-    tx_hash: TxHash,
-    request_id: String,
-) {
-    let labels = vec![
-        (REQUEST_ID_METRIC_TAG.to_string(), request_id),
-        (TX_HASH_METRIC_TAG.to_string(), format!("{:#x}", tx_hash)),
-    ];
+pub(crate) fn record_gas_sponsorship_metrics(gas_sponsorship_value: f64, request_id: String) {
+    let labels = vec![(REQUEST_ID_METRIC_TAG.to_string(), request_id)];
     metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
 }
 

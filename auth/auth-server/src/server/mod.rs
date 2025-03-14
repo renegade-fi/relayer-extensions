@@ -26,7 +26,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::{abi::Address, core::k256::ecdsa::SigningKey, types::BlockNumber, utils::hex};
+use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
 use http::{HeaderMap, Method, Response};
@@ -83,9 +83,6 @@ pub struct Server {
     pub gas_sponsor_address: Address,
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
-    /// The block number at which the server started, used to filter gas
-    /// sponsorship events for rate limiting
-    pub start_block_num: BlockNumber,
     /// The price reporter client with WebSocket streaming support
     pub price_reporter_client: Arc<PriceReporterClient>,
     /// The gas cost sampler
@@ -142,9 +139,6 @@ impl Server {
         let gas_sponsor_auth_key =
             SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
 
-        let start_block_num =
-            arbitrum_client.block_number().await.map_err(AuthServerError::setup)?;
-
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
                 arbitrum_client.client().clone(),
@@ -170,7 +164,6 @@ impl Server {
                 .unwrap_or(1.0 /* default no sampling */),
             gas_sponsor_address,
             gas_sponsor_auth_key,
-            start_block_num,
             price_reporter_client,
             gas_cost_sampler,
         })
