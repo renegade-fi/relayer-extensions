@@ -302,6 +302,17 @@ impl Server {
         query_params: &GasSponsorshipQueryParams,
         gas_sponsorship_info: Option<&GasSponsorshipInfo>,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
+        if query_params.is_set() {
+            // Moving forward, we will only support requesting gas sponsorship at the quote
+            // request stage.
+            // However, for backwards compatibility, we continue supporting the gas
+            // sponsorship query parameters here at the assembly stage,
+            // which overrule the gas sponsorship info in the quote.
+            return self
+                .maybe_apply_gas_sponsorship_to_match(key_description, resp_body, query_params)
+                .await;
+        }
+
         // Parse response body
         let external_match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
@@ -323,14 +334,6 @@ impl Server {
                 refund_address,
                 refund_amount,
             )?
-        } else if query_params.is_set() {
-            // Moving forward, we will only support requesting gas sponsorship at the quote
-            // request stage.
-            // However, for backwards compatibility, we continue supporting the gas
-            // sponsorship query parameters here at the assembly stage,
-            // only if sponsorship was not requested at the quote request stage.
-            self.maybe_apply_gas_sponsorship_to_match(key_description, resp_body, query_params)
-                .await?
         } else {
             SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
