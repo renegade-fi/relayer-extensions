@@ -136,7 +136,7 @@ impl Server {
             .maybe_apply_gas_sponsorship_to_assembled_quote(
                 key_desc.clone(),
                 resp.body(),
-                &query_params,
+                query_params,
                 gas_sponsorship_info,
             )
             .await?;
@@ -295,24 +295,14 @@ impl Server {
     /// resulting `SponsoredMatchResponse`. We don't
     /// check the gas sponsorship rate limit here, since this is checked during
     /// the quote request stage.
+    #[allow(deprecated)]
     async fn maybe_apply_gas_sponsorship_to_assembled_quote(
         &self,
         key_description: String,
         resp_body: &[u8],
-        query_params: &GasSponsorshipQueryParams,
+        mut query_params: GasSponsorshipQueryParams,
         gas_sponsorship_info: Option<&GasSponsorshipInfo>,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
-        if query_params.is_set() {
-            // Moving forward, we will only support requesting gas sponsorship at the quote
-            // request stage.
-            // However, for backwards compatibility, we continue supporting the gas
-            // sponsorship query parameters here at the assembly stage,
-            // which overrule the gas sponsorship info in the quote.
-            return self
-                .maybe_apply_gas_sponsorship_to_match(key_description, resp_body, query_params)
-                .await;
-        }
-
         // Parse response body
         let external_match_resp: ExternalMatchResponse =
             serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
@@ -334,6 +324,16 @@ impl Server {
                 refund_address,
                 refund_amount,
             )?
+        } else if query_params.use_gas_sponsorship.unwrap_or(false) {
+            // If the deprecated `use_gas_sponsorship` query parameter is set, it means an
+            // outdated client must have been used to invoke the assembly endpoint.
+            // In this case, for backwards compatibility, we use the deprecated default of
+            // native ETH refunds.
+            query_params.refund_native_eth = Some(true);
+
+            return self
+                .maybe_apply_gas_sponsorship_to_match(key_description, resp_body, &query_params)
+                .await;
         } else {
             SponsoredMatchResponse {
                 match_bundle: external_match_resp.match_bundle,
