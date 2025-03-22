@@ -1,14 +1,16 @@
 //! Handlers for executing swaps
 
+use std::sync::Arc;
+
 use ethers::{
     providers::Middleware,
-    signers::LocalWallet,
-    types::{BlockNumber, Eip1559TransactionRequest, TransactionReceipt},
+    signers::{LocalWallet, Signer},
+    types::{Address, BlockNumber, Eip1559TransactionRequest, TransactionReceipt, U256},
 };
 use funds_manager_api::quoters::ExecutionQuote;
 use tracing::info;
 
-use crate::helpers::TransactionHash;
+use crate::helpers::{TransactionHash, ERC20};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -33,6 +35,10 @@ impl ExecutionClient {
         wallet: &LocalWallet,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
         let client = self.get_signer(wallet.clone());
+
+        // Set approval for the sell token
+        self.approve_erc20_allowance(quote.sell_token_address, quote.to, quote.sell_amount, wallet)
+            .await?;
 
         let latest_block = client
             .get_block(BlockNumber::Latest)
@@ -61,5 +67,38 @@ impl ExecutionClient {
             .await
             .map_err(ExecutionClientError::arbitrum)?
             .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))
+    }
+
+    /// Approve an erc20 allowance
+    async fn approve_erc20_allowance(
+        &self,
+        token_address: Address,
+        spender: Address,
+        amount: U256,
+        wallet: &LocalWallet,
+    ) -> Result<(), ExecutionClientError> {
+        let client = self.get_signer(wallet.clone());
+        let erc20 = ERC20::new(token_address, Arc::new(client));
+
+        // First, check if the allowance is already sufficient
+        let allowance = erc20
+            .allowance(wallet.address(), spender)
+            .await
+            .map_err(ExecutionClientError::arbitrum)?;
+        if allowance >= amount {
+            info!("Already approved erc20 allowance for {spender:#x}");
+            return Ok(());
+        }
+
+        // Otherwise, approve the allowance
+        let tx = erc20.approve(spender, amount);
+        let pending_tx = tx.send().await.map_err(ExecutionClientError::arbitrum)?;
+
+        let receipt = pending_tx
+            .await
+            .map_err(ExecutionClientError::arbitrum)?
+            .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))?;
+        info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
+        Ok(())
     }
 }

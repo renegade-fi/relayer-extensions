@@ -15,6 +15,17 @@ pub const GET_DEPOSIT_ADDRESS_ROUTE: &str = "deposit-address";
 /// The route to withdraw funds from custody
 pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 /// The route to fetch an execution quote on the quoter hot wallet
+///
+/// Expected query parameters (proxied directly to LiFi API):
+/// - fromChain: Source chain ID
+/// - toChain: Destination chain ID
+/// - fromToken: Source token address
+/// - toToken: Destination token address
+/// - fromAddress: Source wallet address
+/// - toAddress: Destination wallet address
+/// - fromAmount: Source token amount
+/// - order: Order preference for routing (e.g. 'CHEAPEST')
+/// - slippage: Slippage tolerance as a decimal (e.g. 0.0001 for 0.01%)
 pub const GET_EXECUTION_QUOTE_ROUTE: &str = "get-execution-quote";
 /// The route to execute a swap on the quoter hot wallet
 pub const EXECUTE_SWAP_ROUTE: &str = "execute-swap";
@@ -56,8 +67,6 @@ pub struct ExecutionQuote {
     /// The amount of tokens to sell
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
-    /// The quoted price
-    pub price: String,
     /// The submitting address
     #[serde(with = "address_string_serialization")]
     pub from: Address,
@@ -80,22 +89,9 @@ pub struct ExecutionQuote {
 
 /// The request body for fetching a quote from the execution venue
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetExecutionQuoteRequest {
-    /// The token address we're buying
-    #[serde(with = "address_string_serialization")]
-    pub buy_token_address: Address,
-    /// The token address we're selling
-    #[serde(with = "address_string_serialization")]
-    pub sell_token_address: Address,
-    /// The amount of tokens to sell
-    pub sell_amount: u128,
-}
-
-/// The response body for fetching a quote from the execution venue
-#[derive(Debug, Serialize, Deserialize)]
 pub struct GetExecutionQuoteResponse {
     /// The quote, directly from the execution venue
-    pub quote: ExecutionQuote,
+    pub quote: serde_json::Value,
 }
 
 /// The request body for executing a swap on the execution venue
