@@ -49,11 +49,9 @@ impl TryFrom<serde_json::Value> for ExecutionQuote {
     type Error = String;
 
     fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        // First deserialize into our LiFi response type
         let quote: LiFiQuoteResponse = serde_json::from_value(value)
             .map_err(|e| format!("Failed to parse LiFi quote: {}", e))?;
 
-        // Then convert to our ExecutionQuote
         let buy_token_address = quote
             .action
             .to_token

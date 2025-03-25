@@ -1,4 +1,6 @@
 //! Auth helpers for the API
+use crate::types::quoters::ExecutionQuote;
+use hex;
 use hmac::{Hmac, Mac};
 use http::HeaderMap;
 use itertools::Itertools;
@@ -50,4 +52,30 @@ fn add_headers_to_hmac(mac: &mut Hmac<Sha256>, headers: &HeaderMap) {
         mac.update(key.as_bytes());
         mac.update(value.as_bytes());
     }
+}
+
+/// Compute an HMAC signature for an execution quote
+pub fn compute_quote_hmac(key: &[u8], quote: &ExecutionQuote) -> String {
+    // Create a canonical string representation of the quote
+    let canonical = format!(
+        "{}{}{}{}{}{}{}{}{}{}",
+        quote.buy_token_address,
+        quote.sell_token_address,
+        quote.sell_amount,
+        quote.buy_amount,
+        quote.from,
+        quote.to,
+        hex::encode(&quote.data),
+        quote.value,
+        quote.gas_price,
+        quote.estimated_gas
+    );
+
+    // Compute HMAC
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC error");
+    mac.update(canonical.as_bytes());
+    let result = mac.finalize();
+
+    // Convert to hex string
+    hex::encode(result.into_bytes())
 }

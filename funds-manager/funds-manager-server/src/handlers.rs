@@ -4,6 +4,7 @@ use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
+use funds_manager_api::auth::compute_quote_hmac;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
     CreateGasWalletResponse, RefillGasRequest, RegisterGasWalletRequest, RegisterGasWalletResponse,
@@ -158,11 +159,20 @@ pub(crate) async fn get_execution_quote_handler(
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    // Convert the raw quote into our typed ExecutionQuote
     let quote = ExecutionQuote::try_from(raw_quote)
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e)))?;
 
-    let resp = GetExecutionQuoteResponse { quote };
+    let hmac_key = match &server.quote_hmac_key {
+        Some(hmac_key) => hmac_key,
+        None => {
+            return Err(warp::reject::custom(ApiError::InternalError(
+                "Quote HMAC key not configured".to_string(),
+            )))
+        },
+    };
+    let signature = compute_quote_hmac(hmac_key, &quote);
+
+    let resp = GetExecutionQuoteResponse { quote, signature };
     Ok(warp::reply::json(&resp))
 }
 
@@ -171,7 +181,24 @@ pub(crate) async fn execute_swap_handler(
     req: ExecuteSwapRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let hot_wallet = server.custody_client.get_quoter_hot_wallet().await?;
+    // Verify the signature
+    let hmac_key = match &server.quote_hmac_key {
+        Some(hmac_key) => hmac_key,
+        None => {
+            return Err(warp::reject::custom(ApiError::InternalError(
+                "Quote HMAC key not configured".to_string(),
+            )))
+        },
+    };
+    let computed_signature = compute_quote_hmac(hmac_key, &req.quote);
+    if computed_signature != req.signature {
+        return Err(warp::reject::custom(ApiError::Unauthenticated(
+            "Invalid quote signature".to_string(),
+        )));
+    }
+
+    let vault = DepositWithdrawSource::Quoter.vault_name();
+    let hot_wallet = server.custody_client.get_hot_wallet_by_vault(vault).await?;
     let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
     let tx = server.execution_client.execute_swap(req.quote, &wallet).await?;

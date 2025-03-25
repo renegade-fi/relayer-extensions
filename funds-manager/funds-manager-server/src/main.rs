@@ -74,6 +74,9 @@ struct Cli {
     /// The HMAC key to use for authentication
     #[clap(long, conflicts_with = "disable_auth", env = "HMAC_KEY")]
     hmac_key: Option<String>,
+    /// The HMAC key to use for signing quotes
+    #[clap(long, env = "QUOTE_HMAC_KEY")]
+    quote_hmac_key: Option<String>,
     /// Whether to disable authentication
     #[clap(long, conflicts_with = "hmac_key")]
     disable_auth: bool,
@@ -156,6 +159,19 @@ impl Cli {
             let decoded = hex::decode(key).expect("Invalid HMAC key");
             if decoded.len() != 32 {
                 panic!("HMAC key must be 32 bytes long");
+            }
+            let mut array = [0u8; 32];
+            array.copy_from_slice(&decoded);
+            array
+        })
+    }
+
+    /// Get the quote HMAC key as a 32-byte array
+    fn get_quote_hmac_key(&self) -> Option<[u8; 32]> {
+        self.quote_hmac_key.as_ref().map(|key| {
+            let decoded = hex::decode(key).expect("Invalid quote HMAC key");
+            if decoded.len() != 32 {
+                panic!("Quote HMAC key must be 32 bytes long");
             }
             let mut array = [0u8; 32];
             array.copy_from_slice(&decoded);

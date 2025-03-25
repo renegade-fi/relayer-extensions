@@ -97,6 +97,8 @@ pub struct ExecutionQuote {
 pub struct GetExecutionQuoteResponse {
     /// The quote, directly from the execution venue
     pub quote: ExecutionQuote,
+    /// The HMAC signature of the quote
+    pub signature: String,
 }
 
 /// The request body for executing a swap on the execution venue
@@ -105,6 +107,8 @@ pub struct ExecuteSwapRequest {
     /// The quote, implicitly accepted by the caller by its presence in this
     /// request
     pub quote: ExecutionQuote,
+    /// The HMAC signature of the quote
+    pub signature: String,
 }
 
 /// The response body for executing a swap on the execution venue

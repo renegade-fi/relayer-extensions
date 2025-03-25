@@ -61,6 +61,8 @@ pub(crate) struct Server {
     pub aws_config: SdkConfig,
     /// The HMAC key for custody endpoint authentication
     pub hmac_key: Option<[u8; 32]>,
+    /// The HMAC key for signing quotes
+    pub quote_hmac_key: Option<[u8; 32]>,
 }
 
 impl Server {
@@ -98,6 +100,7 @@ impl Server {
         }
 
         let hmac_key = args.get_hmac_key();
+        let quote_hmac_key = args.get_quote_hmac_key();
         let relayer_client = RelayerClient::new(&args.relayer_url, &args.usdc_mint);
 
         // Create a database connection pool using bb8
@@ -134,6 +137,7 @@ impl Server {
             execution_client,
             aws_config: config,
             hmac_key,
+            quote_hmac_key,
         })
     }
 
