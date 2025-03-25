@@ -1,5 +1,6 @@
 //! API types for quoter management
 use ethers::types::{Address, Bytes, U256};
+use hex;
 use serde::{Deserialize, Serialize};
 
 use crate::serialization::{
@@ -90,6 +91,25 @@ pub struct ExecutionQuote {
     /// The estimated gas for the swap
     #[serde(with = "u256_string_serialization")]
     pub estimated_gas: U256,
+}
+
+impl ExecutionQuote {
+    /// Convert the quote to a canonical string representation for HMAC signing
+    pub fn to_canonical_string(&self) -> String {
+        format!(
+            "{}{}{}{}{}{}{}{}{}{}",
+            self.buy_token_address,
+            self.sell_token_address,
+            self.sell_amount,
+            self.buy_amount,
+            self.from,
+            self.to,
+            hex::encode(&self.data),
+            self.value,
+            self.gas_price,
+            self.estimated_gas
+        )
+    }
 }
 
 /// The request body for fetching a quote from the execution venue
