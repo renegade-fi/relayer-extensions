@@ -47,6 +47,7 @@ use handlers::{
     withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
+use renegade_common::types::hmac::HmacKey;
 use renegade_util::telemetry::configure_telemetry;
 use server::Server;
 use warp::Filter;
@@ -76,7 +77,7 @@ struct Cli {
     hmac_key: Option<String>,
     /// The HMAC key to use for signing quotes
     #[clap(long, env = "QUOTE_HMAC_KEY")]
-    quote_hmac_key: Option<String>,
+    quote_hmac_key: String,
     /// Whether to disable authentication
     #[clap(long, conflicts_with = "hmac_key")]
     disable_auth: bool,
@@ -153,30 +154,14 @@ impl Cli {
         }
     }
 
-    /// Get the HMAC key as a 32-byte array
-    fn get_hmac_key(&self) -> Option<[u8; 32]> {
-        self.hmac_key.as_ref().map(|key| {
-            let decoded = hex::decode(key).expect("Invalid HMAC key");
-            if decoded.len() != 32 {
-                panic!("HMAC key must be 32 bytes long");
-            }
-            let mut array = [0u8; 32];
-            array.copy_from_slice(&decoded);
-            array
-        })
+    /// Get the HMAC key
+    fn get_hmac_key(&self) -> Option<HmacKey> {
+        self.hmac_key.as_ref().map(|key| HmacKey::from_hex_string(key).expect("Invalid HMAC key"))
     }
 
-    /// Get the quote HMAC key as a 32-byte array
-    fn get_quote_hmac_key(&self) -> Option<[u8; 32]> {
-        self.quote_hmac_key.as_ref().map(|key| {
-            let decoded = hex::decode(key).expect("Invalid quote HMAC key");
-            if decoded.len() != 32 {
-                panic!("Quote HMAC key must be 32 bytes long");
-            }
-            let mut array = [0u8; 32];
-            array.copy_from_slice(&decoded);
-            array
-        })
+    /// Get the quote HMAC key
+    fn get_quote_hmac_key(&self) -> HmacKey {
+        HmacKey::from_hex_string(&self.quote_hmac_key).expect("Invalid quote HMAC key")
     }
 }
 

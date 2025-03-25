@@ -4,7 +4,6 @@ use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
-use funds_manager_api::auth::compute_quote_hmac;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
     CreateGasWalletResponse, RefillGasRequest, RegisterGasWalletRequest, RegisterGasWalletResponse,
@@ -162,15 +161,9 @@ pub(crate) async fn get_execution_quote_handler(
     let quote = ExecutionQuote::try_from(raw_quote)
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e)))?;
 
-    let hmac_key = match &server.quote_hmac_key {
-        Some(hmac_key) => hmac_key,
-        None => {
-            return Err(warp::reject::custom(ApiError::InternalError(
-                "Quote HMAC key not configured".to_string(),
-            )))
-        },
-    };
-    let signature = compute_quote_hmac(hmac_key, &quote);
+    let hmac_key = server.quote_hmac_key;
+    let sig = hmac_key.compute_mac(quote.to_canonical_string().as_bytes());
+    let signature = hex::encode(sig);
 
     let resp = GetExecutionQuoteResponse { quote, signature };
     Ok(warp::reply::json(&resp))
@@ -182,16 +175,11 @@ pub(crate) async fn execute_swap_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // Verify the signature
-    let hmac_key = match &server.quote_hmac_key {
-        Some(hmac_key) => hmac_key,
-        None => {
-            return Err(warp::reject::custom(ApiError::InternalError(
-                "Quote HMAC key not configured".to_string(),
-            )))
-        },
-    };
-    let computed_signature = compute_quote_hmac(hmac_key, &req.quote);
-    if computed_signature != req.signature {
+    let hmac_key = server.quote_hmac_key;
+    let provided = hex::decode(&req.signature)
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    if !hmac_key.verify_mac(req.quote.to_canonical_string().as_bytes(), &provided) {
         return Err(warp::reject::custom(ApiError::Unauthenticated(
             "Invalid quote signature".to_string(),
         )));

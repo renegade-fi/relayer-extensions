@@ -10,6 +10,7 @@ use renegade_arbitrum_client::{
     constants::Chain,
 };
 use renegade_circuit_types::elgamal::DecryptionKey;
+use renegade_common::types::hmac::HmacKey;
 use renegade_config::setup_token_remaps;
 use renegade_util::raw_err_str;
 
@@ -60,9 +61,9 @@ pub(crate) struct Server {
     /// The AWS config
     pub aws_config: SdkConfig,
     /// The HMAC key for custody endpoint authentication
-    pub hmac_key: Option<[u8; 32]>,
+    pub hmac_key: Option<HmacKey>,
     /// The HMAC key for signing quotes
-    pub quote_hmac_key: Option<[u8; 32]>,
+    pub quote_hmac_key: HmacKey,
 }
 
 impl Server {

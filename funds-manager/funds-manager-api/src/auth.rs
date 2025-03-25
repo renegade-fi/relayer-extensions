@@ -1,10 +1,6 @@
 //! Auth helpers for the API
-use crate::types::quoters::ExecutionQuote;
-use hex;
-use hmac::{Hmac, Mac};
 use http::HeaderMap;
 use itertools::Itertools;
-use sha2::Sha256;
 
 /// The header key for the HMAC signature
 pub const X_SIGNATURE_HEADER: &str = "X-Signature";
@@ -12,29 +8,20 @@ pub const X_SIGNATURE_HEADER: &str = "X-Signature";
 /// signature
 pub const RENEGADE_HEADER_PREFIX: &str = "x-renegade-";
 
-/// Compute an hmac for the given request
-pub fn compute_hmac(
-    hmac_key: &[u8],
-    method: &str,
-    path: &str,
-    headers: &HeaderMap,
-    body: &[u8],
-) -> Vec<u8> {
-    // Construct the MAC
-    let mut mac = Hmac::<Sha256>::new_from_slice(hmac_key).expect("HMAC error");
+/// Get the bytes for the given request for HMAC computation
+pub fn get_request_bytes(method: &str, path: &str, headers: &HeaderMap, body: &[u8]) -> Vec<u8> {
+    // Build the message to sign
+    let mut message = Vec::new();
+    message.extend_from_slice(method.as_bytes());
+    message.extend_from_slice(path.as_bytes());
+    message.extend(get_header_bytes(headers));
+    message.extend_from_slice(body);
 
-    // Update with method, path, headers and body in order
-    mac.update(method.as_bytes());
-    mac.update(path.as_bytes());
-    add_headers_to_hmac(&mut mac, headers);
-    mac.update(body);
-
-    // Check the signature
-    mac.finalize().into_bytes().to_vec()
+    message
 }
 
-/// Hash headers into an HMAC
-fn add_headers_to_hmac(mac: &mut Hmac<Sha256>, headers: &HeaderMap) {
+/// Get bytes from headers for HMAC computation
+fn get_header_bytes(headers: &HeaderMap) -> Vec<u8> {
     let mut renegade_headers = headers
         .iter()
         .filter_map(|(k, v)| {
@@ -48,19 +35,10 @@ fn add_headers_to_hmac(mac: &mut Hmac<Sha256>, headers: &HeaderMap) {
         .collect_vec();
     renegade_headers.sort_by(|a, b| a.0.cmp(&b.0));
 
+    let mut header_bytes = Vec::new();
     for (key, value) in renegade_headers {
-        mac.update(key.as_bytes());
-        mac.update(value.as_bytes());
+        header_bytes.extend_from_slice(key.as_bytes());
+        header_bytes.extend_from_slice(value.as_bytes());
     }
-}
-
-/// Compute an HMAC signature for an execution quote
-pub fn compute_quote_hmac(key: &[u8], quote: &ExecutionQuote) -> String {
-    // Compute HMAC
-    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC error");
-    mac.update(quote.to_canonical_string().as_bytes());
-    let result = mac.finalize();
-
-    // Convert to hex string
-    hex::encode(result.into_bytes())
+    header_bytes
 }
