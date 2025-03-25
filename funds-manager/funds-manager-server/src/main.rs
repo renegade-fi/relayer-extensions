@@ -32,8 +32,9 @@ use funds_manager_api::hot_wallets::{
     TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use funds_manager_api::quoters::{
-    ExecuteSwapRequest, WithdrawFundsRequest, EXECUTE_SWAP_ROUTE, GET_DEPOSIT_ADDRESS_ROUTE,
-    GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
+    ExecuteSwapRequest, WithdrawFundsRequest, WithdrawToHyperliquidRequest, EXECUTE_SWAP_ROUTE,
+    GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
+    WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
 use funds_manager_api::PING_ROUTE;
 use handlers::{
@@ -43,6 +44,7 @@ use handlers::{
     redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
     register_gas_wallet_handler, report_active_peers_handler, transfer_to_vault_handler,
     withdraw_fee_balance_handler, withdraw_from_vault_handler, withdraw_gas_handler,
+    withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
 use renegade_util::telemetry::configure_telemetry;
@@ -260,6 +262,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(execute_swap_handler);
 
+    let withdraw_to_hyperliquid = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(WITHDRAW_TO_HYPERLIQUID_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawToHyperliquidRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(withdraw_to_hyperliquid_handler);
+
     // --- Gas --- //
 
     let withdraw_gas = warp::post()
@@ -363,6 +375,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_deposit_address)
         .or(get_execution_quote)
         .or(execute_swap)
+        .or(withdraw_to_hyperliquid)
         .or(withdraw_gas)
         .or(refill_gas)
         .or(report_active_peers)

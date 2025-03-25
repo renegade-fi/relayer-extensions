@@ -29,6 +29,8 @@ pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 pub const GET_EXECUTION_QUOTE_ROUTE: &str = "get-execution-quote";
 /// The route to execute a swap on the quoter hot wallet
 pub const EXECUTE_SWAP_ROUTE: &str = "execute-swap";
+/// The route to withdraw USDC to Hyperliquid from the quoter hot wallet
+pub const WITHDRAW_TO_HYPERLIQUID_ROUTE: &str = "withdraw-to-hyperliquid";
 
 // -------------
 // | Api Types |
@@ -107,4 +109,12 @@ pub struct ExecuteSwapRequest {
 pub struct ExecuteSwapResponse {
     /// The tx hash of the swap
     pub tx_hash: String,
+}
+
+/// The request body for withdrawing USDC to Hyperliquid from the quoter hot
+/// wallet
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WithdrawToHyperliquidRequest {
+    /// The amount of USDC to withdraw, in decimal format (i.e., whole units)
+    pub amount: f64,
 }

@@ -166,8 +166,7 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Get the quoter hot wallet's private key
-        let source = DepositWithdrawSource::Quoter.vault_name();
-        let quoter_wallet = self.get_hot_wallet_by_vault(source).await?;
+        let quoter_wallet = self.get_quoter_hot_wallet().await?;
         let signer = self.get_hot_wallet_private_key(&quoter_wallet.address).await?;
 
         let bal = self.get_erc20_balance(mint, &quoter_wallet.address).await?;
