@@ -69,6 +69,9 @@ pub struct ExecutionQuote {
     /// The amount of tokens to sell
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
+    /// The amount of tokens to buy
+    #[serde(with = "u256_string_serialization")]
+    pub buy_amount: U256,
     /// The submitting address
     #[serde(with = "address_string_serialization")]
     pub from: Address,
@@ -93,7 +96,7 @@ pub struct ExecutionQuote {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetExecutionQuoteResponse {
     /// The quote, directly from the execution venue
-    pub quote: serde_json::Value,
+    pub quote: ExecutionQuote,
 }
 
 /// The request body for executing a swap on the execution venue
