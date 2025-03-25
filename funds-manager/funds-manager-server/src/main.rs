@@ -32,8 +32,8 @@ use funds_manager_api::hot_wallets::{
     TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use funds_manager_api::quoters::{
-    ExecuteSwapRequest, GetExecutionQuoteRequest, WithdrawFundsRequest, EXECUTE_SWAP_ROUTE,
-    GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
+    ExecuteSwapRequest, WithdrawFundsRequest, EXECUTE_SWAP_ROUTE, GET_DEPOSIT_ADDRESS_ROUTE,
+    GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
 };
 use funds_manager_api::PING_ROUTE;
 use handlers::{
@@ -241,13 +241,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
 
-    let get_execution_quote = warp::post()
+    let get_execution_quote = warp::get()
         .and(warp::path("custody"))
         .and(warp::path("quoters"))
         .and(warp::path(GET_EXECUTION_QUOTE_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<GetExecutionQuoteRequest>)
-        .and_then(identity)
+        .and(warp::query::<HashMap<String, String>>())
         .and(with_server(server.clone()))
         .and_then(get_execution_quote_handler);
 
