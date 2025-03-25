@@ -9,39 +9,54 @@ use super::quoters::ExecutionQuote;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LiFiQuoteResponse {
+    /// Transaction details including to address, calldata, value, and gas
+    /// parameters
     pub transaction_request: TransactionRequest,
+    /// Action details including token addresses and sender
     pub action: Action,
+    /// Amount estimates for the swap
     pub estimate: Estimate,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TransactionRequest {
+    /// Destination contract address
     pub to: String,
+    /// Hex-encoded calldata for the transaction
     pub data: String,
+    /// Amount of native token to send (in hex)
     pub value: String,
+    /// Gas price in hex
     pub gas_price: String,
+    /// Gas limit in hex
     pub gas_limit: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Action {
+    /// Token being sold
     pub from_token: Token,
+    /// Token being bought
     pub to_token: Token,
+    /// Address initiating the swap
     pub from_address: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Token {
+    /// Contract address of the token
     pub address: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Estimate {
+    /// Amount of tokens to sell (including decimals)
     pub from_amount: String,
+    /// Amount of tokens to receive (including decimals)
     pub to_amount: String,
 }
 
