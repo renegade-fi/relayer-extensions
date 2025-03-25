@@ -12,6 +12,8 @@ use crate::db::schema::hot_wallets;
 use crate::error::FundsManagerError;
 use crate::CustodyClient;
 
+use super::DepositWithdrawSource;
+
 impl CustodyClient {
     // ---------------
     // | Gas Wallets |
@@ -157,6 +159,12 @@ impl CustodyClient {
             .first::<HotWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
+    }
+
+    /// Convenience method for getting the quoter hot wallet
+    pub async fn get_quoter_hot_wallet(&self) -> Result<HotWallet, FundsManagerError> {
+        let vault = DepositWithdrawSource::Quoter.vault_name();
+        self.get_hot_wallet_by_vault(vault).await
     }
 
     // --- Setters --- //

@@ -15,7 +15,7 @@ use funds_manager_api::hot_wallets::{
 };
 use funds_manager_api::quoters::{
     DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse, GetExecutionQuoteResponse,
-    WithdrawFundsRequest,
+    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use itertools::Itertools;
 use serde_json::json;
@@ -35,6 +35,8 @@ pub const MAX_GAS_REFILL_AMOUNT: f64 = 0.1; // ETH
 /// The maximum value of a quoter withdrawal that can be processed in a single
 /// request
 pub const MAX_WITHDRAWAL_VALUE: f64 = 50_000.; // USD
+/// The minimum amount of USDC that can be deposited into Hyperliquid
+pub const MIN_HYPERLIQUID_DEPOSIT_AMOUNT: f64 = 5.0; // USDC
 
 // --- Fee Indexing --- //
 
@@ -166,13 +168,27 @@ pub(crate) async fn execute_swap_handler(
     req: ExecuteSwapRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let vault = DepositWithdrawSource::Quoter.vault_name();
-    let hot_wallet = server.custody_client.get_hot_wallet_by_vault(vault).await?;
+    let hot_wallet = server.custody_client.get_quoter_hot_wallet().await?;
     let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
     let tx = server.execution_client.execute_swap(req.quote, &wallet).await?;
     let resp = ExecuteSwapResponse { tx_hash: format!("{tx:#x}") };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for withdrawing USDC to Hyperliquid
+pub(crate) async fn withdraw_to_hyperliquid_handler(
+    req: WithdrawToHyperliquidRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    if req.amount < MIN_HYPERLIQUID_DEPOSIT_AMOUNT {
+        return Err(warp::reject::custom(ApiError::BadRequest(format!(
+            "Requested amount {} USDC is less than the minimum allowed deposit of {} USDC",
+            req.amount, MIN_HYPERLIQUID_DEPOSIT_AMOUNT
+        ))));
+    }
+    server.custody_client.withdraw_to_hyperliquid(req.amount).await?;
+    Ok(warp::reply::json(&"Withdrawal to Hyperliquid complete"))
 }
 
 // --- Gas --- //

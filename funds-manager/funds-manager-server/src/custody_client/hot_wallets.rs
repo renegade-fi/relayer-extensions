@@ -121,9 +121,9 @@ impl CustodyClient {
         self.withdraw_from_fireblocks(source, mint, amount).await
     }
 
-    // ------------
-    // | Handlers |
-    // ------------
+    // -----------
+    // | Helpers |
+    // -----------
 
     /// The secret name for a hot wallet
     pub(crate) fn hot_wallet_secret_name(address: &str) -> String {
