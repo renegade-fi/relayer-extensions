@@ -17,10 +17,12 @@ use super::{CustodyClient, DepositWithdrawSource};
 
 /// The suffix for the secret name for the Hyperliquid private key
 const HYPERLIQUID_PKEY_SECRET_SUFFIX: &str = "hyperliquid-private-key";
-/// The address of the Hyperliquid bridge on Arbitrum mainnet.
+/// The address of the Hyperliquid bridge on Arbitrum mainnet
 const MAINNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x2df1c51e09aecf9cacb7bc98cb1742757f163df7";
-/// The address of the Hyperliquid bridge on Arbitrum testnet.
+/// The address of the Hyperliquid bridge on Arbitrum testnet
 const TESTNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x08cfc1B6b2dCF36A1480b99353A354AA8AC56f89";
+/// The address of the dummy USDC token used by Hyperliquid's testnet deployment
+const TESTNET_HYPERLIQUID_USDC_ADDRESS: &str = "0x1baAbB04529D43a73232B713C0FE471f7c7334d5";
 
 // ---------------
 // | Client impl |
@@ -152,8 +154,13 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<(), FundsManagerError> {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
-        let usdc_mint = Token::from_ticker(USDC_TICKER).get_addr();
-        let bal = self.get_erc20_balance(&usdc_mint, &hot_wallet.address).await?;
+
+        let usdc_mint = match self.chain {
+            Chain::Mainnet => &Token::from_ticker(USDC_TICKER).addr,
+            _ => TESTNET_HYPERLIQUID_USDC_ADDRESS,
+        };
+
+        let bal = self.get_erc20_balance(usdc_mint, &hot_wallet.address).await?;
         if bal < amount {
             return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
         }
@@ -172,7 +179,7 @@ impl CustodyClient {
             amount,
             &hot_wallet.address,
             &hyperliquid_address,
-            &usdc_mint,
+            usdc_mint,
         )
         .await?;
 
@@ -183,7 +190,7 @@ impl CustodyClient {
         // transfer, we can have the funds manager submit a
         // `batchedDepositWithPermit` on its behalf:
         // https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2#deposit-with-permit
-        self.bridge_to_hyperliquid(amount, hyperliquid_account, &usdc_mint).await
+        self.bridge_to_hyperliquid(amount, hyperliquid_account, usdc_mint).await
     }
 
     // -----------
