@@ -158,9 +158,7 @@ pub(crate) async fn get_execution_quote_handler(
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    let hmac_key = server.quote_hmac_key;
-    let sig = hmac_key.compute_mac(quote.to_canonical_string().as_bytes());
-    let signature = hex::encode(sig);
+    let signature = server.sign_quote(&quote)?;
 
     let resp = GetExecutionQuoteResponse { quote, signature };
     Ok(warp::reply::json(&resp))
@@ -182,8 +180,7 @@ pub(crate) async fn execute_swap_handler(
         )));
     }
 
-    let vault = DepositWithdrawSource::Quoter.vault_name();
-    let hot_wallet = server.custody_client.get_hot_wallet_by_vault(vault).await?;
+    let hot_wallet = server.custody_client.get_quoter_hot_wallet().await?;
     let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
     let tx = server.execution_client.execute_swap(req.quote, &wallet).await?;
