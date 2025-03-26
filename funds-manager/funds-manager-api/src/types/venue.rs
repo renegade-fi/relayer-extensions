@@ -5,118 +5,96 @@ use serde::Deserialize;
 
 use super::quoters::ExecutionQuote;
 
+/// Transaction request details from LiFi API
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TransactionRequest {
+    /// Destination contract address
+    to: String,
+    /// Hex-encoded calldata for the transaction
+    data: String,
+    /// Amount of native token to send (in hex)
+    value: String,
+    /// Gas price in hex
+    gas_price: String,
+}
+
+/// Gas cost information from LiFi API
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GasCost {
+    /// Estimated gas cost
+    estimate: String,
+}
+
+/// Quote estimate details from LiFi API
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Estimate {
+    /// List of gas costs for the transaction
+    gas_costs: Vec<GasCost>,
+    /// Amount of tokens to sell (including decimals)
+    from_amount: String,
+    /// Amount of tokens to receive (including decimals)
+    to_amount: String,
+}
+
+/// Token information from LiFi API
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Token {
+    /// Token contract address
+    address: String,
+}
+
+/// Swap action details from LiFi API
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Action {
+    /// Token being sold
+    from_token: Token,
+    /// Token being bought
+    to_token: Token,
+    /// Address initiating the swap
+    from_address: String,
+}
+
 /// Raw quote response structure from LiFi API
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LiFiQuoteResponse {
-    /// Transaction details including to address, calldata, value, and gas
-    /// parameters
-    pub transaction_request: TransactionRequest,
-    /// Action details including token addresses and sender
-    pub action: Action,
-    /// Amount estimates for the swap
-    pub estimate: Estimate,
+pub struct LiFiQuote {
+    /// Transaction request details
+    transaction_request: TransactionRequest,
+    /// Quote estimate details
+    estimate: Estimate,
+    /// Swap action details
+    action: Action,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TransactionRequest {
-    /// Destination contract address
-    pub to: String,
-    /// Hex-encoded calldata for the transaction
-    pub data: String,
-    /// Amount of native token to send (in hex)
-    pub value: String,
-    /// Gas price in hex
-    pub gas_price: String,
-    /// Gas limit in hex
-    pub gas_limit: String,
-}
+impl From<LiFiQuote> for ExecutionQuote {
+    fn from(quote: LiFiQuote) -> Self {
+        let buy_token_address = quote.action.to_token.address.parse().unwrap();
+        let sell_token_address = quote.action.from_token.address.parse().unwrap();
+        let from = quote.action.from_address.parse().unwrap();
+        let to = quote.transaction_request.to.parse().unwrap();
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Action {
-    /// Token being sold
-    pub from_token: Token,
-    /// Token being bought
-    pub to_token: Token,
-    /// Address initiating the swap
-    pub from_address: String,
-}
+        let sell_amount = U256::from_str_radix(&quote.estimate.from_amount, 10).unwrap();
+        let buy_amount = U256::from_str_radix(&quote.estimate.to_amount, 10).unwrap();
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Token {
-    /// Contract address of the token
-    pub address: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Estimate {
-    /// Amount of tokens to sell (including decimals)
-    pub from_amount: String,
-    /// Amount of tokens to receive (including decimals)
-    pub to_amount: String,
-}
-
-impl TryFrom<serde_json::Value> for ExecutionQuote {
-    type Error = String;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let quote: LiFiQuoteResponse = serde_json::from_value(value)
-            .map_err(|e| format!("Failed to parse LiFi quote: {}", e))?;
-
-        let buy_token_address = quote
-            .action
-            .to_token
-            .address
-            .parse()
-            .map_err(|e| format!("Invalid buy token address: {}", e))?;
-
-        let sell_token_address = quote
-            .action
-            .from_token
-            .address
-            .parse()
-            .map_err(|e| format!("Invalid sell token address: {}", e))?;
-
-        let from = quote
-            .action
-            .from_address
-            .parse()
-            .map_err(|e| format!("Invalid from address: {}", e))?;
-
-        let to = quote
-            .transaction_request
-            .to
-            .parse()
-            .map_err(|e| format!("Invalid to address: {}", e))?;
-
-        let sell_amount = U256::from_str_radix(&quote.estimate.from_amount, 10)
-            .map_err(|e| format!("Invalid sell amount: {}", e))?;
-
-        let buy_amount = U256::from_str_radix(&quote.estimate.to_amount, 10)
-            .map_err(|e| format!("Invalid buy amount: {}", e))?;
-
-        // Parse hex strings from transaction request
         let value =
             U256::from_str_radix(quote.transaction_request.value.trim_start_matches("0x"), 16)
-                .map_err(|e| format!("Invalid value: {}", e))?;
-
+                .unwrap();
         let gas_price =
             U256::from_str_radix(quote.transaction_request.gas_price.trim_start_matches("0x"), 16)
-                .map_err(|e| format!("Invalid gas price: {}", e))?;
-
+                .unwrap();
         let estimated_gas =
-            U256::from_str_radix(quote.transaction_request.gas_limit.trim_start_matches("0x"), 16)
-                .map_err(|e| format!("Invalid estimated gas: {}", e))?;
+            U256::from_str_radix(&quote.estimate.gas_costs[0].estimate, 10).unwrap();
 
         let data = hex::decode(quote.transaction_request.data.trim_start_matches("0x"))
-            .map_err(|e| format!("Invalid calldata hex: {}", e))
-            .map(Bytes::from)?;
+            .map(Bytes::from)
+            .unwrap();
 
-        Ok(ExecutionQuote {
+        ExecutionQuote {
             buy_token_address,
             sell_token_address,
             sell_amount,
@@ -127,6 +105,6 @@ impl TryFrom<serde_json::Value> for ExecutionQuote {
             value,
             gas_price,
             estimated_gas,
-        })
+        }
     }
 }

@@ -14,8 +14,8 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse, ExecutionQuote,
-    GetExecutionQuoteResponse, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
+    DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse, GetExecutionQuoteResponse,
+    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use itertools::Itertools;
 use serde_json::json;
@@ -152,14 +152,11 @@ pub(crate) async fn get_execution_quote_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // Forward the query parameters to the execution client
-    let raw_quote = server
+    let quote = server
         .execution_client
         .get_quote(query_params)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-
-    let quote = ExecutionQuote::try_from(raw_quote)
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e)))?;
 
     let hmac_key = server.quote_hmac_key;
     let sig = hmac_key.compute_mac(quote.to_canonical_string().as_bytes());
