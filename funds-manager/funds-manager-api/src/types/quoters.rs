@@ -117,7 +117,7 @@ impl ExecutionQuote {
 pub struct GetExecutionQuoteResponse {
     /// The quote, directly from the execution venue
     pub quote: ExecutionQuote,
-    /// The HMAC signature of the quote
+    /// The HMAC of the quote
     pub signature: String,
 }
 
@@ -127,7 +127,7 @@ pub struct ExecuteSwapRequest {
     /// The quote, implicitly accepted by the caller by its presence in this
     /// request
     pub quote: ExecutionQuote,
-    /// The HMAC signature of the quote
+    /// The HMAC of the quote
     pub signature: String,
 }
 

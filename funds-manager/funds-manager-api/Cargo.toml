@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 
 renegade-api = { package = "external-api", workspace = true }
-renegade-common = { package = "common", workspace = true }
+renegade-common = { package = "common", workspace = true, default-features = false, features = ["hmac"] }
 
 ethers = "2"
 hex = "0.4.3"
