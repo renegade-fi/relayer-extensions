@@ -34,11 +34,15 @@ use crate::{
         QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
         SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
         SOURCE_OUTPUT_NET_OF_FEE_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
+        UNSUCCESSFUL_RELAYER_REQUEST_COUNT,
     },
 };
 
 use super::{
-    labels::{GAS_SPONSORSHIP_VALUE, REQUEST_ID_METRIC_TAG, SIDE_TAG},
+    labels::{
+        GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+        REQUEST_PATH_METRIC_TAG, SIDE_TAG,
+    },
     quote_comparison::QuoteComparison,
 };
 
@@ -286,6 +290,16 @@ pub(crate) async fn record_external_match_metrics(
 pub(crate) fn record_gas_sponsorship_metrics(gas_sponsorship_value: f64, request_id: String) {
     let labels = vec![(REQUEST_ID_METRIC_TAG.to_string(), request_id)];
     metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
+}
+
+/// Record a counter metric for relayer requests that return a 500 status code
+pub(crate) fn record_relayer_request_500(key_description: String, path: String) {
+    let labels = vec![
+        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
+        (REQUEST_PATH_METRIC_TAG.to_string(), path),
+    ];
+
+    metrics::counter!(UNSUCCESSFUL_RELAYER_REQUEST_COUNT, &labels).increment(1);
 }
 
 // --- Settlement Processing --- //
