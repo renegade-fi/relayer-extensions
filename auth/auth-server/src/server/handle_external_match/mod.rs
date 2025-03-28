@@ -22,7 +22,7 @@ use warp::{reject::Rejection, reply::Reply};
 use super::helpers::overwrite_response_body;
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::calculate_implied_price;
+use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
 use crate::telemetry::labels::GAS_SPONSORED_METRIC_TAG;
 use crate::telemetry::{
     helpers::{
@@ -62,6 +62,9 @@ impl Server {
             self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
 
         let status = resp.status();
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
+            record_relayer_request_500(key_desc.clone(), path_str.to_string());
+        }
         if status != StatusCode::OK {
             log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &body);
             return Ok(resp);
@@ -117,6 +120,9 @@ impl Server {
             .await?;
 
         let status = resp.status();
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
+            record_relayer_request_500(key_desc.clone(), path_str.to_string());
+        }
         if status != StatusCode::OK {
             log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body);
             return Ok(resp);
@@ -181,6 +187,9 @@ impl Server {
             self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
 
         let status = resp.status();
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
+            record_relayer_request_500(key_description.clone(), path_str.to_string());
+        }
         if status != StatusCode::OK {
             log_unsuccessful_relayer_request(&resp, &key_description, path_str, &body);
             return Ok(resp);

@@ -45,6 +45,9 @@ pub const QUOTE_NET_OUTPUT_DIFF_BPS_METRIC: &str = "quote.net_output_diff_bps";
 /// Metric describing the value of gas sponsorship for a given request
 pub const GAS_SPONSORSHIP_VALUE: &str = "gas_sponsorship_value";
 
+/// Metric describing the number of unsuccessful relayer requests
+pub const UNSUCCESSFUL_RELAYER_REQUEST_COUNT: &str = "num_unsuccessful_relayer_requests";
+
 // ---------------
 // | METRIC TAGS |
 // ---------------
@@ -62,6 +65,8 @@ pub const REQUEST_ID_METRIC_TAG: &str = "request_id";
 pub const BASE_ASSET_METRIC_TAG: &str = "base_asset";
 /// Metric tag to indicate data was recorded post decimal correction fix
 pub const DECIMAL_CORRECTION_FIXED_METRIC_TAG: &str = "post_decimal_fix";
+/// Metric tag for the path of the request
+pub const REQUEST_PATH_METRIC_TAG: &str = "request_path";
 
 /// Metric tag for identifying the source of a quote (our server or competitor)
 pub const SOURCE_NAME_TAG: &str = "source_name";
