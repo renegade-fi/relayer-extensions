@@ -6,10 +6,10 @@ edition = "2021"
 [dependencies]
 
 renegade-api = { package = "external-api", workspace = true }
+renegade-common = { package = "common", workspace = true, default-features = false, features = ["hmac"] }
 
 ethers = "2"
 hex = "0.4.3"
-hmac = "0.12.1"
 http = "0.2.12"
 itertools = "0.13.0"
 serde = { version = "1.0", features = ["derive"] }

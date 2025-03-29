@@ -158,8 +158,9 @@ pub(crate) async fn get_execution_quote_handler(
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    let resp = GetExecutionQuoteResponse { quote };
+    let signature = server.sign_quote(&quote)?;
 
+    let resp = GetExecutionQuoteResponse { quote, signature };
     Ok(warp::reply::json(&resp))
 }
 
@@ -168,6 +169,17 @@ pub(crate) async fn execute_swap_handler(
     req: ExecuteSwapRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    // Verify the signature
+    let hmac_key = server.quote_hmac_key;
+    let provided = hex::decode(&req.signature)
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    if !hmac_key.verify_mac(req.quote.to_canonical_string().as_bytes(), &provided) {
+        return Err(warp::reject::custom(ApiError::Unauthenticated(
+            "Invalid quote signature".to_string(),
+        )));
+    }
+
     let hot_wallet = server.custody_client.get_quoter_hot_wallet().await?;
     let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 

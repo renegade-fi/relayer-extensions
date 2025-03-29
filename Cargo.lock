@@ -3500,10 +3500,10 @@ dependencies = [
 name = "funds-manager-api"
 version = "0.1.0"
 dependencies = [
+ "common",
  "ethers",
  "external-api",
  "hex 0.4.3",
- "hmac",
  "http 0.2.12",
  "itertools 0.13.0",
  "rand 0.8.5",

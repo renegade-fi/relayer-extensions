@@ -3,7 +3,7 @@
 use crate::error::ApiError;
 use crate::Server;
 use bytes::Bytes;
-use funds_manager_api::auth::{compute_hmac, X_SIGNATURE_HEADER};
+use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use warp::Filter;
@@ -46,10 +46,10 @@ async fn verify_hmac(
         },
     };
 
-    let expected = compute_hmac(hmac_key, method.as_str(), path.as_str(), &headers, &body);
-    let provided = hex::decode(signature)
+    let expected = get_request_bytes(method.as_str(), path.as_str(), &headers, &body);
+    let provided = hex::decode(&signature)
         .map_err(|_| warp::reject::custom(ApiError::BadRequest("Invalid signature".to_string())))?;
-    if expected.as_slice() != provided.as_slice() {
+    if !hmac_key.verify_mac(&expected, &provided) {
         return Err(warp::reject::custom(ApiError::Unauthenticated(
             "Invalid signature".to_string(),
         )));
