@@ -1,5 +1,6 @@
 //! API types for quoter management
 use ethers::types::{Address, Bytes, U256};
+use hex;
 use serde::{Deserialize, Serialize};
 
 use crate::serialization::{
@@ -69,6 +70,9 @@ pub struct ExecutionQuote {
     /// The amount of tokens to sell
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
+    /// The amount of tokens to buy
+    #[serde(with = "u256_string_serialization")]
+    pub buy_amount: U256,
     /// The submitting address
     #[serde(with = "address_string_serialization")]
     pub from: Address,
@@ -89,11 +93,32 @@ pub struct ExecutionQuote {
     pub estimated_gas: U256,
 }
 
+impl ExecutionQuote {
+    /// Convert the quote to a canonical string representation for HMAC signing
+    pub fn to_canonical_string(&self) -> String {
+        format!(
+            "{}{}{}{}{}{}{}{}{}{}",
+            self.buy_token_address,
+            self.sell_token_address,
+            self.sell_amount,
+            self.buy_amount,
+            self.from,
+            self.to,
+            hex::encode(&self.data),
+            self.value,
+            self.gas_price,
+            self.estimated_gas
+        )
+    }
+}
+
 /// The request body for fetching a quote from the execution venue
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetExecutionQuoteResponse {
     /// The quote, directly from the execution venue
-    pub quote: serde_json::Value,
+    pub quote: ExecutionQuote,
+    /// The HMAC of the quote
+    pub signature: String,
 }
 
 /// The request body for executing a swap on the execution venue
@@ -102,6 +127,8 @@ pub struct ExecuteSwapRequest {
     /// The quote, implicitly accepted by the caller by its presence in this
     /// request
     pub quote: ExecutionQuote,
+    /// The HMAC of the quote
+    pub signature: String,
 }
 
 /// The response body for executing a swap on the execution venue

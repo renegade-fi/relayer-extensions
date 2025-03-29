@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use serde_json;
+use funds_manager_api::quoters::ExecutionQuote;
+use funds_manager_api::venue::LiFiQuote;
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -14,10 +15,11 @@ impl ExecutionClient {
     pub async fn get_quote(
         &self,
         query_params: HashMap<String, String>,
-    ) -> Result<serde_json::Value, ExecutionClientError> {
+    ) -> Result<ExecutionQuote, ExecutionClientError> {
         let params: Vec<(&str, &str)> =
             query_params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
-        self.send_get_request(QUOTE_ENDPOINT, &params).await
+        let resp: LiFiQuote = self.send_get_request(QUOTE_ENDPOINT, &params).await?;
+        Ok(resp.into())
     }
 }

@@ -5,11 +5,13 @@ use std::{error::Error, str::FromStr, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use ethers::{signers::LocalWallet, types::Address};
+use funds_manager_api::quoters::ExecutionQuote;
 use renegade_arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
     constants::Chain,
 };
 use renegade_circuit_types::elgamal::DecryptionKey;
+use renegade_common::types::hmac::HmacKey;
 use renegade_config::setup_token_remaps;
 use renegade_util::raw_err_str;
 
@@ -60,7 +62,9 @@ pub(crate) struct Server {
     /// The AWS config
     pub aws_config: SdkConfig,
     /// The HMAC key for custody endpoint authentication
-    pub hmac_key: Option<[u8; 32]>,
+    pub hmac_key: Option<HmacKey>,
+    /// The HMAC key for signing quotes
+    pub quote_hmac_key: HmacKey,
 }
 
 impl Server {
@@ -98,6 +102,7 @@ impl Server {
         }
 
         let hmac_key = args.get_hmac_key();
+        let quote_hmac_key = args.get_quote_hmac_key();
         let relayer_client = RelayerClient::new(&args.relayer_url, &args.usdc_mint);
 
         // Create a database connection pool using bb8
@@ -134,6 +139,7 @@ impl Server {
             execution_client,
             aws_config: config,
             hmac_key,
+            quote_hmac_key,
         })
     }
 
@@ -149,5 +155,14 @@ impl Server {
             self.relayer_client.clone(),
             self.custody_client.clone(),
         ))
+    }
+
+    /// Sign a quote using the quote HMAC key and returns the signature as a
+    /// hex string
+    pub fn sign_quote(&self, quote: &ExecutionQuote) -> Result<String, FundsManagerError> {
+        let canonical_string = quote.to_canonical_string();
+        let sig = self.quote_hmac_key.compute_mac(canonical_string.as_bytes());
+        let signature = hex::encode(sig);
+        Ok(signature)
     }
 }
