@@ -37,6 +37,8 @@ struct Estimate {
     from_amount: String,
     /// Amount of tokens to receive (including decimals)
     to_amount: String,
+    /// Minimum amount of tokens to receive (including decimals)
+    to_amount_min: String,
 }
 
 /// Token information from LiFi API
@@ -80,6 +82,7 @@ impl From<LiFiQuote> for ExecutionQuote {
 
         let sell_amount = U256::from_str_radix(&quote.estimate.from_amount, 10).unwrap();
         let buy_amount = U256::from_str_radix(&quote.estimate.to_amount, 10).unwrap();
+        let buy_amount_min = U256::from_str_radix(&quote.estimate.to_amount_min, 10).unwrap();
 
         let value =
             U256::from_str_radix(quote.transaction_request.value.trim_start_matches("0x"), 16)
@@ -99,6 +102,7 @@ impl From<LiFiQuote> for ExecutionQuote {
             sell_token_address,
             sell_amount,
             buy_amount,
+            buy_amount_min,
             from,
             to,
             data,
