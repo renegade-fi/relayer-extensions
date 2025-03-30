@@ -70,9 +70,12 @@ pub struct ExecutionQuote {
     /// The amount of tokens to sell
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
-    /// The amount of tokens to buy
+    /// The amount of tokens expected to be received
     #[serde(with = "u256_string_serialization")]
     pub buy_amount: U256,
+    /// The minimum amount of tokens expected to be received
+    #[serde(with = "u256_string_serialization")]
+    pub buy_amount_min: U256,
     /// The submitting address
     #[serde(with = "address_string_serialization")]
     pub from: Address,
