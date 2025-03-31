@@ -24,8 +24,8 @@ native-tls = "0.2"
 
 # === Cryptography === #
 aes-gcm = "0.10.1"
-alloy-sol-types = "=0.7.7"
-alloy-primitives = { version = "=0.7.7", features = ["serde", "k256"] }
+alloy-sol-types = "0.8.20"
+alloy-primitives = { version = "0.8.20", features = ["serde", "k256"] }
 ethers = "2"
 rand = "0.8.5"
 
