@@ -102,8 +102,14 @@ pub fn sign_message(
     let s: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.s().to_bytes().into());
 
     let signature = PrimitiveSignature::new(r, s, recid.is_y_odd());
+    let mut sig_bytes = signature.as_bytes();
 
-    Ok(signature.as_bytes())
+    // This is necessary because `PrimitiveSignature::as_bytes` encodes the `v`
+    // component of the signature in "Electrum" notation, i.e. 27 or 28.
+    // However, the contracts expect the `v` component to be 0 or 1.
+    sig_bytes[NUM_BYTES_SIGNATURE - 1] -= 27;
+
+    Ok(sig_bytes)
 }
 
 /// Get the function selector from calldata

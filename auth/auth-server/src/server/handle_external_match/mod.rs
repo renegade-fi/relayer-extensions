@@ -474,8 +474,15 @@ impl Server {
         ];
 
         // Record quote comparisons before settlement, if enabled
-        if let Some(quote_metrics) = &self.quote_metrics {
-            quote_metrics.record_quote_comparison(&match_bundle, labels.as_slice()).await;
+        if let Some(quote_metrics) = self.quote_metrics.clone() {
+            let bundle_clone = match_bundle.clone();
+            let labels_clone = labels.clone();
+
+            // Record quote comparisons concurrently, so as to not interfere with awaiting
+            // settlement
+            tokio::spawn(async move {
+                quote_metrics.record_quote_comparison(&bundle_clone, &labels_clone).await;
+            });
         }
 
         // If the bundle settles, increase the API user's a rate limit token balance
@@ -494,7 +501,7 @@ impl Server {
         }
 
         // Record metrics
-        record_external_match_metrics(&order, &match_bundle, &labels, did_settle).await?;
+        record_external_match_metrics(&order, &match_bundle, &labels, did_settle)?;
 
         Ok(())
     }
