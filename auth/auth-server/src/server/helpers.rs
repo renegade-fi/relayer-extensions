@@ -4,7 +4,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     AeadCore, Aes128Gcm,
 };
-use alloy_primitives::{Address, Bytes as AlloyBytes, Parity, Signature, U256 as AlloyU256};
+use alloy_primitives::{Address, Bytes as AlloyBytes, PrimitiveSignature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
 use bigdecimal::{
     num_bigint::{BigInt, Sign},
@@ -98,12 +98,18 @@ pub fn sign_message(
     let (k256_sig, recid) =
         key.sign_prehash_recoverable(&message_hash).map_err(AuthServerError::signing)?;
 
-    let parity = Parity::Eip155(recid.to_byte() as u64);
+    let r: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.r().to_bytes().into());
+    let s: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.s().to_bytes().into());
 
-    let signature =
-        Signature::from_signature_and_parity(k256_sig, parity).map_err(AuthServerError::signing)?;
+    let signature = PrimitiveSignature::new(r, s, recid.is_y_odd());
+    let mut sig_bytes = signature.as_bytes();
 
-    Ok(signature.as_bytes())
+    // This is necessary because `PrimitiveSignature::as_bytes` encodes the `v`
+    // component of the signature in "Electrum" notation, i.e. 27 or 28.
+    // However, the contracts expect the `v` component to be 0 or 1.
+    sig_bytes[NUM_BYTES_SIGNATURE - 1] -= 27;
+
+    Ok(sig_bytes)
 }
 
 /// Get the function selector from calldata

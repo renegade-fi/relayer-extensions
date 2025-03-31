@@ -249,7 +249,7 @@ pub(crate) fn record_fill_ratio(
 }
 
 /// Records all metrics related to an external match request and response
-pub(crate) async fn record_external_match_metrics(
+pub(crate) fn record_external_match_metrics(
     order: &ExternalOrder,
     match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
