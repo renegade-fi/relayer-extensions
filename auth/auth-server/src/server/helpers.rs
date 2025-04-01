@@ -15,10 +15,11 @@ use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
 use http::{header::CONTENT_LENGTH, Response};
 use rand::{thread_rng, Rng};
-use renegade_api::http::external_match::ApiExternalMatchResult;
+use renegade_api::http::external_match::{ApiExternalMatchResult, SignedExternalQuote};
 use renegade_common::types::token::Token;
 use serde::Serialize;
 use serde_json::json;
+use uuid::Uuid;
 use warp::reply::Reply;
 
 use crate::error::AuthServerError;
@@ -29,6 +30,9 @@ use crate::error::AuthServerError;
 
 /// The nonce size for AES128-GCM
 const NONCE_SIZE: usize = 12; // 12 bytes, 96 bits
+
+/// The size of a UUID in bytes
+const UUID_SIZE: usize = 16;
 
 /// Construct empty json reply
 pub fn empty_json_reply() -> impl Reply {
@@ -176,6 +180,15 @@ pub fn overwrite_response_body<T: Serialize>(
     *resp.body_mut() = body_bytes;
 
     Ok(())
+}
+
+/// Generate a UUID for a signed quote
+pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
+    let signature_hash = keccak256(signed_quote.signature.as_bytes());
+    let mut uuid_bytes = [0u8; UUID_SIZE];
+    uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
+
+    Uuid::from_bytes(uuid_bytes)
 }
 
 #[cfg(test)]
