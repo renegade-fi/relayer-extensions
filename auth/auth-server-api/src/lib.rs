@@ -7,9 +7,7 @@
 #![feature(trivial_bounds)]
 
 use alloy_primitives::{ruint::FromUintError, Address, U256};
-use renegade_api::http::external_match::{
-    AssembleExternalMatchRequest, AtomicMatchApiBundle, ExternalOrder, SignedExternalQuote,
-};
+use renegade_api::http::external_match::{AtomicMatchApiBundle, SignedExternalQuote};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -65,6 +63,7 @@ pub struct SignedGasSponsorshipInfo {
     /// The signed gas sponsorship info
     pub gas_sponsorship_info: GasSponsorshipInfo,
     /// The auth server's signature over the gas sponsorship info
+    #[deprecated(since = "0.1.1", note = "Gas sponsorship info signatures are no longer used")]
     pub signature: String,
 }
 
@@ -115,42 +114,6 @@ impl GasSponsorshipInfo {
             .as_ref()
             .map(|s| s.parse().unwrap_or(Address::ZERO))
             .unwrap_or(Address::ZERO)
-    }
-}
-
-/// A request to assemble a potentially sponsored quote into a settlement bundle
-///
-/// We manually flatten the fields of [`AssembleExternalMatchRequest`]
-/// into this struct, as `serde` does not support `u128`s when using
-/// `#[serde(flatten)]`:
-/// https://github.com/serde-rs/json/issues/625
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AssembleSponsoredMatchRequest {
-    /// Whether or not to include gas estimation in the response
-    #[serde(default)]
-    pub do_gas_estimation: bool,
-    /// The receiver address of the match, if not the message sender
-    #[serde(default)]
-    pub receiver_address: Option<String>,
-    /// The updated order if any changes have been made
-    #[serde(default)]
-    pub updated_order: Option<ExternalOrder>,
-    /// The signed quote
-    pub signed_quote: SignedExternalQuote,
-    /// The signed gas sponsorship info associated with the quote,
-    /// if sponsorship was requested
-    pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
-}
-
-impl AssembleSponsoredMatchRequest {
-    /// Extract an [`AssembleExternalMatchRequest`]
-    pub fn assemble_external_match_request(&self) -> AssembleExternalMatchRequest {
-        AssembleExternalMatchRequest {
-            do_gas_estimation: self.do_gas_estimation,
-            receiver_address: self.receiver_address.clone(),
-            updated_order: self.updated_order.clone(),
-            signed_quote: self.signed_quote.clone(),
-        }
     }
 }
 
