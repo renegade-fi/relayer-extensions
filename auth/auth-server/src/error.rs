@@ -14,6 +14,9 @@ pub enum AuthServerError {
     /// Database connection error
     #[error("Database connection error: {0}")]
     DatabaseConnection(String),
+    /// Redis connection error
+    #[error("Redis connection error: {0}")]
+    RedisConnection(String),
     /// Encryption error
     #[error("Encryption error: {0}")]
     Encryption(String),
@@ -57,6 +60,12 @@ impl AuthServerError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn db<T: ToString>(msg: T) -> Self {
         Self::DatabaseConnection(msg.to_string())
+    }
+
+    /// Create a new redis connection error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn redis<T: ToString>(msg: T) -> Self {
+        Self::RedisConnection(msg.to_string())
     }
 
     /// Create a new encryption error
