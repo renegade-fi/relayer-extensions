@@ -9,6 +9,7 @@ pub(crate) mod helpers;
 pub mod price_reporter_client;
 mod queries;
 mod rate_limiter;
+mod redis_queries;
 
 use crate::server::price_reporter_client::PriceReporterClient;
 use crate::{
