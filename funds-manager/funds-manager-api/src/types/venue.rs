@@ -17,6 +17,8 @@ struct TransactionRequest {
     value: String,
     /// Gas price in hex
     gas_price: String,
+    /// Gas limit in hex
+    gas_limit: String,
 }
 
 /// Gas cost information from LiFi API
@@ -90,6 +92,9 @@ impl From<LiFiQuote> for ExecutionQuote {
         let gas_price =
             U256::from_str_radix(quote.transaction_request.gas_price.trim_start_matches("0x"), 16)
                 .unwrap();
+        let gas_limit =
+            U256::from_str_radix(quote.transaction_request.gas_limit.trim_start_matches("0x"), 16)
+                .unwrap();
         let estimated_gas =
             U256::from_str_radix(&quote.estimate.gas_costs[0].estimate, 10).unwrap();
 
@@ -109,6 +114,7 @@ impl From<LiFiQuote> for ExecutionQuote {
             value,
             gas_price,
             estimated_gas,
+            gas_limit,
         }
     }
 }

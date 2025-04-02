@@ -56,7 +56,8 @@ impl ExecutionClient {
             .value(quote.value)
             .data(quote.data)
             .max_fee_per_gas(latest_basefee * 2)
-            .max_priority_fee_per_gas(latest_basefee * 2);
+            .max_priority_fee_per_gas(latest_basefee * 2)
+            .gas(quote.gas_limit);
 
         // Send the transaction
         let pending_tx = client
