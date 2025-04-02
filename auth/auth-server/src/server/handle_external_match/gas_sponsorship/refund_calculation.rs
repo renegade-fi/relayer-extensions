@@ -105,7 +105,7 @@ impl Server {
         &self,
         quote: &mut ApiExternalQuote,
         refund_amount: u128,
-    ) -> Result<(), AuthServerError> {
+    ) {
         let (base_amount, quote_amount) = match quote.match_result.direction {
             OrderSide::Buy => {
                 (quote.match_result.base_amount - refund_amount, quote.match_result.quote_amount)
@@ -123,8 +123,6 @@ impl Server {
         quote.receive.amount -= refund_amount;
         quote.match_result.base_amount = base_amount;
         quote.match_result.quote_amount = quote_amount;
-
-        Ok(())
     }
 }
 

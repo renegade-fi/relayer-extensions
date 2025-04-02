@@ -21,7 +21,7 @@ impl Server {
     // -----------
 
     /// Write the given gas sponsorship info to Redis
-    pub async fn write_gas_sponsorship_info(
+    pub async fn write_gas_sponsorship_info_to_redis(
         &self,
         key: Uuid,
         info: &GasSponsorshipInfo,
@@ -36,7 +36,7 @@ impl Server {
 
     /// Read the gas sponsorship info for the given key from Redis,
     /// returning `None` if no info is found
-    pub async fn read_gas_sponsorship_info(
+    pub async fn read_gas_sponsorship_info_from_redis(
         &self,
         key: Uuid,
     ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
