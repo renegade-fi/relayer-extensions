@@ -94,13 +94,16 @@ pub struct ExecutionQuote {
     /// The estimated gas for the swap
     #[serde(with = "u256_string_serialization")]
     pub estimated_gas: U256,
+    /// The gas limit for the swap
+    #[serde(with = "u256_string_serialization")]
+    pub gas_limit: U256,
 }
 
 impl ExecutionQuote {
     /// Convert the quote to a canonical string representation for HMAC signing
     pub fn to_canonical_string(&self) -> String {
         format!(
-            "{}{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}{}",
             self.buy_token_address,
             self.sell_token_address,
             self.sell_amount,
@@ -110,7 +113,8 @@ impl ExecutionQuote {
             hex::encode(&self.data),
             self.value,
             self.gas_price,
-            self.estimated_gas
+            self.estimated_gas,
+            self.gas_limit
         )
     }
 }
