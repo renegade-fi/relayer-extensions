@@ -94,10 +94,14 @@ impl Handler for PriceHandler {
         match self.get_price(topic).await {
             Ok(price) => Response::builder()
                 .status(StatusCode::OK)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Content-Type", "text/plain")
                 .body(Body::from(price.to_string()))
                 .unwrap(),
             Err(e) => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Content-Type", "text/plain")
                 .body(Body::from(e.to_string()))
                 .unwrap(),
         }
