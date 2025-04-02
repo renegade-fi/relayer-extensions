@@ -64,10 +64,18 @@ impl ExecutionClient {
             .send_transaction(tx, None /* block */)
             .await
             .map_err(ExecutionClientError::arbitrum)?;
-        pending_tx
+        let receipt = pending_tx
             .await
             .map_err(ExecutionClientError::arbitrum)?
-            .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))
+            .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))?;
+
+        let status = receipt.status.expect("status is `Some` after EIP-658");
+        if status.is_zero() {
+            let error_msg = format!("tx ({:#x}) failed with status 0", receipt.transaction_hash);
+            return Err(ExecutionClientError::arbitrum(error_msg));
+        }
+
+        Ok(receipt)
     }
 
     /// Approve an erc20 allowance
