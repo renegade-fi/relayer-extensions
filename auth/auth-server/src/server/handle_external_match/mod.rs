@@ -234,12 +234,8 @@ impl Server {
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
         // Parse query params.
-        // For backwards compatibility, we do *not* enable in-kind gas sponsorship by
-        // default for quote requests.
-        // TODO: Once clients have updated, we should enable this by default.
-        let sponsorship_disabled = query_params.disable_gas_sponsorship.unwrap_or(true);
-        let refund_native_eth = query_params.refund_native_eth.unwrap_or(false);
-        let refund_address = query_params.get_refund_address();
+        let (sponsorship_disabled, refund_address, refund_native_eth) =
+            query_params.get_or_default();
 
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited =
