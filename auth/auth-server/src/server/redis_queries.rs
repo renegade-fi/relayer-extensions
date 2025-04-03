@@ -1,7 +1,7 @@
 //! Helpers for interacting with Redis
 
 use auth_server_api::GasSponsorshipInfo;
-use redis::JsonAsyncCommands;
+use redis::{AsyncCommands, JsonAsyncCommands};
 use uuid::Uuid;
 
 use crate::error::AuthServerError;
@@ -15,6 +15,11 @@ use super::Server;
 /// The root path for a JSON object in Redis
 const JSON_ROOT_PATH: &str = "$";
 
+/// The maximum age of a quote in milliseconds.
+/// Equivalently, this is the TTL for the quote's gas sponsorship entry in
+/// Redis.
+const MAX_QUOTE_AGE_MS: i64 = 10_000; // 10 seconds
+
 impl Server {
     // -----------
     // | Setters |
@@ -27,7 +32,12 @@ impl Server {
         info: &GasSponsorshipInfo,
     ) -> Result<(), AuthServerError> {
         let mut client = self.redis_client.clone();
-        client.json_set(key, JSON_ROOT_PATH, info).await.map_err(AuthServerError::redis)
+        client
+            .json_set::<_, _, _, ()>(key, JSON_ROOT_PATH, info)
+            .await
+            .map_err(AuthServerError::redis)?;
+
+        client.pexpire(key, MAX_QUOTE_AGE_MS).await.map_err(AuthServerError::redis)
     }
 
     // -----------

@@ -77,15 +77,18 @@ impl Server {
             .maybe_apply_gas_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
             .await?;
 
-        // Cache the gas sponsorship info for the quote in Redis if it exists
-        if let Err(e) = self.cache_quote_gas_sponsorship_info(&sponsored_quote_response).await {
-            error!("Error caching quote gas sponsorship info: {e}");
-        }
-
         overwrite_response_body(&mut resp, sponsored_quote_response.clone())?;
 
         let server_clone = self.clone();
         tokio::spawn(async move {
+            // Cache the gas sponsorship info for the quote in Redis if it exists
+            if let Err(e) =
+                server_clone.cache_quote_gas_sponsorship_info(&sponsored_quote_response).await
+            {
+                error!("Error caching quote gas sponsorship info: {e}");
+            }
+
+            // Log the quote response & emit metrics
             if let Err(e) =
                 server_clone.handle_quote_response(key_desc, &body, &sponsored_quote_response)
             {
