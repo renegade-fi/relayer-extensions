@@ -875,6 +875,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
+
+[[package]]
 name = "ark-bls12-377"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1340,6 +1346,7 @@ dependencies = [
  "postgres-native-tls",
  "rand 0.8.5",
  "ratelimit",
+ "redis",
  "renegade-crypto",
  "reqwest 0.11.27",
  "serde",
@@ -1352,7 +1359,7 @@ dependencies = [
  "tokio-tungstenite 0.26.2",
  "tracing",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
  "warp",
 ]
 
@@ -1363,7 +1370,7 @@ dependencies = [
  "alloy-primitives 0.8.25",
  "external-api",
  "serde",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -1448,7 +1455,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "tracing",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -1824,6 +1831,15 @@ dependencies = [
  "rustversion",
  "tower-layer",
  "tower-service",
+]
+
+[[package]]
+name = "backon"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "970d91570c01a8a5959b36ad7dd1c30642df24b6b3068710066f6809f7033bb7"
+dependencies = [
+ "fastrand",
 ]
 
 [[package]]
@@ -2581,6 +2597,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "combine"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util 0.7.13",
+]
+
+[[package]]
 name = "common"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git#426c01f3f2eaad3f3e14f7e7c704bf24c7d3597c"
@@ -2615,7 +2645,7 @@ dependencies = [
  "tokio",
  "tracing",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -3066,7 +3096,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1145d32e826a7748b69ee8fc62d3e6355ff7f1051df53141e7048162fc90481b"
 dependencies = [
  "data-encoding",
- "syn 2.0.98",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -3182,7 +3212,7 @@ dependencies = [
  "num-traits",
  "pq-sys",
  "r2d2",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -3909,7 +3939,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -4132,7 +4162,7 @@ dependencies = [
  "tokio-postgres",
  "tracing",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
  "warp",
 ]
 
@@ -4150,7 +4180,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.8",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -4396,7 +4426,7 @@ dependencies = [
  "sha2 0.10.8",
  "tracing",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -5232,7 +5262,7 @@ dependencies = [
  "serde",
  "tokio",
  "util",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -7276,6 +7306,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "redis"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b110459d6e323b7cda23980c46c77157601199c9da6241552b284cd565a7a133"
+dependencies = [
+ "arc-swap",
+ "backon",
+ "bytes",
+ "combine",
+ "futures-channel",
+ "futures-util",
+ "itoa",
+ "native-tls",
+ "num-bigint",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "socket2 0.5.8",
+ "tokio",
+ "tokio-native-tls",
+ "tokio-util 0.7.13",
+ "url",
+ "uuid 1.16.0",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7388,7 +7447,7 @@ dependencies = [
  "renegade-dealer-api",
  "serde_json",
  "tokio",
- "uuid 1.12.1",
+ "uuid 1.16.0",
  "warp",
 ]
 
@@ -7402,7 +7461,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -7610,7 +7669,7 @@ dependencies = [
  "rkyv_derive",
  "seahash",
  "tinyvec",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -8118,9 +8177,9 @@ checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 
 [[package]]
 name = "serde"
-version = "1.0.197"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fb1c873e1b9b056a4dc4c0c198b24c3ffa059243875552b2bd0933b1aee4ce2"
+checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
 ]
@@ -8136,9 +8195,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.197"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eb0b34b42edc17f6b7cac84a52a1c5f0e1bb2227e997ca9011ea3dd34e8610b"
+checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8147,9 +8206,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.138"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d434192e7da787e94a6ea7e9670b26a036d0ca41e0b7efb2676dd32bae872949"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
  "itoa",
  "memchr",
@@ -8241,6 +8300,12 @@ dependencies = [
  "cpufeatures",
  "digest 0.10.7",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -9017,7 +9082,7 @@ dependencies = [
  "num-traits",
  "tokio",
  "tracing",
- "uuid 1.12.1",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -9715,11 +9780,11 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.12.1"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
+checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
 dependencies = [
- "getrandom 0.2.15",
+ "getrandom 0.3.1",
  "serde",
 ]
 

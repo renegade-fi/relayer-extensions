@@ -9,6 +9,7 @@ pub(crate) mod helpers;
 pub mod price_reporter_client;
 mod queries;
 mod rate_limiter;
+mod redis_queries;
 
 use crate::server::price_reporter_client::PriceReporterClient;
 use crate::{
@@ -34,6 +35,7 @@ use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
+use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::hmac::HmacKey;
@@ -59,6 +61,8 @@ pub type ApiKeyCache = Arc<RwLock<UnboundCache<Uuid, ApiKey>>>;
 pub struct Server {
     /// The database connection pool
     pub db_pool: Arc<DbPool>,
+    /// The Redis client
+    pub redis_client: ConnectionManager,
     /// The URL of the relayer
     pub relayer_url: String,
     /// The admin key for the relayer
@@ -98,6 +102,9 @@ impl Server {
     ) -> Result<Self, AuthServerError> {
         // Setup the DB connection pool
         let db_pool = create_db_pool(&args.database_url).await?;
+
+        // Setup the Redis connection manager
+        let redis_client = create_redis_client(&args.redis_url).await?;
 
         // Parse the decryption key, management key, and relayer admin key as
         // base64 encoded strings
@@ -150,6 +157,7 @@ impl Server {
 
         Ok(Self {
             db_pool: Arc::new(db_pool),
+            redis_client,
             relayer_url: args.relayer_url,
             relayer_admin_key,
             management_key,
@@ -323,4 +331,13 @@ pub async fn establish_connection(db_url: &str) -> Result<AsyncPgConnection, Con
     });
 
     AsyncPgConnection::try_from(client).await
+}
+
+/// Create a Redis client.
+/// Under the hood, this uses a `ConnectionManager` to manage a single,
+/// shareable connection to Redis. This will automatically reconnect if the
+/// connection is lost.
+async fn create_redis_client(redis_url: &str) -> Result<ConnectionManager, AuthServerError> {
+    let client = redis::Client::open(redis_url).map_err(AuthServerError::redis)?;
+    ConnectionManager::new(client).await.map_err(AuthServerError::redis)
 }

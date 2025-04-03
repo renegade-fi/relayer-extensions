@@ -4,22 +4,21 @@
 //! it to the relayer with admin authentication
 
 use auth_server_api::{
-    AssembleSponsoredMatchRequest, GasSponsorshipInfo, GasSponsorshipQueryParams,
-    SponsoredMatchResponse, SponsoredQuoteResponse,
+    GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bytes::Bytes;
 use http::{Method, Response, StatusCode};
 use renegade_api::http::external_match::{
-    ExternalMatchRequest, ExternalMatchResponse, ExternalOrder, ExternalQuoteRequest,
-    ExternalQuoteResponse,
+    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
+    ExternalQuoteRequest, ExternalQuoteResponse,
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use super::helpers::overwrite_response_body;
+use super::helpers::{generate_quote_uuid, overwrite_response_body};
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
@@ -82,6 +81,14 @@ impl Server {
 
         let server_clone = self.clone();
         tokio::spawn(async move {
+            // Cache the gas sponsorship info for the quote in Redis if it exists
+            if let Err(e) =
+                server_clone.cache_quote_gas_sponsorship_info(&sponsored_quote_response).await
+            {
+                error!("Error caching quote gas sponsorship info: {e}");
+            }
+
+            // Log the quote response & emit metrics
             if let Err(e) =
                 server_clone.handle_quote_response(key_desc, &body, &sponsored_quote_response)
             {
@@ -108,11 +115,10 @@ impl Server {
 
         // Update the request to remove the effects of gas sponsorship, if
         // necessary
-        let assemble_sponsored_match_req = self.maybe_update_assembly_request(&body)?;
+        let (assemble_match_req, gas_sponsorship_info) =
+            self.maybe_update_assembly_request(&body).await?;
 
-        let req_body =
-            serde_json::to_vec(&assemble_sponsored_match_req.assemble_external_match_request())
-                .map_err(AuthServerError::serde)?;
+        let req_body = serde_json::to_vec(&assemble_match_req).map_err(AuthServerError::serde)?;
 
         // Send the request to the relayer
         let mut resp = self
@@ -132,11 +138,6 @@ impl Server {
         let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
             .map_err(AuthServerError::serde)?;
 
-        let gas_sponsorship_info = assemble_sponsored_match_req
-            .gas_sponsorship_info
-            .as_ref()
-            .map(|s| &s.gas_sponsorship_info);
-
         // Apply gas sponsorship to the resulting bundle, if necessary
         let sponsored_match_resp = self
             .maybe_apply_gas_sponsorship_to_assembled_quote(
@@ -154,7 +155,7 @@ impl Server {
             if let Err(e) = server_clone
                 .handle_quote_assembly_bundle_response(
                     key_desc,
-                    assemble_sponsored_match_req,
+                    assemble_match_req,
                     sponsored_match_resp,
                 )
                 .await
@@ -273,31 +274,36 @@ impl Server {
         Ok(sponsored_quote_response)
     }
 
-    /// Update the given sponsored assembly request to remove the effects of gas
-    /// sponsorship from the quote, if necessary
-    fn maybe_update_assembly_request(
+    /// Check if the given assembly request pertains to a sponsored quote,
+    /// and if so, remove the effects of gas sponsorship from the quote.
+    ///
+    /// Returns the assembly request, and the gas sponsorship info, if any.
+    async fn maybe_update_assembly_request(
         &self,
         req_body: &[u8],
-    ) -> Result<AssembleSponsoredMatchRequest, AuthServerError> {
-        let mut assemble_sponsored_match_req: AssembleSponsoredMatchRequest =
+    ) -> Result<(AssembleExternalMatchRequest, Option<GasSponsorshipInfo>), AuthServerError> {
+        let mut assemble_match_req: AssembleExternalMatchRequest =
             serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
 
-        let signed_gas_sponsorship_info = match assemble_sponsored_match_req.gas_sponsorship_info {
-            None => return Ok(assemble_sponsored_match_req),
-            Some(ref signed_gas_sponsorship_info) => signed_gas_sponsorship_info,
+        let redis_key = generate_quote_uuid(&assemble_match_req.signed_quote);
+        let gas_sponsorship_info = match self.read_gas_sponsorship_info_from_redis(redis_key).await
+        {
+            Err(e) => {
+                error!("Error reading gas sponsorship info from Redis: {e}");
+                None
+            },
+            Ok(gas_sponsorship_info) => gas_sponsorship_info,
         };
 
-        // Validate sponsorship info signature
-        self.validate_gas_sponsorship_info_signature(signed_gas_sponsorship_info)?;
-
-        let gas_sponsorship_info = &signed_gas_sponsorship_info.gas_sponsorship_info;
-        if gas_sponsorship_info.requires_match_result_update() {
+        if let Some(ref gas_sponsorship_info) = gas_sponsorship_info
+            && gas_sponsorship_info.requires_match_result_update()
+        {
             // Reconstruct original signed quote
-            let quote = &mut assemble_sponsored_match_req.signed_quote.quote;
-            self.remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount)?;
+            let quote = &mut assemble_match_req.signed_quote.quote;
+            self.remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info.refund_amount);
         }
 
-        Ok(assemble_sponsored_match_req)
+        Ok((assemble_match_req, gas_sponsorship_info))
     }
 
     /// Apply gas sponsorship to the given assembled quote, returning the
@@ -310,7 +316,7 @@ impl Server {
         key_description: String,
         resp_body: &[u8],
         mut query_params: GasSponsorshipQueryParams,
-        gas_sponsorship_info: Option<&GasSponsorshipInfo>,
+        gas_sponsorship_info: Option<GasSponsorshipInfo>,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         // Parse response body
         let external_match_resp: ExternalMatchResponse =
@@ -412,7 +418,7 @@ impl Server {
     async fn handle_quote_assembly_bundle_response(
         &self,
         key: String,
-        req: AssembleSponsoredMatchRequest,
+        req: AssembleExternalMatchRequest,
         resp: SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;

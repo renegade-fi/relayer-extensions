@@ -16,22 +16,14 @@ use refund_calculation::{
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchResponse, ExternalQuoteResponse,
 };
-use renegade_util::hex::{bytes_from_hex_string, bytes_to_hex_string};
 
 use super::Server;
-use crate::server::helpers::get_nominal_buy_token_price;
+use crate::server::helpers::{generate_quote_uuid, get_nominal_buy_token_price};
 use crate::telemetry::helpers::record_gas_sponsorship_metrics;
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
 pub mod contract_interaction;
 mod refund_calculation;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The error message for an invalid gas sponsorship info signature
-const ERR_INVALID_GAS_SPONSORSHIP_INFO_SIGNATURE: &str = "invalid gas sponsorship info signature";
 
 // ---------------
 // | Server Impl |
@@ -107,47 +99,17 @@ impl Server {
             )?;
         }
 
-        let signed_gas_sponsorship_info = self.sign_gas_sponsorship_info(gas_sponsorship_info)?;
+        // Since we cache gas sponsorship info in Redis, we don't need to sign it.
+        // The `SignedGasSponsorshipInfo` struct is only used for backwards
+        // compatibility
+        #[allow(deprecated)]
+        let signed_gas_sponsorship_info =
+            SignedGasSponsorshipInfo { gas_sponsorship_info, signature: String::new() };
 
         Ok(SponsoredQuoteResponse {
             signed_quote: external_quote_response.signed_quote,
             gas_sponsorship_info: Some(signed_gas_sponsorship_info),
         })
-    }
-
-    /// Sign the given gas sponsorship info
-    pub fn sign_gas_sponsorship_info(
-        &self,
-        gas_sponsorship_info: GasSponsorshipInfo,
-    ) -> Result<SignedGasSponsorshipInfo, AuthServerError> {
-        let gas_sponsorship_info_bytes =
-            serde_json::to_vec(&gas_sponsorship_info).map_err(AuthServerError::serde)?;
-
-        let signature = self.management_key.compute_mac(&gas_sponsorship_info_bytes);
-        let signature_hex = bytes_to_hex_string(&signature);
-
-        Ok(SignedGasSponsorshipInfo { gas_sponsorship_info, signature: signature_hex })
-    }
-
-    /// Validate the given signed gas sponsorship info
-    pub fn validate_gas_sponsorship_info_signature(
-        &self,
-        signed_gas_sponsorship_info: &SignedGasSponsorshipInfo,
-    ) -> Result<(), AuthServerError> {
-        let gas_sponsorship_info_bytes =
-            serde_json::to_vec(&signed_gas_sponsorship_info.gas_sponsorship_info)
-                .map_err(AuthServerError::serde)?;
-
-        let mac_bytes = bytes_from_hex_string(&signed_gas_sponsorship_info.signature)
-            .map_err(AuthServerError::serde)?;
-
-        if !self.management_key.verify_mac(&gas_sponsorship_info_bytes, &mac_bytes) {
-            return Err(AuthServerError::gas_sponsorship(
-                ERR_INVALID_GAS_SPONSORSHIP_INFO_SIGNATURE,
-            ));
-        }
-
-        Ok(())
     }
 
     /// Record the gas sponsorship rate limit & metrics for a given settled
@@ -196,5 +158,22 @@ impl Server {
         record_gas_sponsorship_metrics(value, request_id);
 
         Ok(())
+    }
+
+    /// Cache the gas sponsorship info for a given quote in Redis
+    /// if it exists
+    pub async fn cache_quote_gas_sponsorship_info(
+        &self,
+        quote_res: &SponsoredQuoteResponse,
+    ) -> Result<(), AuthServerError> {
+        if quote_res.gas_sponsorship_info.is_none() {
+            return Ok(());
+        }
+
+        let redis_key = generate_quote_uuid(&quote_res.signed_quote);
+        let gas_sponsorship_info =
+            &quote_res.gas_sponsorship_info.as_ref().unwrap().gas_sponsorship_info;
+
+        self.write_gas_sponsorship_info_to_redis(redis_key, gas_sponsorship_info).await
     }
 }
