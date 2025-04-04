@@ -1,9 +1,6 @@
 //! Helper methods for the auth server
 
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    AeadCore, Aes128Gcm,
-};
+use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
 use alloy_primitives::{Address, Bytes as AlloyBytes, PrimitiveSignature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
 use bigdecimal::{
@@ -42,12 +39,10 @@ pub fn empty_json_reply() -> impl Reply {
 /// AES encrypt a value
 ///
 /// Returns a base64 encoded string of the format [nonce, ciphertext]
-pub fn aes_encrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
+pub fn aes_encrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerError> {
     let mut rng = thread_rng();
-    let cipher = Aes128Gcm::new_from_slice(key).map_err(AuthServerError::encryption)?;
     let nonce = Aes128Gcm::generate_nonce(&mut rng);
-    let ciphertext =
-        cipher.encrypt(&nonce, value.as_bytes()).map_err(AuthServerError::encryption)?;
+    let ciphertext = key.encrypt(&nonce, value.as_bytes()).map_err(AuthServerError::encryption)?;
 
     // Encode the [nonce, ciphertext] as a base64 string
     let digest = [nonce.as_slice(), ciphertext.as_slice()].concat();
@@ -59,13 +54,13 @@ pub fn aes_encrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
 ///
 /// Assumes that the input is a base64 encoded string of the format [nonce,
 /// ciphertext]
-pub fn aes_decrypt(value: &str, key: &[u8]) -> Result<String, AuthServerError> {
+pub fn aes_decrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerError> {
     let decoded = general_purpose::STANDARD.decode(value).map_err(AuthServerError::decryption)?;
     let (nonce, ciphertext) = decoded.split_at(NONCE_SIZE);
 
-    let cipher = Aes128Gcm::new_from_slice(key).map_err(AuthServerError::decryption)?;
     let plaintext_bytes =
-        cipher.decrypt(nonce.into(), ciphertext).map_err(AuthServerError::decryption)?;
+        key.decrypt(nonce.into(), ciphertext).map_err(AuthServerError::decryption)?;
+
     let plaintext = String::from_utf8(plaintext_bytes).map_err(AuthServerError::decryption)?;
     Ok(plaintext)
 }
@@ -193,6 +188,7 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
 
 #[cfg(test)]
 mod tests {
+    use aes_gcm::KeyInit;
     use renegade_common::types::hmac::HmacKey;
 
     use super::*;
@@ -201,7 +197,7 @@ mod tests {
     #[test]
     fn test_aes_encrypt_decrypt() {
         let mut rng = thread_rng();
-        let key = Aes128Gcm::generate_key(&mut rng);
+        let key = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut rng));
         let value = "test string";
 
         let encrypted = aes_encrypt(value, &key).unwrap();
