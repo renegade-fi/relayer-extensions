@@ -11,6 +11,8 @@ mod queries;
 mod rate_limiter;
 mod redis_queries;
 
+use std::{iter, str::FromStr, sync::Arc, time::Duration};
+
 use crate::server::price_reporter_client::PriceReporterClient;
 use crate::DUMMY_PRIVATE_KEY;
 use crate::{
@@ -41,13 +43,18 @@ use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
 use renegade_arbitrum_client::client::{ArbitrumClient, ArbitrumClientConfig};
-use renegade_common::types::hmac::HmacKey;
+use renegade_common::types::{
+    hmac::HmacKey,
+    token::{get_all_tokens, Token},
+};
 use renegade_config::setup_token_remaps;
+use renegade_constants::NATIVE_ASSET_ADDRESS;
 use renegade_system_clock::SystemClock;
-use renegade_util::telemetry::configure_telemetry;
+use renegade_util::{
+    on_chain::{set_external_match_fee, PROTOCOL_FEE},
+    telemetry::configure_telemetry,
+};
 use reqwest::Client;
-use std::str::FromStr;
-use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, warn};
 use uuid::Uuid;
@@ -107,7 +114,8 @@ impl Server {
 
         let arbitrum_client = create_arbitrum_client(&args).await?;
 
-        // TODO: Set protocol & external match fees
+        // Set the external match fees & protocol fee
+        set_external_match_fees(&arbitrum_client).await?;
 
         // Setup the DB connection pool
         let db_pool = Arc::new(create_db_pool(&args.database_url).await?);
@@ -325,6 +333,33 @@ async fn create_arbitrum_client(args: &Cli) -> Result<ArbitrumClient, AuthServer
     })
     .await
     .map_err(AuthServerError::setup)
+}
+
+/// Set the external match fees & protocol fee
+async fn set_external_match_fees(arbitrum_client: &ArbitrumClient) -> Result<(), AuthServerError> {
+    let protocol_fee = arbitrum_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
+
+    PROTOCOL_FEE
+        .set(protocol_fee)
+        .map_err(|_| AuthServerError::setup("Failed to set protocol fee"))?;
+
+    let tokens: Vec<Token> = get_all_tokens()
+        .into_iter()
+        .chain(iter::once(Token::from_addr(NATIVE_ASSET_ADDRESS)))
+        .collect();
+
+    for token in tokens {
+        // Fetch the fee override from the contract
+        let addr = token.get_ethers_address();
+        let fee =
+            arbitrum_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
+
+        // Write the fee into the mapping
+        let addr_bigint = token.get_addr_biguint();
+        set_external_match_fee(&addr_bigint, fee);
+    }
+
+    Ok(())
 }
 
 /// Parse the encryption key, management key, relayer admin key, and gas sponsor
