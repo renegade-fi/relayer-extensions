@@ -62,6 +62,9 @@ use uuid::Uuid;
 /// The duration for which the admin authentication is valid
 const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
 
+/// The timeout for connecting to Redis
+const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// The DB connection type
 pub type DbConn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgConnection>>;
 /// The DB pool type
@@ -427,7 +430,10 @@ pub async fn establish_connection(db_url: &str) -> Result<AsyncPgConnection, Con
 /// connection is lost.
 async fn create_redis_client(redis_url: &str) -> Result<ConnectionManager, AuthServerError> {
     let client = redis::Client::open(redis_url).map_err(AuthServerError::redis)?;
-    ConnectionManager::new(client).await.map_err(AuthServerError::redis)
+    tokio::time::timeout(REDIS_CONNECT_TIMEOUT, ConnectionManager::new(client))
+        .await
+        .map_err(AuthServerError::setup)?
+        .map_err(AuthServerError::setup)
 }
 
 /// Setup the quote metrics recorder and sources if enabled
