@@ -1,6 +1,7 @@
 //! API types for quoter management
 use ethers::types::{Address, Bytes, U256};
 use hex;
+use renegade_common::types::token::{Token, USDC_TICKER};
 use serde::{Deserialize, Serialize};
 
 use crate::serialization::{
@@ -116,6 +117,70 @@ impl ExecutionQuote {
             self.estimated_gas,
             self.gas_limit
         )
+    }
+}
+
+impl ExecutionQuote {
+    /// Get the price in units of USDC per base token.
+    /// If a custom buy amount is provided, it is used in place of the standard
+    /// buy amount.
+    pub fn get_price(&self, buy_amount: Option<U256>) -> f64 {
+        let buy_amount = buy_amount.unwrap_or(self.buy_amount);
+        let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount.as_u128());
+
+        let decimal_sell_amount =
+            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128());
+
+        let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
+        if self.is_buy() {
+            1.0 / buy_per_sell
+        } else {
+            buy_per_sell
+        }
+    }
+
+    /// Returns the non-USDC token
+    pub fn get_base_token(&self) -> Token {
+        if self.is_buy() {
+            self.get_buy_token()
+        } else {
+            self.get_sell_token()
+        }
+    }
+
+    /// Return true if the sell token is USDC
+    pub fn is_buy(&self) -> bool {
+        let usdc_mint = &Token::from_ticker(USDC_TICKER).get_ethers_address();
+        &self.sell_token_address == usdc_mint
+    }
+
+    /// Returns the token being bought
+    pub fn get_buy_token(&self) -> Token {
+        Token::from_addr(&format!("{:#x}", self.buy_token_address))
+    }
+
+    /// Returns the token being sold
+    pub fn get_sell_token(&self) -> Token {
+        Token::from_addr(&format!("{:#x}", self.sell_token_address))
+    }
+
+    /// Returns the volume in USDC
+    pub fn get_quote_amount(&self) -> f64 {
+        if self.is_buy() {
+            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+        } else {
+            self.get_buy_token().convert_to_decimal(self.buy_amount.as_u128())
+        }
+    }
+
+    /// Returns the notional volume in USDC, taking into account the actual
+    /// transfer amount for sell orders
+    pub fn notional_volume_usdc(&self, transfer_amount: U256) -> f64 {
+        if self.is_buy() {
+            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+        } else {
+            self.get_buy_token().convert_to_decimal(transfer_amount.as_u128())
+        }
     }
 }
 

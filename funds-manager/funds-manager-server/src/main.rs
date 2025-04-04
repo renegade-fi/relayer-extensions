@@ -13,6 +13,7 @@ pub mod execution_client;
 pub mod fee_indexer;
 pub mod handlers;
 pub mod helpers;
+pub mod metrics;
 pub mod middleware;
 pub mod relayer_client;
 pub mod server;
@@ -139,9 +140,22 @@ struct Cli {
     /// The port to run the server on
     #[clap(long, default_value = "3000")]
     port: u16,
+
+    // -------------
+    // | Telemetry |
+    // -------------
     /// Whether to enable datadog formatted logs
     #[clap(long, default_value = "false")]
     datadog_logging: bool,
+    /// Whether or not to enable metrics collection
+    #[clap(long, env = "ENABLE_METRICS")]
+    metrics_enabled: bool,
+    /// The StatsD recorder host to send metrics to
+    #[clap(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
+    statsd_host: String,
+    /// The StatsD recorder port to send metrics to
+    #[clap(long, env = "STATSD_PORT", default_value = "8125")]
+    statsd_port: u16,
 }
 
 impl Cli {
@@ -176,10 +190,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     configure_telemetry(
         cli.datadog_logging, // datadog_enabled
         false,               // otlp_enabled
-        false,               // metrics_enabled
+        cli.metrics_enabled, // metrics_enabled
         "".to_string(),      // collector_endpoint
-        "",                  // statsd_host
-        0,                   // statsd_port
+        &cli.statsd_host,    // statsd_host
+        cli.statsd_port,     // statsd_port
     )
     .expect("failed to setup telemetry");
 

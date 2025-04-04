@@ -4150,6 +4150,7 @@ dependencies = [
  "http 1.2.0",
  "http-body-util",
  "itertools 0.13.0",
+ "metrics",
  "native-tls",
  "num-bigint",
  "postgres-native-tls",

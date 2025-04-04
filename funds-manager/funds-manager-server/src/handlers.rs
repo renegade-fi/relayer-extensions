@@ -179,12 +179,20 @@ pub(crate) async fn execute_swap_handler(
             "Invalid quote signature".to_string(),
         )));
     }
+    let quote_clone = req.quote.clone();
 
     let hot_wallet = server.custody_client.get_quoter_hot_wallet().await?;
     let wallet = server.custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
+    let receipt = server.execution_client.execute_swap(req.quote, &wallet).await?;
+    let tx_hash = receipt.transaction_hash;
 
-    let tx = server.execution_client.execute_swap(req.quote, &wallet).await?;
-    let resp = ExecuteSwapResponse { tx_hash: format!("{tx:#x}") };
+    // Record swap cost metrics
+    let server_clone = server.clone();
+    tokio::spawn(async move {
+        server_clone.metrics_recorder.record_swap_cost(&receipt, &quote_clone).await;
+    });
+
+    let resp = ExecuteSwapResponse { tx_hash: format!("{:#x}", tx_hash) };
     Ok(warp::reply::json(&resp))
 }
 
