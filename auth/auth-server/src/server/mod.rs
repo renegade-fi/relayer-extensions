@@ -11,13 +11,17 @@ mod queries;
 mod rate_limiter;
 mod redis_queries;
 
+use std::{iter, str::FromStr, sync::Arc, time::Duration};
+
 use crate::server::price_reporter_client::PriceReporterClient;
+use crate::DUMMY_PRIVATE_KEY;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
     telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
     ApiError, Cli,
 };
+use aes_gcm::{Aes128Gcm, KeyInit};
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
 use bytes::Bytes;
@@ -27,6 +31,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
+use ethers::signers::LocalWallet;
 use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
@@ -37,17 +42,28 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
-use renegade_arbitrum_client::client::ArbitrumClient;
-use renegade_common::types::hmac::HmacKey;
+use renegade_arbitrum_client::client::{ArbitrumClient, ArbitrumClientConfig};
+use renegade_common::types::{
+    hmac::HmacKey,
+    token::{get_all_tokens, Token},
+};
+use renegade_config::setup_token_remaps;
+use renegade_constants::NATIVE_ASSET_ADDRESS;
 use renegade_system_clock::SystemClock;
+use renegade_util::{
+    on_chain::{set_external_match_fee, PROTOCOL_FEE},
+    telemetry::configure_telemetry,
+};
 use reqwest::Client;
-use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, warn};
 use uuid::Uuid;
 
 /// The duration for which the admin authentication is valid
 const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
+
+/// The timeout for connecting to Redis
+const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The DB connection type
 pub type DbConn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgConnection>>;
@@ -70,7 +86,7 @@ pub struct Server {
     /// The management key for the auth server
     pub management_key: HmacKey,
     /// The encryption key for storing API secrets
-    pub encryption_key: Vec<u8>,
+    pub encryption_key: Aes128Gcm,
     /// The api key cache
     pub api_key_cache: ApiKeyCache,
     /// The HTTP client
@@ -95,26 +111,23 @@ pub struct Server {
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(
-        args: Cli,
-        arbitrum_client: ArbitrumClient,
-        system_clock: &SystemClock,
-    ) -> Result<Self, AuthServerError> {
+    pub async fn new(args: Cli, system_clock: &SystemClock) -> Result<Self, AuthServerError> {
+        configure_telemtry_from_args(&args)?;
+        setup_token_mapping(&args).await?;
+
+        let arbitrum_client = create_arbitrum_client(&args).await?;
+
+        // Set the external match fees & protocol fee
+        set_external_match_fees(&arbitrum_client).await?;
+
         // Setup the DB connection pool
-        let db_pool = create_db_pool(&args.database_url).await?;
+        let db_pool = Arc::new(create_db_pool(&args.database_url).await?);
 
         // Setup the Redis connection manager
         let redis_client = create_redis_client(&args.redis_url).await?;
 
-        // Parse the decryption key, management key, and relayer admin key as
-        // base64 encoded strings
-        let encryption_key = general_purpose::STANDARD
-            .decode(&args.encryption_key)
-            .map_err(AuthServerError::encryption)?;
-        let management_key =
-            HmacKey::from_base64_string(&args.management_key).map_err(AuthServerError::setup)?;
-        let relayer_admin_key =
-            HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
+        let (encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key) =
+            parse_auth_server_keys(&args)?;
 
         let rate_limiter = AuthServerRateLimiter::new(
             args.quote_rate_limit,
@@ -125,26 +138,14 @@ impl Server {
         let price_reporter_client =
             Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
 
-        // Setup the quote metrics recorder and sources if enabled
-        let quote_metrics = if args.enable_quote_comparison {
-            let odos_source = QuoteSource::odos_default();
-            Some(Arc::new(QuoteComparisonHandler::new(
-                vec![odos_source],
-                arbitrum_client.clone(),
-                price_reporter_client.clone(),
-            )))
-        } else {
-            None
-        };
+        // Setup quote metrics
+        let quote_metrics = maybe_setup_quote_metrics(
+            &args,
+            arbitrum_client.clone(),
+            price_reporter_client.clone(),
+        );
 
-        let gas_sponsor_address_bytes =
-            hex::decode(&args.gas_sponsor_address).map_err(AuthServerError::setup)?;
-        let gas_sponsor_address = Address::from_slice(&gas_sponsor_address_bytes);
-
-        let gas_sponsor_auth_key_bytes =
-            hex::decode(&args.gas_sponsor_auth_key).map_err(AuthServerError::setup)?;
-        let gas_sponsor_auth_key =
-            SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
+        let gas_sponsor_address = parse_gas_sponsor_address(&args)?;
 
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
@@ -156,7 +157,7 @@ impl Server {
         );
 
         Ok(Self {
-            db_pool: Arc::new(db_pool),
+            db_pool,
             redis_client,
             relayer_url: args.relayer_url,
             relayer_admin_key,
@@ -300,6 +301,96 @@ impl Server {
     }
 }
 
+/// Configure telemetry from the command line arguments
+fn configure_telemtry_from_args(args: &Cli) -> Result<(), AuthServerError> {
+    configure_telemetry(
+        args.datadog_enabled, // datadog_enabled
+        false,                // otlp_enabled
+        args.metrics_enabled, // metrics_enabled
+        "".to_string(),       // collector_endpoint
+        &args.statsd_host,    // statsd_host
+        args.statsd_port,     // statsd_port
+    )
+    .map_err(AuthServerError::setup)
+}
+
+/// Setup the token mapping
+async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
+    let chain_id = args.chain_id;
+    let token_remap_file = args.token_remap_file.clone();
+    tokio::task::spawn_blocking(move || setup_token_remaps(token_remap_file, chain_id))
+        .await
+        .unwrap()
+        .map_err(AuthServerError::setup)
+}
+
+/// Create an Arbitrum client
+async fn create_arbitrum_client(args: &Cli) -> Result<ArbitrumClient, AuthServerError> {
+    let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY).map_err(AuthServerError::setup)?;
+    ArbitrumClient::new(ArbitrumClientConfig {
+        darkpool_addr: args.darkpool_address.clone(),
+        chain: args.chain_id,
+        rpc_url: args.rpc_url.clone(),
+        arb_priv_keys: vec![wallet],
+        block_polling_interval_ms: 100,
+    })
+    .await
+    .map_err(AuthServerError::setup)
+}
+
+/// Set the external match fees & protocol fee
+async fn set_external_match_fees(arbitrum_client: &ArbitrumClient) -> Result<(), AuthServerError> {
+    let protocol_fee = arbitrum_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
+
+    PROTOCOL_FEE
+        .set(protocol_fee)
+        .map_err(|_| AuthServerError::setup("Failed to set protocol fee"))?;
+
+    let tokens: Vec<Token> = get_all_tokens()
+        .into_iter()
+        .chain(iter::once(Token::from_addr(NATIVE_ASSET_ADDRESS)))
+        .collect();
+
+    for token in tokens {
+        // Fetch the fee override from the contract
+        let addr = token.get_ethers_address();
+        let fee =
+            arbitrum_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
+
+        // Write the fee into the mapping
+        let addr_bigint = token.get_addr_biguint();
+        set_external_match_fee(&addr_bigint, fee);
+    }
+
+    Ok(())
+}
+
+/// Parse the encryption key, management key, relayer admin key, and gas sponsor
+/// auth key
+fn parse_auth_server_keys(
+    args: &Cli,
+) -> Result<(Aes128Gcm, HmacKey, HmacKey, SigningKey), AuthServerError> {
+    let encryption_key_bytes =
+        general_purpose::STANDARD.decode(&args.encryption_key).map_err(AuthServerError::setup)?;
+
+    let encryption_key =
+        Aes128Gcm::new_from_slice(&encryption_key_bytes).map_err(AuthServerError::setup)?;
+
+    let management_key =
+        HmacKey::from_base64_string(&args.management_key).map_err(AuthServerError::setup)?;
+
+    let relayer_admin_key =
+        HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
+
+    let gas_sponsor_auth_key_bytes =
+        hex::decode(&args.gas_sponsor_auth_key).map_err(AuthServerError::setup)?;
+
+    let gas_sponsor_auth_key =
+        SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
+
+    Ok((encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key))
+}
+
 /// Create a database pool
 pub async fn create_db_pool(db_url: &str) -> Result<DbPool, AuthServerError> {
     let mut conf = ManagerConfig::default();
@@ -339,5 +430,30 @@ pub async fn establish_connection(db_url: &str) -> Result<AsyncPgConnection, Con
 /// connection is lost.
 async fn create_redis_client(redis_url: &str) -> Result<ConnectionManager, AuthServerError> {
     let client = redis::Client::open(redis_url).map_err(AuthServerError::redis)?;
-    ConnectionManager::new(client).await.map_err(AuthServerError::redis)
+    tokio::time::timeout(REDIS_CONNECT_TIMEOUT, ConnectionManager::new(client))
+        .await
+        .map_err(AuthServerError::setup)?
+        .map_err(AuthServerError::setup)
+}
+
+/// Setup the quote metrics recorder and sources if enabled
+fn maybe_setup_quote_metrics(
+    args: &Cli,
+    arbitrum_client: ArbitrumClient,
+    price_reporter: Arc<PriceReporterClient>,
+) -> Option<Arc<QuoteComparisonHandler>> {
+    if !args.enable_quote_comparison {
+        return None;
+    }
+
+    let odos_source = QuoteSource::odos_default();
+    Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source], arbitrum_client, price_reporter)))
+}
+
+/// Parse the gas sponsor address from the CLI args
+fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
+    let gas_sponsor_address_bytes =
+        hex::decode(&args.gas_sponsor_address).map_err(AuthServerError::setup)?;
+
+    Ok(Address::from_slice(&gas_sponsor_address_bytes))
 }

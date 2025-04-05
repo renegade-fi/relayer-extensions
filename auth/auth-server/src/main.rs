@@ -25,19 +25,11 @@ mod telemetry;
 
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
-use ethers::signers::LocalWallet;
-use renegade_arbitrum_client::{
-    client::{ArbitrumClient, ArbitrumClientConfig},
-    constants::Chain,
-};
-use renegade_config::setup_token_remaps;
+use renegade_arbitrum_client::constants::Chain;
 use renegade_system_clock::SystemClock;
-use renegade_util::err_str;
-use renegade_util::telemetry::configure_telemetry;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
@@ -196,48 +188,10 @@ async fn main() {
     let args = Cli::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
 
-    // Setup logging
-    configure_telemetry(
-        args.datadog_enabled, // datadog_enabled
-        false,                // otlp_enabled
-        args.metrics_enabled, // metrics_enabled
-        "".to_string(),       // collector_endpoint
-        &args.statsd_host,    // statsd_host
-        args.statsd_port,     // statsd_port
-    )
-    .expect("failed to setup telemetry");
-
-    // Set up the token remapping
-    let chain_id = args.chain_id;
-    let token_remap_file = args.token_remap_file.clone();
-    tokio::task::spawn_blocking(move || {
-        setup_token_remaps(token_remap_file, chain_id)
-            .map_err(err_str!(error::AuthServerError::Setup))
-    })
-    .await
-    .unwrap()
-    .expect("Failed to setup token remaps");
-
-    // Build an Arbitrum client
-    let wallet =
-        LocalWallet::from_str(DUMMY_PRIVATE_KEY).expect("Failed to create wallet from private key");
-    let arbitrum_client = ArbitrumClient::new(ArbitrumClientConfig {
-        darkpool_addr: args.darkpool_address.clone(),
-        chain: args.chain_id,
-        rpc_url: args.rpc_url.clone(),
-        arb_priv_keys: vec![wallet],
-        block_polling_interval_ms: 100,
-    })
-    .await
-    .unwrap();
-
     let system_clock = SystemClock::new().await;
 
     // Create the server
-    let server =
-        Server::new(args, arbitrum_client, &system_clock).await.expect("Failed to create server");
-
-    let server = Arc::new(server);
+    let server = Arc::new(Server::new(args, &system_clock).await.expect("Failed to create server"));
 
     // --- Management Routes --- //
 
