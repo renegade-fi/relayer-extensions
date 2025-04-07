@@ -21,6 +21,7 @@ use crate::{
     error::FundsManagerError,
     execution_client::ExecutionClient,
     fee_indexer::Indexer,
+    metrics::MetricsRecorder,
     relayer_client::RelayerClient,
     Cli,
 };
@@ -65,6 +66,8 @@ pub(crate) struct Server {
     pub hmac_key: Option<HmacKey>,
     /// The HMAC key for signing quotes
     pub quote_hmac_key: HmacKey,
+    /// The metrics recorder
+    pub metrics_recorder: MetricsRecorder,
 }
 
 impl Server {
@@ -128,7 +131,9 @@ impl Server {
             &args.rpc_url,
         )?;
 
-        Ok(Self {
+        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), args.rpc_url.clone());
+
+        Ok(Server {
             chain_id,
             chain: args.chain,
             relayer_client: relayer_client.clone(),
@@ -140,6 +145,7 @@ impl Server {
             aws_config: config,
             hmac_key,
             quote_hmac_key,
+            metrics_recorder,
         })
     }
 
