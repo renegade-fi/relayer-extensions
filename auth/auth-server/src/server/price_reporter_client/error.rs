@@ -11,6 +11,10 @@ pub enum PriceReporterError {
     #[error("Setup error: {0}")]
     Setup(String),
 
+    /// Parsing error
+    #[error("Parsing error: {0}")]
+    Parsing(String),
+
     /// HTTP error
     #[error("HTTP error: {0}")]
     Http(HttpError),
@@ -31,6 +35,12 @@ impl PriceReporterError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn setup<T: ToString>(msg: T) -> Self {
         Self::Setup(msg.to_string())
+    }
+
+    /// Create a new parsing error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn parsing<T: ToString>(msg: T) -> Self {
+        Self::Parsing(msg.to_string())
     }
 
     /// Create a new web socket error
