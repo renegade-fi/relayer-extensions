@@ -118,6 +118,41 @@ impl ExecutionQuote {
             self.gas_limit
         )
     }
+
+    /// Get the buy token address as a formatted string
+    pub fn get_buy_token_address(&self) -> String {
+        format!("{:#x}", self.buy_token_address)
+    }
+
+    /// Get the sell token address as a formatted string
+    pub fn get_sell_token_address(&self) -> String {
+        format!("{:#x}", self.sell_token_address)
+    }
+
+    /// Get the from address as a formatted string
+    pub fn get_from_address(&self) -> String {
+        format!("{:#x}", self.from)
+    }
+
+    /// Get the to address as a formatted string
+    pub fn get_to_address(&self) -> String {
+        format!("{:#x}", self.to)
+    }
+
+    /// Get the buy amount as a decimal-corrected string
+    pub fn get_decimal_corrected_buy_amount(&self) -> f64 {
+        self.get_buy_token().convert_to_decimal(self.buy_amount.as_u128())
+    }
+
+    /// Get the sell amount as a decimal-corrected string
+    pub fn get_decimal_corrected_sell_amount(&self) -> f64 {
+        self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+    }
+
+    /// Get the buy amount min as a decimal-corrected string
+    pub fn get_decimal_corrected_buy_amount_min(&self) -> f64 {
+        self.get_buy_token().convert_to_decimal(self.buy_amount_min.as_u128())
+    }
 }
 
 impl ExecutionQuote {
@@ -128,8 +163,7 @@ impl ExecutionQuote {
         let buy_amount = buy_amount.unwrap_or(self.buy_amount);
         let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount.as_u128());
 
-        let decimal_sell_amount =
-            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128());
+        let decimal_sell_amount = self.get_decimal_corrected_sell_amount();
 
         let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
         if self.is_buy() {
@@ -156,20 +190,20 @@ impl ExecutionQuote {
 
     /// Returns the token being bought
     pub fn get_buy_token(&self) -> Token {
-        Token::from_addr(&format!("{:#x}", self.buy_token_address))
+        Token::from_addr(&self.get_buy_token_address())
     }
 
     /// Returns the token being sold
     pub fn get_sell_token(&self) -> Token {
-        Token::from_addr(&format!("{:#x}", self.sell_token_address))
+        Token::from_addr(&self.get_sell_token_address())
     }
 
     /// Returns the volume in USDC
     pub fn get_quote_amount(&self) -> f64 {
         if self.is_buy() {
-            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+            self.get_decimal_corrected_sell_amount()
         } else {
-            self.get_buy_token().convert_to_decimal(self.buy_amount.as_u128())
+            self.get_decimal_corrected_buy_amount()
         }
     }
 
@@ -177,7 +211,7 @@ impl ExecutionQuote {
     /// transfer amount for sell orders
     pub fn notional_volume_usdc(&self, transfer_amount: U256) -> f64 {
         if self.is_buy() {
-            self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+            self.get_decimal_corrected_sell_amount()
         } else {
             self.get_buy_token().convert_to_decimal(transfer_amount.as_u128())
         }
