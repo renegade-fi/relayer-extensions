@@ -67,6 +67,8 @@ pub const BASE_ASSET_METRIC_TAG: &str = "base_asset";
 pub const DECIMAL_CORRECTION_FIXED_METRIC_TAG: &str = "post_decimal_fix";
 /// Metric tag for the path of the request
 pub const REQUEST_PATH_METRIC_TAG: &str = "request_path";
+/// Metric tag for the SDK version of the request
+pub const SDK_VERSION_METRIC_TAG: &str = "sdk_version";
 
 /// Metric tag for identifying the source of a quote (our server or competitor)
 pub const SOURCE_NAME_TAG: &str = "source_name";
