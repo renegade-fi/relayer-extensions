@@ -1,6 +1,7 @@
 //! The shared stream of the ETH price
 
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -15,13 +16,13 @@ use futures_util::{
 };
 use renegade_api::websocket::WebsocketMessage;
 use serde::Deserialize;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{error, info, warn};
 
-use crate::http_utils::HttpError;
+use crate::{http_utils::HttpError, server::price_reporter_client::construct_price_topic};
 
-use super::{error::PriceReporterError, PriceReporterClient};
+use super::{error::PriceReporterError, get_base_mint_from_topic};
 
 // -------------
 // | Constants |
@@ -40,35 +41,42 @@ type WsWriteStream = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Messa
 /// A type alias for the read end of the websocket connection
 type WsReadStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
+/// A type alias for a synchronized map from token mints to their latest prices
+type SyncPricesMap = RwLock<HashMap<String, AtomicF64>>;
+
 /// A message that is sent by the price reporter to the client indicating
 /// a price udpate for the given topic
 #[derive(Deserialize)]
 pub struct PriceMessage {
     /// The topic for which the price update is being sent
-    #[allow(dead_code)]
     pub topic: String,
     /// The new price
     pub price: f64,
 }
 
-/// The state of the price stream, utilizing atomics for thread-safe access
+/// The thread-safe state of the multi-price stream
 #[derive(Debug)]
-pub struct PriceStreamState {
-    /// The latest ETH price in USD
-    pub price: AtomicF64,
+pub struct MultiPriceStreamState {
+    /// The latest prices for the tokens managed by the price stream
+    pub prices: SyncPricesMap,
     /// Whether the websocket is currently connected
     pub is_connected: AtomicBool,
 }
 
-impl PriceStreamState {
-    /// Create a new price stream state
+impl MultiPriceStreamState {
+    /// Create a new multi-price stream state
     pub fn new() -> Self {
-        Self { price: AtomicF64::new(0.0), is_connected: AtomicBool::new(false) }
+        Self { prices: SyncPricesMap::new(HashMap::new()), is_connected: AtomicBool::new(false) }
     }
 
-    /// Update the price with a new ETH price
-    fn update_price(&self, eth_price: f64) {
-        self.price.store(eth_price, Ordering::Relaxed);
+    /// Update the price of a token
+    async fn update_price(&self, mint: String, price: f64) {
+        self.prices
+            .write()
+            .await
+            .entry(mint)
+            .or_insert(AtomicF64::new(price))
+            .store(price, Ordering::Relaxed);
     }
 
     /// Set the connection status
@@ -77,40 +85,41 @@ impl PriceStreamState {
     }
 }
 
-/// A price stream that manages a WebSocket connection to the price reporter
-/// and provides access to the latest ETH price
+/// A multi-price stream that manages a WebSocket connection to the price
+/// reporter and provides access to the latest prices of the desired tokens
 #[derive(Debug)]
-pub struct PriceStream {
-    /// The state of the price stream
-    state: Arc<PriceStreamState>,
+pub struct MultiPriceStream {
+    /// The inner state of the multi-price stream, made shareable via an `Arc`
+    /// so that it can be updated by the websocket thread
+    inner: Arc<MultiPriceStreamState>,
 }
 
 // --------------------
 // | Public Interface |
 // --------------------
 
-impl PriceStream {
-    /// Create a new price stream, starting the subscription to the price topic
-    pub fn new(ws_url: &str, mint: &str) -> Self {
-        let state = Arc::new(PriceStreamState::new());
-
-        let ws_url_clone = ws_url.to_string();
-        let mint_clone = mint.to_string();
-        let state_clone = state.clone();
+impl MultiPriceStream {
+    /// Create a new multi-price stream, starting the subscription to the price
+    /// topics
+    pub fn new(ws_url: String, mints: Vec<String>) -> Self {
+        let inner = Arc::new(MultiPriceStreamState::new());
+        let inner_clone = inner.clone();
 
         tokio::spawn(async move {
-            Self::run_websocket_loop(state_clone, ws_url_clone, mint_clone).await;
+            Self::run_websocket_loop(inner_clone, ws_url, mints).await;
         });
 
-        Self { state }
+        Self { inner }
     }
 
     /// Get the current state of the price stream
-    pub fn get_state(&self) -> (f64, bool) {
-        let price = self.state.price.load(Ordering::Relaxed);
-        let is_connected = self.state.is_connected.load(Ordering::Relaxed);
+    pub async fn get_price(&self, mint: &str) -> f64 {
+        self.inner.prices.read().await.get(mint).map_or(0.0, |price| price.load(Ordering::Relaxed))
+    }
 
-        (price, is_connected)
+    /// Get the connection status of the price stream
+    pub fn is_connected(&self) -> bool {
+        self.inner.is_connected.load(Ordering::Relaxed)
     }
 }
 
@@ -118,11 +127,15 @@ impl PriceStream {
 // | Private Helpers |
 // -------------------
 
-impl PriceStream {
+impl MultiPriceStream {
     /// The main WebSocket connection loop that handles reconnections
-    async fn run_websocket_loop(state: Arc<PriceStreamState>, ws_url: String, mint: String) {
+    async fn run_websocket_loop(
+        state: Arc<MultiPriceStreamState>,
+        ws_url: String,
+        mints: Vec<String>,
+    ) {
         loop {
-            if let Err(e) = Self::stream_price(state.clone(), &ws_url, &mint).await {
+            if let Err(e) = Self::stream_prices(state.clone(), &ws_url, &mints).await {
                 error!("Error streaming prices: {e}");
             }
 
@@ -132,22 +145,22 @@ impl PriceStream {
         }
     }
 
-    /// Subscribe to the price topic and handle price updates
-    async fn stream_price(
-        state: Arc<PriceStreamState>,
+    /// Subscribe to the price topics and handle price updates
+    async fn stream_prices(
+        state: Arc<MultiPriceStreamState>,
         ws_url: &str,
-        mint: &str,
+        mints: &[String],
     ) -> Result<(), PriceReporterError> {
-        let read = connect_and_subscribe(ws_url, mint).await?;
+        let read = connect_and_subscribe(ws_url, mints).await?;
         state.set_connected(true);
         Self::handle_price_updates(read, state).await
     }
 
     /// Handle price updates from the price reporter, updating the state with
-    /// the latest price
+    /// the latest prices
     async fn handle_price_updates(
         mut ws_read: WsReadStream,
-        state: Arc<PriceStreamState>,
+        state: Arc<MultiPriceStreamState>,
     ) -> Result<(), PriceReporterError> {
         while let Some(res) = ws_read.next().await {
             let msg = res.map_err(PriceReporterError::websocket)?;
@@ -157,9 +170,8 @@ impl PriceStream {
             if let Message::Text(ref text) = msg
                 && let Ok(price_message) = serde_json::from_str::<PriceMessage>(text)
             {
-                state.update_price(price_message.price);
-            } else {
-                warn!("Received unknown websocket message: {msg:?}");
+                let mint = get_base_mint_from_topic(&price_message.topic)?;
+                state.update_price(mint, price_message.price).await;
             }
         }
 
@@ -171,19 +183,24 @@ impl PriceStream {
 // | Websocket Helpers |
 // ---------------------
 
-/// Attempt to connect to the websocket and send a subscription message for the
-/// given token mint, returning the read stream
+/// Attempt to connect to the websocket and send a subscription message for each
+/// of the given token mints, returning the read stream
 async fn connect_and_subscribe(
     ws_url: &str,
-    mint: &str,
+    mints: &[String],
 ) -> Result<WsReadStream, PriceReporterError> {
-    let topic = PriceReporterClient::get_price_topic(mint);
-    let message = WebsocketMessage::Subscribe { topic };
-    let message_ser = Message::text(serde_json::to_string(&message).map_err(HttpError::parsing)?);
-
-    info!("Subscribing to price stream for {mint}...");
     let (mut write, read) = ws_connect(ws_url).await?;
-    write.send(message_ser).await.map_err(PriceReporterError::websocket)?;
+
+    for mint in mints {
+        let topic = construct_price_topic(mint);
+        let message = WebsocketMessage::Subscribe { topic };
+        let message_ser =
+            Message::text(serde_json::to_string(&message).map_err(HttpError::parsing)?);
+
+        info!("Subscribing to price stream for {mint}...");
+        write.send(message_ser).await.map_err(PriceReporterError::websocket)?;
+    }
+
     Ok(read)
 }
 
