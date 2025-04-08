@@ -23,6 +23,7 @@ use crate::server::helpers::{generate_quote_uuid, get_nominal_buy_token_price};
 use crate::telemetry::labels::{
     GAS_SPONSORSHIP_VALUE, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG,
     REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG,
+    SDK_VERSION_METRIC_TAG,
 };
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
@@ -137,6 +138,7 @@ impl Server {
         gas_sponsorship_info: GasSponsorshipInfo,
         key: String,
         request_id: String,
+        sdk_version: String,
     ) -> Result<(), AuthServerError> {
         let nominal_price = if gas_sponsorship_info.refund_native_eth {
             let price_f64: f64 = self
@@ -176,6 +178,7 @@ impl Server {
             match_bundle,
             key,
             request_id,
+            sdk_version,
         )
         .await?;
 
@@ -211,6 +214,7 @@ impl Server {
         match_bundle: &AtomicMatchApiBundle,
         key: String,
         request_id: String,
+        sdk_version: String,
     ) -> Result<(), AuthServerError> {
         // Extra sponsorship metadata:
         // - Remaining value in user's rate limit bucket
@@ -248,6 +252,7 @@ impl Server {
 
         let labels = vec![
             (REQUEST_ID_METRIC_TAG.to_string(), request_id),
+            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
             (REMAINING_VALUE_TAG.to_string(), remaining_value.to_string()),
             (REMAINING_TIME_TAG.to_string(), remaining_time.as_secs().to_string()),
             (REFUND_ASSET_TAG.to_string(), refund_asset_ticker),

@@ -7,7 +7,7 @@ use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bytes::Bytes;
-use http::{Method, Response, StatusCode};
+use http::{HeaderMap, Method, Response, StatusCode};
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
     ExternalQuoteRequest, ExternalQuoteResponse,
@@ -22,7 +22,7 @@ use super::helpers::{generate_quote_uuid, overwrite_response_body};
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
-use crate::telemetry::labels::GAS_SPONSORED_METRIC_TAG;
+use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::{
         await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
@@ -35,6 +35,16 @@ use crate::telemetry::{
 
 mod gas_sponsorship;
 pub use gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The header name for the SDK version
+const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
+
+/// The default SDK version to use if the header is not set
+const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
 
 // ---------------
 // | Server Impl |
@@ -58,14 +68,14 @@ impl Server {
 
         // Send the request to the relayer
         let mut resp =
-            self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
+            self.send_admin_request(Method::POST, path_str, headers.clone(), body.clone()).await?;
 
         let status = resp.status();
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &body);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &body, &headers);
             return Ok(resp);
         }
 
@@ -89,9 +99,12 @@ impl Server {
             }
 
             // Log the quote response & emit metrics
-            if let Err(e) =
-                server_clone.handle_quote_response(key_desc, &body, &sponsored_quote_response)
-            {
+            if let Err(e) = server_clone.handle_quote_response(
+                key_desc,
+                &body,
+                &headers,
+                &sponsored_quote_response,
+            ) {
                 warn!("Error handling quote: {e}");
             }
         });
@@ -122,7 +135,7 @@ impl Server {
 
         // Send the request to the relayer
         let mut resp = self
-            .send_admin_request(Method::POST, path_str, headers, req_body.clone().into())
+            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
             .await?;
 
         let status = resp.status();
@@ -130,7 +143,7 @@ impl Server {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
             return Ok(resp);
         }
 
@@ -156,6 +169,7 @@ impl Server {
                 .handle_quote_assembly_bundle_response(
                     key_desc,
                     assemble_match_req,
+                    &headers,
                     sponsored_match_resp,
                 )
                 .await
@@ -185,14 +199,14 @@ impl Server {
         // Send the request to the relayer, potentially sponsoring the gas costs
 
         let mut resp =
-            self.send_admin_request(Method::POST, path_str, headers, body.clone()).await?;
+            self.send_admin_request(Method::POST, path_str, headers.clone(), body.clone()).await?;
 
         let status = resp.status();
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             record_relayer_request_500(key_description.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_description, path_str, &body);
+            log_unsuccessful_relayer_request(&resp, &key_description, path_str, &body, &headers);
             return Ok(resp);
         }
 
@@ -213,7 +227,12 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
-                .handle_direct_match_bundle_response(key_description, &body, sponsored_match_resp)
+                .handle_direct_match_bundle_response(
+                    key_description,
+                    &body,
+                    &headers,
+                    sponsored_match_resp,
+                )
                 .await
             {
                 warn!("Error handling bundle: {e}");
@@ -415,14 +434,16 @@ impl Server {
         &self,
         key: String,
         req: AssembleExternalMatchRequest,
+        headers: &HeaderMap,
         resp: SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
         let request_id = uuid::Uuid::new_v4().to_string();
+        let sdk_version = get_sdk_version(headers);
         if req.updated_order.is_some() {
-            log_updated_order(&key, original_order, updated_order, &request_id);
+            log_updated_order(&key, original_order, updated_order, &request_id, &sdk_version);
         }
 
         self.handle_bundle_response(
@@ -431,6 +452,7 @@ impl Server {
             resp,
             Some(request_id),
             "assemble-external-match",
+            sdk_version,
         )
         .await
     }
@@ -440,12 +462,15 @@ impl Server {
         &self,
         key: String,
         req: &[u8],
+        headers: &HeaderMap,
         resp: SponsoredMatchResponse,
     ) -> Result<(), AuthServerError> {
         let req: ExternalMatchRequest =
             serde_json::from_slice(req).map_err(AuthServerError::serde)?;
         let order = req.external_order;
-        self.handle_bundle_response(key, order, resp, None, "request-external-match").await
+        let sdk_version = get_sdk_version(headers);
+        self.handle_bundle_response(key, order, resp, None, "request-external-match", sdk_version)
+            .await
     }
 
     /// Record and watch a bundle that was forwarded to the client
@@ -458,11 +483,12 @@ impl Server {
         resp: SponsoredMatchResponse,
         request_id: Option<String>,
         endpoint: &str,
+        sdk_version: String,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
         let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        log_bundle(&order, &resp, &key, &request_id, endpoint)?;
+        log_bundle(&order, &resp, &key, &request_id, endpoint, &sdk_version)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
@@ -473,6 +499,7 @@ impl Server {
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
+            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.clone()),
         ];
 
         // Record quote comparisons before settlement, if enabled
@@ -497,6 +524,7 @@ impl Server {
                     gas_sponsorship_info,
                     key,
                     request_id,
+                    sdk_version,
                 )
                 .await?;
             }
@@ -513,10 +541,13 @@ impl Server {
         &self,
         key: String,
         req: &[u8],
+        headers: &HeaderMap,
         resp: &SponsoredQuoteResponse,
     ) -> Result<(), AuthServerError> {
+        let sdk_version = get_sdk_version(headers);
+
         // Log the quote parameters
-        log_quote(resp, &key)?;
+        log_quote(resp, &key, &sdk_version)?;
 
         // Only proceed with metrics recording if sampled
         if !self.should_sample_metrics() {
@@ -545,6 +576,7 @@ impl Server {
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
+            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
         ];
         record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
 
@@ -560,26 +592,43 @@ impl Server {
 // | Logging helpers |
 // -------------------
 
+/// Parse the SDK version from the given headers.
+/// If unset or malformed, returns an empty string.
+fn get_sdk_version(headers: &HeaderMap) -> String {
+    headers
+        .get(SDK_VERSION_HEADER)
+        .map(|v| v.to_str().unwrap_or_default())
+        .unwrap_or(SDK_VERSION_DEFAULT)
+        .to_string()
+}
+
 /// Log a non-200 response from the relayer for the given request
 fn log_unsuccessful_relayer_request(
     resp: &Response<Bytes>,
     key_description: &str,
     path: &str,
     req_body: &[u8],
+    headers: &HeaderMap,
 ) {
     let status = resp.status();
     let text = String::from_utf8_lossy(resp.body()).to_string();
     let req_body = String::from_utf8_lossy(req_body).to_string();
+    let sdk_version = get_sdk_version(headers);
     warn!(
         key_description = key_description,
         path = path,
         request_body = req_body,
+        sdk_version = sdk_version,
         "Non-200 response from relayer: {status}: {text}",
     );
 }
 
 /// Log a quote
-fn log_quote(resp: &SponsoredQuoteResponse, key_description: &str) -> Result<(), AuthServerError> {
+fn log_quote(
+    resp: &SponsoredQuoteResponse,
+    key_description: &str,
+    sdk_version: &str,
+) -> Result<(), AuthServerError> {
     let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
     let match_result = signed_quote.match_result();
     let is_buy = match_result.direction;
@@ -594,6 +643,7 @@ fn log_quote(resp: &SponsoredQuoteResponse, key_description: &str) -> Result<(),
     info!(
             is_sponsored = is_sponsored,
             key_description = key_description,
+            sdk_version = sdk_version,
             "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             recv.amount,
             recv.mint,
@@ -612,6 +662,7 @@ fn log_updated_order(
     original_order: &ExternalOrder,
     updated_order: &ExternalOrder,
     request_id: &str,
+    sdk_version: &str,
 ) {
     let original_base_amount = original_order.base_amount;
     let updated_base_amount = updated_order.base_amount;
@@ -620,6 +671,7 @@ fn log_updated_order(
     info!(
             key_description = key,
             request_id = request_id,
+            sdk_version = sdk_version,
             "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
             original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
         );
@@ -632,6 +684,7 @@ fn log_bundle(
     key_description: &str,
     request_id: &str,
     endpoint: &str,
+    sdk_version: &str,
 ) -> Result<(), AuthServerError> {
     let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
 
@@ -673,6 +726,7 @@ fn log_bundle(
             request_id = request_id,
             is_sponsored = is_sponsored,
             endpoint = endpoint,
+            sdk_version = sdk_version,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             is_buy,
             recv.amount,
