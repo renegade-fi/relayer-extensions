@@ -91,3 +91,18 @@ pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
 
 /// Metric tag to indicate that a match had its gas costs sponsored
 pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";
+/// Metric tag indicating the remaining value in a gas sponsorship rate limit
+/// bucket
+pub const REMAINING_VALUE_TAG: &str = "remaining_value";
+/// Metric tag indicating the remaining time (in seconds) in a gas sponsorship
+/// rate limit bucket
+pub const REMAINING_TIME_TAG: &str = "remaining_time";
+/// Metric tag indicating the refund asset
+pub const REFUND_ASSET_TAG: &str = "refund_asset";
+/// Metric tag indicating the refund amount (in whole units)
+pub const REFUND_AMOUNT_TAG: &str = "refund_amount";
+/// Metric tag indicating the cost per byte of L1 calldata (in L2 wei)
+pub const L1_COST_PER_BYTE_TAG: &str = "l1_cost_per_byte";
+/// Metric tag indicating the base fee (in wei) of the L2 portion of a
+/// transaction
+pub const L2_BASE_FEE_TAG: &str = "l2_base_fee";

@@ -20,6 +20,8 @@
 //! The latter is measured by waiting for nullifier spend events on-chain. This
 //! is also when we record the gas sponsorship value for sponsored bundles.
 
+use std::time::Duration;
+
 use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
 use user_rate_limiter::ApiTokenRateLimiter;
 
@@ -84,5 +86,14 @@ impl AuthServerRateLimiter {
     /// method will do nothing.
     pub async fn record_gas_sponsorship(&self, user_id: String, value: f64) {
         self.gas_sponsorship_rate_limiter.record_sponsorship(user_id, value).await;
+    }
+
+    /// Get the remaining value and time for a given user's gas sponsorship
+    /// bucket.
+    pub async fn remaining_gas_sponsorship_value_and_time(
+        &self,
+        user_id: String,
+    ) -> (f64, Duration) {
+        self.gas_sponsorship_rate_limiter.remaining_value_and_time(user_id).await
     }
 }
