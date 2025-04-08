@@ -114,7 +114,7 @@ pub struct Cli {
     #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
     gas_sponsor_auth_key: String,
     /// The maximum dollar value of gas sponsorship funds per day
-    #[arg(long, env = "MAX_GAS_SPONSORSHIP_VALUE", default_value = "100.0")]
+    #[arg(long, env = "MAX_GAS_SPONSORSHIP_VALUE", default_value = "25.0")]
     max_gas_sponsorship_value: f64,
 
     // -------------

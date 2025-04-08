@@ -50,6 +50,13 @@ impl GasSponsorshipRateLimiter {
         GasSponsorshipBucket::new(self.max_value, ONE_DAY)
     }
 
+    /// Get the remaining value and time for a given user's bucket.
+    pub async fn remaining_value_and_time(&self, user_id: String) -> (f64, Duration) {
+        let mut map = self.buckets.lock().await;
+        let entry = map.entry(user_id).or_insert_with(|| self.new_bucket());
+        (entry.remaining_value(), entry.remaining_time())
+    }
+
     /// Check if the given user's bucket has a non-zero remaining value.
     pub async fn has_remaining_value(&self, user_id: String) -> bool {
         let mut map = self.buckets.lock().await;
@@ -93,6 +100,24 @@ impl GasSponsorshipBucket {
             next_refill: Instant::now() + refill_interval,
         }
     }
+
+    // -----------
+    // | Getters |
+    // -----------
+
+    /// Get the remaining value in the bucket.
+    pub fn remaining_value(&self) -> f64 {
+        self.remaining_value
+    }
+
+    /// Get the remaining time in the bucket.
+    pub fn remaining_time(&self) -> Duration {
+        self.next_refill - Instant::now()
+    }
+
+    // -----------
+    // | Setters |
+    // -----------
 
     /// Check if the bucket has a non-zero remaining value.
     ///
