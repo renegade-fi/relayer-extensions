@@ -109,12 +109,15 @@ impl MetricsRecorder {
         let execution_cost_usdc = notional_volume_usdc * relative_spread;
 
         // Calculate slippage metrics
-        let buy_amount_estimated = quote.get_decimal_corrected_buy_amount();
-        let buy_amount_min = quote.get_decimal_corrected_buy_amount_min();
-        let actual_amount = quote.get_buy_token().convert_to_decimal(buy_amount_actual.as_u128());
+        let decimal_corrected_buy_amount_estimated = quote.get_decimal_corrected_buy_amount();
+        let decimal_corrected_buy_amount_min = quote.get_decimal_corrected_buy_amount_min();
+        let decimal_corrected_buy_amount_actual =
+            quote.get_buy_token().convert_to_decimal(buy_amount_actual.as_u128());
 
-        let slippage_budget = buy_amount_estimated - buy_amount_min;
-        let received_delta = buy_amount_estimated - actual_amount;
+        let slippage_budget =
+            decimal_corrected_buy_amount_estimated - decimal_corrected_buy_amount_min;
+        let received_delta =
+            decimal_corrected_buy_amount_estimated - decimal_corrected_buy_amount_actual;
         let slippage_consumption_percent =
             if slippage_budget > 0.0 { (received_delta / slippage_budget) * 100.0 } else { 0.0 };
 
@@ -124,8 +127,8 @@ impl MetricsRecorder {
             buy_token_address: quote.get_buy_token_address(),
             sell_token_address: quote.get_sell_token_address(),
             sell_amount: quote.get_decimal_corrected_sell_amount().to_string(),
-            buy_amount_estimated: buy_amount_estimated.to_string(),
-            buy_amount_min: buy_amount_min.to_string(),
+            buy_amount_estimated: decimal_corrected_buy_amount_estimated.to_string(),
+            buy_amount_min: decimal_corrected_buy_amount_min.to_string(),
             from_address: quote.get_from_address(),
             to_address: quote.get_to_address(),
             is_buy: quote.is_buy(),
@@ -135,7 +138,7 @@ impl MetricsRecorder {
             transaction_hash: format!("{:#x}", receipt.transaction_hash),
 
             // Execution details
-            buy_amount_actual: buy_amount_actual.to_string(),
+            buy_amount_actual: decimal_corrected_buy_amount_actual.to_string(),
             execution_price,
             notional_volume_usdc,
             relative_spread,
@@ -238,8 +241,6 @@ impl MetricsRecorder {
             slippage_budget = %cost_data.slippage_budget,
             received_delta = %cost_data.received_delta,
             slippage_consumption_percent = %cost_data.slippage_consumption_percent,
-            "Swap cost recorded successfully for tx {}",
-            tx_hash
-        );
+            "Swap recorded for tx {tx_hash:#x}");
     }
 }
