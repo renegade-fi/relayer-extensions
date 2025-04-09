@@ -18,7 +18,10 @@ use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use super::helpers::{generate_quote_uuid, overwrite_response_body};
+use super::helpers::{
+    apply_gas_sponsorship_to_exact_output_amount, generate_quote_uuid, overwrite_response_body,
+    requires_exact_output_amount_update,
+};
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
@@ -66,26 +69,29 @@ impl Server {
         let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
         self.check_quote_rate_limit(key_desc.clone()).await?;
 
+        // If necessary, ensure that the exact output amount requested in the order is
+        // respected by any gas sponsorship applied to the relayer's quote
+        let (external_quote_req, gas_sponsorship_info) = self
+            .maybe_apply_gas_sponsorship_to_quote_request(key_desc.clone(), &body, &query_str)
+            .await?;
+
         // Send the request to the relayer
-        let mut resp =
-            self.send_admin_request(Method::POST, path_str, headers.clone(), body.clone()).await?;
+        let req_body = serde_json::to_vec(&external_quote_req).map_err(AuthServerError::serde)?;
+        let mut resp = self
+            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
+            .await?;
 
         let status = resp.status();
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &body, &headers);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
             return Ok(resp);
         }
 
-        // Parse query params
-        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
-            .map_err(AuthServerError::serde)?;
-
-        let sponsored_quote_response = self
-            .maybe_apply_gas_sponsorship_to_quote(key_desc.clone(), resp.body(), &query_params)
-            .await?;
+        let sponsored_quote_response =
+            self.maybe_apply_gas_sponsorship_to_quote(resp.body(), gas_sponsorship_info).await?;
 
         overwrite_response_body(&mut resp, sponsored_quote_response.clone())?;
 
@@ -101,7 +107,7 @@ impl Server {
             // Log the quote response & emit metrics
             if let Err(e) = server_clone.handle_quote_response(
                 key_desc,
-                &body,
+                &external_quote_req,
                 &headers,
                 &sponsored_quote_response,
             ) {
@@ -244,49 +250,67 @@ impl Server {
 
     // --- Sponsorship --- //
 
+    /// Potentially apply gas sponsorship to the given quote request,
+    /// ensuring that any exact output amount requested in the order is
+    /// respected.
+    ///
+    /// Returns the quote request, alongside the generated gas sponsorship info,
+    /// if any.
+    async fn maybe_apply_gas_sponsorship_to_quote_request(
+        &self,
+        key_desc: String,
+        req_body: &[u8],
+        query_str: &str,
+    ) -> Result<(ExternalQuoteRequest, Option<GasSponsorshipInfo>), AuthServerError> {
+        // Parse query params
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(query_str)
+            .map_err(AuthServerError::serde)?;
+
+        // Parse request body
+        let mut external_quote_req: ExternalQuoteRequest =
+            serde_json::from_slice(&req_body).map_err(AuthServerError::serde)?;
+
+        let external_order = &mut external_quote_req.external_order;
+
+        let gas_sponsorship_info = self
+            .maybe_generate_gas_sponsorship_info(key_desc, external_order, &query_params)
+            .await?;
+
+        if let Some(ref gas_sponsorship_info) = gas_sponsorship_info
+            && requires_exact_output_amount_update(external_order, gas_sponsorship_info)
+        {
+            // Subtract the refund amount from the exact output amount requested in the
+            // order, so that the relayer produces a smaller quote which will
+            // match the exact output amount after the refund is issued
+            apply_gas_sponsorship_to_exact_output_amount(external_order, gas_sponsorship_info);
+        }
+
+        Ok((external_quote_req, gas_sponsorship_info))
+    }
+
     /// Potentially apply gas sponsorship to the given
     /// external quote, returning the resulting `SponsoredQuoteResponse`
     async fn maybe_apply_gas_sponsorship_to_quote(
         &self,
-        key_description: String,
         resp_body: &[u8],
-        query_params: &GasSponsorshipQueryParams,
+        gas_sponsorship_info: Option<GasSponsorshipInfo>,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
-        // Parse query params.
-        let (sponsorship_disabled, refund_address, refund_native_eth) =
-            query_params.get_or_default();
-
-        // Check gas sponsorship rate limit
-        let gas_sponsorship_rate_limited =
-            !self.check_gas_sponsorship_rate_limit(key_description).await;
-
-        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_disabled);
-
         // Parse response body
         let external_quote_response: ExternalQuoteResponse =
             serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
 
-        // Whether or not sponsorship was requested, we return a
-        // `SponsoredQuoteResponse`. This simply has one extra field,
-        // `signed_gas_sponsorship_info`, which we expect clients to ignore if they did
-        // not request sponsorship.
-
-        if !sponsor_match {
+        if gas_sponsorship_info.is_none() {
             return Ok(SponsoredQuoteResponse {
                 signed_quote: external_quote_response.signed_quote,
                 gas_sponsorship_info: None,
             });
         }
 
-        let sponsored_quote_response = self
-            .construct_sponsored_quote_response(
-                external_quote_response,
-                refund_native_eth,
-                refund_address,
-            )
-            .await?;
-
-        Ok(sponsored_quote_response)
+        self.construct_sponsored_quote_response(
+            external_quote_response,
+            gas_sponsorship_info.unwrap(),
+        )
+        .await
     }
 
     /// Check if the given assembly request pertains to a sponsored quote,
@@ -414,7 +438,10 @@ impl Server {
 
         // Compute refund amount
         let refund_amount = self
-            .get_refund_amount(&external_match_resp.match_bundle.match_result, refund_native_eth)
+            .compute_refund_amount_for_order(
+                &external_match_resp.match_bundle.match_result,
+                refund_native_eth,
+            )
             .await?;
 
         let sponsored_match_resp = self.construct_sponsored_match_response(
@@ -540,7 +567,7 @@ impl Server {
     fn handle_quote_response(
         &self,
         key: String,
-        req: &[u8],
+        req: &ExternalQuoteRequest,
         headers: &HeaderMap,
         resp: &SponsoredQuoteResponse,
     ) -> Result<(), AuthServerError> {
@@ -553,10 +580,6 @@ impl Server {
         if !self.should_sample_metrics() {
             return Ok(());
         }
-
-        // Parse request and response for metrics
-        let req: ExternalQuoteRequest =
-            serde_json::from_slice(req).map_err(AuthServerError::serde)?;
 
         // Get the decimal-corrected price
         let price: TimestampedPrice = resp.signed_quote.quote.price.clone().into();

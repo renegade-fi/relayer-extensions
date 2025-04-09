@@ -2,6 +2,7 @@
 
 use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
 use alloy_primitives::{Address, Bytes as AlloyBytes, PrimitiveSignature, U256 as AlloyU256};
+use auth_server_api::GasSponsorshipInfo;
 use base64::{engine::general_purpose, Engine as _};
 use bigdecimal::{
     num_bigint::{BigInt, Sign},
@@ -12,7 +13,10 @@ use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
 use http::{header::CONTENT_LENGTH, Response};
 use rand::{thread_rng, Rng};
-use renegade_api::http::external_match::{ApiExternalMatchResult, SignedExternalQuote};
+use renegade_api::http::external_match::{
+    ApiExternalMatchResult, ExternalOrder, SignedExternalQuote,
+};
+use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use serde::Serialize;
 use serde_json::json;
@@ -162,6 +166,57 @@ pub fn get_nominal_buy_token_price(
     let adjustment: BigDecimal = BigInt::from(10).pow(quote_decimals as u32).into();
 
     Ok(price / adjustment)
+}
+
+/// Check if the exact output amount requested in the order should be updated
+/// to reflect the refund amount
+pub fn requires_exact_output_amount_update(
+    order: &ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) -> bool {
+    let exact_out_requested = match order.side {
+        OrderSide::Buy => order.exact_base_output != 0,
+        OrderSide::Sell => order.exact_quote_output != 0,
+    };
+
+    exact_out_requested && gas_sponsorship_info.requires_match_result_update()
+}
+
+/// Account for the given gas sponsorship refund in the exact output amount
+/// requested in the order. Concretely, this means subtracting the refund amount
+/// from the exact output amount, so that the order matched by the relayer bears
+/// the desired output amount only _after_ the refund is issued.
+pub fn apply_gas_sponsorship_to_exact_output_amount(
+    order: &mut ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) {
+    match order.side {
+        OrderSide::Buy => {
+            order.exact_base_output -= gas_sponsorship_info.refund_amount;
+        },
+        OrderSide::Sell => {
+            order.exact_quote_output -= gas_sponsorship_info.refund_amount;
+        },
+    }
+}
+
+/// Remove the effects of gas sponsorship from the exact output amount requested
+/// in the order. The order passed in is assumed to have already had the gas
+/// sponsorship refund subtracted from the exact output amount. This function
+/// reverses that operation, so that the order is restored to its original
+/// state.
+pub fn remove_gas_sponsorship_from_exact_output_amount(
+    order: &mut ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) {
+    match order.side {
+        OrderSide::Buy => {
+            order.exact_base_output += gas_sponsorship_info.refund_amount;
+        },
+        OrderSide::Sell => {
+            order.exact_quote_output += gas_sponsorship_info.refund_amount;
+        },
+    }
 }
 
 /// Overwrite the body of an HTTP response

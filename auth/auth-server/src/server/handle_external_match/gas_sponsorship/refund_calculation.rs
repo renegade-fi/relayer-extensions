@@ -3,20 +3,20 @@
 use alloy_primitives::U256 as AlloyU256;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use renegade_api::http::external_match::{
-    ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle,
+    ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle, ExternalOrder,
 };
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
+use renegade_util::hex::biguint_to_hex_addr;
 use tracing::info;
 
 use crate::{
     error::AuthServerError,
-    server::{
-        helpers::{ethers_u256_to_alloy_u256, get_nominal_buy_token_price},
-        Server,
-    },
+    server::{helpers::ethers_u256_to_alloy_u256, Server},
 };
+
+use super::WETH_TICKER;
 
 // -------------
 // | Constants |
@@ -27,63 +27,61 @@ use crate::{
 const ALLOY_WEI_IN_ETHER: AlloyU256 =
     AlloyU256::from_limbs([1_000_000_000_000_000_000_u64, 0, 0, 0]);
 
+/// The error message emitted when converting an f64 price to a `BigDecimal`
+/// fails
+const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDecimal";
+
 // ---------------
 // | Server Impl |
 // ---------------
 
 impl Server {
     /// Get the amount to refund for a given match result
-    pub async fn get_refund_amount(
+    pub async fn compute_refund_amount_for_order(
         &self,
-        match_result: &ApiExternalMatchResult,
+        order: &ExternalOrder,
         refund_native_eth: bool,
     ) -> Result<AlloyU256, AuthServerError> {
         let conversion_rate =
-            self.maybe_fetch_conversion_rate(match_result, refund_native_eth).await?;
+            self.compute_conversion_rate_for_order(order, refund_native_eth).await?;
 
         let estimated_gas_cost = ethers_u256_to_alloy_u256(self.get_gas_cost_estimate().await);
-
-        let refund_amount = if let Some(conversion_rate) = conversion_rate {
-            (estimated_gas_cost * conversion_rate) / ALLOY_WEI_IN_ETHER
-        } else {
-            estimated_gas_cost
-        };
-
+        let refund_amount = (estimated_gas_cost * conversion_rate) / ALLOY_WEI_IN_ETHER;
         Ok(refund_amount)
     }
 
-    /// Fetch the conversion rate from ETH to the buy-side token in the trade
-    /// from the price reporter, if necessary.
-    /// The conversion rate is in terms of nominal units of TOKEN per whole ETH.
-    #[allow(clippy::unused_async)]
-    async fn maybe_fetch_conversion_rate(
+    /// Compute the conversion rate from ETH to the refund asset for the given
+    /// order, in terms of nominal units of the refund asset per whole ETH.
+    async fn compute_conversion_rate_for_order(
         &self,
-        match_result: &ApiExternalMatchResult,
+        order: &ExternalOrder,
         refund_native_eth: bool,
-    ) -> Result<Option<AlloyU256>, AuthServerError> {
-        let buy_mint = match match_result.direction {
-            OrderSide::Buy => &match_result.base_mint,
-            OrderSide::Sell => &match_result.quote_mint,
+    ) -> Result<AlloyU256, AuthServerError> {
+        let buy_mint_biguint = match order.side {
+            OrderSide::Buy => &order.base_mint,
+            OrderSide::Sell => &order.quote_mint,
         };
-        let native_eth_buy = buy_mint.to_lowercase() == NATIVE_ASSET_ADDRESS.to_lowercase();
+        let buy_mint = biguint_to_hex_addr(buy_mint_biguint);
+        let native_eth_buy = buy_mint == NATIVE_ASSET_ADDRESS.to_lowercase();
 
-        let weth_addr = Token::from_ticker("WETH").get_addr();
-        let weth_buy = buy_mint.to_lowercase() == weth_addr.to_lowercase();
+        let weth_addr = Token::from_ticker(WETH_TICKER).get_addr();
+        let weth_buy = buy_mint == weth_addr;
 
-        // If we're deliberately refunding via native ETH, or the buy-side token
-        // is native ETH or WETH, we don't need to get a conversion rate
         if refund_native_eth || native_eth_buy || weth_buy {
-            return Ok(None);
+            // If we're deliberately refunding via native ETH, or the buy-side token
+            // is native ETH or WETH, then the conversion rate is 1:1.
+            // However, this method is expected to return the conversion rate in
+            // terms of nominal units of the refund asset per whole ETH, so we return
+            // the value of wei per Ether.
+            return Ok(ALLOY_WEI_IN_ETHER);
         }
 
-        // Get ETH price
         let eth_price_f64 = self.price_reporter_client.get_eth_price().await?;
         let eth_price = BigDecimal::from_f64(eth_price_f64)
-            .ok_or(AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"))?;
+            .ok_or(AuthServerError::gas_sponsorship(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
 
-        let buy_token_price = get_nominal_buy_token_price(buy_mint, match_result)?;
+        let buy_token_price = self.price_reporter_client.get_nominal_price(&buy_mint).await?;
 
-        // Compute conversion rate of nominal units of TOKEN per whole ETH
         let conversion_rate = eth_price / buy_token_price;
 
         // Convert the scaled rate to a U256. We can use the `BigInt` component of the
@@ -94,7 +92,7 @@ impl Server {
         let conversion_rate_u256 = AlloyU256::try_from(conversion_rate_bigint)
             .map_err(AuthServerError::gas_sponsorship)?;
 
-        Ok(Some(conversion_rate_u256))
+        Ok(conversion_rate_u256)
     }
 
     /// Revert the effect of gas sponsorship from the given quote

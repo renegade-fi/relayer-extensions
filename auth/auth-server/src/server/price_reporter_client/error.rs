@@ -15,6 +15,10 @@ pub enum PriceReporterError {
     #[error("Parsing error: {0}")]
     Parsing(String),
 
+    /// Conversion error
+    #[error("Conversion error: {0}")]
+    Conversion(String),
+
     /// HTTP error
     #[error("HTTP error: {0}")]
     Http(HttpError),
@@ -22,6 +26,10 @@ pub enum PriceReporterError {
     /// WebSocket error
     #[error("WebSocket error: {0}")]
     WebSocket(String),
+
+    /// Custom error
+    #[error("Custom error: {0}")]
+    Custom(String),
 }
 
 impl From<HttpError> for PriceReporterError {
@@ -43,9 +51,21 @@ impl PriceReporterError {
         Self::Parsing(msg.to_string())
     }
 
+    /// Create a new conversion error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn conversion<T: ToString>(msg: T) -> Self {
+        Self::Conversion(msg.to_string())
+    }
+
     /// Create a new web socket error
     #[allow(clippy::needless_pass_by_value)]
     pub fn websocket<T: ToString>(msg: T) -> Self {
         Self::WebSocket(msg.to_string())
+    }
+
+    /// Create a new custom error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn custom<T: ToString>(msg: T) -> Self {
+        Self::Custom(msg.to_string())
     }
 }

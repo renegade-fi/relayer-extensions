@@ -1,11 +1,12 @@
 //! A client for the price reporter with support for both HTTP and WebSocket
 //! connections
 
+use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive};
 use error::PriceReporterError;
 use price_stream::MultiPriceStream;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{get_all_tokens, Token, STABLECOIN_TICKERS, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
 use reqwest::Url;
 use tracing::warn;
@@ -29,11 +30,24 @@ const DEFAULT_TIMEOUT_SECS: u64 = 5;
 /// The ticker for the WETH token
 const WETH_TICKER: &str = "WETH";
 
+// Error messages
+
 /// The tickers of tokens that are excluded from the price stream
 const EXCLUDED_TICKERS: [&str; 3] = [USDT_TICKER, USDC_TICKER, USD_TICKER];
 
 /// The error message for an invalid topic
 const ERR_INVALID_TOPIC: &str = "Invalid topic format";
+
+/// The error message emitted when a token has no decimals
+const ERR_NO_DECIMALS: &str = "token has no decimals";
+
+/// The error message emitted when converting an f64 price to a `BigDecimal`
+/// fails
+const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDecimal";
+
+// ---------------------
+// | Client Definition |
+// ---------------------
 
 /// A client for the price reporter that supports both HTTP requests
 /// and websocket streaming for real-time price updates
@@ -74,11 +88,34 @@ impl PriceReporterClient {
         self.get_price(&mint).await
     }
 
+    /// Get the nominal price of a token, i.e. whole units of USDC per nominal
+    /// unit of TOKEN
+    pub async fn get_nominal_price(&self, mint: &str) -> Result<BigDecimal, PriceReporterError> {
+        let price_f64 = self.get_price(mint).await?;
+        let price = BigDecimal::from_f64(price_f64)
+            .ok_or(PriceReporterError::conversion(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
+
+        let decimals = Token::from_addr(mint)
+            .get_decimals()
+            .ok_or(PriceReporterError::custom(ERR_NO_DECIMALS))?;
+
+        let adjustment: BigDecimal = BigInt::from(10).pow(decimals as u32).into();
+
+        Ok(price / adjustment)
+    }
+
     /// Fetch the current price of a token from the price reporter.
     ///
     /// We first try reading the state of the price stream,
     /// and fall back to an HTTP request if the stream is not connected.
     pub async fn get_price(&self, mint: &str) -> Result<f64, PriceReporterError> {
+        let token = Token::from_addr(mint);
+        if let Some(ticker) = token.get_ticker()
+            && STABLECOIN_TICKERS.contains(&ticker.as_str())
+        {
+            return Ok(1.0);
+        }
+
         let ws_is_connected = self.multi_price_stream.is_connected();
         if ws_is_connected {
             return Ok(self.multi_price_stream.get_price(mint).await);

@@ -266,7 +266,10 @@ impl Server {
     /// limit has been exceeded.
     pub async fn check_gas_sponsorship_rate_limit(&self, key_description: String) -> bool {
         if !self.rate_limiter.check_gas_sponsorship(key_description.clone()).await {
-            warn!("Gas sponsorship rate limit exceeded for key: {key_description}");
+            warn!(
+                key_description = key_description.as_str(),
+                "Gas sponsorship rate limit exceeded for key: {key_description}"
+            );
             return false;
         }
         true
