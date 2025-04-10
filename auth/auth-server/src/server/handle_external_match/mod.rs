@@ -154,20 +154,9 @@ impl Server {
             return Ok(resp);
         }
 
-        // Parse query params
-        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query_str)
-            .map_err(AuthServerError::serde)?;
-
         // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_match_resp = self
-            .maybe_apply_gas_sponsorship_to_assembled_quote(
-                key_desc.clone(),
-                resp.body(),
-                gas_sponsorship_info,
-                &assemble_match_req,
-                query_params,
-            )
-            .await?;
+        let sponsored_match_resp =
+            self.maybe_apply_gas_sponsorship_to_match_response(resp.body(), gas_sponsorship_info)?;
 
         overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
 
@@ -355,38 +344,6 @@ impl Server {
         }
 
         Ok((assemble_match_req, gas_sponsorship_info))
-    }
-
-    /// Apply gas sponsorship to the given assembled quote, returning the
-    /// resulting `SponsoredMatchResponse`. We don't
-    /// check the gas sponsorship rate limit here, since this is checked during
-    /// the quote request stage.
-    #[allow(deprecated)]
-    async fn maybe_apply_gas_sponsorship_to_assembled_quote(
-        &self,
-        key_description: String,
-        resp_body: &[u8],
-        gas_sponsorship_info: Option<GasSponsorshipInfo>,
-        req: &AssembleExternalMatchRequest,
-        mut query_params: GasSponsorshipQueryParams,
-    ) -> Result<SponsoredMatchResponse, AuthServerError> {
-        let gas_sponsorship_info = if gas_sponsorship_info.is_none()
-            && query_params.use_gas_sponsorship.unwrap_or(false)
-        {
-            // If there is no associated gas sponsorship info, but the deprecated
-            // `use_gas_sponsorship` query parameter was set, it means an
-            // outdated client must have been used to invoke the assembly endpoint.
-            // In this case, for backwards compatibility, we use the deprecated default of
-            // native ETH refunds.
-            query_params.refund_native_eth = Some(true);
-
-            let order = req.updated_order.as_ref().unwrap_or(&req.signed_quote.quote.order);
-            self.maybe_generate_gas_sponsorship_info(key_description, order, &query_params).await?
-        } else {
-            gas_sponsorship_info
-        };
-
-        self.maybe_apply_gas_sponsorship_to_match_response(resp_body, gas_sponsorship_info)
     }
 
     /// Potentially apply gas sponsorship to the given match request, returning

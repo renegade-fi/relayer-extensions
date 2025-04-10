@@ -107,6 +107,9 @@ pub struct Server {
     pub price_reporter_client: Arc<PriceReporterClient>,
     /// The gas cost sampler
     pub gas_cost_sampler: Arc<GasCostSampler>,
+    /// The minimum order quote amount for which gas sponsorship is allowed,
+    /// in whole units of USDC
+    pub min_sponsored_order_quote_amount: f64,
 }
 
 impl Server {
@@ -175,6 +178,7 @@ impl Server {
             gas_sponsor_auth_key,
             price_reporter_client,
             gas_cost_sampler,
+            min_sponsored_order_quote_amount: args.min_sponsored_order_quote_amount,
         })
     }
 

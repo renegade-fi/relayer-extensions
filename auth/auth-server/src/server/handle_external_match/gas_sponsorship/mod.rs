@@ -8,22 +8,22 @@ use auth_server_api::{
     SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use ethers::utils::WEI_IN_ETHER;
 
 use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
 };
 use renegade_common::types::token::Token;
+use renegade_util::hex::biguint_to_hex_addr;
 
 use super::Server;
-use crate::server::helpers::{generate_quote_uuid, get_nominal_buy_token_price};
+use crate::error::AuthServerError;
+use crate::server::helpers::generate_quote_uuid;
 use crate::telemetry::labels::{
     GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG,
     REFUND_AMOUNT_TAG, REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG,
     REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
 };
-use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
 pub mod contract_interaction;
 pub mod refund_calculation;
@@ -62,8 +62,13 @@ impl Server {
         // Check gas sponsorship rate limit
         let gas_sponsorship_rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await;
 
-        // TODO: Check if order size is above configured sponsored order size minimum
-        let sponsor_match = !(gas_sponsorship_rate_limited || sponsorship_disabled);
+        let expected_quote_amount = self.get_expected_quote_amount(order).await?;
+        let order_too_small_for_sponsorship =
+            expected_quote_amount < self.min_sponsored_order_quote_amount;
+
+        let sponsor_match = !(gas_sponsorship_rate_limited
+            || sponsorship_disabled
+            || order_too_small_for_sponsorship);
 
         if !sponsor_match {
             return Ok(None);
@@ -151,26 +156,13 @@ impl Server {
         request_id: String,
         sdk_version: String,
     ) -> Result<(), AuthServerError> {
-        let nominal_price = if gas_sponsorship_info.refund_native_eth {
-            let price_f64: f64 = self
-                .price_reporter_client
-                .get_eth_price()
-                .await
-                .map_err(AuthServerError::gas_sponsorship)?;
-
-            let price_bigdecimal = BigDecimal::from_f64(price_f64).ok_or(
-                AuthServerError::gas_sponsorship("failed to convert ETH price to BigDecimal"),
-            )?;
-
-            let adjustment = ethers_u256_to_bigdecimal(WEI_IN_ETHER);
-
-            price_bigdecimal / adjustment
+        let refund_asset = if gas_sponsorship_info.refund_native_eth {
+            Token::from_ticker(WETH_TICKER)
         } else {
-            // If we did not refund via native ETH, it must have been through the buy-side
-            // token. Thus we compute the nominal price of the buy-side
-            // token from the match result.
-            get_nominal_buy_token_price(&match_bundle.receive.mint, &match_bundle.match_result)?
+            Token::from_addr(&match_bundle.receive.mint)
         };
+        let nominal_price =
+            self.price_reporter_client.get_nominal_price(&refund_asset.get_addr()).await?;
 
         let nominal_amount = BigDecimal::from_u128(gas_sponsorship_info.refund_amount)
             .expect("u128 should be representable as BigDecimal");
@@ -216,6 +208,30 @@ impl Server {
     // -----------
     // | Helpers |
     // -----------
+
+    /// Get the expected quote amount for a given order, using the current price
+    /// of the base token
+    async fn get_expected_quote_amount(
+        &self,
+        order: &ExternalOrder,
+    ) -> Result<f64, AuthServerError> {
+        let quote_amount =
+            if order.quote_amount != 0 { order.quote_amount } else { order.exact_quote_output };
+
+        if quote_amount != 0 {
+            return Ok(Token::usdc().convert_to_decimal(quote_amount));
+        }
+
+        let base_amount =
+            if order.base_amount != 0 { order.base_amount } else { order.exact_base_output };
+
+        let base_mint = biguint_to_hex_addr(&order.base_mint);
+        let base_token = Token::from_addr(&base_mint);
+        let base_amount_f64 = base_token.convert_to_decimal(base_amount);
+
+        let expected_price = self.price_reporter_client.get_price(&base_mint).await?;
+        Ok(expected_price * base_amount_f64)
+    }
 
     /// Record the dollar value of sponsored gas for a settled match
     async fn record_gas_sponsorship_metrics(
