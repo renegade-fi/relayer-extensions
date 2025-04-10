@@ -3,17 +3,12 @@
 use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
 use alloy_primitives::{Address, Bytes as AlloyBytes, PrimitiveSignature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
-use bigdecimal::{
-    num_bigint::{BigInt, Sign},
-    BigDecimal, One,
-};
 use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
 use http::{header::CONTENT_LENGTH, Response};
 use rand::{thread_rng, Rng};
-use renegade_api::http::external_match::{ApiExternalMatchResult, SignedExternalQuote};
-use renegade_common::types::token::Token;
+use renegade_api::http::external_match::SignedExternalQuote;
 use serde::Serialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -125,43 +120,6 @@ pub fn ethers_u256_to_alloy_u256(value: U256) -> AlloyU256 {
     let mut value_bytes = [0_u8; 32];
     value.to_big_endian(&mut value_bytes);
     AlloyU256::from_be_bytes(value_bytes)
-}
-
-/// Convert an ethers U256 to a BigDecimal
-pub fn ethers_u256_to_bigdecimal(value: U256) -> BigDecimal {
-    let mut value_bytes = [0u8; 32];
-    value.to_big_endian(&mut value_bytes);
-    let bigint = BigInt::from_bytes_be(Sign::Plus, &value_bytes);
-    BigDecimal::from(bigint)
-}
-
-/// Get the nominal price of the buy token in USDC,
-/// i.e. whole units of USDC per nominal unit of TOKEN
-pub fn get_nominal_buy_token_price(
-    buy_mint: &str,
-    match_result: &ApiExternalMatchResult,
-) -> Result<BigDecimal, AuthServerError> {
-    let quote_mint = &match_result.quote_mint;
-    let buying_quote = buy_mint.to_lowercase() == quote_mint.to_lowercase();
-
-    // Compute TOKEN price from match result, in nominal terms
-    // (i.e. units of USDC per unit of TOKEN)
-    let price = if buying_quote {
-        // The quote token is always USDC, so price is 1
-        BigDecimal::one()
-    } else {
-        let base_amount = BigDecimal::from(match_result.base_amount);
-        let quote_amount = BigDecimal::from(match_result.quote_amount);
-        quote_amount / base_amount
-    };
-
-    let quote_decimals = Token::from_addr(quote_mint)
-        .get_decimals()
-        .ok_or(AuthServerError::custom("quote token has no decimals"))?;
-
-    let adjustment: BigDecimal = BigInt::from(10).pow(quote_decimals as u32).into();
-
-    Ok(price / adjustment)
 }
 
 /// Overwrite the body of an HTTP response
