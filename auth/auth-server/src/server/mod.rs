@@ -107,6 +107,9 @@ pub struct Server {
     pub price_reporter_client: Arc<PriceReporterClient>,
     /// The gas cost sampler
     pub gas_cost_sampler: Arc<GasCostSampler>,
+    /// The minimum order quote amount for which gas sponsorship is allowed,
+    /// in whole units of USDC
+    pub min_sponsored_order_quote_amount: f64,
 }
 
 impl Server {
@@ -175,6 +178,7 @@ impl Server {
             gas_sponsor_auth_key,
             price_reporter_client,
             gas_cost_sampler,
+            min_sponsored_order_quote_amount: args.min_sponsored_order_quote_amount,
         })
     }
 
@@ -266,7 +270,10 @@ impl Server {
     /// limit has been exceeded.
     pub async fn check_gas_sponsorship_rate_limit(&self, key_description: String) -> bool {
         if !self.rate_limiter.check_gas_sponsorship(key_description.clone()).await {
-            warn!("Gas sponsorship rate limit exceeded for key: {key_description}");
+            warn!(
+                key_description = key_description.as_str(),
+                "Gas sponsorship rate limit exceeded for key: {key_description}"
+            );
             return false;
         }
         true

@@ -116,6 +116,9 @@ pub struct Cli {
     /// The maximum dollar value of gas sponsorship funds per day
     #[arg(long, env = "MAX_GAS_SPONSORSHIP_VALUE", default_value = "25.0")]
     max_gas_sponsorship_value: f64,
+    /// The minimum quote amount for which gas sponsorship is allowed, in USD
+    #[arg(long, env = "MIN_SPONSORED_ORDER_QUOTE_AMOUNT", default_value = "10.0")]
+    min_sponsored_order_quote_amount: f64,
 
     // -------------
     // | Telemetry |
