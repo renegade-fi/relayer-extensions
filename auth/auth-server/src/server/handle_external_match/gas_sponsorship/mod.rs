@@ -3,7 +3,6 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-use alloy_primitives::{Address as AlloyAddress, U256};
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SignedGasSponsorshipInfo,
     SponsoredMatchResponse, SponsoredQuoteResponse,
@@ -11,19 +10,14 @@ use auth_server_api::{
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use ethers::utils::WEI_IN_ETHER;
 
-use refund_calculation::{
-    update_match_bundle_with_gas_sponsorship, update_quote_with_gas_sponsorship,
-};
+use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
 };
 use renegade_common::types::token::Token;
 
 use super::Server;
-use crate::server::helpers::{
-    generate_quote_uuid, get_nominal_buy_token_price,
-    remove_gas_sponsorship_from_exact_output_amount, requires_exact_output_amount_update,
-};
+use crate::server::helpers::{generate_quote_uuid, get_nominal_buy_token_price};
 use crate::telemetry::labels::{
     GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG,
     REFUND_AMOUNT_TAG, REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG,
@@ -32,7 +26,7 @@ use crate::telemetry::labels::{
 use crate::{error::AuthServerError, server::helpers::ethers_u256_to_bigdecimal};
 
 pub mod contract_interaction;
-mod refund_calculation;
+pub mod refund_calculation;
 
 // -------------
 // | Constants |
@@ -86,10 +80,12 @@ impl Server {
     pub(crate) fn construct_sponsored_match_response(
         &self,
         mut external_match_resp: ExternalMatchResponse,
-        refund_native_eth: bool,
-        refund_address: AlloyAddress,
-        refund_amount: U256,
+        gas_sponsorship_info: GasSponsorshipInfo,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
+        let refund_native_eth = gas_sponsorship_info.refund_native_eth;
+        let refund_address = gas_sponsorship_info.get_refund_address();
+        let refund_amount = gas_sponsorship_info.get_refund_amount();
+
         let gas_sponsor_calldata = self
             .generate_gas_sponsor_calldata(
                 &external_match_resp,
@@ -102,15 +98,11 @@ impl Server {
         external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
         external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
 
-        let gas_sponsorship_info =
-            GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
-                .map_err(AuthServerError::gas_sponsorship)?;
-
+        // The `ExternalMatchResponse` from the relayer doesn't account for gas
+        // sponsorship, so we need to update the match bundle to reflect the
+        // refund.
         if gas_sponsorship_info.requires_match_result_update() {
-            // The `ExternalMatchResponse` from the relayer doesn't account for gas
-            // sponsorship, so we need to update the match bundle to reflect the
-            // refund.
-            update_match_bundle_with_gas_sponsorship(
+            apply_gas_sponsorship_to_match_bundle(
                 &mut external_match_resp.match_bundle,
                 gas_sponsorship_info.refund_amount,
             );
@@ -124,24 +116,16 @@ impl Server {
     }
 
     /// Construct a sponsored quote response from an external quote response
-    pub(crate) async fn construct_sponsored_quote_response(
+    pub(crate) fn construct_sponsored_quote_response(
         &self,
         mut external_quote_response: ExternalQuoteResponse,
         gas_sponsorship_info: GasSponsorshipInfo,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
         let quote = &mut external_quote_response.signed_quote.quote;
 
+        // Update quote price / receive amount to reflect sponsorship
         if gas_sponsorship_info.requires_match_result_update() {
-            // Update quote price / receive amount to reflect sponsorship
-            update_quote_with_gas_sponsorship(quote, gas_sponsorship_info.refund_amount)?;
-        }
-
-        if requires_exact_output_amount_update(&quote.order, &gas_sponsorship_info) {
-            // Update order to match what was requested by the user
-            remove_gas_sponsorship_from_exact_output_amount(
-                &mut quote.order,
-                &gas_sponsorship_info,
-            );
+            apply_gas_sponsorship_to_quote(quote, &gas_sponsorship_info)?;
         }
 
         // Since we cache gas sponsorship info in Redis, we don't need to sign it.
@@ -162,7 +146,7 @@ impl Server {
     pub async fn record_settled_match_sponsorship(
         &self,
         match_bundle: &AtomicMatchApiBundle,
-        gas_sponsorship_info: GasSponsorshipInfo,
+        gas_sponsorship_info: &GasSponsorshipInfo,
         key: String,
         request_id: String,
         sdk_version: String,
@@ -237,7 +221,7 @@ impl Server {
     async fn record_gas_sponsorship_metrics(
         &self,
         gas_sponsorship_value: f64,
-        gas_sponsorship_info: GasSponsorshipInfo,
+        gas_sponsorship_info: &GasSponsorshipInfo,
         match_bundle: &AtomicMatchApiBundle,
         key: String,
         request_id: String,
