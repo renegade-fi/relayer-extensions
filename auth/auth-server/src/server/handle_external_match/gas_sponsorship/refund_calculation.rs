@@ -1,6 +1,7 @@
 //! Logic for calculating refund info for a sponsored match
 
 use alloy_primitives::U256 as AlloyU256;
+use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use renegade_api::http::external_match::{
     ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle, ExternalOrder,
@@ -94,57 +95,69 @@ impl Server {
 
         Ok(conversion_rate_u256)
     }
-
-    /// Revert the effect of gas sponsorship from the given quote
-    // TODO: This assumes that the `f64` arithmetic done exactly reverts the price.
-    // Keep an eye on this, especially if the auth server / relayer start using a
-    // different Rust version or architecture.
-    pub(crate) fn remove_gas_sponsorship_from_quote(
-        &self,
-        quote: &mut ApiExternalQuote,
-        refund_amount: u128,
-    ) {
-        let (base_amount, quote_amount) = match quote.match_result.direction {
-            OrderSide::Buy => {
-                (quote.match_result.base_amount - refund_amount, quote.match_result.quote_amount)
-            },
-            OrderSide::Sell => {
-                (quote.match_result.base_amount, quote.match_result.quote_amount - refund_amount)
-            },
-        };
-
-        let base_amt_f64 = base_amount as f64;
-        let quote_amt_f64 = quote_amount as f64;
-        let price = quote_amt_f64 / base_amt_f64;
-
-        quote.price.price = price.to_string();
-        quote.receive.amount -= refund_amount;
-        quote.match_result.base_amount = base_amount;
-        quote.match_result.quote_amount = quote_amount;
-    }
 }
 
 // -----------
 // | Helpers |
 // -----------
 
+/// Revert the effect of gas sponsorship from the given quote
+pub fn remove_gas_sponsorship_from_quote(
+    quote: &mut ApiExternalQuote,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) {
+    let (base_amount, quote_amount) = match quote.match_result.direction {
+        OrderSide::Buy => (
+            quote.match_result.base_amount - gas_sponsorship_info.refund_amount,
+            quote.match_result.quote_amount,
+        ),
+        OrderSide::Sell => (
+            quote.match_result.base_amount,
+            quote.match_result.quote_amount - gas_sponsorship_info.refund_amount,
+        ),
+    };
+
+    let base_amt_f64 = base_amount as f64;
+    let quote_amt_f64 = quote_amount as f64;
+    let price = quote_amt_f64 / base_amt_f64;
+
+    quote.price.price = price.to_string();
+    quote.receive.amount -= gas_sponsorship_info.refund_amount;
+    quote.match_result.base_amount = base_amount;
+    quote.match_result.quote_amount = quote_amount;
+
+    // Subtract the refund amount from the exact output amount requested in the
+    // order, to match the order received & signed by the relayer
+    if requires_exact_output_amount_update(&quote.order, gas_sponsorship_info) {
+        apply_gas_sponsorship_to_exact_output_amount(&mut quote.order, gas_sponsorship_info);
+    }
+}
+
 /// Update a quote to reflect a gas sponsorship refund.
 /// This method assumes that the refund was in-kind, i.e. that the refund
 /// amount is in terms of the buy-side token.
-pub(crate) fn update_quote_with_gas_sponsorship(
+pub fn apply_gas_sponsorship_to_quote(
     quote: &mut ApiExternalQuote,
-    refund_amount: u128,
+    gas_sponsorship_info: &GasSponsorshipInfo,
 ) -> Result<(), AuthServerError> {
     info!("Updating quote to reflect gas sponsorship");
 
-    update_match_result_with_gas_sponsorship(&mut quote.match_result, refund_amount);
+    apply_gas_sponsorship_to_match_result(
+        &mut quote.match_result,
+        gas_sponsorship_info.refund_amount,
+    );
 
     let base_amt_f64 = quote.match_result.base_amount as f64;
     let quote_amt_f64 = quote.match_result.quote_amount as f64;
     let price = quote_amt_f64 / base_amt_f64;
 
     quote.price.price = price.to_string();
-    quote.receive.amount += refund_amount;
+    quote.receive.amount += gas_sponsorship_info.refund_amount;
+
+    // Update order to match what was requested by the user
+    if requires_exact_output_amount_update(&quote.order, gas_sponsorship_info) {
+        remove_gas_sponsorship_from_exact_output_amount(&mut quote.order, gas_sponsorship_info);
+    }
 
     Ok(())
 }
@@ -152,19 +165,19 @@ pub(crate) fn update_quote_with_gas_sponsorship(
 /// Update a match bundle to reflect a gas sponsorship refund.
 /// This method assumes that the refund was in-kind, i.e. that the refund
 /// amount is in terms of the buy-side token.
-pub(crate) fn update_match_bundle_with_gas_sponsorship(
+pub(crate) fn apply_gas_sponsorship_to_match_bundle(
     match_bundle: &mut AtomicMatchApiBundle,
     refund_amount: u128,
 ) {
     info!("Updating match bundle to reflect gas sponsorship");
-    update_match_result_with_gas_sponsorship(&mut match_bundle.match_result, refund_amount);
+    apply_gas_sponsorship_to_match_result(&mut match_bundle.match_result, refund_amount);
     match_bundle.receive.amount += refund_amount;
 }
 
 /// Update a match result to reflect a gas sponsorship refund.
 /// This method assumes that the refund was in-kind, i.e. that the refund
 /// amount is in terms of the buy-side token.
-pub(crate) fn update_match_result_with_gas_sponsorship(
+pub(crate) fn apply_gas_sponsorship_to_match_result(
     match_result: &mut ApiExternalMatchResult,
     refund_amount: u128,
 ) {
@@ -175,4 +188,55 @@ pub(crate) fn update_match_result_with_gas_sponsorship(
 
     match_result.base_amount = base_amount;
     match_result.quote_amount = quote_amount;
+}
+
+/// Check if the exact output amount requested in the order should be updated
+/// to reflect the refund amount
+pub fn requires_exact_output_amount_update(
+    order: &ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) -> bool {
+    let exact_out_requested = match order.side {
+        OrderSide::Buy => order.exact_base_output != 0,
+        OrderSide::Sell => order.exact_quote_output != 0,
+    };
+
+    exact_out_requested && gas_sponsorship_info.requires_match_result_update()
+}
+
+/// Account for the given gas sponsorship refund in the exact output amount
+/// requested in the order. Concretely, this means subtracting the refund amount
+/// from the exact output amount, so that the order matched by the relayer bears
+/// the desired output amount only _after_ the refund is issued.
+pub fn apply_gas_sponsorship_to_exact_output_amount(
+    order: &mut ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) {
+    match order.side {
+        OrderSide::Buy => {
+            order.exact_base_output -= gas_sponsorship_info.refund_amount;
+        },
+        OrderSide::Sell => {
+            order.exact_quote_output -= gas_sponsorship_info.refund_amount;
+        },
+    }
+}
+
+/// Remove the effects of gas sponsorship from the exact output amount requested
+/// in the order. The order passed in is assumed to have already had the gas
+/// sponsorship refund subtracted from the exact output amount. This function
+/// reverses that operation, so that the order is restored to its original
+/// state.
+pub fn remove_gas_sponsorship_from_exact_output_amount(
+    order: &mut ExternalOrder,
+    gas_sponsorship_info: &GasSponsorshipInfo,
+) {
+    match order.side {
+        OrderSide::Buy => {
+            order.exact_base_output += gas_sponsorship_info.refund_amount;
+        },
+        OrderSide::Sell => {
+            order.exact_quote_output += gas_sponsorship_info.refund_amount;
+        },
+    }
 }
