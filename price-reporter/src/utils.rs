@@ -1,8 +1,11 @@
 //! Miscellaneous utility types and helper functions.
 
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 
-use futures_util::stream::SplitSink;
+use futures_util::StreamExt;
+use futures_util::{stream::SplitSink, Stream};
 use matchit::Router;
 use renegade_arbitrum_client::constants::Chain;
 use renegade_common::types::{exchange::Exchange, hmac::HmacKey, token::Token, Price};
@@ -93,7 +96,64 @@ pub type PriceReceiver = WatchReceiver<Price>;
 pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceReceiver>>>;
 
 /// A type alias for a price stream
-pub type PriceStream = WatchStream<Price>;
+pub type SinglePriceStream = WatchStream<Price>;
+/// A price stream, containing the watch underlying the stream and an optional
+/// second watch for converting quote tokens
+pub struct PriceStream {
+    /// The watch underlying the stream
+    pub stream: SinglePriceStream,
+    /// The watch for converting quote tokens, if required
+    pub conversion_stream: Option<SinglePriceStream>,
+}
+
+impl Stream for PriceStream {
+    type Item = Price;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        // Poll the main stream
+        let main_poll = this.stream.poll_next_unpin(cx);
+        let main_price = match main_poll {
+            Poll::Ready(Some(price)) => price,
+            Poll::Ready(None) => return Poll::Ready(None),
+            Poll::Pending => return Poll::Pending,
+        };
+
+        // If there's no conversion stream, return the main price
+        if this.conversion_stream.is_none() {
+            return Poll::Ready(Some(main_price));
+        }
+
+        // Poll the conversion stream
+        let conversion_poll = this.conversion_stream.as_mut().unwrap().poll_next_unpin(cx);
+        let conversion_price = match conversion_poll {
+            Poll::Ready(Some(price)) => price,
+            Poll::Ready(None) => return Poll::Ready(None),
+            Poll::Pending => return Poll::Pending,
+        };
+
+        // Divide main price by conversion price
+        // Practically this will be [USDT / BASE] * [USDC / USDT] = USDC / BASE
+        let converted_price = main_price * conversion_price;
+        Poll::Ready(Some(converted_price))
+    }
+}
+
+impl PriceStream {
+    /// Create a new price stream
+    pub fn new(stream: SinglePriceStream) -> Self {
+        Self { stream, conversion_stream: None }
+    }
+
+    /// Create a new price stream with a conversion stream
+    pub fn new_with_conversion(
+        stream: SinglePriceStream,
+        conversion_stream: SinglePriceStream,
+    ) -> Self {
+        Self { stream, conversion_stream: Some(conversion_stream) }
+    }
+}
 
 /// A type alias for a mapped stream prices, indexed by the (source, base,
 /// quote) tuple
@@ -112,7 +172,7 @@ pub type UrlParams = HashMap<String, String>;
 pub type HttpRouter = Router<Box<dyn Handler>>;
 
 /// A message that is sent by the price reporter to the client indicating
-/// a price udpate for the given topic
+/// a price update for the given topic
 #[derive(Serialize, Deserialize)]
 pub struct PriceMessage {
     /// The topic for which the price update is being sent
@@ -198,12 +258,19 @@ pub fn get_pair_info_topic(pair_info: &PairInfo) -> String {
     format!("{}-{}-{}", pair_info.0, pair_info.1, pair_info.2)
 }
 
+/// Whether the exchange requires quote conversion
+pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
+    // Only Renegade exchange requires quote conversion
+    exchange == &Exchange::Renegade
+}
+
 /// Parse the pair info from a given topic
 pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
     let parts: Vec<&str> = topic.split('-').collect();
     let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
     let base = Token::from_addr(parts[1]);
-    let quote = Token::from_addr(parts[2]);
+    let quote =
+        if exchange == Exchange::Renegade { Token::usdc() } else { Token::from_addr(parts[2]) };
 
     Ok((exchange, base, quote))
 }

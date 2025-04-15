@@ -1,6 +1,7 @@
 //! The routes for the HTTP server
 
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
 use renegade_api::auth::validate_expiring_auth;
 use renegade_arbitrum_client::constants::Chain;
@@ -76,12 +77,12 @@ impl PriceHandler {
         let self_clone = self.clone();
 
         let pair_info = parse_pair_info_from_topic(topic)?;
-        let price_rx = self_clone
+        let mut price_stream = self_clone
             .price_streams
             .get_or_create_price_stream(pair_info, self_clone.config.clone())
             .await?;
 
-        let price = *price_rx.borrow();
+        let price = price_stream.next().await.unwrap_or_default();
         Ok(price)
     }
 }
