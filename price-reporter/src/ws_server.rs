@@ -5,7 +5,11 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
-use renegade_common::types::Price;
+use renegade_common::types::{
+    exchange::Exchange,
+    token::{Token, USDT_TICKER},
+    Price,
+};
 use renegade_price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
@@ -22,9 +26,9 @@ use crate::{
     errors::ServerError,
     utils::{
         get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic,
-        validate_subscription, ClosureSender, PairInfo, PriceMessage, PriceReceiver, PriceSender,
-        PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream, CONN_RETRY_DELAY_MS,
-        KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+        requires_quote_conversion, validate_subscription, ClosureSender, PairInfo, PriceMessage,
+        PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream,
+        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -218,6 +222,45 @@ impl GlobalPriceStreams {
     /// Fetch a price stream for the given pair info from the global map
     pub async fn get_or_create_price_stream(
         &self,
+        mut pair_info: PairInfo,
+        config: ExchangeConnectionsConfig,
+    ) -> Result<PriceStream, ServerError> {
+        // Replace the `Renegade` exchange with `Binance`
+        if pair_info.0 == Exchange::Renegade {
+            pair_info.0 = Exchange::Binance;
+        }
+
+        let exchange = pair_info.0;
+        let price_rx = self.get_or_create_price_receiver(pair_info, config.clone()).await?;
+        let stream = if requires_quote_conversion(&exchange) {
+            let conversion_rx = self.quote_conversion_stream(exchange, config).await?;
+            PriceStream::new_with_conversion(price_rx.into(), conversion_rx.into())
+        } else {
+            PriceStream::new(price_rx.into())
+        };
+
+        Ok(stream)
+    }
+
+    /// Get a quote conversion stream for a given exchange
+    ///
+    /// Currently we only need to convert USDT -> USDC for `Renegade` prices, so
+    /// this method does not configure the conversion tokens.
+    async fn quote_conversion_stream(
+        &self,
+        exchange: Exchange,
+        config: ExchangeConnectionsConfig,
+    ) -> Result<PriceReceiver, ServerError> {
+        let usdc = Token::usdc();
+        let usdt = Token::from_ticker(USDT_TICKER);
+        let conversion_pair = (exchange, usdc, usdt);
+        let conversion_rx = self.get_or_create_price_receiver(conversion_pair, config).await?;
+        Ok(conversion_rx)
+    }
+
+    /// Get a price receiver for the given pair or create a new stream
+    async fn get_or_create_price_receiver(
+        &self,
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
@@ -356,13 +399,13 @@ async fn handle_subscription_message(
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
-            let pair_info = parse_pair_info_from_topic(&topic)?;
-
             info!("Subscribing {} to {}", peer_addr, &topic);
+            let pair_info = parse_pair_info_from_topic(&topic)?;
+            let stream = global_price_streams
+                .get_or_create_price_stream(pair_info.clone(), config.clone())
+                .await?;
 
-            let price_rx =
-                global_price_streams.get_or_create_price_stream(pair_info.clone(), config).await?;
-            subscriptions.insert(pair_info, PriceStream::new(price_rx));
+            subscriptions.insert(pair_info, stream);
         },
         WebsocketMessage::Unsubscribe { topic } => {
             info!("Unsubscribing {} from {}", peer_addr, &topic);
