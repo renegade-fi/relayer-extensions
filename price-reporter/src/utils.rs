@@ -269,7 +269,8 @@ pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> 
     let parts: Vec<&str> = topic.split('-').collect();
     let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
     let base = Token::from_addr(parts[1]);
-    let quote = Token::from_addr(parts[2]);
+    let quote =
+        if exchange == Exchange::Renegade { Token::usdc() } else { Token::from_addr(parts[2]) };
 
     Ok((exchange, base, quote))
 }
