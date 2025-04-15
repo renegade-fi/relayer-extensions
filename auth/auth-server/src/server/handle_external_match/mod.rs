@@ -18,7 +18,7 @@ use renegade_api::http::external_match::{
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
-use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_constants::{Scalar, EXTERNAL_MATCH_RELAYER_FEE};
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -712,6 +712,24 @@ fn log_bundle(
     let requested_quote_amount = order.get_quote_amount(price_fixed, relayer_fee);
     let response_quote_amount = match_result.quote_amount;
     let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
+
+    // Debug log for quote amount calculation issue
+    let base_amount_scalar = Scalar::from(order.base_amount);
+    let implied_quote_amount = price_fixed * base_amount_scalar;
+    info!(
+        price = price,
+        price_fixed = ?price_fixed,
+        base_amount = order.base_amount,
+        base_amount_scalar = ?base_amount_scalar,
+        implied_quote_amount = ?implied_quote_amount,
+        implied_quote_amount_floor = ?implied_quote_amount.floor(),
+        requested_quote_amount = requested_quote_amount,
+        response_quote_amount = response_quote_amount,
+        exact_quote_output_set = order.exact_quote_output != 0,
+        exact_quote_output = order.exact_quote_output,
+        request_id = request_id,
+        "Quote amount calculation debug"
+    );
 
     // Get the gas sponsorship info
     let (refund_amount, refund_native_eth) = gas_sponsorship_info
