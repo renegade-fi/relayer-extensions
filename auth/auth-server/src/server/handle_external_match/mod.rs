@@ -28,13 +28,12 @@ use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
-    helpers::{
-        await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
-    },
+    helpers::{record_endpoint_metrics, record_external_match_metrics, record_fill_ratio},
     labels::{
         DECIMAL_CORRECTION_FIXED_METRIC_TAG, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT,
         KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
     },
+    settlement::await_settlement,
 };
 
 mod gas_sponsorship;

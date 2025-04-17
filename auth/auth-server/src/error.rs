@@ -56,6 +56,12 @@ pub enum AuthServerError {
 }
 
 impl AuthServerError {
+    /// Create a new arbitrum client error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn arbitrum<T: ToString>(msg: T) -> Self {
+        Self::ArbitrumClient(msg.to_string())
+    }
+
     /// Create a new database connection error
     #[allow(clippy::needless_pass_by_value)]
     pub fn db<T: ToString>(msg: T) -> Self {

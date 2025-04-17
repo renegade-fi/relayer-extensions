@@ -1,29 +1,17 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use std::time::Duration;
-
-use alloy_sol_types::SolCall;
-use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
-use renegade_arbitrum_client::{
-    abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
-    client::ArbitrumClient,
-    helpers::deserialize_calldata,
-};
-use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
+use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 use renegade_constants::{
-    Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
+    EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::{
     error::AuthServerError,
-    server::{
-        handle_external_match::sponsorAtomicMatchSettleWithRefundOptionsCall, helpers::get_selector,
-    },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
@@ -42,11 +30,6 @@ use super::{
     labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG, SIDE_TAG},
     quote_comparison::QuoteComparison,
 };
-
-// --- Constants --- //
-
-/// The duration to await an atomic match settlement
-pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // --- Asset and Volume Helpers --- //
 
@@ -291,80 +274,6 @@ pub(crate) fn record_relayer_request_500(key_description: String, path: String) 
     ];
 
     metrics::counter!(UNSUCCESSFUL_RELAYER_REQUEST_COUNT, &labels).increment(1);
-}
-
-// --- Settlement Processing --- //
-
-/// Await the result of the atomic match settlement to be submitted on-chain
-///
-/// Returns `true` if the settlement succeeded on-chain, `false` otherwise
-pub(crate) async fn await_settlement(
-    match_bundle: &AtomicMatchApiBundle,
-    arbitrum_client: &ArbitrumClient,
-) -> Result<bool, AuthServerError> {
-    let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
-    let res = arbitrum_client
-        .await_nullifier_spent_from_selectors(
-            nullifier,
-            &[
-                processAtomicMatchSettleCall::SELECTOR,
-                processAtomicMatchSettleWithReceiverCall::SELECTOR,
-            ],
-            ATOMIC_SETTLEMENT_TIMEOUT,
-        )
-        .await;
-
-    let did_settle = res.is_ok();
-    if !did_settle {
-        info!("atomic match settlement not observed on-chain");
-    }
-    Ok(did_settle)
-}
-
-/// Extracts the nullifier from a match bundle's settlement transaction
-///
-/// This function attempts to decode the settlement transaction data in two
-/// ways:
-/// 1. As a standard atomic match settle call
-/// 2. As a match settle with receiver call
-fn extract_nullifier_from_match_bundle(
-    match_bundle: &AtomicMatchApiBundle,
-) -> Result<Nullifier, AuthServerError> {
-    let tx_data = match_bundle
-        .settlement_tx
-        .data()
-        .ok_or(AuthServerError::serde("No data in settlement tx"))?;
-
-    let selector = get_selector(tx_data)?;
-
-    // Retrieve serialized match payload from the transaction data
-    let serialized_match_payload = match selector {
-        processAtomicMatchSettleCall::SELECTOR => {
-            processAtomicMatchSettleCall::abi_decode(tx_data, false)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        processAtomicMatchSettleWithReceiverCall::SELECTOR => {
-            processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
-            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data, false)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        _ => {
-            return Err(AuthServerError::serde("Invalid selector for settlement tx"));
-        },
-    };
-
-    // Extract nullifier from the payload
-    let match_payload = deserialize_calldata::<MatchPayload>(&serialized_match_payload)
-        .map_err(AuthServerError::serde)?;
-    let nullifier = Scalar::new(match_payload.valid_reblind_statement.original_shares_nullifier);
-
-    Ok(nullifier)
 }
 
 // --- Quote Comparison --- //

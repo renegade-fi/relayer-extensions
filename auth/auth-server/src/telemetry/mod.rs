@@ -2,4 +2,5 @@
 pub mod helpers;
 pub mod labels;
 pub mod quote_comparison;
+pub mod settlement;
 pub mod sources;
