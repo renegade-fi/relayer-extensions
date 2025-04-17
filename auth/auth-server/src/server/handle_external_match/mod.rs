@@ -131,41 +131,43 @@ impl Server {
         // Authorize the request
         let path_str = path.as_str();
         let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
-        self.check_bundle_rate_limit(key_desc.clone()).await?;
+
+        // Check the bundle rate limit
+        let mut req: AssembleExternalMatchRequest =
+            serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
+        self.check_bundle_rate_limit(key_desc.clone(), req.allow_shared).await?;
 
         // Update the request to remove the effects of gas sponsorship, if
         // necessary
-        let (assemble_match_req, gas_sponsorship_info) =
-            self.maybe_update_assembly_request_with_gas_sponsorship(&body).await?;
-
-        let req_body = serde_json::to_vec(&assemble_match_req).map_err(AuthServerError::serde)?;
+        let gas_sponsorship_info =
+            self.maybe_update_assembly_request_with_gas_sponsorship(&mut req).await?;
+        let req_body = serde_json::to_vec(&req).map_err(AuthServerError::serde)?;
 
         // Send the request to the relayer
-        let mut resp = self
+        let mut res = self
             .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
             .await?;
 
-        let status = resp.status();
+        let status = res.status();
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
-            return Ok(resp);
+            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &req_body, &headers);
+            return Ok(res);
         }
 
         // Apply gas sponsorship to the resulting bundle, if necessary
         let sponsored_match_resp =
-            self.maybe_apply_gas_sponsorship_to_match_response(resp.body(), gas_sponsorship_info)?;
-
-        overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
+            self.maybe_apply_gas_sponsorship_to_match_response(res.body(), gas_sponsorship_info)?;
+        overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
 
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
                 .handle_quote_assembly_bundle_response(
                     key_desc,
-                    &assemble_match_req,
+                    &req,
                     &headers,
                     &sponsored_match_resp,
                 )
@@ -175,7 +177,7 @@ impl Server {
             };
         });
 
-        Ok(resp)
+        Ok(res)
     }
 
     /// Handle an external match request
@@ -191,7 +193,8 @@ impl Server {
         let path_str = path.as_str();
         let key_description = self.authorize_request(path_str, &query_str, &headers, &body).await?;
 
-        self.check_bundle_rate_limit(key_description.clone()).await?;
+        // Direct matches are always shared
+        self.check_bundle_rate_limit(key_description.clone(), true /* shared */).await?;
 
         let (external_match_req, gas_sponsorship_info) = self
             .maybe_apply_gas_sponsorship_to_match_request(
@@ -313,12 +316,9 @@ impl Server {
     /// Returns the assembly request, and the gas sponsorship info, if any.
     async fn maybe_update_assembly_request_with_gas_sponsorship(
         &self,
-        req_body: &[u8],
-    ) -> Result<(AssembleExternalMatchRequest, Option<GasSponsorshipInfo>), AuthServerError> {
-        let mut assemble_match_req: AssembleExternalMatchRequest =
-            serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
-
-        let redis_key = generate_quote_uuid(&assemble_match_req.signed_quote);
+        req: &mut AssembleExternalMatchRequest,
+    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+        let redis_key = generate_quote_uuid(&req.signed_quote);
         let gas_sponsorship_info = match self.read_gas_sponsorship_info_from_redis(redis_key).await
         {
             Err(e) => {
@@ -331,19 +331,19 @@ impl Server {
         if let Some(ref gas_sponsorship_info) = gas_sponsorship_info {
             // Reconstruct original signed quote
             if gas_sponsorship_info.requires_match_result_update() {
-                let quote = &mut assemble_match_req.signed_quote.quote;
+                let quote = &mut req.signed_quote.quote;
                 remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info);
             }
 
             // Ensure that the exact output amount is respected on the updated order
-            if let Some(ref mut updated_order) = assemble_match_req.updated_order
+            if let Some(ref mut updated_order) = req.updated_order
                 && requires_exact_output_amount_update(updated_order, gas_sponsorship_info)
             {
                 apply_gas_sponsorship_to_exact_output_amount(updated_order, gas_sponsorship_info);
             }
         }
 
-        Ok((assemble_match_req, gas_sponsorship_info))
+        Ok(gas_sponsorship_info)
     }
 
     /// Potentially apply gas sponsorship to the given match request, returning
@@ -456,6 +456,7 @@ impl Server {
             resp,
             Some(request_id),
             "assemble-external-match",
+            req.allow_shared,
             sdk_version,
         )
         .await
@@ -476,6 +477,7 @@ impl Server {
             resp,
             None,
             "request-external-match",
+            true, // shared
             sdk_version,
         )
         .await
@@ -484,6 +486,7 @@ impl Server {
     /// Record and watch a bundle that was forwarded to the client
     ///
     /// This method will await settlement and update metrics, rate limits, etc
+    #[allow(clippy::too_many_arguments)]
     async fn handle_bundle_response(
         &self,
         key: String,
@@ -491,6 +494,7 @@ impl Server {
         resp: &SponsoredMatchResponse,
         request_id: Option<String>,
         endpoint: &str,
+        shared_bundle: bool,
         sdk_version: String,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
@@ -525,7 +529,7 @@ impl Server {
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(match_bundle, &self.arbitrum_client).await?;
         if did_settle {
-            self.add_bundle_rate_limit_token(key.clone()).await;
+            self.add_bundle_rate_limit_token(key.clone(), shared_bundle).await;
             if let Some(gas_sponsorship_info) = gas_sponsorship_info {
                 self.record_settled_match_sponsorship(
                     match_bundle,

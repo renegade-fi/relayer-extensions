@@ -83,6 +83,9 @@ pub struct Cli {
     /// The bundle rate limit in bundles per minute
     #[arg(long, env = "BUNDLE_RATE_LIMIT", default_value = "4")]
     pub bundle_rate_limit: u64,
+    /// The shared bundle rate limit in bundles per minute
+    #[arg(long, env = "SHARED_BUNDLE_RATE_LIMIT", default_value = "50")]
+    pub shared_bundle_rate_limit: u64,
     /// The quote rate limit in quotes per minute
     #[arg(long, env = "QUOTE_RATE_LIMIT", default_value = "100")]
     pub quote_rate_limit: u64,

@@ -135,6 +135,7 @@ impl Server {
         let rate_limiter = AuthServerRateLimiter::new(
             args.quote_rate_limit,
             args.bundle_rate_limit,
+            args.shared_bundle_rate_limit,
             args.max_gas_sponsorship_value,
         );
 
@@ -251,8 +252,12 @@ impl Server {
     }
 
     /// Check the bundle rate limiter
-    pub async fn check_bundle_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
-        if !self.rate_limiter.check_bundle_token(key_description.clone()).await {
+    pub async fn check_bundle_rate_limit(
+        &self,
+        key_description: String,
+        shared: bool,
+    ) -> Result<(), ApiError> {
+        if !self.rate_limiter.check_bundle_token(key_description.clone(), shared).await {
             warn!("Bundle rate limit exceeded for key: {key_description}");
             return Err(ApiError::TooManyRequests);
         }
@@ -260,8 +265,8 @@ impl Server {
     }
 
     /// Increment the token balance for a given API user
-    pub async fn add_bundle_rate_limit_token(&self, key_description: String) {
-        self.rate_limiter.add_bundle_token(key_description).await;
+    pub async fn add_bundle_rate_limit_token(&self, key_description: String, shared: bool) {
+        self.rate_limiter.add_bundle_token(key_description, shared).await;
     }
 
     /// Check the gas sponsorship rate limiter
