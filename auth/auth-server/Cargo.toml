@@ -30,7 +30,7 @@ rand = "0.8.5"
 # === Ethereum Libraries === #
 alloy-primitives = { version = "1.0.0", features = ["serde", "k256"] }
 alloy-sol-types = "1.0.0"
-ethers = "2"
+ethers = {version = "2", features = ["ws"] }
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
@@ -46,6 +46,7 @@ renegade-api = { workspace = true }
 renegade-system-clock = { workspace = true }
 
 # === Misc Dependencies === #
+async-trait = "0.1"
 base64 = "0.22.1"
 bigdecimal = "0.4"
 bytes = "1.0"
