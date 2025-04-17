@@ -35,6 +35,8 @@ pub struct AuthServerRateLimiter {
     quote_rate_limiter: ApiTokenRateLimiter,
     /// The bundle rate limiter
     bundle_rate_limiter: ApiTokenRateLimiter,
+    /// The shared bundle rate limiter
+    shared_bundle_rate_limiter: ApiTokenRateLimiter,
     /// The gas sponsorship rate limiter
     gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter,
 }
@@ -44,11 +46,13 @@ impl AuthServerRateLimiter {
     pub fn new(
         quote_rate_limit: u64,
         bundle_rate_limit: u64,
+        shared_bundle_rate_limit: u64,
         max_gas_sponsorship_value: f64,
     ) -> Self {
         Self {
             quote_rate_limiter: ApiTokenRateLimiter::new(quote_rate_limit),
             bundle_rate_limiter: ApiTokenRateLimiter::new(bundle_rate_limit),
+            shared_bundle_rate_limiter: ApiTokenRateLimiter::new(shared_bundle_rate_limit),
             gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter::new(max_gas_sponsorship_value),
         }
     }
@@ -65,14 +69,22 @@ impl AuthServerRateLimiter {
     ///
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
-    pub async fn check_bundle_token(&self, user_id: String) -> bool {
-        self.bundle_rate_limiter.check(user_id).await
+    pub async fn check_bundle_token(&self, user_id: String, shared: bool) -> bool {
+        if shared {
+            self.shared_bundle_rate_limiter.check(user_id).await
+        } else {
+            self.bundle_rate_limiter.check(user_id).await
+        }
     }
 
     /// Increment the number of tokens available to a given user
     #[allow(unused_must_use)]
-    pub async fn add_bundle_token(&self, user_id: String) {
-        self.bundle_rate_limiter.add_token(user_id).await;
+    pub async fn add_bundle_token(&self, user_id: String, shared: bool) {
+        if shared {
+            self.shared_bundle_rate_limiter.add_token(user_id).await;
+        } else {
+            self.bundle_rate_limiter.add_token(user_id).await;
+        }
     }
 
     /// Check if the given user has any remaining gas sponsorship budget
