@@ -23,6 +23,10 @@ const MAINNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x2df1c51e09aecf9cacb7bc98cb17
 const TESTNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x08cfc1B6b2dCF36A1480b99353A354AA8AC56f89";
 /// The address of the dummy USDC token used by Hyperliquid's testnet deployment
 const TESTNET_HYPERLIQUID_USDC_ADDRESS: &str = "0x1baAbB04529D43a73232B713C0FE471f7c7334d5";
+/// The amount of extra USDC to transfer to the Hyperliquid account to correct
+/// for potential floating point precision issues.
+/// Concretely, this is equivalent to 1 nominal unit of USDC.
+const HYPERLIQUID_USDC_BUFFER: f64 = 0.000001;
 
 // ---------------
 // | Client impl |
@@ -153,18 +157,6 @@ impl CustodyClient {
         &self,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
-        let hot_wallet = self.get_quoter_hot_wallet().await?;
-
-        let usdc_mint = match self.chain {
-            Chain::Mainnet => &Token::from_ticker(USDC_TICKER).addr,
-            _ => TESTNET_HYPERLIQUID_USDC_ADDRESS,
-        };
-
-        let bal = self.get_erc20_balance(usdc_mint, &hot_wallet.address).await?;
-        if bal < amount {
-            return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
-        }
-
         let secret_name = format!("{}-{}", self.chain, HYPERLIQUID_PKEY_SECRET_SUFFIX);
         let hyperliquid_pkey = get_secret(&secret_name, &self.aws_config).await?;
 
@@ -174,14 +166,32 @@ impl CustodyClient {
 
         let hyperliquid_address = format!("{:#x}", hyperliquid_account.address());
 
-        // Transfer the USDC to the Hyperliquid account
-        self.transfer_to_hyperliquid_account(
-            amount,
-            &hot_wallet.address,
-            &hyperliquid_address,
-            usdc_mint,
-        )
-        .await?;
+        let hot_wallet = self.get_quoter_hot_wallet().await?;
+
+        let usdc_mint = match self.chain {
+            Chain::Mainnet => &Token::from_ticker(USDC_TICKER).addr,
+            _ => TESTNET_HYPERLIQUID_USDC_ADDRESS,
+        };
+
+        let hl_bal = self.get_erc20_balance(usdc_mint, &hyperliquid_address).await?;
+        if hl_bal < amount {
+            // We add a tiny buffer to the amount to transfer to account for
+            // potential floating point precision issues.
+            let amount_to_transfer = amount - hl_bal + HYPERLIQUID_USDC_BUFFER;
+            let bal = self.get_erc20_balance(usdc_mint, &hot_wallet.address).await?;
+            if bal < amount_to_transfer {
+                return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
+            }
+
+            // Transfer the USDC to the Hyperliquid account
+            self.transfer_to_hyperliquid_account(
+                amount_to_transfer,
+                &hot_wallet.address,
+                &hyperliquid_address,
+                usdc_mint,
+            )
+            .await?;
+        }
 
         // Transfer the USDC from the Hyperliquid account to the bridge.
         // This is necessary so that the USDC is credited to the same account on the
