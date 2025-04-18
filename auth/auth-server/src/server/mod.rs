@@ -12,10 +12,9 @@ mod queries;
 mod rate_limiter;
 mod redis_queries;
 
-use std::{iter, str::FromStr, sync::Arc, time::Duration};
+use std::{iter, sync::Arc, time::Duration};
 
 use crate::server::price_reporter_client::PriceReporterClient;
-use crate::DUMMY_PRIVATE_KEY;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
@@ -32,7 +31,6 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::signers::LocalWallet;
 use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
@@ -43,7 +41,7 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
-use renegade_arbitrum_client::client::{ArbitrumClient, ArbitrumClientConfig};
+use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::{
     hmac::HmacKey,
     token::{get_all_tokens, Token},
@@ -115,11 +113,13 @@ pub struct Server {
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(args: Cli, system_clock: &SystemClock) -> Result<Self, AuthServerError> {
+    pub async fn new(
+        args: Cli,
+        system_clock: &SystemClock,
+        arbitrum_client: ArbitrumClient,
+    ) -> Result<Self, AuthServerError> {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
-
-        let arbitrum_client = create_arbitrum_client(&args).await?;
 
         // Set the external match fees & protocol fee
         set_external_match_fees(&arbitrum_client).await?;
@@ -335,20 +335,6 @@ async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
         .await
         .unwrap()
         .map_err(AuthServerError::setup)
-}
-
-/// Create an Arbitrum client
-async fn create_arbitrum_client(args: &Cli) -> Result<ArbitrumClient, AuthServerError> {
-    let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY).map_err(AuthServerError::setup)?;
-    ArbitrumClient::new(ArbitrumClientConfig {
-        darkpool_addr: args.darkpool_address.clone(),
-        chain: args.chain_id,
-        rpc_url: args.rpc_url.clone(),
-        arb_priv_keys: vec![wallet],
-        block_polling_interval_ms: 100,
-    })
-    .await
-    .map_err(AuthServerError::setup)
 }
 
 /// Set the external match fees & protocol fee

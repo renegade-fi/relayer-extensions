@@ -15,7 +15,9 @@
 #![feature(let_chains)]
 #![feature(duration_constructors)]
 
+mod chain_events;
 pub(crate) mod error;
+mod helpers;
 pub mod http_utils;
 pub(crate) mod models;
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
@@ -23,10 +25,11 @@ pub(crate) mod schema;
 mod server;
 mod telemetry;
 
-use auth_server_api::API_KEYS_PATH;
-use clap::Parser;
 use renegade_arbitrum_client::constants::Chain;
 use renegade_system_clock::SystemClock;
+
+use auth_server_api::API_KEYS_PATH;
+use clap::Parser;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -36,16 +39,11 @@ use tracing::{error, info};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
 
+use chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use server::Server;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
-/// The dummy private key used to instantiate the arbitrum client
-///
-/// We don't need any client functionality using a real private key, so instead
-/// we use the key deployed by Arbitrum on local devnets
-const DUMMY_PRIVATE_KEY: &str =
-    "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
 
 // -------
 // | CLI |
@@ -94,6 +92,9 @@ pub struct Cli {
     /// See https://github.com/renegade-fi/token-mappings for more information on the format of this file
     #[arg(long, env = "TOKEN_REMAP_FILE")]
     pub token_remap_file: Option<String>,
+    /// The Ethereum RPC node websocket address to dial for on-chain data
+    #[clap(long = "eth-websocket-url", value_parser, env = "ETH_WEBSOCKET_URL")]
+    pub eth_websocket_addr: Option<String>,
     /// The Arbitrum RPC url to use
     #[clap(short, long, env = "RPC_URL")]
     rpc_url: String,
@@ -196,8 +197,29 @@ async fn main() {
 
     let system_clock = SystemClock::new().await;
 
+    // Create the arbitrum client
+    let arbitrum_client = helpers::create_arbitrum_client(
+        args.darkpool_address.clone(),
+        args.chain_id,
+        args.rpc_url.clone(),
+    )
+    .await
+    .expect("failed to create arbitrum client");
+
+    // Start the on-chain event listener
+    let chain_listener_config = OnChainEventListenerConfig {
+        websocket_addr: args.eth_websocket_addr.clone(),
+        arbitrum_client: arbitrum_client.clone(),
+    };
+    let mut chain_listener = OnChainEventListener::new(chain_listener_config)
+        .expect("failed to build on-chain event listener");
+    chain_listener.start().expect("failed to start on-chain event listener");
+    chain_listener.watch();
+
     // Create the server
-    let server = Arc::new(Server::new(args, &system_clock).await.expect("Failed to create server"));
+    let server = Arc::new(
+        Server::new(args, &system_clock, arbitrum_client).await.expect("Failed to create server"),
+    );
 
     // --- Management Routes --- //
 
