@@ -1,0 +1,53 @@
+//! Defines error types for the on-chain event listener
+
+use std::{error::Error, fmt::Display};
+
+use ethers::providers::Middleware;
+use renegade_arbitrum_client::errors::ArbitrumClientError;
+
+/// The error type that the event listener emits
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub enum OnChainEventListenerError {
+    /// An error executing some method in the Arbitrum client
+    Arbitrum(String),
+    /// An RPC error with the provider
+    Rpc(String),
+    /// Error setting up the on-chain event listener
+    Setup(String),
+    /// The stream unexpectedly stopped
+    StreamEnded,
+}
+
+impl OnChainEventListenerError {
+    /// Create a new arbitrum error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn arbitrum<T: ToString>(e: T) -> Self {
+        OnChainEventListenerError::Arbitrum(e.to_string())
+    }
+}
+
+impl Display for OnChainEventListenerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl Error for OnChainEventListenerError {}
+
+impl From<ArbitrumClientError> for OnChainEventListenerError {
+    fn from(e: ArbitrumClientError) -> Self {
+        OnChainEventListenerError::arbitrum(e)
+    }
+}
+
+impl From<ethers::providers::WsClientError> for OnChainEventListenerError {
+    fn from(e: ethers::providers::WsClientError) -> Self {
+        OnChainEventListenerError::Rpc(e.to_string())
+    }
+}
+
+impl<M: Middleware> From<ethers::contract::ContractError<M>> for OnChainEventListenerError {
+    fn from(e: ethers::contract::ContractError<M>) -> Self {
+        OnChainEventListenerError::arbitrum(e)
+    }
+}
