@@ -1,16 +1,22 @@
 //! Defines the core implementation of the on-chain event listener
 //! Much of the implementation is borrowed from https://github.com/renegade-fi/renegade/blob/main/workers/chain-events/src/listener.rs
-use std::{sync::Arc, thread::JoinHandle};
 
-use ethers::{
-    prelude::StreamExt,
-    providers::{Provider, Ws},
-    types::H256 as TxHash,
+use std::thread::JoinHandle;
+
+use alloy::{
+    providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
+    rpc::types::Filter,
+    sol_types::SolEvent,
 };
+use ethers::types::TxHash;
+use futures_util::StreamExt;
 use renegade_arbitrum_client::{
-    abi::{DarkpoolContract, NullifierSpentFilter},
+    abi::{NullifierSpent, NullifierSpentFilter},
     client::ArbitrumClient,
+    conversion::alloy_u256_to_scalar,
 };
+use renegade_circuit_types::wallet::Nullifier;
+use renegade_crypto::fields::u256_to_scalar;
 use tracing::{error, info};
 
 use super::error::OnChainEventListenerError;
@@ -19,6 +25,7 @@ use super::error::OnChainEventListenerError;
 // | Worker |
 // ----------
 
+/// The configuration passed to the listener upon startup
 #[derive(Clone)]
 pub struct OnChainEventListenerConfig {
     /// The ethereum websocket address to use for streaming events
@@ -36,22 +43,16 @@ impl OnChainEventListenerConfig {
     }
 
     /// Create a new websocket client if available
-    pub async fn ws_client(
-        &self,
-    ) -> Result<DarkpoolContract<Provider<Ws>>, OnChainEventListenerError> {
+    pub async fn ws_client(&self) -> Result<DynProvider, OnChainEventListenerError> {
         if !self.has_websocket_listener() {
             panic!("no websocket listener configured");
         }
 
         // Connect to the websocket
         let addr = self.websocket_addr.clone().unwrap();
-        let client = Ws::connect(&addr).await?;
-        let provider = Provider::<Ws>::new(client);
-
-        // Create the contract instance
-        let contract_addr = self.arbitrum_client.get_darkpool_client().address();
-        let contract = DarkpoolContract::new(contract_addr, Arc::new(provider));
-        Ok(contract)
+        let conn = WsConnect::new(addr);
+        let provider = ProviderBuilder::new().on_ws(conn).await?;
+        Ok(DynProvider::new(provider))
     }
 }
 
@@ -81,7 +82,7 @@ impl OnChainEventListenerExecutor {
     }
 
     /// Shorthand for fetching a reference to the arbitrum client
-    pub fn arbitrum_client(&self) -> &ArbitrumClient {
+    fn arbitrum_client(&self) -> &ArbitrumClient {
         &self.config.arbitrum_client
     }
 
@@ -118,17 +119,24 @@ impl OnChainEventListenerExecutor {
     async fn watch_nullifiers_ws(&self) -> Result<(), OnChainEventListenerError> {
         info!("listening for nullifiers via websocket");
         // Create the contract instance and the event stream
-        let contract = self.config.ws_client().await?;
-        let filter = contract.event::<NullifierSpentFilter>();
-        let mut stream = filter.stream_with_meta().await?;
+        let client = self.config.ws_client().await?;
+        let contract_addr = self.arbitrum_client().darkpool_alloy_addr();
+        let filter = Filter::new().address(contract_addr).event(NullifierSpent::SIGNATURE);
+        let mut stream = client.subscribe_logs(&filter).await?.into_stream();
 
         // Listen for events in a loop
-        while let Some(res) = stream.next().await {
-            let (_, meta) = res.map_err(OnChainEventListenerError::arbitrum)?;
-            self.handle_nullifier_spent(meta.transaction_hash).await?;
+        while let Some(log) = stream.next().await {
+            let hash = log
+                .transaction_hash
+                .ok_or_else(|| OnChainEventListenerError::arbitrum("no tx hash"))?;
+            let tx_hash = TxHash::from(hash.0);
+
+            let event = log.log_decode::<NullifierSpent>()?;
+            let nullifier = alloy_u256_to_scalar(event.data().nullifier);
+            self.handle_nullifier_spent(tx_hash, nullifier).await?;
         }
 
-        todo!()
+        unreachable!()
     }
 
     /// Watch for nullifiers via HTTP polling
@@ -136,12 +144,14 @@ impl OnChainEventListenerExecutor {
         info!("listening for nullifiers via HTTP polling");
         // Build a filtered stream on events that the chain-events worker listens for
         let filter = self.arbitrum_client().get_darkpool_client().event::<NullifierSpentFilter>();
-        let mut event_stream = filter.stream_with_meta().await?;
+        let mut event_stream =
+            filter.stream_with_meta().await.map_err(OnChainEventListenerError::arbitrum)?;
 
         // Listen for events in a loop
         while let Some(res) = event_stream.next().await {
-            let (_, meta) = res.map_err(OnChainEventListenerError::arbitrum)?;
-            self.handle_nullifier_spent(meta.transaction_hash).await?;
+            let (event, meta) = res.map_err(OnChainEventListenerError::arbitrum)?;
+            let nullifier = u256_to_scalar(&event.nullifier);
+            self.handle_nullifier_spent(meta.transaction_hash, nullifier).await?;
         }
 
         unreachable!()
@@ -152,9 +162,12 @@ impl OnChainEventListenerExecutor {
     // ----------------------
 
     /// Handle a nullifier spent event
-    async fn handle_nullifier_spent(&self, tx: TxHash) -> Result<(), OnChainEventListenerError> {
-        self.check_external_match_settlement(tx).await?;
-        Ok(())
+    async fn handle_nullifier_spent(
+        &self,
+        tx: TxHash,
+        nullifier: Nullifier,
+    ) -> Result<(), OnChainEventListenerError> {
+        self.check_external_match_settlement(nullifier, tx).await
     }
 
     /// Check for an external match settlement on the given transaction hash. If
@@ -163,16 +176,17 @@ impl OnChainEventListenerExecutor {
     /// Returns whether the tx settled an external match
     async fn check_external_match_settlement(
         &self,
+        _nullifier: Nullifier,
         tx: TxHash,
-    ) -> Result<bool, OnChainEventListenerError> {
+    ) -> Result<(), OnChainEventListenerError> {
         let matches = self.arbitrum_client().find_external_matches_in_tx(tx).await?;
-        let external_match = !matches.is_empty();
+        let _external_match = !matches.is_empty();
 
         // Record metrics for each match
         for _match_result in matches {
             // TODO: Record match_result
         }
 
-        Ok(external_match)
+        Ok(())
     }
 }
