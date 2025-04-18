@@ -192,6 +192,12 @@ impl warp::reject::Reject for ApiError {}
 /// The main function for the auth server
 #[tokio::main]
 async fn main() {
+    // Set the default crypto provider for the process, this will be used by
+    // websocket listeners
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let args = Cli::parse();
     let listen_addr: SocketAddr = ([0, 0, 0, 0], args.port).into();
 
