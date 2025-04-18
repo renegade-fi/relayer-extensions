@@ -1,7 +1,7 @@
 //! Helper methods for the auth server
 
 use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
-use alloy_primitives::{Address, Bytes as AlloyBytes, PrimitiveSignature, U256 as AlloyU256};
+use alloy_primitives::{Address, Bytes as AlloyBytes, Signature, U256 as AlloyU256};
 use base64::{engine::general_purpose, Engine as _};
 use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
@@ -95,7 +95,7 @@ pub fn sign_message(
     let r: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.r().to_bytes().into());
     let s: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.s().to_bytes().into());
 
-    let signature = PrimitiveSignature::new(r, s, recid.is_y_odd());
+    let signature = Signature::new(r, s, recid.is_y_odd());
     let mut sig_bytes = signature.as_bytes();
 
     // This is necessary because `PrimitiveSignature::as_bytes` encodes the `v`
