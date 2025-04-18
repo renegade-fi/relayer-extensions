@@ -53,6 +53,9 @@ pub enum AuthServerError {
     /// Gas cost sampler error
     #[error("Gas cost sampler error: {0}")]
     GasCostSampler(String),
+    /// Bundle store error
+    #[error("Bundle store error: {0}")]
+    BundleStore(String),
 }
 
 impl AuthServerError {

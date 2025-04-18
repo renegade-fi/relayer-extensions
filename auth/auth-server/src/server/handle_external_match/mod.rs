@@ -25,7 +25,11 @@ use warp::{reject::Rejection, reply::Reply};
 use super::helpers::{generate_quote_uuid, overwrite_response_body};
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
+use crate::store::helpers::generate_bundle_id;
+use crate::store::BundleContext;
+use crate::telemetry::helpers::{
+    calculate_implied_price, extract_nullifier_from_match_bundle, record_relayer_request_500,
+};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::{
@@ -505,6 +509,26 @@ impl Server {
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
         let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
+
+        let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
+        let bundle_id = generate_bundle_id(&match_bundle.match_result, &nullifier)?;
+
+        let bundle_ctx = BundleContext {
+            key_description: key.clone(),
+            request_id: bundle_id.clone(),
+            sdk_version: sdk_version.clone(),
+            gas_sponsorship_info: gas_sponsorship_info.clone(),
+            is_sponsored: *is_sponsored,
+            nullifier,
+        };
+
+        // Non-blocking write to bundle store
+        let bundle_store = self.bundle_store.clone();
+        tokio::spawn(async move {
+            if let Err(e) = bundle_store.write(bundle_id, bundle_ctx).await {
+                tracing::error!("bundle_store.write failed: {}", e);
+            }
+        });
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),

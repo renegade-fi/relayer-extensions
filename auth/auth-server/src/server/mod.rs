@@ -14,6 +14,7 @@ mod redis_queries;
 use std::{iter, sync::Arc, time::Duration};
 
 use crate::server::price_reporter_client::PriceReporterClient;
+use crate::store::BundleStore;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
@@ -108,6 +109,8 @@ pub struct Server {
     /// The minimum order quote amount for which gas sponsorship is allowed,
     /// in whole units of USDC
     pub min_sponsored_order_quote_amount: f64,
+    /// The bundle store
+    pub bundle_store: Arc<BundleStore>,
 }
 
 impl Server {
@@ -116,6 +119,7 @@ impl Server {
         args: Cli,
         system_clock: &SystemClock,
         arbitrum_client: ArbitrumClient,
+        bundle_store: Arc<BundleStore>,
     ) -> Result<Self, AuthServerError> {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
@@ -180,6 +184,7 @@ impl Server {
             price_reporter_client,
             gas_cost_sampler,
             min_sponsored_order_quote_amount: args.min_sponsored_order_quote_amount,
+            bundle_store,
         })
     }
 

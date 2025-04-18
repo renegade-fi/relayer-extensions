@@ -1,7 +1,7 @@
 //! Defines the core implementation of the on-chain event listener
 //! Much of the implementation is borrowed from https://github.com/renegade-fi/renegade/blob/main/workers/chain-events/src/listener.rs
 
-use std::thread::JoinHandle;
+use std::{sync::Arc, thread::JoinHandle};
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
@@ -15,9 +15,14 @@ use renegade_arbitrum_client::{
     client::ArbitrumClient,
     conversion::alloy_u256_to_scalar,
 };
-use renegade_circuit_types::wallet::Nullifier;
+use renegade_circuit_types::{
+    r#match::{ExternalMatchResult, MatchResult as CircuitMatchResult},
+    wallet::Nullifier,
+};
 use renegade_crypto::fields::u256_to_scalar;
 use tracing::{error, info};
+
+use crate::store::{helpers::generate_bundle_id, BundleStore};
 
 use super::error::OnChainEventListenerError;
 
@@ -73,12 +78,14 @@ pub struct OnChainEventListener {
 pub struct OnChainEventListenerExecutor {
     /// A copy of the config that the executor maintains
     config: OnChainEventListenerConfig,
+    /// The bundle store to use for retrieving bundle contexts
+    bundle_store: Arc<BundleStore>,
 }
 
 impl OnChainEventListenerExecutor {
     /// Create a new executor
-    pub fn new(config: OnChainEventListenerConfig) -> Self {
-        Self { config }
+    pub fn new(config: OnChainEventListenerConfig, bundle_store: Arc<BundleStore>) -> Self {
+        Self { config, bundle_store }
     }
 
     /// Shorthand for fetching a reference to the arbitrum client
@@ -176,15 +183,32 @@ impl OnChainEventListenerExecutor {
     /// Returns whether the tx settled an external match
     async fn check_external_match_settlement(
         &self,
-        _nullifier: Nullifier,
+        nullifier: Nullifier,
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
         let matches = self.arbitrum_client().find_external_matches_in_tx(tx).await?;
-        let _external_match = !matches.is_empty();
+        let mut bundle_ids = Vec::new();
+        for match_result in matches {
+            let circuit_match_result: CircuitMatchResult = match_result.try_into().unwrap();
+            let external_match_result: ExternalMatchResult = circuit_match_result.into();
+            let bundle_id = generate_bundle_id(&external_match_result.into(), &nullifier).unwrap();
+            bundle_ids.push(bundle_id);
+        }
 
-        // Record metrics for each match
-        for _match_result in matches {
-            // TODO: Record match_result
+        for bundle_id in bundle_ids {
+            let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
+            if let Some(bundle_ctx) = bundle_ctx {
+                // TODO: Process match settlement
+                tracing::info!(
+                    "key: {}, request_id: {}, sdk_version: {}, gas_sponsorship_info: {:?}, is_sponsored: {}, nullifier: {}",
+                    bundle_ctx.key_description,
+                    bundle_ctx.request_id,
+                    bundle_ctx.sdk_version,
+                    bundle_ctx.gas_sponsorship_info,
+                    bundle_ctx.is_sponsored,
+                    bundle_ctx.nullifier,
+                );
+            }
         }
 
         Ok(())
