@@ -50,10 +50,8 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             valid_match_settle_atomic_statement,
             match_proofs,
             match_linking_proofs,
-        } = processAtomicMatchSettleCall::abi_decode(
-            calldata, true, // validate
-        )
-        .map_err(AuthServerError::gas_sponsorship)?;
+        } = processAtomicMatchSettleCall::abi_decode(calldata)
+            .map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(sponsorAtomicMatchSettleWithRefundOptionsCall {
             receiver: AlloyAddress::ZERO,
@@ -85,10 +83,8 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             valid_match_settle_atomic_statement,
             match_proofs,
             match_linking_proofs,
-        } = processAtomicMatchSettleWithReceiverCall::abi_decode(
-            calldata, true, // validate
-        )
-        .map_err(AuthServerError::gas_sponsorship)?;
+        } = processAtomicMatchSettleWithReceiverCall::abi_decode(calldata)
+            .map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(sponsorAtomicMatchSettleWithRefundOptionsCall {
             receiver,

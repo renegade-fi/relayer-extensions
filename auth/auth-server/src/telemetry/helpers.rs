@@ -340,17 +340,17 @@ fn extract_nullifier_from_match_bundle(
     // Retrieve serialized match payload from the transaction data
     let serialized_match_payload = match selector {
         processAtomicMatchSettleCall::SELECTOR => {
-            processAtomicMatchSettleCall::abi_decode(tx_data, false)
+            processAtomicMatchSettleCall::abi_decode(tx_data)
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
         processAtomicMatchSettleWithReceiverCall::SELECTOR => {
-            processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data, false)
+            processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data)
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
         sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
-            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data, false)
+            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
