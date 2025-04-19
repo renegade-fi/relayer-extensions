@@ -327,7 +327,7 @@ pub(crate) async fn await_settlement(
 /// ways:
 /// 1. As a standard atomic match settle call
 /// 2. As a match settle with receiver call
-fn extract_nullifier_from_match_bundle(
+pub fn extract_nullifier_from_match_bundle(
     match_bundle: &AtomicMatchApiBundle,
 ) -> Result<Nullifier, AuthServerError> {
     let tx_data = match_bundle

@@ -3,14 +3,19 @@ use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
+use crate::store::BundleStore;
+
 use super::{
     error::OnChainEventListenerError,
     listener::{OnChainEventListener, OnChainEventListenerConfig, OnChainEventListenerExecutor},
 };
 
 impl OnChainEventListener {
-    pub fn new(config: OnChainEventListenerConfig) -> Result<Self, OnChainEventListenerError> {
-        let executor = OnChainEventListenerExecutor::new(config);
+    pub fn new(
+        config: OnChainEventListenerConfig,
+        bundle_store: BundleStore,
+    ) -> Result<Self, OnChainEventListenerError> {
+        let executor = OnChainEventListenerExecutor::new(config, bundle_store);
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 
