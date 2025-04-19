@@ -1,7 +1,7 @@
 //! Defines the core implementation of the on-chain event listener
 //! Much of the implementation is borrowed from https://github.com/renegade-fi/renegade/blob/main/workers/chain-events/src/listener.rs
 
-use std::{sync::Arc, thread::JoinHandle};
+use std::thread::JoinHandle;
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
@@ -79,12 +79,12 @@ pub struct OnChainEventListenerExecutor {
     /// A copy of the config that the executor maintains
     config: OnChainEventListenerConfig,
     /// The bundle store to use for retrieving bundle contexts
-    bundle_store: Arc<BundleStore>,
+    bundle_store: BundleStore,
 }
 
 impl OnChainEventListenerExecutor {
     /// Create a new executor
-    pub fn new(config: OnChainEventListenerConfig, bundle_store: Arc<BundleStore>) -> Self {
+    pub fn new(config: OnChainEventListenerConfig, bundle_store: BundleStore) -> Self {
         Self { config, bundle_store }
     }
 

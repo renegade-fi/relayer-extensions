@@ -1,13 +1,15 @@
-use std::collections::{HashMap, VecDeque};
+//! Defines the bundle store and associated types
+use std::{collections::HashMap, sync::Arc};
 
 use auth_server_api::GasSponsorshipInfo;
 use renegade_circuit_types::wallet::Nullifier;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::error::AuthServerError;
 
 pub mod helpers;
 
+/// Context of an external match bundle
 #[derive(Clone)]
 pub struct BundleContext {
     /// The key description that settled the bundle
@@ -25,67 +27,52 @@ pub struct BundleContext {
 }
 
 struct StoreInner {
-    /// bundle_id → context
     by_id: HashMap<String, BundleContext>,
-    /// nullifier → queue of bundle_ids
-    /// TODO: Maybe use String instead of Nullifier
-    /// TODO: Is VecDeque the best data structure here?
-    by_null: HashMap<Nullifier, VecDeque<String>>,
+    by_null: HashMap<Nullifier, Vec<String>>,
 }
 
+impl StoreInner {
+    pub fn new() -> Self {
+        Self { by_id: HashMap::new(), by_null: HashMap::new() }
+    }
+}
+
+/// A thread-safe store for tracking bundle contexts by ID and nullifier.
+#[derive(Clone)]
 pub struct BundleStore {
-    inner: Mutex<StoreInner>,
+    inner: Arc<RwLock<StoreInner>>,
 }
 
 impl BundleStore {
     pub fn new() -> Self {
-        Self { inner: Mutex::new(StoreInner { by_id: HashMap::new(), by_null: HashMap::new() }) }
+        Self { inner: Arc::new(RwLock::new(StoreInner::new())) }
     }
-}
 
-impl BundleStore {
-    /// We use `lock().await` so writers queue up on the Mutex
-    /// *behind* any in‐flight writer, but *ahead* of any try_lock readers.
-    /// This guarantees that writes never block behind cleanup or read.
     pub async fn write(
         &self,
         bundle_id: String,
         ctx: BundleContext,
     ) -> Result<(), AuthServerError> {
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.inner.write().await;
         inner.by_id.insert(bundle_id.clone(), ctx.clone());
-        inner.by_null.entry(ctx.nullifier).or_insert_with(VecDeque::new).push_back(bundle_id);
+        inner.by_null.entry(ctx.nullifier).or_default().push(bundle_id);
         Ok(())
     }
 
-    /// We use `try_lock()` + `yield_now()` instead of `lock().await`
-    /// so that if a writer is pending or holding the lock, we
-    /// never suspend the writer.  `try_lock()` fails immediately,
-    /// and we `yield_now()` to give the executor a chance to schedule
-    /// the writer next.  Once the lock is free, we grab it instantly.
     pub async fn read(&self, bundle_id: &str) -> Result<Option<BundleContext>, AuthServerError> {
-        loop {
-            if let Ok(idx) = self.inner.try_lock() {
-                return Ok(idx.by_id.get(bundle_id).cloned());
-            }
-            tokio::task::yield_now().await;
-        }
+        let inner = self.inner.read().await;
+        Ok(inner.by_id.get(bundle_id).cloned())
     }
 
-    /// Remove a nullifier and all associated bundle ids from the store
-    ///
-    /// Because each nullifier queue is ≤20 entries, we can safely
-    /// do a single `lock().await` and perform O(1 + k) pops/deletes
-    /// without noticeable writer blocking.  If this ever grows,
-    /// we'd switch to try_lock+yield similar to `read`.
     pub async fn _cleanup_by_nullifier(
         &self,
         nullifier: &Nullifier,
     ) -> Result<(), AuthServerError> {
-        let mut inner = self.inner.lock().await;
-        let bundle_ids = inner.by_null.remove(nullifier).unwrap_or_default();
-        for bundle_id in bundle_ids {
-            inner.by_id.remove(&bundle_id);
+        let mut inner = self.inner.write().await;
+        if let Some(bundle_ids) = inner.by_null.remove(nullifier) {
+            for bundle_id in bundle_ids {
+                inner.by_id.remove(&bundle_id);
+            }
         }
         Ok(())
     }

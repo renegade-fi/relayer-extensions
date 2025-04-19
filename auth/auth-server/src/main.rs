@@ -215,7 +215,7 @@ async fn main() {
     .expect("failed to create arbitrum client");
 
     // Create the shared in-memory bundle store
-    let bundle_store = Arc::new(BundleStore::new());
+    let bundle_store = BundleStore::new();
 
     // Start the on-chain event listener
     let chain_listener_config = OnChainEventListenerConfig {

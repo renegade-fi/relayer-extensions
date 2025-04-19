@@ -110,7 +110,7 @@ pub struct Server {
     /// in whole units of USDC
     pub min_sponsored_order_quote_amount: f64,
     /// The bundle store
-    pub bundle_store: Arc<BundleStore>,
+    pub bundle_store: BundleStore,
 }
 
 impl Server {
@@ -119,7 +119,7 @@ impl Server {
         args: Cli,
         system_clock: &SystemClock,
         arbitrum_client: ArbitrumClient,
-        bundle_store: Arc<BundleStore>,
+        bundle_store: BundleStore,
     ) -> Result<Self, AuthServerError> {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;

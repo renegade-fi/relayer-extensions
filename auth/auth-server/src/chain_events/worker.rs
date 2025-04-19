@@ -1,5 +1,5 @@
 //! The worker implementation for the on-chain event listener
-use std::{sync::Arc, thread::Builder};
+use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
@@ -13,7 +13,7 @@ use super::{
 impl OnChainEventListener {
     pub fn new(
         config: OnChainEventListenerConfig,
-        bundle_store: Arc<BundleStore>,
+        bundle_store: BundleStore,
     ) -> Result<Self, OnChainEventListenerError> {
         let executor = OnChainEventListenerExecutor::new(config, bundle_store);
         Ok(Self { executor: Some(executor), executor_handle: None })
