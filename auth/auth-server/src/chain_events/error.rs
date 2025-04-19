@@ -4,6 +4,8 @@ use std::{error::Error, fmt::Display};
 
 use renegade_arbitrum_client::errors::ArbitrumClientError;
 
+use crate::error::AuthServerError;
+
 /// The error type that the event listener emits
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -16,6 +18,8 @@ pub enum OnChainEventListenerError {
     Setup(String),
     /// The stream unexpectedly stopped
     StreamEnded,
+    /// Auth server error
+    AuthServer(String),
 }
 
 impl OnChainEventListenerError {
@@ -48,5 +52,11 @@ impl<E: Display> From<alloy::transports::RpcError<E>> for OnChainEventListenerEr
 impl From<alloy::sol_types::Error> for OnChainEventListenerError {
     fn from(e: alloy::sol_types::Error) -> Self {
         OnChainEventListenerError::Rpc(e.to_string())
+    }
+}
+
+impl From<AuthServerError> for OnChainEventListenerError {
+    fn from(err: AuthServerError) -> Self {
+        Self::AuthServer(err.to_string())
     }
 }
