@@ -25,8 +25,7 @@ use warp::{reject::Rejection, reply::Reply};
 use super::helpers::{generate_quote_uuid, overwrite_response_body};
 use super::Server;
 use crate::error::AuthServerError;
-use crate::store::helpers::generate_bundle_id;
-use crate::store::BundleContext;
+use crate::store::{helpers::generate_bundle_id, BundleContext};
 use crate::telemetry::helpers::{
     calculate_implied_price, extract_nullifier_from_match_bundle, record_relayer_request_500,
 };
@@ -510,6 +509,7 @@ impl Server {
         // the amounts in the match bundle will have been updated
         let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
 
+        // Record the bundle context in the store
         let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
         let bundle_id = generate_bundle_id(&match_bundle.match_result, &nullifier)?;
 
@@ -521,14 +521,10 @@ impl Server {
             is_sponsored: *is_sponsored,
             nullifier,
         };
-
-        // Non-blocking write to bundle store
         let bundle_store = self.bundle_store.clone();
-        tokio::spawn(async move {
-            if let Err(e) = bundle_store.write(bundle_id, bundle_ctx).await {
-                tracing::error!("bundle_store.write failed: {}", e);
-            }
-        });
+        if let Err(e) = bundle_store.write(bundle_id, bundle_ctx).await {
+            tracing::error!("bundle context write failed: {}", e);
+        }
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),

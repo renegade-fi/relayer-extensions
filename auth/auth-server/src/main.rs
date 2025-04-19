@@ -228,11 +228,10 @@ async fn main() {
     chain_listener.watch();
 
     // Create the server
-    let server = Arc::new(
-        Server::new(args, &system_clock, arbitrum_client, bundle_store)
-            .await
-            .expect("Failed to create server"),
-    );
+    let server_inner = Server::new(args, &system_clock, arbitrum_client, bundle_store)
+        .await
+        .expect("Failed to create server");
+    let server = Arc::new(server_inner);
 
     // --- Management Routes --- //
 

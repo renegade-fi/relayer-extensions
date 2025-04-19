@@ -27,7 +27,11 @@ pub struct BundleContext {
 }
 
 struct StoreInner {
+    // The mapping from bundle ID to bundle context
     by_id: HashMap<String, BundleContext>,
+    // The mapping from nullifier to bundle IDs
+    //
+    // This is used to efficiently cleanup the store when a nullifier is spent
     by_null: HashMap<Nullifier, Vec<String>>,
 }
 

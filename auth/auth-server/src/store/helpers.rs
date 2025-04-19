@@ -5,7 +5,23 @@ use renegade_constants::Scalar;
 
 use crate::error::AuthServerError;
 
-/// Generates a bundle ID from the match bundle
+/// Generates a deterministic bundle ID by hashing together the nullifier
+/// and the match amounts.
+///
+/// This approach is prone to collisions because there is no single unique
+/// customer identifier shared by both the on‑chain listener and the HTTP
+/// handler. Without a common customer identifier present in both domains that
+/// can be incorporated into the hash, it is possible for different customers to
+/// produce the same bundle ID.
+///
+/// Collisions have the following consequences, which are deemed acceptable:
+/// - Same‑customer collision: Metrics and rate‑limit accounting remain correct
+///   as the collision occurs within the same customer context.
+/// - Different‑customer collision: Metrics or rate‑limit allowance may be
+///   attributed to the wrong customer.
+///
+/// We could use the proof stored in calldata to uniquely identify each bundle,
+/// but this approach would break as soon as a bundle cache is introduced.
 pub fn generate_bundle_id(
     match_result: &ApiExternalMatchResult,
     nullifier: &Nullifier,
