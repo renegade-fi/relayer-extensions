@@ -25,10 +25,7 @@ use warp::{reject::Rejection, reply::Reply};
 use super::helpers::{generate_quote_uuid, overwrite_response_body};
 use super::Server;
 use crate::error::AuthServerError;
-use crate::store::{helpers::generate_bundle_id, BundleContext};
-use crate::telemetry::helpers::{
-    calculate_implied_price, extract_nullifier_from_match_bundle, record_relayer_request_500,
-};
+use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::{
@@ -41,6 +38,7 @@ use crate::telemetry::{
 };
 
 mod gas_sponsorship;
+mod settlement;
 pub use gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall;
 
 // -------------
@@ -165,6 +163,10 @@ impl Server {
             self.maybe_apply_gas_sponsorship_to_match_response(res.body(), gas_sponsorship_info)?;
         overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
 
+        // Record the bundle context in the store
+        let bundle_id =
+            self.write_bundle_context(&sponsored_match_resp, &headers, key_desc.clone()).await?;
+
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone
@@ -173,6 +175,7 @@ impl Server {
                     &req,
                     &headers,
                     &sponsored_match_resp,
+                    Some(bundle_id),
                 )
                 .await
             {
@@ -235,6 +238,11 @@ impl Server {
 
         overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
 
+        // Record the bundle context in the store
+        let bundle_id = self
+            .write_bundle_context(&sponsored_match_resp, &headers, key_description.clone())
+            .await?;
+
         // Watch the bundle for settlement
         let server_clone = self.clone();
         tokio::spawn(async move {
@@ -244,6 +252,7 @@ impl Server {
                     &external_match_req,
                     &headers,
                     &sponsored_match_resp,
+                    bundle_id,
                 )
                 .await
             {
@@ -443,11 +452,12 @@ impl Server {
         req: &AssembleExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
+        request_id: Option<String>,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
-        let request_id = uuid::Uuid::new_v4().to_string();
+        let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let sdk_version = get_sdk_version(headers);
         if req.updated_order.is_some() {
             log_updated_order(&key, original_order, updated_order, &request_id, &sdk_version);
@@ -472,13 +482,14 @@ impl Server {
         req: &ExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
+        request_id: String,
     ) -> Result<(), AuthServerError> {
         let sdk_version = get_sdk_version(headers);
         self.handle_bundle_response(
             key,
             &req.external_order,
             resp,
-            None,
+            Some(request_id),
             "request-external-match",
             true, // shared
             sdk_version,
@@ -508,23 +519,6 @@ impl Server {
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
         let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
-
-        // Record the bundle context in the store
-        let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
-        let bundle_id = generate_bundle_id(&match_bundle.match_result, &nullifier)?;
-
-        let bundle_ctx = BundleContext {
-            key_description: key.clone(),
-            request_id: bundle_id.clone(),
-            sdk_version: sdk_version.clone(),
-            gas_sponsorship_info: gas_sponsorship_info.clone(),
-            is_sponsored: *is_sponsored,
-            nullifier,
-        };
-        let bundle_store = self.bundle_store.clone();
-        if let Err(e) = bundle_store.write(bundle_id, bundle_ctx).await {
-            tracing::error!("bundle context write failed: {}", e);
-        }
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
