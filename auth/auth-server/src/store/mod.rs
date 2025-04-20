@@ -19,6 +19,7 @@ pub struct BundleContext {
     /// The SDK version that requested the bundle
     pub sdk_version: String,
     /// The gas sponsorship info for the bundle
+    #[allow(dead_code)]
     pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
     /// Whether the bundle was sponsored
     pub is_sponsored: bool,
