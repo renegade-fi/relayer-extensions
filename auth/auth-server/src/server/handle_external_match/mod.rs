@@ -175,7 +175,7 @@ impl Server {
                     &req,
                     &headers,
                     &sponsored_match_resp,
-                    Some(bundle_id),
+                    bundle_id,
                 )
                 .await
             {
@@ -452,12 +452,11 @@ impl Server {
         req: &AssembleExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
-        request_id: Option<String>,
+        request_id: String,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
-        let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let sdk_version = get_sdk_version(headers);
         if req.updated_order.is_some() {
             log_updated_order(&key, original_order, updated_order, &request_id, &sdk_version);

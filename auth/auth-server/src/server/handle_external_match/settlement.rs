@@ -38,8 +38,7 @@ impl Server {
         };
 
         // Write to bundle store
-        let bundle_store = self.bundle_store.clone();
-        if let Err(e) = bundle_store.write(bundle_id.clone(), bundle_ctx).await {
+        if let Err(e) = self.bundle_store.write(bundle_id.clone(), bundle_ctx).await {
             tracing::error!("bundle context write failed: {}", e);
         }
 
@@ -54,15 +53,11 @@ impl Server {
         &self,
         sponsored_match: &SponsoredMatchResponse,
     ) -> ApiExternalMatchResult {
-        if sponsored_match.is_sponsored {
-            if let Some(gas_info) = sponsored_match.gas_sponsorship_info.as_ref() {
-                self.apply_gas_sponsorship_adjustment(
-                    &sponsored_match.match_bundle.match_result,
-                    gas_info,
-                )
-            } else {
-                unreachable!("gas sponsorship info is required for sponsored matches");
-            }
+        if let Some(gas_info) = sponsored_match.gas_sponsorship_info.as_ref() {
+            self.apply_gas_sponsorship_adjustment(
+                &sponsored_match.match_bundle.match_result,
+                gas_info,
+            )
         } else {
             sponsored_match.match_bundle.match_result.clone()
         }
