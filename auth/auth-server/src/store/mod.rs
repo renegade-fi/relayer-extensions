@@ -10,7 +10,7 @@ use crate::error::AuthServerError;
 pub mod helpers;
 
 /// Context of an external match bundle
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BundleContext {
     /// The key description that settled the bundle
     pub key_description: String,
