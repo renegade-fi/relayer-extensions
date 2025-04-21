@@ -17,6 +17,7 @@ impl Server {
         sponsored_match: &SponsoredMatchResponse,
         headers: &HeaderMap,
         key: String,
+        shared: bool,
     ) -> Result<String, AuthServerError> {
         // Extract the nullifier from the original match bundle
         let nullifier = extract_nullifier_from_match_bundle(&sponsored_match.match_bundle)?;
@@ -35,6 +36,7 @@ impl Server {
             gas_sponsorship_info: sponsored_match.gas_sponsorship_info.clone(),
             is_sponsored: sponsored_match.is_sponsored,
             nullifier,
+            shared,
         };
 
         // Write to bundle store
