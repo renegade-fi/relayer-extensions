@@ -3,7 +3,7 @@ use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
-use crate::store::BundleStore;
+use crate::{server::rate_limiter::AuthServerRateLimiter, store::BundleStore};
 
 use super::{
     error::OnChainEventListenerError,
@@ -14,8 +14,9 @@ impl OnChainEventListener {
     pub fn new(
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
+        rate_limiter: AuthServerRateLimiter,
     ) -> Result<Self, OnChainEventListenerError> {
-        let executor = OnChainEventListenerExecutor::new(config, bundle_store);
+        let executor = OnChainEventListenerExecutor::new(config, bundle_store, rate_limiter);
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 

@@ -35,13 +35,11 @@ use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use store::BundleStore;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
 
-use chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use server::Server;
 
 /// The default internal server error message
@@ -205,32 +203,8 @@ async fn main() {
 
     let system_clock = SystemClock::new().await;
 
-    // Create the arbitrum client
-    let arbitrum_client = helpers::create_arbitrum_client(
-        args.darkpool_address.clone(),
-        args.chain_id,
-        args.rpc_url.clone(),
-    )
-    .await
-    .expect("failed to create arbitrum client");
-
-    // Create the shared in-memory bundle store
-    let bundle_store = BundleStore::new();
-
-    // Start the on-chain event listener
-    let chain_listener_config = OnChainEventListenerConfig {
-        websocket_addr: args.eth_websocket_addr.clone(),
-        arbitrum_client: arbitrum_client.clone(),
-    };
-    let mut chain_listener = OnChainEventListener::new(chain_listener_config, bundle_store.clone())
-        .expect("failed to build on-chain event listener");
-    chain_listener.start().expect("failed to start on-chain event listener");
-    chain_listener.watch();
-
     // Create the server
-    let server_inner = Server::new(args, &system_clock, arbitrum_client, bundle_store)
-        .await
-        .expect("Failed to create server");
+    let server_inner = Server::new(args, &system_clock).await.expect("Failed to create server");
     let server = Arc::new(server_inner);
 
     // --- Management Routes --- //

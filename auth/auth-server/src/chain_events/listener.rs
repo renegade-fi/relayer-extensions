@@ -23,6 +23,7 @@ use renegade_circuit_types::{
 use renegade_crypto::fields::u256_to_scalar;
 use tracing::{error, info};
 
+use crate::server::rate_limiter::AuthServerRateLimiter;
 use crate::store::{helpers::generate_bundle_id, BundleStore};
 
 use super::error::OnChainEventListenerError;
@@ -81,12 +82,18 @@ pub struct OnChainEventListenerExecutor {
     config: OnChainEventListenerConfig,
     /// The bundle store to use for retrieving bundle contexts
     bundle_store: BundleStore,
+    /// The rate limiter
+    pub(crate) rate_limiter: AuthServerRateLimiter,
 }
 
 impl OnChainEventListenerExecutor {
     /// Create a new executor
-    pub fn new(config: OnChainEventListenerConfig, bundle_store: BundleStore) -> Self {
-        Self { config, bundle_store }
+    pub fn new(
+        config: OnChainEventListenerConfig,
+        bundle_store: BundleStore,
+        rate_limiter: AuthServerRateLimiter,
+    ) -> Self {
+        Self { config, bundle_store, rate_limiter }
     }
 
     /// Shorthand for fetching a reference to the arbitrum client
@@ -196,6 +203,8 @@ impl OnChainEventListenerExecutor {
             let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
             if let Some(bundle_ctx) = bundle_ctx {
                 self.record_settlement_metrics(&bundle_ctx, &match_result);
+                self.add_bundle_rate_limit_token(bundle_ctx.key_description, bundle_ctx.shared)
+                    .await;
             }
         }
         Ok(())

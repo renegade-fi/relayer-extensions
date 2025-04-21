@@ -164,8 +164,14 @@ impl Server {
         overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
 
         // Record the bundle context in the store
-        let bundle_id =
-            self.write_bundle_context(&sponsored_match_resp, &headers, key_desc.clone()).await?;
+        let bundle_id = self
+            .write_bundle_context(
+                &sponsored_match_resp,
+                &headers,
+                key_desc.clone(),
+                req.allow_shared,
+            )
+            .await?;
 
         let server_clone = self.clone();
         tokio::spawn(async move {
@@ -240,7 +246,12 @@ impl Server {
 
         // Record the bundle context in the store
         let bundle_id = self
-            .write_bundle_context(&sponsored_match_resp, &headers, key_description.clone())
+            .write_bundle_context(
+                &sponsored_match_resp,
+                &headers,
+                key_description.clone(),
+                true, // shared
+            )
             .await?;
 
         // Watch the bundle for settlement
@@ -468,7 +479,6 @@ impl Server {
             resp,
             Some(request_id),
             "assemble-external-match",
-            req.allow_shared,
             sdk_version,
         )
         .await
@@ -490,7 +500,6 @@ impl Server {
             resp,
             Some(request_id),
             "request-external-match",
-            true, // shared
             sdk_version,
         )
         .await
@@ -507,7 +516,6 @@ impl Server {
         resp: &SponsoredMatchResponse,
         request_id: Option<String>,
         endpoint: &str,
-        shared_bundle: bool,
         sdk_version: String,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
@@ -542,7 +550,6 @@ impl Server {
         // If the bundle settles, increase the API user's a rate limit token balance
         let did_settle = await_settlement(match_bundle, &self.arbitrum_client).await?;
         if did_settle {
-            self.add_bundle_rate_limit_token(key.clone(), shared_bundle).await;
             if let Some(gas_sponsorship_info) = gas_sponsorship_info {
                 self.record_settled_match_sponsorship(
                     match_bundle,
