@@ -10,6 +10,7 @@ use alloy::{
 };
 use ethers::types::TxHash;
 use futures_util::StreamExt;
+use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_arbitrum_client::{
     abi::{NullifierSpent, NullifierSpentFilter},
     client::ArbitrumClient,
@@ -187,30 +188,16 @@ impl OnChainEventListenerExecutor {
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
         let matches = self.arbitrum_client().find_external_matches_in_tx(tx).await?;
-        let mut bundle_ids = Vec::new();
         for match_result in matches {
             let circuit_match_result: CircuitMatchResult = match_result.try_into().unwrap();
             let external_match_result: ExternalMatchResult = circuit_match_result.into();
-            let bundle_id = generate_bundle_id(&external_match_result.into(), &nullifier).unwrap();
-            bundle_ids.push(bundle_id);
-        }
-
-        for bundle_id in bundle_ids {
+            let match_result: ApiExternalMatchResult = external_match_result.into();
+            let bundle_id = generate_bundle_id(&match_result, &nullifier).unwrap();
             let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
             if let Some(bundle_ctx) = bundle_ctx {
-                // TODO: Process match settlement
-                tracing::info!(
-                    "key: {}, request_id: {}, sdk_version: {}, gas_sponsorship_info: {:?}, is_sponsored: {}, nullifier: {}",
-                    bundle_ctx.key_description,
-                    bundle_ctx.request_id,
-                    bundle_ctx.sdk_version,
-                    bundle_ctx.gas_sponsorship_info,
-                    bundle_ctx.is_sponsored,
-                    bundle_ctx.nullifier,
-                );
+                self.record_settlement_metrics(&bundle_ctx, &match_result);
             }
         }
-
         Ok(())
     }
 }

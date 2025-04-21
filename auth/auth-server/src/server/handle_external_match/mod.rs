@@ -548,7 +548,7 @@ impl Server {
         }
 
         // Record metrics
-        record_external_match_metrics(order, match_bundle, &labels, did_settle)?;
+        record_external_match_metrics(order, match_bundle, &labels)?;
 
         Ok(())
     }
