@@ -26,20 +26,21 @@ use crate::{
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
-        EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-        EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_NET_OUTPUT_TAG,
-        OUR_OUTPUT_NET_OF_FEE_TAG, OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG,
-        QUOTE_NET_OUTPUT_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC,
-        QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
-        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
+        EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
+        EXTERNAL_ORDER_QUOTE_VOLUME, OUR_NET_OUTPUT_TAG, OUR_OUTPUT_NET_OF_FEE_TAG,
+        OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG, QUOTE_NET_OUTPUT_DIFF_BPS_METRIC,
+        QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC,
+        QUOTE_PRICE_DIFF_BPS_METRIC, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
         SOURCE_OUTPUT_NET_OF_FEE_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
         UNSUCCESSFUL_RELAYER_REQUEST_COUNT,
     },
 };
 
 use super::{
-    labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG, SIDE_TAG},
+    labels::{
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG,
+        SIDE_TAG,
+    },
     quote_comparison::QuoteComparison,
 };
 
@@ -123,7 +124,7 @@ pub(crate) fn extend_labels_with_base_asset(
 }
 
 /// Record a volume metric with the given extra tags
-fn record_volume_with_tags(
+pub(crate) fn record_volume_with_tags(
     mint: &str,
     amount: u128,
     volume_metric_name: &'static str,
@@ -182,46 +183,6 @@ fn record_external_match_response_metrics(
     Ok(())
 }
 
-/// Records metrics for the settlement of an external match
-pub(crate) fn record_external_match_settlement_metrics(
-    match_bundle: &AtomicMatchApiBundle,
-    did_settle: bool,
-    extra_labels: &[(String, String)],
-) -> Result<(), AuthServerError> {
-    let (base, quote) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
-        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
-    };
-
-    let mut labels = vec![(SETTLEMENT_STATUS_TAG.to_string(), did_settle.to_string())];
-    labels.extend(extra_labels.iter().cloned());
-
-    record_endpoint_metrics(
-        &match_bundle.match_result.base_mint,
-        NUM_EXTERNAL_MATCH_REQUESTS,
-        &labels,
-    );
-
-    if did_settle {
-        record_volume_with_tags(
-            &base.mint,
-            base.amount,
-            EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-            &labels,
-        );
-
-        let labels = extend_labels_with_base_asset(&base.mint, labels.to_vec());
-        record_volume_with_tags(
-            &quote.mint,
-            quote.amount,
-            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-            &labels,
-        );
-    }
-
-    Ok(())
-}
-
 /// Records a counter metric with the given labels
 pub(crate) fn record_endpoint_metrics(
     mint: &str,
@@ -250,7 +211,6 @@ pub(crate) fn record_external_match_metrics(
     order: &ExternalOrder,
     match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
-    did_settle: bool,
 ) -> Result<(), AuthServerError> {
     // Get decimal-corrected price
     let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
@@ -276,9 +236,12 @@ pub(crate) fn record_external_match_metrics(
         warn!("Error recording response metrics: {e}");
     }
 
-    if let Err(e) = record_external_match_settlement_metrics(match_bundle, did_settle, labels) {
-        warn!("Error recording settlement metrics: {e}");
-    }
+    record_volume_with_tags(
+        &match_bundle.match_result.base_mint,
+        match_bundle.match_result.base_amount,
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+        labels,
+    );
 
     Ok(())
 }
