@@ -9,11 +9,13 @@ pub(crate) mod helpers;
 mod order_book;
 pub mod price_reporter_client;
 mod queries;
-mod rate_limiter;
+pub(crate) mod rate_limiter;
 mod redis_queries;
 
 use std::{iter, sync::Arc, time::Duration};
 
+use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
+use crate::helpers::create_arbitrum_client;
 use crate::server::price_reporter_client::PriceReporterClient;
 use crate::store::BundleStore;
 use crate::{
@@ -116,14 +118,18 @@ pub struct Server {
 
 impl Server {
     /// Create a new server instance
-    pub async fn new(
-        args: Cli,
-        system_clock: &SystemClock,
-        arbitrum_client: ArbitrumClient,
-        bundle_store: BundleStore,
-    ) -> Result<Self, AuthServerError> {
+    pub async fn new(args: Cli, system_clock: &SystemClock) -> Result<Self, AuthServerError> {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
+
+        // Create the arbitrum client
+        let arbitrum_client = create_arbitrum_client(
+            args.darkpool_address.clone(),
+            args.chain_id,
+            args.rpc_url.clone(),
+        )
+        .await
+        .expect("failed to create arbitrum client");
 
         // Set the external match fees & protocol fee
         set_external_match_fees(&arbitrum_client).await?;
@@ -164,6 +170,23 @@ impl Server {
             )
             .await?,
         );
+
+        // Create the shared in-memory bundle store
+        let bundle_store = BundleStore::new();
+
+        // Start the on-chain event listener
+        let chain_listener_config = OnChainEventListenerConfig {
+            websocket_addr: args.eth_websocket_addr.clone(),
+            arbitrum_client: arbitrum_client.clone(),
+        };
+        let mut chain_listener = OnChainEventListener::new(
+            chain_listener_config,
+            bundle_store.clone(),
+            rate_limiter.clone(),
+        )
+        .expect("failed to build on-chain event listener");
+        chain_listener.start().expect("failed to start on-chain event listener");
+        chain_listener.watch();
 
         Ok(Self {
             db_pool,
@@ -268,11 +291,6 @@ impl Server {
             return Err(ApiError::TooManyRequests);
         }
         Ok(())
-    }
-
-    /// Increment the token balance for a given API user
-    pub async fn add_bundle_rate_limit_token(&self, key_description: String, shared: bool) {
-        self.rate_limiter.add_bundle_token(key_description, shared).await;
     }
 
     /// Check the gas sponsorship rate limiter

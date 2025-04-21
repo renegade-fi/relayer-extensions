@@ -25,6 +25,8 @@ pub struct BundleContext {
     pub is_sponsored: bool,
     /// The nullifier that was nullified as a result of the bundle being settled
     pub nullifier: Nullifier,
+    /// Whether the bundle was shared
+    pub shared: bool,
 }
 
 struct StoreInner {

@@ -36,6 +36,11 @@ impl OnChainEventListenerExecutor {
         );
     }
 
+    /// Increment the token balance for a given API user
+    pub async fn add_bundle_rate_limit_token(&self, key_description: String, shared: bool) {
+        self.rate_limiter.add_bundle_token(key_description, shared).await;
+    }
+
     /// Get the labels for a bundle
     fn get_labels(&self, ctx: &BundleContext) -> Vec<(String, String)> {
         vec![
