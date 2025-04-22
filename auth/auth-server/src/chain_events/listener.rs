@@ -211,12 +211,17 @@ impl OnChainEventListenerExecutor {
             let bundle_id = generate_bundle_id(&match_result, &nullifier).unwrap();
             let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
             if let Some(bundle_ctx) = bundle_ctx {
-                self.record_settlement_metrics(&bundle_ctx, &match_result);
+                // Increase rate limit
                 self.add_bundle_rate_limit_token(
                     bundle_ctx.key_description.clone(),
                     bundle_ctx.shared,
                 )
                 .await;
+
+                // Record settlement metrics
+                self.record_settlement_metrics(&bundle_ctx, &match_result);
+
+                // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
                     self.record_settled_match_sponsorship(
                         &bundle_ctx,
