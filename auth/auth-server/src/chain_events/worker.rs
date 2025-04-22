@@ -1,9 +1,15 @@
 //! The worker implementation for the on-chain event listener
-use std::thread::Builder;
+use std::{sync::Arc, thread::Builder};
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
-use crate::{server::rate_limiter::AuthServerRateLimiter, store::BundleStore};
+use crate::{
+    server::{
+        gas_estimation::gas_cost_sampler::GasCostSampler,
+        price_reporter_client::PriceReporterClient, rate_limiter::AuthServerRateLimiter,
+    },
+    store::BundleStore,
+};
 
 use super::{
     error::OnChainEventListenerError,
@@ -15,8 +21,16 @@ impl OnChainEventListener {
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
         rate_limiter: AuthServerRateLimiter,
+        price_reporter_client: Arc<PriceReporterClient>,
+        gas_cost_sampler: Arc<GasCostSampler>,
     ) -> Result<Self, OnChainEventListenerError> {
-        let executor = OnChainEventListenerExecutor::new(config, bundle_store, rate_limiter);
+        let executor = OnChainEventListenerExecutor::new(
+            config,
+            bundle_store,
+            rate_limiter,
+            price_reporter_client,
+            gas_cost_sampler,
+        );
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 

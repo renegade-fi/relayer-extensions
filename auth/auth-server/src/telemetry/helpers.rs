@@ -1,14 +1,11 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use std::time::Duration;
-
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_arbitrum_client::{
     abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
-    client::ArbitrumClient,
     helpers::deserialize_calldata,
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
@@ -17,7 +14,7 @@ use renegade_constants::{
     Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::{
     error::AuthServerError,
@@ -43,11 +40,6 @@ use super::{
     },
     quote_comparison::QuoteComparison,
 };
-
-// --- Constants --- //
-
-/// The duration to await an atomic match settlement
-pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // --- Asset and Volume Helpers --- //
 
@@ -257,32 +249,6 @@ pub(crate) fn record_relayer_request_500(key_description: String, path: String) 
 }
 
 // --- Settlement Processing --- //
-
-/// Await the result of the atomic match settlement to be submitted on-chain
-///
-/// Returns `true` if the settlement succeeded on-chain, `false` otherwise
-pub(crate) async fn await_settlement(
-    match_bundle: &AtomicMatchApiBundle,
-    arbitrum_client: &ArbitrumClient,
-) -> Result<bool, AuthServerError> {
-    let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
-    let res = arbitrum_client
-        .await_nullifier_spent_from_selectors(
-            nullifier,
-            &[
-                processAtomicMatchSettleCall::SELECTOR,
-                processAtomicMatchSettleWithReceiverCall::SELECTOR,
-            ],
-            ATOMIC_SETTLEMENT_TIMEOUT,
-        )
-        .await;
-
-    let did_settle = res.is_ok();
-    if !did_settle {
-        info!("atomic match settlement not observed on-chain");
-    }
-    Ok(did_settle)
-}
 
 /// Extracts the nullifier from a match bundle's settlement transaction
 ///

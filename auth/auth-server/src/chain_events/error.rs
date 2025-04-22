@@ -28,6 +28,12 @@ impl OnChainEventListenerError {
     pub fn arbitrum<T: ToString>(e: T) -> Self {
         OnChainEventListenerError::Arbitrum(e.to_string())
     }
+
+    /// Create a new auth server error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn auth_server<T: ToString>(e: T) -> Self {
+        OnChainEventListenerError::AuthServer(e.to_string())
+    }
 }
 
 impl Display for OnChainEventListenerError {
@@ -57,6 +63,6 @@ impl From<alloy::sol_types::Error> for OnChainEventListenerError {
 
 impl From<AuthServerError> for OnChainEventListenerError {
     fn from(err: AuthServerError) -> Self {
-        Self::AuthServer(err.to_string())
+        OnChainEventListenerError::auth_server(err)
     }
 }
