@@ -18,6 +18,7 @@ pub mod middleware;
 pub mod relayer_client;
 pub mod server;
 
+use custody_client::rpc_shim::JsonRpcRequest;
 use fee_indexer::Indexer;
 use funds_manager_api::fees::{
     WithdrawFeeBalanceRequest, GET_FEE_WALLETS_ROUTE, INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE,
@@ -43,9 +44,9 @@ use handlers::{
     get_deposit_address_handler, get_execution_quote_handler, get_fee_wallets_handler,
     get_hot_wallet_balances_handler, index_fees_handler, quoter_withdraw_handler,
     redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
-    register_gas_wallet_handler, report_active_peers_handler, transfer_to_vault_handler,
-    withdraw_fee_balance_handler, withdraw_from_vault_handler, withdraw_gas_handler,
-    withdraw_to_hyperliquid_handler,
+    register_gas_wallet_handler, report_active_peers_handler, rpc_handler,
+    transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
+    withdraw_gas_handler, withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
 use renegade_common::types::hmac::HmacKey;
@@ -383,6 +384,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(withdraw_from_vault_handler);
 
+    // --- RPC --- //
+    let rpc = warp::post()
+        .and(warp::path("rpc"))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<JsonRpcRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(rpc_handler);
+
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
@@ -403,6 +413,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(transfer_to_hot_wallet)
         .or(get_hot_wallet_balances)
         .or(create_hot_wallet)
+        .or(rpc)
         .recover(handle_rejection);
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 
