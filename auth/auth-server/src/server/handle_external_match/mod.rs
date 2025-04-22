@@ -174,11 +174,11 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone.handle_quote_assembly_bundle_response(
-                key_desc,
+                &key_desc,
                 &req,
                 &headers,
                 &sponsored_match_resp,
-                bundle_id,
+                &bundle_id,
             ) {
                 warn!("Error handling bundle: {e}");
             };
@@ -253,11 +253,11 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone.handle_direct_match_bundle_response(
-                key_description,
+                &key_description,
                 &external_match_req,
                 &headers,
                 &sponsored_match_resp,
-                bundle_id,
+                &bundle_id,
             ) {
                 warn!("Error handling bundle: {e}");
             };
@@ -451,47 +451,47 @@ impl Server {
     /// Handle a bundle response from a quote assembly request
     fn handle_quote_assembly_bundle_response(
         &self,
-        key: String,
+        key: &str,
         req: &AssembleExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
-        request_id: String,
+        request_id: &str,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
         let sdk_version = get_sdk_version(headers);
         if req.updated_order.is_some() {
-            log_updated_order(&key, original_order, updated_order, &request_id, &sdk_version);
+            log_updated_order(key, original_order, updated_order, request_id, &sdk_version);
         }
 
         self.handle_bundle_response(
             key,
             updated_order,
             resp,
-            Some(request_id),
+            request_id,
             "assemble-external-match",
-            sdk_version,
+            &sdk_version,
         )
     }
 
     /// Handle a bundle response from a direct match request
     fn handle_direct_match_bundle_response(
         &self,
-        key: String,
+        key: &str,
         req: &ExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
-        request_id: String,
+        request_id: &str,
     ) -> Result<(), AuthServerError> {
         let sdk_version = get_sdk_version(headers);
         self.handle_bundle_response(
             key,
             &req.external_order,
             resp,
-            Some(request_id),
+            request_id,
             "request-external-match",
-            sdk_version,
+            &sdk_version,
         )
     }
 
@@ -501,28 +501,26 @@ impl Server {
     #[allow(clippy::too_many_arguments)]
     fn handle_bundle_response(
         &self,
-        key: String,
+        key: &str,
         order: &ExternalOrder,
         resp: &SponsoredMatchResponse,
-        request_id: Option<String>,
+        request_id: &str,
         endpoint: &str,
-        sdk_version: String,
+        sdk_version: &str,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
-        let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-        log_bundle(order, resp, &key, &request_id, endpoint, &sdk_version)?;
+        log_bundle(order, resp, key, request_id, endpoint, sdk_version)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
         let SponsoredMatchResponse { match_bundle, is_sponsored, .. } = resp;
 
         let labels = vec![
-            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
-            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.clone()),
+            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled
