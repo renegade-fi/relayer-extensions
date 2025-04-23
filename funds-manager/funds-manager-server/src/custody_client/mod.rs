@@ -4,6 +4,7 @@ pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;
 mod queries;
+pub mod rpc_shim;
 pub mod withdraw;
 
 use aws_config::SdkConfig as AwsConfig;

@@ -33,6 +33,7 @@ tokio-postgres = "0.7.7"
 
 # === Blockchain Interaction === #
 alloy-sol-types = "1.0.0"
+alloy-json-rpc = "0.14.0"
 ethers = "2"
 
 # === Renegade Dependencies === #
