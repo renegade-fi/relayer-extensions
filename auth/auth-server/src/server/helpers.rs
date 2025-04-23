@@ -6,11 +6,12 @@ use base64::{engine::general_purpose, Engine as _};
 use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
-use http::{header::CONTENT_LENGTH, Response};
+use http::{header::CONTENT_LENGTH, HeaderMap, Response};
 use rand::{thread_rng, Rng};
 use renegade_api::http::external_match::SignedExternalQuote;
 use serde::Serialize;
 use serde_json::json;
+use tracing::warn;
 use uuid::Uuid;
 use warp::reply::Reply;
 
@@ -25,6 +26,12 @@ const NONCE_SIZE: usize = 12; // 12 bytes, 96 bits
 
 /// The size of a UUID in bytes
 const UUID_SIZE: usize = 16;
+
+/// The header name for the SDK version
+const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
+
+/// The default SDK version to use if the header is not set
+const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
 
 /// Construct empty json reply
 pub fn empty_json_reply() -> impl Reply {
@@ -142,6 +149,37 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
     uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
 
     Uuid::from_bytes(uuid_bytes)
+}
+
+/// Parse the SDK version from the given headers.
+/// If unset or malformed, returns an empty string.
+pub fn get_sdk_version(headers: &HeaderMap) -> String {
+    headers
+        .get(SDK_VERSION_HEADER)
+        .map(|v| v.to_str().unwrap_or_default())
+        .unwrap_or(SDK_VERSION_DEFAULT)
+        .to_string()
+}
+
+/// Log a non-200 response from the relayer for the given request
+pub fn log_unsuccessful_relayer_request(
+    resp: &Response<Bytes>,
+    key_description: &str,
+    path: &str,
+    req_body: &[u8],
+    headers: &HeaderMap,
+) {
+    let status = resp.status();
+    let text = String::from_utf8_lossy(resp.body()).to_string();
+    let req_body = String::from_utf8_lossy(req_body).to_string();
+    let sdk_version = get_sdk_version(headers);
+    warn!(
+        key_description = key_description,
+        path = path,
+        request_body = req_body,
+        sdk_version = sdk_version,
+        "Non-200 response from relayer: {status}: {text}",
+    );
 }
 
 #[cfg(test)]

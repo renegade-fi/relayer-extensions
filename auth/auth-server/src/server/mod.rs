@@ -1,6 +1,7 @@
 //! Defines the server struct and associated functions
 //!
 //! The server is a dependency injection container for the authentication server
+mod admin;
 mod api_auth;
 pub mod gas_estimation;
 pub(crate) mod handle_external_match;
