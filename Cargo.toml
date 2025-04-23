@@ -23,21 +23,21 @@ lto = true
 [workspace.dependencies]
 # === Renegade Dependencies === #
 contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
-renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint", features = [
+renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = [
     "rand",
 ] }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint", features = [
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
     "auth",
 ] }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint", features = ["metered-channels"] }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/add-endpoint" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["metered-channels"] }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Database Dependencies === #
 diesel = { version = "2.1" }

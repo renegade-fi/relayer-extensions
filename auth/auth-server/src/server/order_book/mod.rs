@@ -8,9 +8,9 @@ use super::Server;
 use crate::telemetry::helpers::record_relayer_request_500;
 
 impl Server {
-    /// Proxy GET /v0/admin/liquidity/:mint to the relayer
+    /// Proxy GET /v0/order_book/depth/:mint to the relayer
     #[instrument(skip(self, path, headers))]
-    pub async fn handle_admin_liquidity_request(
+    pub async fn handle_order_book_depth_request(
         &self,
         path: warp::path::FullPath,
         headers: HeaderMap,
@@ -18,7 +18,9 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let path_str = path.as_str();
-        let key_desc = self.authorize_request(path_str, "", &headers, &[]).await?;
+        let key_desc = self
+            .authorize_request(path_str, "" /* query_str */, &headers, &[] /* body */)
+            .await?;
 
         // Send the request to the relayer
         let resp =
