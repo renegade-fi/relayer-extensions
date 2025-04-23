@@ -1,5 +1,6 @@
 //! Route handlers for the funds manager
 
+use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
 use crate::Server;
@@ -367,4 +368,15 @@ pub(crate) async fn withdraw_from_vault_handler(
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
     Ok(warp::reply::json(&"Withdrawal from vault to hot wallet initiated"))
+}
+
+// --- RPC --- //
+
+/// Handler for the RPC shim
+pub(crate) async fn rpc_handler(
+    req: JsonRpcRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let rpc_response = server.custody_client.handle_rpc_request(req).await;
+    Ok(warp::reply::json(&rpc_response))
 }
