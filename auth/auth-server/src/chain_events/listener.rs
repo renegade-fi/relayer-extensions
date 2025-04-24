@@ -230,6 +230,9 @@ impl OnChainEventListenerExecutor {
                     )
                     .await?;
                 }
+
+                // Cleanup the bundle context
+                self.bundle_store.cleanup_by_nullifier(&bundle_ctx.nullifier).await?;
             }
         }
         Ok(())

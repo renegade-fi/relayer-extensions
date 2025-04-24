@@ -1,5 +1,8 @@
 //! Defines the bundle store and associated types
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use auth_server_api::GasSponsorshipInfo;
 use renegade_circuit_types::wallet::Nullifier;
@@ -35,7 +38,7 @@ struct StoreInner {
     // The mapping from nullifier to bundle IDs
     //
     // This is used to efficiently cleanup the store when a nullifier is spent
-    by_null: HashMap<Nullifier, Vec<String>>,
+    by_null: HashMap<Nullifier, HashSet<String>>,
 }
 
 impl StoreInner {
@@ -62,7 +65,7 @@ impl BundleStore {
     ) -> Result<(), AuthServerError> {
         let mut inner = self.inner.write().await;
         inner.by_id.insert(bundle_id.clone(), ctx.clone());
-        inner.by_null.entry(ctx.nullifier).or_default().push(bundle_id);
+        inner.by_null.entry(ctx.nullifier).or_default().insert(bundle_id);
         Ok(())
     }
 
@@ -71,10 +74,7 @@ impl BundleStore {
         Ok(inner.by_id.get(bundle_id).cloned())
     }
 
-    pub async fn _cleanup_by_nullifier(
-        &self,
-        nullifier: &Nullifier,
-    ) -> Result<(), AuthServerError> {
+    pub async fn cleanup_by_nullifier(&self, nullifier: &Nullifier) -> Result<(), AuthServerError> {
         let mut inner = self.inner.write().await;
         if let Some(bundle_ids) = inner.by_null.remove(nullifier) {
             for bundle_id in bundle_ids {
