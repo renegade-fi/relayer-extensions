@@ -1,14 +1,11 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use std::time::Duration;
-
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_arbitrum_client::{
     abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
-    client::ArbitrumClient,
     helpers::deserialize_calldata,
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
@@ -17,7 +14,7 @@ use renegade_constants::{
     Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::{
     error::AuthServerError,
@@ -26,27 +23,23 @@ use crate::{
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
-        EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-        EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, NUM_EXTERNAL_MATCH_REQUESTS, OUR_NET_OUTPUT_TAG,
-        OUR_OUTPUT_NET_OF_FEE_TAG, OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG,
-        QUOTE_NET_OUTPUT_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC,
-        QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, QUOTE_PRICE_DIFF_BPS_METRIC,
-        SETTLEMENT_STATUS_TAG, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
+        EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
+        EXTERNAL_ORDER_QUOTE_VOLUME, OUR_NET_OUTPUT_TAG, OUR_OUTPUT_NET_OF_FEE_TAG,
+        OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG, QUOTE_NET_OUTPUT_DIFF_BPS_METRIC,
+        QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC,
+        QUOTE_PRICE_DIFF_BPS_METRIC, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
         SOURCE_OUTPUT_NET_OF_FEE_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
         UNSUCCESSFUL_RELAYER_REQUEST_COUNT,
     },
 };
 
 use super::{
-    labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG, SIDE_TAG},
+    labels::{
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG,
+        SIDE_TAG,
+    },
     quote_comparison::QuoteComparison,
 };
-
-// --- Constants --- //
-
-/// The duration to await an atomic match settlement
-pub const ATOMIC_SETTLEMENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // --- Asset and Volume Helpers --- //
 
@@ -123,7 +116,7 @@ pub(crate) fn extend_labels_with_base_asset(
 }
 
 /// Record a volume metric with the given extra tags
-fn record_volume_with_tags(
+pub(crate) fn record_volume_with_tags(
     mint: &str,
     amount: u128,
     volume_metric_name: &'static str,
@@ -182,46 +175,6 @@ fn record_external_match_response_metrics(
     Ok(())
 }
 
-/// Records metrics for the settlement of an external match
-pub(crate) fn record_external_match_settlement_metrics(
-    match_bundle: &AtomicMatchApiBundle,
-    did_settle: bool,
-    extra_labels: &[(String, String)],
-) -> Result<(), AuthServerError> {
-    let (base, quote) = match match_bundle.match_result.direction {
-        OrderSide::Buy => (&match_bundle.receive, &match_bundle.send),
-        OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
-    };
-
-    let mut labels = vec![(SETTLEMENT_STATUS_TAG.to_string(), did_settle.to_string())];
-    labels.extend(extra_labels.iter().cloned());
-
-    record_endpoint_metrics(
-        &match_bundle.match_result.base_mint,
-        NUM_EXTERNAL_MATCH_REQUESTS,
-        &labels,
-    );
-
-    if did_settle {
-        record_volume_with_tags(
-            &base.mint,
-            base.amount,
-            EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-            &labels,
-        );
-
-        let labels = extend_labels_with_base_asset(&base.mint, labels.to_vec());
-        record_volume_with_tags(
-            &quote.mint,
-            quote.amount,
-            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-            &labels,
-        );
-    }
-
-    Ok(())
-}
-
 /// Records a counter metric with the given labels
 pub(crate) fn record_endpoint_metrics(
     mint: &str,
@@ -250,7 +203,6 @@ pub(crate) fn record_external_match_metrics(
     order: &ExternalOrder,
     match_bundle: &AtomicMatchApiBundle,
     labels: &[(String, String)],
-    did_settle: bool,
 ) -> Result<(), AuthServerError> {
     // Get decimal-corrected price
     let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
@@ -276,9 +228,12 @@ pub(crate) fn record_external_match_metrics(
         warn!("Error recording response metrics: {e}");
     }
 
-    if let Err(e) = record_external_match_settlement_metrics(match_bundle, did_settle, labels) {
-        warn!("Error recording settlement metrics: {e}");
-    }
+    record_volume_with_tags(
+        &match_bundle.match_result.base_mint,
+        match_bundle.match_result.base_amount,
+        EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+        labels,
+    );
 
     Ok(())
 }
@@ -295,39 +250,13 @@ pub(crate) fn record_relayer_request_500(key_description: String, path: String) 
 
 // --- Settlement Processing --- //
 
-/// Await the result of the atomic match settlement to be submitted on-chain
-///
-/// Returns `true` if the settlement succeeded on-chain, `false` otherwise
-pub(crate) async fn await_settlement(
-    match_bundle: &AtomicMatchApiBundle,
-    arbitrum_client: &ArbitrumClient,
-) -> Result<bool, AuthServerError> {
-    let nullifier = extract_nullifier_from_match_bundle(match_bundle)?;
-    let res = arbitrum_client
-        .await_nullifier_spent_from_selectors(
-            nullifier,
-            &[
-                processAtomicMatchSettleCall::SELECTOR,
-                processAtomicMatchSettleWithReceiverCall::SELECTOR,
-            ],
-            ATOMIC_SETTLEMENT_TIMEOUT,
-        )
-        .await;
-
-    let did_settle = res.is_ok();
-    if !did_settle {
-        info!("atomic match settlement not observed on-chain");
-    }
-    Ok(did_settle)
-}
-
 /// Extracts the nullifier from a match bundle's settlement transaction
 ///
 /// This function attempts to decode the settlement transaction data in two
 /// ways:
 /// 1. As a standard atomic match settle call
 /// 2. As a match settle with receiver call
-fn extract_nullifier_from_match_bundle(
+pub fn extract_nullifier_from_match_bundle(
     match_bundle: &AtomicMatchApiBundle,
 ) -> Result<Nullifier, AuthServerError> {
     let tx_data = match_bundle

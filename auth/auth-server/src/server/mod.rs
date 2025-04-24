@@ -9,13 +9,15 @@ pub(crate) mod helpers;
 mod order_book;
 pub mod price_reporter_client;
 mod queries;
-mod rate_limiter;
+pub(crate) mod rate_limiter;
 mod redis_queries;
 
-use std::{iter, str::FromStr, sync::Arc, time::Duration};
+use std::{iter, sync::Arc, time::Duration};
 
+use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
+use crate::helpers::create_arbitrum_client;
 use crate::server::price_reporter_client::PriceReporterClient;
-use crate::DUMMY_PRIVATE_KEY;
+use crate::store::BundleStore;
 use crate::{
     error::AuthServerError,
     models::ApiKey,
@@ -32,7 +34,6 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::signers::LocalWallet;
 use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
@@ -43,7 +44,7 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
-use renegade_arbitrum_client::client::{ArbitrumClient, ArbitrumClientConfig};
+use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::{
     hmac::HmacKey,
     token::{get_all_tokens, Token},
@@ -92,8 +93,6 @@ pub struct Server {
     pub api_key_cache: ApiKeyCache,
     /// The HTTP client
     pub client: Client,
-    /// The Arbitrum client
-    pub arbitrum_client: ArbitrumClient,
     /// The rate limiter
     pub rate_limiter: AuthServerRateLimiter,
     /// The quote metrics recorder
@@ -111,6 +110,8 @@ pub struct Server {
     /// The minimum order quote amount for which gas sponsorship is allowed,
     /// in whole units of USDC
     pub min_sponsored_order_quote_amount: f64,
+    /// The bundle store
+    pub bundle_store: BundleStore,
 }
 
 impl Server {
@@ -119,7 +120,14 @@ impl Server {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
 
-        let arbitrum_client = create_arbitrum_client(&args).await?;
+        // Create the arbitrum client
+        let arbitrum_client = create_arbitrum_client(
+            args.darkpool_address.clone(),
+            args.chain_id,
+            args.rpc_url.clone(),
+        )
+        .await
+        .expect("failed to create arbitrum client");
 
         // Set the external match fees & protocol fee
         set_external_match_fees(&arbitrum_client).await?;
@@ -161,6 +169,25 @@ impl Server {
             .await?,
         );
 
+        // Create the shared in-memory bundle store
+        let bundle_store = BundleStore::new();
+
+        // Start the on-chain event listener
+        let chain_listener_config = OnChainEventListenerConfig {
+            websocket_addr: args.eth_websocket_addr.clone(),
+            arbitrum_client: arbitrum_client.clone(),
+        };
+        let mut chain_listener = OnChainEventListener::new(
+            chain_listener_config,
+            bundle_store.clone(),
+            rate_limiter.clone(),
+            price_reporter_client.clone(),
+            gas_cost_sampler.clone(),
+        )
+        .expect("failed to build on-chain event listener");
+        chain_listener.start().expect("failed to start on-chain event listener");
+        chain_listener.watch();
+
         Ok(Self {
             db_pool,
             redis_client,
@@ -170,7 +197,6 @@ impl Server {
             encryption_key,
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
-            arbitrum_client,
             rate_limiter,
             quote_metrics,
             metrics_sampling_rate: args
@@ -181,6 +207,7 @@ impl Server {
             price_reporter_client,
             gas_cost_sampler,
             min_sponsored_order_quote_amount: args.min_sponsored_order_quote_amount,
+            bundle_store,
         })
     }
 
@@ -265,11 +292,6 @@ impl Server {
         Ok(())
     }
 
-    /// Increment the token balance for a given API user
-    pub async fn add_bundle_rate_limit_token(&self, key_description: String, shared: bool) {
-        self.rate_limiter.add_bundle_token(key_description, shared).await;
-    }
-
     /// Check the gas sponsorship rate limiter
     ///
     /// Returns a boolean indicating whether or not the gas sponsorship rate
@@ -335,20 +357,6 @@ async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
         .await
         .unwrap()
         .map_err(AuthServerError::setup)
-}
-
-/// Create an Arbitrum client
-async fn create_arbitrum_client(args: &Cli) -> Result<ArbitrumClient, AuthServerError> {
-    let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY).map_err(AuthServerError::setup)?;
-    ArbitrumClient::new(ArbitrumClientConfig {
-        darkpool_addr: args.darkpool_address.clone(),
-        chain: args.chain_id,
-        rpc_url: args.rpc_url.clone(),
-        arb_priv_keys: vec![wallet],
-        block_polling_interval_ms: 100,
-    })
-    .await
-    .map_err(AuthServerError::setup)
 }
 
 /// Set the external match fees & protocol fee

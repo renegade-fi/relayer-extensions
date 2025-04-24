@@ -7,11 +7,10 @@ use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SignedGasSponsorshipInfo,
     SponsoredMatchResponse, SponsoredQuoteResponse,
 };
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 
 use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_api::http::external_match::{
-    AtomicMatchApiBundle, ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
+    ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
 };
 use renegade_common::types::token::Token;
 use renegade_util::hex::biguint_to_hex_addr;
@@ -19,11 +18,6 @@ use renegade_util::hex::biguint_to_hex_addr;
 use super::Server;
 use crate::error::AuthServerError;
 use crate::server::helpers::generate_quote_uuid;
-use crate::telemetry::labels::{
-    GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG,
-    REFUND_AMOUNT_TAG, REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG,
-    REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
-};
 
 pub mod contract_interaction;
 pub mod refund_calculation;
@@ -32,14 +26,8 @@ pub mod refund_calculation;
 // | Constants |
 // -------------
 
-/// The ticker for native ETH
-const ETH_TICKER: &str = "ETH";
-
 /// The ticker for WETH
 const WETH_TICKER: &str = "WETH";
-
-/// The error message emitted when a refund asset ticker cannot be found
-const REFUND_ASSET_TICKER_ERROR_MSG: &str = "failed to get refund asset ticker";
 
 // ---------------
 // | Server Impl |
@@ -146,48 +134,6 @@ impl Server {
         })
     }
 
-    /// Record the gas sponsorship rate limit & metrics for a given settled
-    /// match
-    pub async fn record_settled_match_sponsorship(
-        &self,
-        match_bundle: &AtomicMatchApiBundle,
-        gas_sponsorship_info: &GasSponsorshipInfo,
-        key: String,
-        request_id: String,
-        sdk_version: String,
-    ) -> Result<(), AuthServerError> {
-        let refund_asset = if gas_sponsorship_info.refund_native_eth {
-            Token::from_ticker(WETH_TICKER)
-        } else {
-            Token::from_addr(&match_bundle.receive.mint)
-        };
-        let nominal_price =
-            self.price_reporter_client.get_nominal_price(&refund_asset.get_addr()).await?;
-
-        let nominal_amount = BigDecimal::from_u128(gas_sponsorship_info.refund_amount)
-            .expect("u128 should be representable as BigDecimal");
-
-        let value_bigdecimal = nominal_amount * nominal_price;
-
-        let value = value_bigdecimal.to_f64().ok_or(AuthServerError::gas_sponsorship(
-            "failed to convert gas sponsorship value to f64",
-        ))?;
-
-        self.rate_limiter.record_gas_sponsorship(key.clone(), value).await;
-
-        self.record_gas_sponsorship_metrics(
-            value,
-            gas_sponsorship_info,
-            match_bundle,
-            key,
-            request_id,
-            sdk_version,
-        )
-        .await?;
-
-        Ok(())
-    }
-
     /// Cache the gas sponsorship info for a given quote in Redis
     /// if it exists
     pub async fn cache_quote_gas_sponsorship_info(
@@ -231,66 +177,5 @@ impl Server {
 
         let expected_price = self.price_reporter_client.get_price(&base_mint).await?;
         Ok(expected_price * base_amount_f64)
-    }
-
-    /// Record the dollar value of sponsored gas for a settled match
-    async fn record_gas_sponsorship_metrics(
-        &self,
-        gas_sponsorship_value: f64,
-        gas_sponsorship_info: &GasSponsorshipInfo,
-        match_bundle: &AtomicMatchApiBundle,
-        key: String,
-        request_id: String,
-        sdk_version: String,
-    ) -> Result<(), AuthServerError> {
-        // Extra sponsorship metadata:
-        // - Remaining value in user's rate limit bucket
-        // - Remaining time in user's rate limit bucket
-        // - Refund asset
-        // - Refund amount (whole units)
-        // - Gas prices (L1 & L2)
-
-        let (remaining_value, remaining_time) =
-            self.rate_limiter.remaining_gas_sponsorship_value_and_time(key.clone()).await;
-
-        let (refund_asset_ticker, refund_amount_whole) = if gas_sponsorship_info.refund_native_eth {
-            // WETH uses the same decimals as ETH, so we use it to obtain the refund amount
-            // in whole units
-            let weth = Token::from_ticker(WETH_TICKER);
-            let refund_amount_whole = weth.convert_to_decimal(gas_sponsorship_info.refund_amount);
-            (ETH_TICKER.to_string(), refund_amount_whole)
-        } else {
-            let refund_asset = Token::from_addr(&match_bundle.receive.mint);
-            let refund_amount_whole =
-                refund_asset.convert_to_decimal(gas_sponsorship_info.refund_amount);
-
-            let refund_asset_ticker = refund_asset
-                .get_ticker()
-                .ok_or(AuthServerError::gas_cost_sampler(REFUND_ASSET_TICKER_ERROR_MSG))?;
-
-            (refund_asset_ticker, refund_amount_whole)
-        };
-
-        let (_, l2_base_fee, l1_cost_per_byte) = self
-            .gas_cost_sampler
-            .sample_gas_prices()
-            .await
-            .map_err(AuthServerError::gas_sponsorship)?;
-
-        let labels = vec![
-            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id),
-            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
-            (REMAINING_VALUE_TAG.to_string(), remaining_value.to_string()),
-            (REMAINING_TIME_TAG.to_string(), remaining_time.as_secs().to_string()),
-            (REFUND_ASSET_TAG.to_string(), refund_asset_ticker),
-            (REFUND_AMOUNT_TAG.to_string(), refund_amount_whole.to_string()),
-            (L2_BASE_FEE_TAG.to_string(), l2_base_fee.to_string()),
-            (L1_COST_PER_BYTE_TAG.to_string(), l1_cost_per_byte.to_string()),
-        ];
-
-        metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
-
-        Ok(())
     }
 }
