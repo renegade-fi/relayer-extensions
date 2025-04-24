@@ -93,8 +93,6 @@ pub struct Server {
     pub api_key_cache: ApiKeyCache,
     /// The HTTP client
     pub client: Client,
-    /// The Arbitrum client
-    pub arbitrum_client: ArbitrumClient,
     /// The rate limiter
     pub rate_limiter: AuthServerRateLimiter,
     /// The quote metrics recorder
@@ -183,6 +181,8 @@ impl Server {
             chain_listener_config,
             bundle_store.clone(),
             rate_limiter.clone(),
+            price_reporter_client.clone(),
+            gas_cost_sampler.clone(),
         )
         .expect("failed to build on-chain event listener");
         chain_listener.start().expect("failed to start on-chain event listener");
@@ -197,7 +197,6 @@ impl Server {
             encryption_key,
             api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
             client: Client::new(),
-            arbitrum_client,
             rate_limiter,
             quote_metrics,
             metrics_sampling_rate: args

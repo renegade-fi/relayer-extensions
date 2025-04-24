@@ -1,7 +1,7 @@
 //! Defines the core implementation of the on-chain event listener
 //! Much of the implementation is borrowed from https://github.com/renegade-fi/renegade/blob/main/workers/chain-events/src/listener.rs
 
-use std::thread::JoinHandle;
+use std::{sync::Arc, thread::JoinHandle};
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
@@ -23,7 +23,10 @@ use renegade_circuit_types::{
 use renegade_crypto::fields::u256_to_scalar;
 use tracing::{error, info};
 
-use crate::server::rate_limiter::AuthServerRateLimiter;
+use crate::server::{
+    gas_estimation::gas_cost_sampler::GasCostSampler, price_reporter_client::PriceReporterClient,
+    rate_limiter::AuthServerRateLimiter,
+};
 use crate::store::{helpers::generate_bundle_id, BundleStore};
 
 use super::error::OnChainEventListenerError;
@@ -84,6 +87,10 @@ pub struct OnChainEventListenerExecutor {
     bundle_store: BundleStore,
     /// The rate limiter
     pub(crate) rate_limiter: AuthServerRateLimiter,
+    /// The price reporter client with WebSocket streaming support
+    pub(crate) price_reporter_client: Arc<PriceReporterClient>,
+    /// The gas cost sampler
+    pub(crate) gas_cost_sampler: Arc<GasCostSampler>,
 }
 
 impl OnChainEventListenerExecutor {
@@ -92,8 +99,10 @@ impl OnChainEventListenerExecutor {
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
         rate_limiter: AuthServerRateLimiter,
+        price_reporter_client: Arc<PriceReporterClient>,
+        gas_cost_sampler: Arc<GasCostSampler>,
     ) -> Self {
-        Self { config, bundle_store, rate_limiter }
+        Self { config, bundle_store, rate_limiter, price_reporter_client, gas_cost_sampler }
     }
 
     /// Shorthand for fetching a reference to the arbitrum client
@@ -202,9 +211,25 @@ impl OnChainEventListenerExecutor {
             let bundle_id = generate_bundle_id(&match_result, &nullifier).unwrap();
             let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
             if let Some(bundle_ctx) = bundle_ctx {
+                // Increase rate limit
+                self.add_bundle_rate_limit_token(
+                    bundle_ctx.key_description.clone(),
+                    bundle_ctx.shared,
+                )
+                .await;
+
+                // Record settlement metrics
                 self.record_settlement_metrics(&bundle_ctx, &match_result);
-                self.add_bundle_rate_limit_token(bundle_ctx.key_description, bundle_ctx.shared)
-                    .await;
+
+                // Record sponsorship metrics
+                if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
+                    self.record_settled_match_sponsorship(
+                        &bundle_ctx,
+                        &match_result,
+                        gas_sponsorship_info,
+                    )
+                    .await?;
+                }
             }
         }
         Ok(())

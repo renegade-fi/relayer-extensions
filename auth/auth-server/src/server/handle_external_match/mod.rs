@@ -30,9 +30,7 @@ use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
-    helpers::{
-        await_settlement, record_endpoint_metrics, record_external_match_metrics, record_fill_ratio,
-    },
+    helpers::{record_endpoint_metrics, record_external_match_metrics, record_fill_ratio},
     labels::{
         DECIMAL_CORRECTION_FIXED_METRIC_TAG, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT,
         KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
@@ -167,16 +165,13 @@ impl Server {
 
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone
-                .handle_quote_assembly_bundle_response(
-                    key_desc,
-                    &req,
-                    &headers,
-                    &sponsored_match_resp,
-                    bundle_id,
-                )
-                .await
-            {
+            if let Err(e) = server_clone.handle_quote_assembly_bundle_response(
+                &key_desc,
+                &req,
+                &headers,
+                &sponsored_match_resp,
+                &bundle_id,
+            ) {
                 warn!("Error handling bundle: {e}");
             };
         });
@@ -249,16 +244,13 @@ impl Server {
         // Watch the bundle for settlement
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone
-                .handle_direct_match_bundle_response(
-                    key_description,
-                    &external_match_req,
-                    &headers,
-                    &sponsored_match_resp,
-                    bundle_id,
-                )
-                .await
-            {
+            if let Err(e) = server_clone.handle_direct_match_bundle_response(
+                &key_description,
+                &external_match_req,
+                &headers,
+                &sponsored_match_resp,
+                &bundle_id,
+            ) {
                 warn!("Error handling bundle: {e}");
             };
         });
@@ -449,82 +441,78 @@ impl Server {
     // --- Bundle Tracking --- //
 
     /// Handle a bundle response from a quote assembly request
-    async fn handle_quote_assembly_bundle_response(
+    fn handle_quote_assembly_bundle_response(
         &self,
-        key: String,
+        key: &str,
         req: &AssembleExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
-        request_id: String,
+        request_id: &str,
     ) -> Result<(), AuthServerError> {
         let original_order = &req.signed_quote.quote.order;
         let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
 
         let sdk_version = get_sdk_version(headers);
         if req.updated_order.is_some() {
-            log_updated_order(&key, original_order, updated_order, &request_id, &sdk_version);
+            log_updated_order(key, original_order, updated_order, request_id, &sdk_version);
         }
 
         self.handle_bundle_response(
             key,
             updated_order,
             resp,
-            Some(request_id),
+            request_id,
             "assemble-external-match",
-            sdk_version,
+            &sdk_version,
         )
-        .await
     }
 
     /// Handle a bundle response from a direct match request
-    async fn handle_direct_match_bundle_response(
+    fn handle_direct_match_bundle_response(
         &self,
-        key: String,
+        key: &str,
         req: &ExternalMatchRequest,
         headers: &HeaderMap,
         resp: &SponsoredMatchResponse,
-        request_id: String,
+        request_id: &str,
     ) -> Result<(), AuthServerError> {
         let sdk_version = get_sdk_version(headers);
         self.handle_bundle_response(
             key,
             &req.external_order,
             resp,
-            Some(request_id),
+            request_id,
             "request-external-match",
-            sdk_version,
+            &sdk_version,
         )
-        .await
     }
 
     /// Record and watch a bundle that was forwarded to the client
     ///
     /// This method will await settlement and update metrics, rate limits, etc
     #[allow(clippy::too_many_arguments)]
-    async fn handle_bundle_response(
+    fn handle_bundle_response(
         &self,
-        key: String,
+        key: &str,
         order: &ExternalOrder,
         resp: &SponsoredMatchResponse,
-        request_id: Option<String>,
+        request_id: &str,
         endpoint: &str,
-        sdk_version: String,
+        sdk_version: &str,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
-        let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-        log_bundle(order, resp, &key, &request_id, endpoint, &sdk_version)?;
+        log_bundle(order, resp, key, request_id, endpoint, sdk_version)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
-        let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
+        let SponsoredMatchResponse { match_bundle, is_sponsored, .. } = resp;
 
         let labels = vec![
-            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.clone()),
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.to_string()),
+            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
             (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
-            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.clone()),
+            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled
@@ -537,21 +525,6 @@ impl Server {
             tokio::spawn(async move {
                 quote_metrics.record_quote_comparison(&bundle_clone, &labels_clone).await;
             });
-        }
-
-        // If the bundle settles, increase the API user's a rate limit token balance
-        let did_settle = await_settlement(match_bundle, &self.arbitrum_client).await?;
-        if did_settle {
-            if let Some(gas_sponsorship_info) = gas_sponsorship_info {
-                self.record_settled_match_sponsorship(
-                    match_bundle,
-                    gas_sponsorship_info,
-                    key,
-                    request_id,
-                    sdk_version,
-                )
-                .await?;
-            }
         }
 
         // Record metrics
