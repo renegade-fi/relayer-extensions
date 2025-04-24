@@ -11,7 +11,7 @@ use gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
     requires_exact_output_amount_update,
 };
-use http::{HeaderMap, Method, Response, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
     ExternalQuoteRequest, ExternalQuoteResponse,
@@ -22,7 +22,9 @@ use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use super::helpers::{generate_quote_uuid, overwrite_response_body};
+use super::helpers::{
+    generate_quote_uuid, get_sdk_version, log_unsuccessful_relayer_request, overwrite_response_body,
+};
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
@@ -39,16 +41,6 @@ use crate::telemetry::{
 
 mod gas_sponsorship;
 pub use gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The header name for the SDK version
-const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
-
-/// The default SDK version to use if the header is not set
-const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
 
 // ---------------
 // | Server Impl |
@@ -599,37 +591,6 @@ impl Server {
 // -------------------
 // | Logging helpers |
 // -------------------
-
-/// Parse the SDK version from the given headers.
-/// If unset or malformed, returns an empty string.
-fn get_sdk_version(headers: &HeaderMap) -> String {
-    headers
-        .get(SDK_VERSION_HEADER)
-        .map(|v| v.to_str().unwrap_or_default())
-        .unwrap_or(SDK_VERSION_DEFAULT)
-        .to_string()
-}
-
-/// Log a non-200 response from the relayer for the given request
-fn log_unsuccessful_relayer_request(
-    resp: &Response<Bytes>,
-    key_description: &str,
-    path: &str,
-    req_body: &[u8],
-    headers: &HeaderMap,
-) {
-    let status = resp.status();
-    let text = String::from_utf8_lossy(resp.body()).to_string();
-    let req_body = String::from_utf8_lossy(req_body).to_string();
-    let sdk_version = get_sdk_version(headers);
-    warn!(
-        key_description = key_description,
-        path = path,
-        request_body = req_body,
-        sdk_version = sdk_version,
-        "Non-200 response from relayer: {status}: {text}",
-    );
-}
 
 /// Log a quote
 fn log_quote(

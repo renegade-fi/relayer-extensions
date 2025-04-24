@@ -271,6 +271,17 @@ async fn main() {
             server.handle_external_match_request(path, headers, body, query_str).await
         });
 
+    let order_book_depth = warp::path("v0")
+        .and(warp::path("order_book"))
+        .and(warp::path("depth"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_server(server.clone()))
+        .and_then(|mint, path, headers, server: Arc<Server>| async move {
+            server.handle_order_book_depth_request(path, headers, mint).await
+        });
+
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
@@ -279,6 +290,7 @@ async fn main() {
         .or(external_quote_assembly_path)
         .or(expire_api_key)
         .or(add_api_key)
+        .or(order_book_depth)
         .recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }

@@ -6,6 +6,7 @@ pub mod gas_estimation;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;
+mod order_book;
 pub mod price_reporter_client;
 mod queries;
 mod rate_limiter;
