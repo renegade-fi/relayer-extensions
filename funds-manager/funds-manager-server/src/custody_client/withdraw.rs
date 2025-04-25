@@ -2,9 +2,14 @@
 use std::str::FromStr;
 
 use crate::{error::FundsManagerError, helpers::get_secret};
-use bigdecimal::{BigDecimal, FromPrimitive};
-use ethers::signers::{LocalWallet, Signer};
-use fireblocks_sdk::types::{PeerType, TransactionStatus};
+use ethers::signers::LocalWallet;
+use fireblocks_sdk::{
+    apis::{transactions_api::CreateTransactionParams, Api},
+    models::{
+        DestinationTransferPeerPath, SourceTransferPeerPath, TransactionOperation,
+        TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,
+    },
+};
 use renegade_arbitrum_client::constants::Chain;
 use renegade_common::types::token::{Token, USDC_TICKER};
 use tracing::info;
@@ -15,8 +20,6 @@ use super::{CustodyClient, DepositWithdrawSource};
 // | Constants |
 // -------------
 
-/// The suffix for the secret name for the Hyperliquid private key
-const HYPERLIQUID_PKEY_SECRET_SUFFIX: &str = "hyperliquid-private-key";
 /// The address of the Hyperliquid bridge on Arbitrum mainnet
 const MAINNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x2df1c51e09aecf9cacb7bc98cb1742757f163df7";
 /// The address of the Hyperliquid bridge on Arbitrum testnet
@@ -27,6 +30,12 @@ const TESTNET_HYPERLIQUID_USDC_ADDRESS: &str = "0x1baAbB04529D43a73232B713C0FE47
 /// for potential floating point precision issues.
 /// Concretely, this is equivalent to 1 nominal unit of USDC.
 const HYPERLIQUID_USDC_BUFFER: f64 = 0.000001;
+
+/// The error message for when the Hyperliquid bridge is not found in the
+/// set of Fireblocks whitelisted contracts
+const ERR_HYPERLIQUID_BRIDGE_NOT_FOUND: &str = "Hyperliquid bridge not found";
+/// The error message for when the USDC asset is not found in Fireblocks
+const ERR_USDC_ASSET_NOT_FOUND: &str = "USDC asset not found";
 
 // ---------------
 // | Client impl |
@@ -70,10 +79,9 @@ impl CustodyClient {
         &self,
         source: DepositWithdrawSource,
         mint: &str,
-        amount: f64,
+        withdraw_amount: f64,
     ) -> Result<(), FundsManagerError> {
         let vault_name = source.vault_name();
-        let client = self.get_fireblocks_client()?;
         let hot_wallet = self.get_hot_wallet_by_vault(vault_name).await?;
 
         // Get the vault account and asset to transfer from
@@ -86,14 +94,15 @@ impl CustodyClient {
         })?;
 
         // Check if the available balance is sufficient
-        let available = vault
+        let available_str = vault
             .assets
             .iter()
             .find(|a| a.id == asset_id)
             .map(|acct| acct.available.clone())
             .unwrap_or_default();
-        let withdraw_amount = BigDecimal::from_f64(amount)
-            .ok_or_else(|| FundsManagerError::Custom("Invalid amount".to_string()))?;
+
+        let available = available_str.parse::<f64>().map_err(FundsManagerError::parse)?;
+
         if available < withdraw_amount {
             return Err(FundsManagerError::Custom(format!(
                 "Insufficient balance. Available: {}, Requested: {}",
@@ -103,26 +112,14 @@ impl CustodyClient {
 
         // Transfer
         let wallet_id = hot_wallet.internal_wallet_id.to_string();
-        let note = format!("Withdraw {amount} {asset_id} from {vault_name} to {wallet_id}");
-
-        let (resp, _rid) = client
-            .create_transaction_peer(
-                vault.id,
-                &wallet_id,
-                PeerType::INTERNAL_WALLET,
-                asset_id,
-                withdraw_amount,
-                Some(&note),
-            )
-            .await?;
-
-        let tx = self.poll_fireblocks_transaction(&resp.id).await?;
-        if tx.status != TransactionStatus::COMPLETED && tx.status != TransactionStatus::CONFIRMING {
-            let err_msg = format!("Transaction failed: {:?}", tx.status);
-            return Err(FundsManagerError::Custom(err_msg));
-        }
-
-        Ok(())
+        self.transfer_from_vault(
+            vault.id,
+            asset_id,
+            wallet_id,
+            TransferPeerPathType::InternalWallet,
+            withdraw_amount,
+        )
+        .await
     }
 
     /// Withdraw gas
@@ -157,14 +154,8 @@ impl CustodyClient {
         &self,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
-        let secret_name = format!("{}-{}", self.chain, HYPERLIQUID_PKEY_SECRET_SUFFIX);
-        let hyperliquid_pkey = get_secret(&secret_name, &self.aws_config).await?;
-
-        let hyperliquid_account = LocalWallet::from_str(&hyperliquid_pkey)
-            .map_err(FundsManagerError::parse)
-            .map(|w| w.with_chain_id(self.chain_id))?;
-
-        let hyperliquid_address = format!("{:#x}", hyperliquid_account.address());
+        let hyperliquid_vault_id = self.get_hyperliquid_vault_id().await?;
+        let hyperliquid_address = self.get_hyperliquid_address(&hyperliquid_vault_id).await?;
 
         let hot_wallet = self.get_quoter_hot_wallet().await?;
 
@@ -196,11 +187,10 @@ impl CustodyClient {
         // Transfer the USDC from the Hyperliquid account to the bridge.
         // This is necessary so that the USDC is credited to the same account on the
         // Hyperliquid L1.
-        // TODO: If we want to avoid funding the Hyperliquid keypair with ETH for this
-        // transfer, we can have the funds manager submit a
-        // `batchedDepositWithPermit` on its behalf:
-        // https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2#deposit-with-permit
-        self.bridge_to_hyperliquid(amount, hyperliquid_account, usdc_mint).await
+        // TODO: If we want to avoid an extra transaction for this transfer,
+        // we can have the funds manager submit a `batchedDepositWithPermit` on its
+        // behalf: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2#deposit-with-permit
+        self.bridge_to_hyperliquid(amount, usdc_mint, hyperliquid_vault_id).await
     }
 
     // -----------
@@ -234,19 +224,101 @@ impl CustodyClient {
     async fn bridge_to_hyperliquid(
         &self,
         amount: f64,
-        hyperliquid_account: LocalWallet,
         usdc_mint: &str,
+        hyperliquid_vault_id: String,
     ) -> Result<(), FundsManagerError> {
+        let hyperliquid_bridge_id = self.get_hyperliquid_bridge_id().await?;
+
+        let asset_id = self
+            .get_asset_id_for_address(usdc_mint)
+            .await?
+            .ok_or(FundsManagerError::fireblocks(ERR_USDC_ASSET_NOT_FOUND))?;
+
+        self.transfer_from_vault(
+            hyperliquid_vault_id,
+            asset_id,
+            hyperliquid_bridge_id,
+            TransferPeerPathType::ExternalWallet,
+            amount,
+        )
+        .await
+    }
+
+    /// Get the Fireblocks ID of the whitelisted Hyperliquid bridge
+    /// contract.
+    ///
+    /// We store the bridge address as an "external wallet" in Fireblocks
+    /// to allow ERC20 transfers to it.
+    async fn get_hyperliquid_bridge_id(&self) -> Result<String, FundsManagerError> {
         let bridge_address = match self.chain {
             Chain::Mainnet => MAINNET_HYPERLIQUID_BRIDGE_ADDRESS,
             Chain::Testnet => TESTNET_HYPERLIQUID_BRIDGE_ADDRESS,
             _ => return Err(FundsManagerError::Custom("Unsupported chain".to_string())),
         };
 
-        let tx =
-            self.erc20_transfer(usdc_mint, bridge_address, amount, hyperliquid_account).await?;
+        let whitelisted_wallets = self
+            .fireblocks_client
+            .sdk
+            .apis()
+            .whitelisted_external_wallets_api()
+            .get_external_wallets()
+            .await?;
 
-        info!("Sent {amount} USDC to Hyperliquid bridge. Tx: {:#x}", tx.transaction_hash);
+        for wallet in whitelisted_wallets {
+            let wallet_id = wallet.id;
+            for asset in wallet.assets {
+                if let Some(address) = asset.address {
+                    if address.to_lowercase() == bridge_address.to_lowercase() {
+                        return Ok(wallet_id);
+                    }
+                }
+            }
+        }
+
+        Err(FundsManagerError::fireblocks(ERR_HYPERLIQUID_BRIDGE_NOT_FOUND))
+    }
+
+    /// Transfer an asset from a vault to the given destination
+    async fn transfer_from_vault(
+        &self,
+        vault_id: String,
+        asset_id: String,
+        dest_id: String,
+        dest_type: TransferPeerPathType,
+        amount: f64,
+    ) -> Result<(), FundsManagerError> {
+        let note =
+            format!("Transfer {amount} {asset_id} from vault {vault_id} to destination {dest_id}");
+
+        let source = SourceTransferPeerPath { id: Some(vault_id), ..Default::default() };
+
+        let destination = DestinationTransferPeerPath {
+            r#type: dest_type,
+            id: Some(dest_id),
+            ..Default::default()
+        };
+
+        let amount = TransactionRequestAmount::Number(amount);
+
+        let params = CreateTransactionParams::builder()
+            .transaction_request(TransactionRequest {
+                operation: Some(TransactionOperation::Transfer),
+                source: Some(source),
+                destination: Some(destination),
+                asset_id: Some(asset_id),
+                amount: Some(amount),
+                note: Some(note),
+                ..Default::default()
+            })
+            .build();
+
+        let resp = self.fireblocks_client.sdk.transactions_api().create_transaction(params).await?;
+
+        let tx = self.poll_fireblocks_transaction(&resp.id).await?;
+        if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Confirming {
+            let err_msg = format!("Transaction failed: {}", tx.status);
+            return Err(FundsManagerError::Fireblocks(err_msg));
+        }
 
         Ok(())
     }
