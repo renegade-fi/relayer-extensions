@@ -7,7 +7,9 @@
 #![feature(trivial_bounds)]
 
 use alloy_primitives::{ruint::FromUintError, Address, U256};
-use renegade_api::http::external_match::{AtomicMatchApiBundle, SignedExternalQuote};
+use renegade_api::http::external_match::{
+    AtomicMatchApiBundle, MalleableAtomicMatchApiBundle, SignedExternalQuote,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -125,6 +127,16 @@ pub struct SponsoredMatchResponse {
     pub match_bundle: AtomicMatchApiBundle,
     /// Whether or not the match was sponsored
     pub is_sponsored: bool,
+    /// The gas sponsorship info
+    pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
+}
+
+/// A sponsored malleable match response from the auth server
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SponsoredMalleableMatchResponse {
+    /// The malleable match bundle, potentially updated to reflect the
+    /// post-sponsorship receive amount
+    pub match_bundle: MalleableAtomicMatchApiBundle,
     /// The gas sponsorship info
     pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
 }
