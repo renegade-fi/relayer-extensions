@@ -123,7 +123,7 @@ impl Server {
             arc_pool.clone(),
             config.clone(),
             gas_sponsor_address,
-        );
+        )?;
 
         let execution_client = ExecutionClient::new(
             args.execution_venue_api_key,

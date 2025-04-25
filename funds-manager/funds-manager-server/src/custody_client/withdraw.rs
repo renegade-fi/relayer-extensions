@@ -2,9 +2,14 @@
 use std::str::FromStr;
 
 use crate::{error::FundsManagerError, helpers::get_secret};
-use bigdecimal::{BigDecimal, FromPrimitive};
 use ethers::signers::{LocalWallet, Signer};
-use fireblocks_sdk::types::{PeerType, TransactionStatus};
+use fireblocks_sdk::{
+    apis::transactions_api::CreateTransactionParams,
+    models::{
+        DestinationTransferPeerPath, SourceTransferPeerPath, TransactionOperation,
+        TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,
+    },
+};
 use renegade_arbitrum_client::constants::Chain;
 use renegade_common::types::token::{Token, USDC_TICKER};
 use tracing::info;
@@ -70,10 +75,9 @@ impl CustodyClient {
         &self,
         source: DepositWithdrawSource,
         mint: &str,
-        amount: f64,
+        withdraw_amount: f64,
     ) -> Result<(), FundsManagerError> {
         let vault_name = source.vault_name();
-        let client = self.get_fireblocks_client()?;
         let hot_wallet = self.get_hot_wallet_by_vault(vault_name).await?;
 
         // Get the vault account and asset to transfer from
@@ -86,14 +90,15 @@ impl CustodyClient {
         })?;
 
         // Check if the available balance is sufficient
-        let available = vault
+        let available_str = vault
             .assets
             .iter()
             .find(|a| a.id == asset_id)
             .map(|acct| acct.available.clone())
             .unwrap_or_default();
-        let withdraw_amount = BigDecimal::from_f64(amount)
-            .ok_or_else(|| FundsManagerError::Custom("Invalid amount".to_string()))?;
+
+        let available = available_str.parse::<f64>().map_err(FundsManagerError::parse)?;
+
         if available < withdraw_amount {
             return Err(FundsManagerError::Custom(format!(
                 "Insufficient balance. Available: {}, Requested: {}",
@@ -102,23 +107,36 @@ impl CustodyClient {
         }
 
         // Transfer
-        let wallet_id = hot_wallet.internal_wallet_id.to_string();
-        let note = format!("Withdraw {amount} {asset_id} from {vault_name} to {wallet_id}");
+        let wallet_id = hot_wallet.internal_wallet_id;
+        let note =
+            format!("Withdraw {withdraw_amount} {asset_id} from {vault_name} to {wallet_id}");
 
-        let (resp, _rid) = client
-            .create_transaction_peer(
-                vault.id,
-                &wallet_id,
-                PeerType::INTERNAL_WALLET,
-                asset_id,
-                withdraw_amount,
-                Some(&note),
-            )
-            .await?;
+        let source = SourceTransferPeerPath { id: Some(vault.id), ..Default::default() };
+        let destination = DestinationTransferPeerPath {
+            r#type: TransferPeerPathType::InternalWallet,
+            id: Some(wallet_id.to_string()),
+            wallet_id: Some(wallet_id),
+            ..Default::default()
+        };
+        let amount = TransactionRequestAmount::Number(withdraw_amount);
+
+        let params = CreateTransactionParams::builder()
+            .transaction_request(TransactionRequest {
+                operation: Some(TransactionOperation::Transfer),
+                source: Some(source),
+                destination: Some(destination),
+                asset_id: Some(asset_id),
+                amount: Some(amount),
+                note: Some(note),
+                ..Default::default()
+            })
+            .build();
+
+        let resp = self.fireblocks_client.transactions_api().create_transaction(params).await?;
 
         let tx = self.poll_fireblocks_transaction(&resp.id).await?;
-        if tx.status != TransactionStatus::COMPLETED && tx.status != TransactionStatus::CONFIRMING {
-            let err_msg = format!("Transaction failed: {:?}", tx.status);
+        if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Confirming {
+            let err_msg = format!("Transaction failed: {}", tx.status);
             return Err(FundsManagerError::Custom(err_msg));
         }
 
