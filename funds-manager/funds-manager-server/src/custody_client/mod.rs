@@ -13,11 +13,11 @@ use ethers::providers::{Http, Middleware, Provider};
 use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, TransactionReceipt, TransactionRequest};
 use ethers::utils::format_units;
-use fireblocks_sdk::types::Transaction;
-use fireblocks_sdk::{
-    types::Account as FireblocksAccount, Client as FireblocksClient,
-    ClientBuilder as FireblocksClientBuilder,
-};
+use fireblocks_sdk::apis::blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams};
+use fireblocks_sdk::apis::vaults_api::GetPagedVaultAccountsParams;
+use fireblocks_sdk::apis::Api;
+use fireblocks_sdk::models::{TransactionResponse, VaultAccount};
+use fireblocks_sdk::{Client as FireblocksClient, ClientBuilder as FireblocksClientBuilder};
 use renegade_arbitrum_client::constants::Chain;
 use renegade_util::err_str;
 use std::str::FromStr;
@@ -28,6 +28,10 @@ use tracing::info;
 use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
 use crate::helpers::ERC20;
+
+/// The error message for when the Arbitrum blockchain is not found
+/// in the Fireblocks `/blockchains` endpoint response
+const ERR_ARB_CHAIN_NOT_FOUND: &str = "Arbitrum blockchain not found";
 
 /// The source of a deposit
 #[derive(Clone, Copy)]
@@ -69,10 +73,8 @@ pub struct CustodyClient {
     chain: Chain,
     /// The chain ID
     chain_id: u64,
-    /// The API key for the Fireblocks API
-    fireblocks_api_key: String,
-    /// The API secret for the Fireblocks API
-    fireblocks_api_secret: Vec<u8>,
+    /// The Fireblocks API client
+    fireblocks_client: FireblocksClient,
     /// The arbitrum RPC url to use for the custody client
     arbitrum_rpc_url: String,
     /// The database connection pool
@@ -96,18 +98,22 @@ impl CustodyClient {
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
-    ) -> Self {
+    ) -> Result<Self, FundsManagerError> {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        Self {
+        let fireblocks_client =
+            FireblocksClientBuilder::new(&fireblocks_api_key, &fireblocks_api_secret)
+                .build()
+                .map_err(FundsManagerError::fireblocks)?;
+
+        Ok(Self {
             chain,
             chain_id,
-            fireblocks_api_key,
-            fireblocks_api_secret,
+            fireblocks_client,
             arbitrum_rpc_url,
             db_pool,
             aws_config,
             gas_sponsor_address,
-        }
+        })
     }
 
     /// Get a database connection from the pool
@@ -122,43 +128,69 @@ impl CustodyClient {
 
     // --- Fireblocks --- //
 
-    /// Get a fireblocks client
-    pub fn get_fireblocks_client(&self) -> Result<FireblocksClient, FundsManagerError> {
-        FireblocksClientBuilder::new(&self.fireblocks_api_key, &self.fireblocks_api_secret)
-            .build()
-            .map_err(FundsManagerError::fireblocks)
-    }
-
     /// Get the fireblocks asset ID for a given ERC20 address
     pub(crate) async fn get_asset_id_for_address(
         &self,
         address: &str,
     ) -> Result<Option<String>, FundsManagerError> {
-        let client = self.get_fireblocks_client()?;
-        let (supported_assets, _rid) = client.supported_assets().await?;
-        for asset in supported_assets {
-            if asset.contract_address.to_lowercase() == address.to_lowercase() {
-                return Ok(Some(asset.id.to_string()));
+        let blockchain_id = self.get_current_blockchain_id().await?;
+        let list_assets_params =
+            ListAssetsParams::builder().blockchain_id(blockchain_id).page_size(1000.0).build();
+
+        let arb_assets = self
+            .fireblocks_client
+            .apis()
+            .blockchains_assets_beta_api()
+            .list_assets(list_assets_params)
+            .await?;
+
+        for asset in arb_assets.data {
+            if let Some(contract_address) = asset.onchain.and_then(|o| o.address) {
+                if contract_address.to_lowercase() == address.to_lowercase() {
+                    return Ok(Some(asset.legacy_id));
+                }
             }
         }
 
         Ok(None)
     }
 
+    /// Get the Fireblocks blockchain ID for the current chain
+    async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
+        let list_blockchains_params = ListBlockchainsParams::builder()
+            .test(matches!(self.chain, Chain::Testnet))
+            .deprecated(false)
+            .build();
+
+        let blockchains = self
+            .fireblocks_client
+            .apis()
+            .blockchains_assets_beta_api()
+            .list_blockchains(list_blockchains_params)
+            .await?;
+
+        blockchains
+            .data
+            .into_iter()
+            .find(|b| b.onchain.chain_id == Some(self.chain_id.to_string()))
+            .map(|b| b.id)
+            .ok_or(FundsManagerError::fireblocks(ERR_ARB_CHAIN_NOT_FOUND))
+    }
+
     /// Get the vault account for a given asset and source
     pub(crate) async fn get_vault_account(
         &self,
         name: &str,
-    ) -> Result<Option<FireblocksAccount>, FundsManagerError> {
-        let client = self.get_fireblocks_client()?;
-        let req = fireblocks_sdk::PagingVaultRequestBuilder::new()
-            .name_prefix(name)
-            .limit(100)
-            .build()
-            .map_err(err_str!(FundsManagerError::Fireblocks))?;
+    ) -> Result<Option<VaultAccount>, FundsManagerError> {
+        let params = GetPagedVaultAccountsParams::builder()
+            .name_prefix(name.to_string())
+            .limit(100.0)
+            .build();
 
-        let (vaults, _rid) = client.vaults(req).await?;
-        for vault in vaults.accounts.into_iter() {
+        let vaults_resp =
+            self.fireblocks_client.clone().vaults_api().get_paged_vault_accounts(params).await?;
+
+        for vault in vaults_resp.accounts.into_iter() {
             if vault.name == name {
                 return Ok(Some(vault));
             }
@@ -171,17 +203,15 @@ impl CustodyClient {
     pub(crate) async fn poll_fireblocks_transaction(
         &self,
         transaction_id: &str,
-    ) -> Result<Transaction, FundsManagerError> {
-        let client = self.get_fireblocks_client()?;
+    ) -> Result<TransactionResponse, FundsManagerError> {
         let timeout = Duration::from_secs(60);
         let interval = Duration::from_secs(5);
-        client
+        self.fireblocks_client
             .poll_transaction(transaction_id, timeout, interval, |tx| {
                 info!("tx {}: {:?}", transaction_id, tx.status);
             })
             .await
             .map_err(FundsManagerError::fireblocks)
-            .map(|(tx, _rid)| tx)
     }
 
     // --- Arbitrum JSON RPC --- //

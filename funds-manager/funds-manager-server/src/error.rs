@@ -4,7 +4,7 @@ use std::{error::Error, fmt::Display};
 
 use warp::reject::Reject;
 
-use fireblocks_sdk::{ClientError as FireblocksClientError, FireblocksError};
+use fireblocks_sdk::{apis::Error as FireblocksApiError, FireblocksError};
 
 /// The error type emitted by the funds manager
 #[derive(Debug, Clone)]
@@ -23,6 +23,8 @@ pub enum FundsManagerError {
     SecretsManager(String),
     /// An error with AWS S3
     S3(String),
+    /// An error with a JSON-RPC request
+    JsonRpc(String),
     /// A miscellaneous error
     Custom(String),
 }
@@ -64,6 +66,11 @@ impl FundsManagerError {
         FundsManagerError::S3(msg.to_string())
     }
 
+    /// Create a JSON-RPC error
+    pub fn json_rpc<T: ToString>(msg: T) -> FundsManagerError {
+        FundsManagerError::JsonRpc(msg.to_string())
+    }
+
     /// Create a custom error
     pub fn custom<T: ToString>(msg: T) -> FundsManagerError {
         FundsManagerError::Custom(msg.to_string())
@@ -79,6 +86,7 @@ impl Display for FundsManagerError {
             FundsManagerError::Parse(e) => write!(f, "Parse error: {}", e),
             FundsManagerError::SecretsManager(e) => write!(f, "Secrets manager error: {}", e),
             FundsManagerError::S3(e) => write!(f, "S3 error: {}", e),
+            FundsManagerError::JsonRpc(e) => write!(f, "JSON-RPC error: {}", e),
             FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
         }
@@ -87,8 +95,8 @@ impl Display for FundsManagerError {
 impl Error for FundsManagerError {}
 impl Reject for FundsManagerError {}
 
-impl From<FireblocksClientError> for FundsManagerError {
-    fn from(error: FireblocksClientError) -> Self {
+impl<T> From<FireblocksApiError<T>> for FundsManagerError {
+    fn from(error: FireblocksApiError<T>) -> Self {
         FundsManagerError::Fireblocks(error.to_string())
     }
 }
