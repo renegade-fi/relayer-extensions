@@ -33,15 +33,16 @@ pub struct BundleContext {
 }
 
 struct StoreInner {
-    // The mapping from bundle ID to bundle context
+    /// The mapping from bundle ID to bundle context
     by_id: HashMap<String, BundleContext>,
-    // The mapping from nullifier to bundle IDs
-    //
-    // This is used to efficiently cleanup the store when a nullifier is spent
+    /// The mapping from nullifier to bundle IDs
+    ///
+    /// This is used to efficiently cleanup the store when a nullifier is spent
     by_null: HashMap<Nullifier, HashSet<String>>,
 }
 
 impl StoreInner {
+    /// Create a new inner store
     pub fn new() -> Self {
         Self { by_id: HashMap::new(), by_null: HashMap::new() }
     }
@@ -50,14 +51,17 @@ impl StoreInner {
 /// A thread-safe store for tracking bundle contexts by ID and nullifier.
 #[derive(Clone)]
 pub struct BundleStore {
+    /// The inner store
     inner: Arc<RwLock<StoreInner>>,
 }
 
 impl BundleStore {
+    /// Create a new bundle store
     pub fn new() -> Self {
         Self { inner: Arc::new(RwLock::new(StoreInner::new())) }
     }
 
+    /// Write a bundle to the store
     pub async fn write(
         &self,
         bundle_id: String,
@@ -69,11 +73,13 @@ impl BundleStore {
         Ok(())
     }
 
+    /// Read a bundle from the store by its ID
     pub async fn read(&self, bundle_id: &str) -> Result<Option<BundleContext>, AuthServerError> {
         let inner = self.inner.read().await;
         Ok(inner.by_id.get(bundle_id).cloned())
     }
 
+    /// Cleanup (remove) all bundles that were indexed with the given nullifier
     pub async fn cleanup_by_nullifier(&self, nullifier: &Nullifier) -> Result<(), AuthServerError> {
         let mut inner = self.inner.write().await;
         if let Some(bundle_ids) = inner.by_null.remove(nullifier) {

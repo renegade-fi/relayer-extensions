@@ -1,3 +1,4 @@
+//! Server methods that watch for external match settlement
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse}; // Added GasSponsorshipInfo
 use http::HeaderMap;
 use renegade_api::http::external_match::ApiExternalMatchResult;

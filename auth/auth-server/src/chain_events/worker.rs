@@ -17,6 +17,7 @@ use super::{
 };
 
 impl OnChainEventListener {
+    /// Create a new on-chain event listener
     pub fn new(
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
@@ -34,6 +35,7 @@ impl OnChainEventListener {
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 
+    /// Start the listener on its own runtime
     pub fn start(&mut self) -> Result<(), OnChainEventListenerError> {
         // Spawn the execution loop in a separate thread
         let executor = self.executor.take().unwrap();

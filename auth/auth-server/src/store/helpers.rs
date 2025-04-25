@@ -1,3 +1,4 @@
+//! Helper methods for the bundle store
 use alloy_primitives::{hex, keccak256};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::wallet::Nullifier;
