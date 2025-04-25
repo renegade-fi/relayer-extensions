@@ -17,13 +17,13 @@ use fireblocks_sdk::apis::blockchains_assets_beta_api::{ListAssetsParams, ListBl
 use fireblocks_sdk::apis::vaults_api::GetPagedVaultAccountsParams;
 use fireblocks_sdk::apis::Api;
 use fireblocks_sdk::models::{TransactionResponse, VaultAccount};
-use fireblocks_sdk::{Client as FireblocksClient, ClientBuilder as FireblocksClientBuilder};
+use fireblocks_sdk::{Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder};
 use renegade_arbitrum_client::constants::Chain;
 use renegade_util::err_str;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
@@ -66,6 +66,19 @@ impl DepositWithdrawSource {
     }
 }
 
+/// A client for interacting with the Fireblocks API
+#[derive(Clone)]
+pub struct FireblocksClient {
+    /// The Fireblocks API client
+    pub sdk: FireblocksSdk,
+    /// The Fireblocks vault ID for the Hyperliquid vault,
+    /// cached here for performance
+    pub hyperliquid_vault_id: Option<String>,
+    /// The address of the Hyperliquid account,
+    /// cached here for performance
+    pub hyperliquid_address: Option<String>,
+}
+
 /// The client interacting with the custody backend
 #[derive(Clone)]
 pub struct CustodyClient {
@@ -74,7 +87,7 @@ pub struct CustodyClient {
     /// The chain ID
     chain_id: u64,
     /// The Fireblocks API client
-    fireblocks_client: FireblocksClient,
+    fireblocks_client: Arc<FireblocksClient>,
     /// The arbitrum RPC url to use for the custody client
     arbitrum_rpc_url: String,
     /// The database connection pool
@@ -100,10 +113,16 @@ impl CustodyClient {
         gas_sponsor_address: Address,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        let fireblocks_client =
+        let fireblocks_sdk =
             FireblocksClientBuilder::new(&fireblocks_api_key, &fireblocks_api_secret)
                 .build()
                 .map_err(FundsManagerError::fireblocks)?;
+
+        let fireblocks_client = Arc::new(FireblocksClient {
+            sdk: fireblocks_sdk,
+            hyperliquid_vault_id: None,
+            hyperliquid_address: None,
+        });
 
         Ok(Self {
             chain,
@@ -139,6 +158,7 @@ impl CustodyClient {
 
         let arb_assets = self
             .fireblocks_client
+            .sdk
             .apis()
             .blockchains_assets_beta_api()
             .list_assets(list_assets_params)
@@ -164,6 +184,7 @@ impl CustodyClient {
 
         let blockchains = self
             .fireblocks_client
+            .sdk
             .apis()
             .blockchains_assets_beta_api()
             .list_blockchains(list_blockchains_params)
@@ -188,7 +209,7 @@ impl CustodyClient {
             .build();
 
         let vaults_resp =
-            self.fireblocks_client.clone().vaults_api().get_paged_vault_accounts(params).await?;
+            self.fireblocks_client.sdk.vaults_api().get_paged_vault_accounts(params).await?;
 
         for vault in vaults_resp.accounts.into_iter() {
             if vault.name == name {
@@ -205,10 +226,11 @@ impl CustodyClient {
         transaction_id: &str,
     ) -> Result<TransactionResponse, FundsManagerError> {
         let timeout = Duration::from_secs(60);
-        let interval = Duration::from_secs(5);
+        let interval = Duration::from_secs(1);
         self.fireblocks_client
+            .sdk
             .poll_transaction(transaction_id, timeout, interval, |tx| {
-                info!("tx {}: {:?}", transaction_id, tx.status);
+                debug!("tx {}: {:?}", transaction_id, tx.status);
             })
             .await
             .map_err(FundsManagerError::fireblocks)

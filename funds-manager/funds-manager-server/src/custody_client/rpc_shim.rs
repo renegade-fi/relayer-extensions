@@ -50,9 +50,10 @@ const HYPERLIQUID_VAULT_NAME: &str = "Hyperliquid";
 const HYPERLIQUID_L1_ACTION_DOMAIN: &str = "Exchange";
 /// The EIP-712 domain name for Hyperliquid user actions
 const HYPERLIQUID_USER_ACTION_DOMAIN: &str = "HyperliquidSignTransaction";
-/// The set of allowed EIP-712 domains for typed data signing requests.
-const ALLOWED_EIP712_DOMAIN_NAMES: [&str; 2] =
-    [HYPERLIQUID_L1_ACTION_DOMAIN, HYPERLIQUID_USER_ACTION_DOMAIN];
+/// The "chain ID" of the Hyperliquid "exchange" domain, hardcoded in the
+/// official Hyperliquid Python SDK:
+/// https://github.com/hyperliquid-dex/hyperliquid-python-sdk/blob/master/hyperliquid/utils/signing.py#L160
+const HYPERLIQUID_EXCHANGE_CHAIN_ID: U256 = U256([1337, 0, 0, 0]);
 
 /// The error message emitted when an unsupported RPC method is requested.
 const ERR_UNSUPPORTED_METHOD: &str = "Unsupported RPC method";
@@ -218,38 +219,41 @@ impl CustodyClient {
     ///
     /// Currently, we only support Hyperliquid typed data signing requests.
     fn validate_domain(&self, domain: &EIP712Domain) -> Result<(), FundsManagerError> {
+        let expected_chain_id = match domain.name.as_ref() {
+            None => return Err(FundsManagerError::json_rpc(ERR_INVALID_DOMAIN_NAME)),
+            Some(name) if name == HYPERLIQUID_L1_ACTION_DOMAIN => HYPERLIQUID_EXCHANGE_CHAIN_ID,
+            Some(name) if name == HYPERLIQUID_USER_ACTION_DOMAIN => U256::from(self.chain_id),
+            _ => return Err(FundsManagerError::json_rpc(ERR_INVALID_DOMAIN_NAME)),
+        };
+
         match domain.chain_id {
             None => return Err(FundsManagerError::json_rpc(ERR_INVALID_CHAIN_ID)),
             Some(chain_id) => {
-                if chain_id != U256::from(self.chain_id) {
+                if chain_id != expected_chain_id {
                     return Err(FundsManagerError::json_rpc(ERR_INVALID_CHAIN_ID));
                 }
             },
         }
 
-        if domain.name.is_none() {
-            return Err(FundsManagerError::json_rpc(ERR_INVALID_DOMAIN_NAME));
-        }
-
-        match domain.name.as_ref() {
-            None => Err(FundsManagerError::json_rpc(ERR_INVALID_DOMAIN_NAME)),
-            Some(name) if ALLOWED_EIP712_DOMAIN_NAMES.contains(&name.as_str()) => Ok(()),
-            _ => Err(FundsManagerError::json_rpc(ERR_INVALID_DOMAIN_NAME)),
-        }
+        Ok(())
     }
 
     /// Get the Fireblocks asset ID for the native asset (ETH) of the configured
     /// chain.
-    fn get_native_eth_asset_id(&self) -> FundsManagerRpcResult<String> {
+    fn get_native_eth_asset_id(&self) -> Result<String, FundsManagerError> {
         match self.chain {
             Chain::Mainnet => Ok(ARB_MAINNET_ETH_ASSET_ID.to_string()),
             Chain::Testnet => Ok(ARB_TESTNET_ETH_ASSET_ID.to_string()),
-            _ => Err(RpcError::UnsupportedFeature(ERR_UNSUPPORTED_CHAIN)),
+            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }
 
     /// Get the Fireblocks vault ID for the Hyperliquid vault.
-    async fn get_hyperliquid_vault_id(&self) -> FundsManagerRpcResult<String> {
+    pub(crate) async fn get_hyperliquid_vault_id(&self) -> Result<String, FundsManagerError> {
+        if let Some(vault_id) = self.fireblocks_client.hyperliquid_vault_id.clone() {
+            return Ok(vault_id);
+        }
+
         let hyperliquid_vault = self
             .get_vault_account(HYPERLIQUID_VAULT_NAME)
             .await?
@@ -261,13 +265,18 @@ impl CustodyClient {
     /// Get the address of the Hyperliquid account.
     /// This is expected to be the only address managing native ETH in the
     /// Hyperliquid vault.
-    async fn get_hyperliquid_address(
+    pub(crate) async fn get_hyperliquid_address(
         &self,
         hyperliquid_vault_id: &str,
-    ) -> FundsManagerRpcResult<String> {
+    ) -> Result<String, FundsManagerError> {
+        if let Some(address) = self.fireblocks_client.hyperliquid_address.clone() {
+            return Ok(address);
+        }
+
         let asset_id = self.get_native_eth_asset_id()?;
         let addresses = self
             .fireblocks_client
+            .sdk
             .addresses(hyperliquid_vault_id, &asset_id)
             .await
             .map_err(FundsManagerError::from)?;
@@ -318,6 +327,7 @@ impl CustodyClient {
 
         let resp = self
             .fireblocks_client
+            .sdk
             .transactions_api()
             .create_transaction(params)
             .await
