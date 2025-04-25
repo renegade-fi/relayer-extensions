@@ -8,15 +8,13 @@ use crate::{chain_events::listener::OnChainEventListenerExecutor, store::BundleC
 use crate::{
     error::AuthServerError,
     telemetry::{
-        helpers::{
-            extend_labels_with_base_asset, record_endpoint_metrics, record_volume_with_tags,
-        },
+        helpers::{extend_labels_with_base_asset, record_volume_with_tags},
         labels::{
             EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG,
-            L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, NUM_EXTERNAL_MATCH_REQUESTS, REFUND_AMOUNT_TAG,
-            REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG,
-            SDK_VERSION_METRIC_TAG, SETTLEMENT_STATUS_TAG,
+            L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG, REFUND_ASSET_TAG,
+            REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
+            SETTLEMENT_STATUS_TAG,
         },
     },
 };
@@ -42,8 +40,6 @@ impl OnChainEventListenerExecutor {
         match_result: &ApiExternalMatchResult,
     ) {
         let labels = self.get_labels(ctx);
-        record_endpoint_metrics(&match_result.base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &labels);
-
         record_volume_with_tags(
             &match_result.base_mint,
             match_result.base_amount,
