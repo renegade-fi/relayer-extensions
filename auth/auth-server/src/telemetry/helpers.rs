@@ -35,8 +35,7 @@ use crate::{
 
 use super::{
     labels::{
-        EXTERNAL_MATCH_SETTLED_BASE_VOLUME, KEY_DESCRIPTION_METRIC_TAG, REQUEST_PATH_METRIC_TAG,
-        SIDE_TAG,
+        KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS, REQUEST_PATH_METRIC_TAG, SIDE_TAG,
     },
     quote_comparison::QuoteComparison,
 };
@@ -154,6 +153,8 @@ fn record_external_match_request_metrics(
     let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
     record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
 
+    record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &labels);
+
     Ok(())
 }
 
@@ -227,13 +228,6 @@ pub(crate) fn record_external_match_metrics(
     if let Err(e) = record_external_match_response_metrics(match_bundle, labels) {
         warn!("Error recording response metrics: {e}");
     }
-
-    record_volume_with_tags(
-        &match_bundle.match_result.base_mint,
-        match_bundle.match_result.base_amount,
-        EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
-        labels,
-    );
 
     Ok(())
 }
