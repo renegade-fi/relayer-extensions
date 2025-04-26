@@ -5,6 +5,7 @@ use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use renegade_api::http::external_match::{
     ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle, ExternalOrder,
+    MalleableAtomicMatchApiBundle,
 };
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
@@ -188,6 +189,16 @@ pub(crate) fn apply_gas_sponsorship_to_match_result(
 
     match_result.base_amount = base_amount;
     match_result.quote_amount = quote_amount;
+}
+
+/// Apply a gas sponsorship refund a malleable match bundle
+pub(crate) fn apply_gas_sponsorship_to_malleable_match_bundle(
+    match_bundle: &mut MalleableAtomicMatchApiBundle,
+    refund_amount: u128,
+) {
+    info!("Updating malleable match bundle to reflect gas sponsorship");
+    match_bundle.max_receive.amount += refund_amount;
+    match_bundle.min_receive.amount += refund_amount;
 }
 
 /// Check if the exact output amount requested in the order should be updated

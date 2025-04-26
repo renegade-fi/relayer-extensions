@@ -266,6 +266,21 @@ async fn main() {
             server.handle_external_quote_assembly_request(path, headers, body, query_str).await
         });
 
+    let external_malleable_assembly_path = warp::path("v0")
+        .and(warp::path("matching-engine"))
+        .and(warp::path("assemble-malleable-external-match"))
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_query_string())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server
+                .handle_external_malleable_quote_assembly_request(path, headers, body, query_str)
+                .await
+        });
+
     let atomic_match_path = warp::path("v0")
         .and(warp::path("matching-engine"))
         .and(warp::path("request-external-match"))
@@ -296,6 +311,7 @@ async fn main() {
         .or(atomic_match_path)
         .or(external_quote_path)
         .or(external_quote_assembly_path)
+        .or(external_malleable_assembly_path)
         .or(expire_api_key)
         .or(add_api_key)
         .or(order_book_depth)
