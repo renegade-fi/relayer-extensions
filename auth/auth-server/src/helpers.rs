@@ -1,3 +1,4 @@
+//! Helper methods for the auth server
 use ethers::signers::LocalWallet;
 use renegade_arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
@@ -5,6 +6,7 @@ use renegade_arbitrum_client::{
 };
 use std::str::FromStr;
 
+/// The interval at which we poll filter updates
 const DEFAULT_BLOCK_POLLING_INTERVAL_MS: u64 = 100;
 
 /// The dummy private key used to instantiate the arbitrum client

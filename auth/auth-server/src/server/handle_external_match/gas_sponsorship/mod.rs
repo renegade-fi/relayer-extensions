@@ -5,12 +5,15 @@
 
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SignedGasSponsorshipInfo,
-    SponsoredMatchResponse, SponsoredQuoteResponse,
+    SponsoredMalleableMatchResponse, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 
-use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
+use refund_calculation::{
+    apply_gas_sponsorship_to_malleable_match_bundle, apply_gas_sponsorship_to_match_bundle,
+    apply_gas_sponsorship_to_quote,
+};
 use renegade_api::http::external_match::{
-    ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse,
+    ExternalMatchResponse, ExternalOrder, ExternalQuoteResponse, MalleableExternalMatchResponse,
 };
 use renegade_common::types::token::Token;
 use renegade_util::hex::biguint_to_hex_addr;
@@ -104,6 +107,41 @@ impl Server {
         Ok(SponsoredMatchResponse {
             match_bundle: external_match_resp.match_bundle,
             is_sponsored: true,
+            gas_sponsorship_info: Some(gas_sponsorship_info),
+        })
+    }
+
+    /// Construct a sponsored malleable match response from an external
+    /// malleable match response
+    pub(crate) fn construct_sponsored_malleable_match_response(
+        &self,
+        mut external_match_resp: MalleableExternalMatchResponse,
+        gas_sponsorship_info: GasSponsorshipInfo,
+    ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
+        let refund_native_eth = gas_sponsorship_info.refund_native_eth;
+        let refund_address = gas_sponsorship_info.get_refund_address();
+        let refund_amount = gas_sponsorship_info.get_refund_amount();
+
+        let gas_sponsor_calldata = self
+            .generate_gas_sponsor_malleable_calldata(
+                &external_match_resp,
+                refund_address,
+                refund_native_eth,
+                refund_amount,
+            )?
+            .into();
+
+        external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
+        external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
+
+        if gas_sponsorship_info.requires_match_result_update() {
+            apply_gas_sponsorship_to_malleable_match_bundle(
+                &mut external_match_resp.match_bundle,
+                gas_sponsorship_info.refund_amount,
+            );
+        }
+        Ok(SponsoredMalleableMatchResponse {
+            match_bundle: external_match_resp.match_bundle,
             gas_sponsorship_info: Some(gas_sponsorship_info),
         })
     }

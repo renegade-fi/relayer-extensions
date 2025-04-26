@@ -1,3 +1,4 @@
+//! Helpers for executing subroutines in the on-chain event listener
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;

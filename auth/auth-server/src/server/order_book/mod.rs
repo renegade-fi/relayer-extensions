@@ -1,3 +1,4 @@
+//! Orderbook endpoint handlers
 use bytes::Bytes;
 use http::{HeaderMap, Method, StatusCode};
 use tracing::instrument;
