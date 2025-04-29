@@ -98,7 +98,7 @@ impl QuoteResponse {
 /// Converts the `AtomicMatchApiBundle` into a `QuoteResponse`.
 impl From<&AtomicMatchApiBundle> for QuoteResponse {
     fn from(bundle: &AtomicMatchApiBundle) -> Self {
-        let gas = bundle.settlement_tx.gas().map_or(ESTIMATED_L2_GAS, |gas| gas.as_u64());
+        let gas = bundle.settlement_tx.gas.unwrap_or(ESTIMATED_L2_GAS);
         let fee_take = bundle.fees.total();
         Self {
             quote_mint: bundle.match_result.quote_mint.clone(),

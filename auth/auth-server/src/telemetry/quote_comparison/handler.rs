@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use ethers::utils::format_units;
-use ethers::{providers::Middleware, types::U256};
+use alloy::providers::Provider;
+use alloy_primitives::{utils::format_units, U256};
 use futures_util::future::join_all;
 use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_circuit_types::order::OrderSide;
@@ -120,9 +120,10 @@ impl QuoteComparisonHandler {
         // Fetch gas price in wei
         let gas_price: U256 = self
             .arbitrum_client
-            .client()
+            .provider()
             .get_gas_price()
             .await
+            .map(U256::from)
             .map_err(|e| AuthServerError::Custom(e.to_string()))?;
 
         // Convert wei to eth

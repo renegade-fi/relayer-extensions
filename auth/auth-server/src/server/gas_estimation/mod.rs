@@ -1,6 +1,6 @@
 //! Gas estimation for external matches
 
-use ethers::types::U256;
+use alloy::primitives::U256;
 
 use crate::server::Server;
 

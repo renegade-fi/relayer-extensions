@@ -13,10 +13,7 @@ use renegade_constants::NATIVE_ASSET_ADDRESS;
 use renegade_util::hex::biguint_to_hex_addr;
 use tracing::info;
 
-use crate::{
-    error::AuthServerError,
-    server::{helpers::ethers_u256_to_alloy_u256, Server},
-};
+use crate::{error::AuthServerError, server::Server};
 
 use super::WETH_TICKER;
 
@@ -47,7 +44,7 @@ impl Server {
         let conversion_rate =
             self.compute_conversion_rate_for_order(order, refund_native_eth).await?;
 
-        let estimated_gas_cost = ethers_u256_to_alloy_u256(self.get_gas_cost_estimate().await);
+        let estimated_gas_cost = self.get_gas_cost_estimate().await;
         let refund_amount = (estimated_gas_cost * conversion_rate) / ALLOY_WEI_IN_ETHER;
         Ok(refund_amount)
     }

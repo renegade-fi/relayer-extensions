@@ -5,7 +5,7 @@ use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_arbitrum_client::{
-    abi::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
+    abi::Darkpool::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
     helpers::deserialize_calldata,
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
@@ -253,11 +253,7 @@ pub(crate) fn record_relayer_request_500(key_description: String, path: String) 
 pub fn extract_nullifier_from_match_bundle(
     match_bundle: &AtomicMatchApiBundle,
 ) -> Result<Nullifier, AuthServerError> {
-    let tx_data = match_bundle
-        .settlement_tx
-        .data()
-        .ok_or(AuthServerError::serde("No data in settlement tx"))?;
-
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
     let selector = get_selector(tx_data)?;
 
     // Retrieve serialized match payload from the transaction data
