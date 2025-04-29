@@ -3,12 +3,10 @@
 
 use std::sync::Arc;
 
-use ethers::{
-    contract::abigen,
-    types::{Address, U256},
-};
+use alloy::primitives::{Address, U256};
+use alloy::sol;
 use rand::{thread_rng, RngCore};
-use renegade_arbitrum_client::client::MiddlewareStack;
+use renegade_arbitrum_client::client::RenegadeProvider;
 use renegade_system_clock::{SystemClock, SystemClockError};
 use tokio::sync::RwLock;
 
@@ -25,12 +23,12 @@ use super::constants::{
 
 // The ABI for the `NodeInterface` precompile:
 // https://docs.arbitrum.io/build-decentralized-apps/nodeinterface/overview
-abigen!(
-    NodeInterface,
-    r#"[
-        function gasEstimateL1Component(address to, bool contractCreation, bytes calldata data) external payable returns (uint64 gasEstimateForL1, uint256 baseFee, uint256 l1BaseFeeEstimate)
-    ]"#
-);
+sol! {
+    #[sol(rpc)]
+    contract NodeInterface {
+        function gasEstimateL1Component(address to, bool contractCreation, bytes calldata data) external payable returns (uint64 gasEstimateForL1, uint256 baseFee, uint256 l1BaseFeeEstimate);
+    }
+}
 
 /// A lightweight worker that periodically samples an estimate of the gas cost
 /// for an external match
@@ -39,7 +37,7 @@ pub struct GasCostSampler {
     /// The latest estimate of the gas cost for an external match
     latest_estimate: Arc<RwLock<U256>>,
     /// An Arbitrum RPC client
-    client: Arc<MiddlewareStack>,
+    client: RenegadeProvider,
     /// The address of the gas sponsor contract
     gas_sponsor_address: Address,
 }
@@ -47,12 +45,12 @@ pub struct GasCostSampler {
 impl GasCostSampler {
     /// Create a new gas cost sampler
     pub async fn new(
-        client: Arc<MiddlewareStack>,
+        client: RenegadeProvider,
         gas_sponsor_address: Address,
         system_clock: &SystemClock,
     ) -> Result<Self, AuthServerError> {
         let this = Self {
-            latest_estimate: Arc::new(RwLock::new(U256::zero())),
+            latest_estimate: Arc::new(RwLock::new(U256::ZERO)),
             client,
             gas_sponsor_address,
         };
@@ -105,8 +103,8 @@ impl GasCostSampler {
         let mut data = [0_u8; ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES];
         thread_rng().fill_bytes(&mut data);
 
-        let (gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate) = node_interface
-            .gas_estimate_l1_component(
+        let res = node_interface
+            .gasEstimateL1Component(
                 self.gas_sponsor_address,
                 false, // contract_creation
                 data.into(),
@@ -114,8 +112,10 @@ impl GasCostSampler {
             .call()
             .await
             .map_err(|e| e.to_string())?;
+        let (gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate) =
+            (res.gasEstimateForL1, res.baseFee, res.l1BaseFeeEstimate);
 
-        Ok((gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate * 16))
+        Ok((gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate * U256::from(16)))
     }
 
     /// Estimate the gas cost, in wei, of an external match.

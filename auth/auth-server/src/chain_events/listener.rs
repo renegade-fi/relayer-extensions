@@ -8,19 +8,16 @@ use alloy::{
     rpc::types::Filter,
     sol_types::SolEvent,
 };
-use ethers::types::TxHash;
+use alloy_primitives::TxHash;
 use futures_util::StreamExt;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_arbitrum_client::{
-    abi::{NullifierSpent, NullifierSpentFilter},
-    client::ArbitrumClient,
-    conversion::alloy_u256_to_scalar,
+    abi::Darkpool::NullifierSpent, client::ArbitrumClient, conversion::u256_to_scalar,
 };
 use renegade_circuit_types::{
     r#match::{ExternalMatchResult, MatchResult as CircuitMatchResult},
     wallet::Nullifier,
 };
-use renegade_crypto::fields::u256_to_scalar;
 use tracing::{error, info};
 
 use crate::server::{
@@ -144,19 +141,18 @@ impl OnChainEventListenerExecutor {
         info!("listening for nullifiers via websocket");
         // Create the contract instance and the event stream
         let client = self.config.ws_client().await?;
-        let contract_addr = self.arbitrum_client().darkpool_alloy_addr();
+        let contract_addr = self.arbitrum_client().darkpool_addr();
         let filter = Filter::new().address(contract_addr).event(NullifierSpent::SIGNATURE);
         let mut stream = client.subscribe_logs(&filter).await?.into_stream();
 
         // Listen for events in a loop
         while let Some(log) = stream.next().await {
-            let hash = log
+            let tx_hash = log
                 .transaction_hash
                 .ok_or_else(|| OnChainEventListenerError::arbitrum("no tx hash"))?;
-            let tx_hash = TxHash::from(hash.0);
 
             let event = log.log_decode::<NullifierSpent>()?;
-            let nullifier = alloy_u256_to_scalar(event.data().nullifier);
+            let nullifier = u256_to_scalar(event.data().nullifier);
             self.handle_nullifier_spent(tx_hash, nullifier).await?;
         }
 
@@ -167,15 +163,19 @@ impl OnChainEventListenerExecutor {
     async fn watch_nullifiers_http(&self) -> Result<(), OnChainEventListenerError> {
         info!("listening for nullifiers via HTTP polling");
         // Build a filtered stream on events that the chain-events worker listens for
-        let filter = self.arbitrum_client().get_darkpool_client().event::<NullifierSpentFilter>();
+        let filter = self.arbitrum_client().darkpool_client().NullifierSpent_filter();
         let mut event_stream =
-            filter.stream_with_meta().await.map_err(OnChainEventListenerError::arbitrum)?;
+            filter.subscribe().await.map_err(OnChainEventListenerError::arbitrum)?.into_stream();
 
         // Listen for events in a loop
         while let Some(res) = event_stream.next().await {
             let (event, meta) = res.map_err(OnChainEventListenerError::arbitrum)?;
-            let nullifier = u256_to_scalar(&event.nullifier);
-            self.handle_nullifier_spent(meta.transaction_hash, nullifier).await?;
+            let tx_hash = meta
+                .transaction_hash
+                .ok_or_else(|| OnChainEventListenerError::arbitrum("no tx hash"))?;
+            let nullifier = u256_to_scalar(event.nullifier);
+
+            self.handle_nullifier_spent(tx_hash, nullifier).await?;
         }
 
         unreachable!()

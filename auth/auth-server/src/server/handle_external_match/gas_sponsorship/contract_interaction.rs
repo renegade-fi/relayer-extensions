@@ -1,11 +1,9 @@
 //! Logic for interacting with the gas sponsor contract
 
-use alloy_primitives::{Address as AlloyAddress, Bytes as AlloyBytes, U256 as AlloyU256};
+use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{sol, SolCall};
-use bytes::Bytes;
-use ethers::contract::abigen;
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
-use renegade_arbitrum_client::abi::{
+use renegade_arbitrum_client::abi::Darkpool::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
     processMalleableAtomicMatchSettleCall, processMalleableAtomicMatchSettleWithReceiverCall,
 };
@@ -23,12 +21,11 @@ use crate::{
 // -------
 
 // The ABI for gas sponsorship events
-abigen!(
-    GasSponsorContract,
-    r#"[
-        event SponsoredExternalMatch(uint256 indexed amount, address indexed token, uint256 indexed nonce)
-    ]"#
-);
+sol! {
+    contract GasSponsorContract {
+        event SponsoredExternalMatch(uint256 indexed amount, address indexed token, uint256 indexed nonce);
+    }
+}
 
 // The ABI for gas sponsorship functions
 sol! {
@@ -64,11 +61,11 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
     /// `processAtomicMatchSettle` calldata
     pub fn from_process_atomic_match_settle_calldata(
         calldata: &[u8],
-        refund_address: AlloyAddress,
-        nonce: AlloyU256,
+        refund_address: Address,
+        nonce: U256,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
-        signature: AlloyBytes,
+        refund_amount: U256,
+        signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleCall {
             internal_party_match_payload,
@@ -79,7 +76,7 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
             .map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(sponsorAtomicMatchSettleWithRefundOptionsCall {
-            receiver: AlloyAddress::ZERO,
+            receiver: Address::ZERO,
             internal_party_match_payload,
             valid_match_settle_atomic_statement,
             match_proofs,
@@ -96,11 +93,11 @@ impl sponsorAtomicMatchSettleWithRefundOptionsCall {
     /// `processAtomicMatchSettleWithReceiver` calldata
     pub fn from_process_atomic_match_settle_with_receiver_calldata(
         calldata: &[u8],
-        refund_address: AlloyAddress,
-        nonce: AlloyU256,
+        refund_address: Address,
+        nonce: U256,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
-        signature: AlloyBytes,
+        refund_amount: U256,
+        signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processAtomicMatchSettleWithReceiverCall {
             receiver,
@@ -131,11 +128,11 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
     /// `processMalleableAtomicMatchSettle` calldata
     pub fn from_process_malleable_atomic_match_settle_calldata(
         calldata: &[u8],
-        refund_address: AlloyAddress,
-        nonce: AlloyU256,
+        refund_address: Address,
+        nonce: U256,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
-        signature: AlloyBytes,
+        refund_amount: U256,
+        signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processMalleableAtomicMatchSettleCall {
             base_amount,
@@ -148,7 +145,7 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
 
         Ok(sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
             base_amount,
-            receiver: AlloyAddress::ZERO,
+            receiver: Address::ZERO,
             internal_party_payload: internal_party_match_payload,
             malleable_match_settle_atomic_statement: valid_match_settle_statement,
             proofs: match_proofs,
@@ -165,11 +162,11 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
     /// `processMalleableAtomicMatchSettleWithReceiver` calldata
     pub fn from_process_malleable_atomic_match_settle_with_receiver_calldata(
         calldata: &[u8],
-        refund_address: AlloyAddress,
-        nonce: AlloyU256,
+        refund_address: Address,
+        nonce: U256,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
-        signature: AlloyBytes,
+        refund_amount: U256,
+        signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processMalleableAtomicMatchSettleWithReceiverCall {
             base_amount,
@@ -206,9 +203,9 @@ impl Server {
     pub(crate) fn generate_gas_sponsor_calldata(
         &self,
         external_match_resp: &ExternalMatchResponse,
-        refund_address: AlloyAddress,
+        refund_address: Address,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
+        refund_amount: U256,
     ) -> Result<Bytes, AuthServerError> {
         let (nonce, signature) = gen_signed_sponsorship_nonce(
             refund_address,
@@ -216,12 +213,8 @@ impl Server {
             &self.gas_sponsor_auth_key,
         )?;
 
-        let calldata = external_match_resp
-            .match_bundle
-            .settlement_tx
-            .data()
-            .ok_or(AuthServerError::gas_sponsorship("expected calldata"))?;
-
+        let tx = &external_match_resp.match_bundle.settlement_tx;
+        let calldata = tx.input.input().unwrap_or_default();
         let selector = get_selector(calldata)?;
 
         let gas_sponsor_call = match selector {
@@ -259,9 +252,9 @@ impl Server {
     pub(crate) fn generate_gas_sponsor_malleable_calldata(
         &self,
         external_match_resp: &MalleableExternalMatchResponse,
-        refund_address: AlloyAddress,
+        refund_address: Address,
         refund_native_eth: bool,
-        refund_amount: AlloyU256,
+        refund_amount: U256,
     ) -> Result<Bytes, AuthServerError> {
         // Sign a sponsorship permit
         let (nonce, signature) = gen_signed_sponsorship_nonce(
@@ -271,11 +264,8 @@ impl Server {
         )?;
 
         // Parse the calldata and translate it into a gas sponsorship call
-        let calldata = external_match_resp
-            .match_bundle
-            .settlement_tx
-            .data()
-            .ok_or(AuthServerError::gas_sponsorship("expected calldata"))?;
+        let tx = &external_match_resp.match_bundle.settlement_tx;
+        let calldata = tx.input.input().unwrap_or_default();
         let selector = get_selector(calldata)?;
 
         let gas_sponsor_call = match selector {

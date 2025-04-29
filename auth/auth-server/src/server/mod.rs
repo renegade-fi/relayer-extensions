@@ -25,6 +25,9 @@ use crate::{
     ApiError, Cli,
 };
 use aes_gcm::{Aes128Gcm, KeyInit};
+use alloy::hex;
+use alloy::signers::k256::ecdsa::SigningKey;
+use alloy_primitives::Address;
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
 use bytes::Bytes;
@@ -34,7 +37,6 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
 };
-use ethers::{abi::Address, core::k256::ecdsa::SigningKey, utils::hex};
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
 use http::{HeaderMap, Method, Response};
@@ -162,7 +164,7 @@ impl Server {
 
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
-                arbitrum_client.client().clone(),
+                arbitrum_client.provider().clone(),
                 gas_sponsor_address,
                 system_clock,
             )
@@ -374,7 +376,7 @@ async fn set_external_match_fees(arbitrum_client: &ArbitrumClient) -> Result<(),
 
     for token in tokens {
         // Fetch the fee override from the contract
-        let addr = token.get_ethers_address();
+        let addr = token.get_alloy_address();
         let fee =
             arbitrum_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
 

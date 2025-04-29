@@ -1,11 +1,11 @@
 //! Helper methods for the auth server
 
 use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
-use alloy_primitives::{Address, Bytes as AlloyBytes, Signature, U256 as AlloyU256};
+use alloy::signers::k256::ecdsa::SigningKey;
+use alloy_primitives::{keccak256, Address, Bytes as AlloyBytes, Signature, U256};
 use base64::{engine::general_purpose, Engine as _};
 use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
-use ethers::{core::k256::ecdsa::SigningKey, types::U256, utils::keccak256};
 use http::{header::CONTENT_LENGTH, HeaderMap, Response};
 use rand::{thread_rng, Rng};
 use renegade_api::http::external_match::SignedExternalQuote;
@@ -71,21 +71,21 @@ pub fn aes_decrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerErr
 /// the provided refund address and the refund amount
 pub fn gen_signed_sponsorship_nonce(
     refund_address: Address,
-    refund_amount: AlloyU256,
+    refund_amount: U256,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(AlloyU256, AlloyBytes), AuthServerError> {
+) -> Result<(U256, AlloyBytes), AuthServerError> {
     // Generate a random sponsorship nonce
-    let mut nonce_bytes = [0u8; AlloyU256::BYTES];
+    let mut nonce_bytes = [0u8; U256::BYTES];
     thread_rng().fill(&mut nonce_bytes);
 
     // Construct & sign the message
     let mut message = Vec::new();
     message.extend_from_slice(&nonce_bytes);
     message.extend_from_slice(refund_address.as_ref());
-    message.extend_from_slice(&refund_amount.to_be_bytes::<{ AlloyU256::BYTES }>());
+    message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
-    let nonce = AlloyU256::from_be_bytes(nonce_bytes);
+    let nonce = U256::from_be_bytes(nonce_bytes);
 
     Ok((nonce, signature))
 }
@@ -97,10 +97,10 @@ pub fn sign_message(
 ) -> Result<[u8; NUM_BYTES_SIGNATURE], AuthServerError> {
     let message_hash = keccak256(message);
     let (k256_sig, recid) =
-        key.sign_prehash_recoverable(&message_hash).map_err(AuthServerError::signing)?;
+        key.sign_prehash_recoverable(message_hash.as_ref()).map_err(AuthServerError::signing)?;
 
-    let r: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.r().to_bytes().into());
-    let s: AlloyU256 = AlloyU256::from_be_bytes(k256_sig.s().to_bytes().into());
+    let r: U256 = U256::from_be_bytes(k256_sig.r().to_bytes().into());
+    let s: U256 = U256::from_be_bytes(k256_sig.s().to_bytes().into());
 
     let signature = Signature::new(r, s, recid.is_y_odd());
     let mut sig_bytes = signature.as_bytes();
@@ -120,13 +120,6 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
         .ok_or(AuthServerError::serde("expected selector"))?
         .try_into()
         .map_err(AuthServerError::serde)
-}
-
-/// Convert an ethers U256 to an alloy U256
-pub fn ethers_u256_to_alloy_u256(value: U256) -> AlloyU256 {
-    let mut value_bytes = [0_u8; 32];
-    value.to_big_endian(&mut value_bytes);
-    AlloyU256::from_be_bytes(value_bytes)
 }
 
 /// Overwrite the body of an HTTP response

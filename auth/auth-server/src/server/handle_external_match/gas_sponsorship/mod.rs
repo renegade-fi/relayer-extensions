@@ -91,8 +91,10 @@ impl Server {
             )?
             .into();
 
-        external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
-        external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
+        let mut tx = external_match_resp.match_bundle.settlement_tx;
+        tx = tx.to(self.gas_sponsor_address);
+        tx = tx.input(gas_sponsor_calldata);
+        external_match_resp.match_bundle.settlement_tx = tx;
 
         // The `ExternalMatchResponse` from the relayer doesn't account for gas
         // sponsorship, so we need to update the match bundle to reflect the
@@ -131,8 +133,10 @@ impl Server {
             )?
             .into();
 
-        external_match_resp.match_bundle.settlement_tx.set_to(self.gas_sponsor_address);
-        external_match_resp.match_bundle.settlement_tx.set_data(gas_sponsor_calldata);
+        let mut tx = external_match_resp.match_bundle.settlement_tx;
+        tx = tx.to(self.gas_sponsor_address);
+        tx = tx.input(gas_sponsor_calldata);
+        external_match_resp.match_bundle.settlement_tx = tx;
 
         if gas_sponsorship_info.requires_match_result_update() {
             apply_gas_sponsorship_to_malleable_match_bundle(

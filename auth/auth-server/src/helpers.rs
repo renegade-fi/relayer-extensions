@@ -1,5 +1,5 @@
 //! Helper methods for the auth server
-use ethers::signers::LocalWallet;
+use alloy::signers::local::PrivateKeySigner;
 use renegade_arbitrum_client::{
     client::{ArbitrumClient, ArbitrumClientConfig},
     constants::Chain,
@@ -23,22 +23,18 @@ pub async fn create_arbitrum_client(
     rpc_url: String,
 ) -> Result<ArbitrumClient, String> {
     // Parse the wallet
-    let wallet = match LocalWallet::from_str(DUMMY_PRIVATE_KEY) {
+    let wallet = match PrivateKeySigner::from_str(DUMMY_PRIVATE_KEY) {
         Ok(wallet) => wallet,
         Err(e) => return Err(format!("Failed to parse wallet: {}", e)),
     };
 
     // Create the client
-    match ArbitrumClient::new(ArbitrumClientConfig {
+    ArbitrumClient::new(ArbitrumClientConfig {
         darkpool_addr: darkpool_address,
         chain: chain_id,
         rpc_url,
-        arb_priv_keys: vec![wallet],
+        private_key: wallet,
         block_polling_interval_ms: DEFAULT_BLOCK_POLLING_INTERVAL_MS,
     })
-    .await
-    {
-        Ok(client) => Ok(client),
-        Err(e) => Err(format!("Failed to create Arbitrum client: {}", e)),
-    }
+    .map_err(|e| format!("Failed to create Arbitrum client: {e}"))
 }
