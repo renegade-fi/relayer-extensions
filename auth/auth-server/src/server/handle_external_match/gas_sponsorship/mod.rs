@@ -82,18 +82,16 @@ impl Server {
         let refund_address = gas_sponsorship_info.get_refund_address();
         let refund_amount = gas_sponsorship_info.get_refund_amount();
 
-        let gas_sponsor_calldata = self
-            .generate_gas_sponsor_calldata(
-                &external_match_resp,
-                refund_address,
-                refund_native_eth,
-                refund_amount,
-            )?
-            .into();
+        let gas_sponsor_calldata = self.generate_gas_sponsor_calldata(
+            &external_match_resp,
+            refund_address,
+            refund_native_eth,
+            refund_amount,
+        )?;
 
         let mut tx = external_match_resp.match_bundle.settlement_tx;
         tx = tx.to(self.gas_sponsor_address);
-        tx = tx.input(gas_sponsor_calldata);
+        tx.input.data = Some(gas_sponsor_calldata);
         external_match_resp.match_bundle.settlement_tx = tx;
 
         // The `ExternalMatchResponse` from the relayer doesn't account for gas
@@ -124,18 +122,16 @@ impl Server {
         let refund_address = gas_sponsorship_info.get_refund_address();
         let refund_amount = gas_sponsorship_info.get_refund_amount();
 
-        let gas_sponsor_calldata = self
-            .generate_gas_sponsor_malleable_calldata(
-                &external_match_resp,
-                refund_address,
-                refund_native_eth,
-                refund_amount,
-            )?
-            .into();
+        let gas_sponsor_calldata = self.generate_gas_sponsor_malleable_calldata(
+            &external_match_resp,
+            refund_address,
+            refund_native_eth,
+            refund_amount,
+        )?;
 
         let mut tx = external_match_resp.match_bundle.settlement_tx;
         tx = tx.to(self.gas_sponsor_address);
-        tx = tx.input(gas_sponsor_calldata);
+        tx.input.data = Some(gas_sponsor_calldata);
         external_match_resp.match_bundle.settlement_tx = tx;
 
         if gas_sponsorship_info.requires_match_result_update() {
