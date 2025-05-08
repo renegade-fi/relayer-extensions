@@ -1,12 +1,9 @@
 //! API types for quoter management
-use ethers::types::{Address, Bytes, U256};
-use hex;
+use alloy_primitives::{hex, ruint::FromUintError, Address, Bytes, U256};
 use renegade_common::types::token::{Token, USDC_TICKER};
 use serde::{Deserialize, Serialize};
 
-use crate::serialization::{
-    address_string_serialization, bytes_string_serialization, u256_string_serialization,
-};
+use crate::serialization::u256_string_serialization;
 
 // --------------
 // | Api Routes |
@@ -63,10 +60,8 @@ pub struct WithdrawFundsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionQuote {
     /// The token address we're buying
-    #[serde(with = "address_string_serialization")]
     pub buy_token_address: Address,
     /// The token address we're selling
-    #[serde(with = "address_string_serialization")]
     pub sell_token_address: Address,
     /// The amount of tokens to sell
     #[serde(with = "u256_string_serialization")]
@@ -78,13 +73,10 @@ pub struct ExecutionQuote {
     #[serde(with = "u256_string_serialization")]
     pub buy_amount_min: U256,
     /// The submitting address
-    #[serde(with = "address_string_serialization")]
     pub from: Address,
     /// The 0x swap contract address
-    #[serde(with = "address_string_serialization")]
     pub to: Address,
     /// The calldata for the swap
-    #[serde(with = "bytes_string_serialization")]
     pub data: Bytes,
     /// The value of the tx; should be zero
     #[serde(with = "u256_string_serialization")]
@@ -140,18 +132,21 @@ impl ExecutionQuote {
     }
 
     /// Get the buy amount as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount(&self) -> f64 {
-        self.get_buy_token().convert_to_decimal(self.buy_amount.as_u128())
+    pub fn get_decimal_corrected_buy_amount(&self) -> Result<f64, String> {
+        let buy_amount = u256_try_into_u128(self.buy_amount)?;
+        Ok(self.get_buy_token().convert_to_decimal(buy_amount))
     }
 
     /// Get the sell amount as a decimal-corrected string
-    pub fn get_decimal_corrected_sell_amount(&self) -> f64 {
-        self.get_sell_token().convert_to_decimal(self.sell_amount.as_u128())
+    pub fn get_decimal_corrected_sell_amount(&self) -> Result<f64, String> {
+        let sell_amount = u256_try_into_u128(self.sell_amount)?;
+        Ok(self.get_sell_token().convert_to_decimal(sell_amount))
     }
 
     /// Get the buy amount min as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount_min(&self) -> f64 {
-        self.get_buy_token().convert_to_decimal(self.buy_amount_min.as_u128())
+    pub fn get_decimal_corrected_buy_amount_min(&self) -> Result<f64, String> {
+        let buy_amount_min = u256_try_into_u128(self.buy_amount_min)?;
+        Ok(self.get_buy_token().convert_to_decimal(buy_amount_min))
     }
 }
 
@@ -159,17 +154,17 @@ impl ExecutionQuote {
     /// Get the price in units of USDC per base token.
     /// If a custom buy amount is provided, it is used in place of the standard
     /// buy amount.
-    pub fn get_price(&self, buy_amount: Option<U256>) -> f64 {
-        let buy_amount = buy_amount.unwrap_or(self.buy_amount);
-        let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount.as_u128());
+    pub fn get_price(&self, buy_amount: Option<U256>) -> Result<f64, String> {
+        let buy_amount = u256_try_into_u128(buy_amount.unwrap_or(self.buy_amount))?;
+        let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount);
 
-        let decimal_sell_amount = self.get_decimal_corrected_sell_amount();
+        let decimal_sell_amount = self.get_decimal_corrected_sell_amount()?;
 
         let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
         if self.is_buy() {
-            1.0 / buy_per_sell
+            Ok(1.0 / buy_per_sell)
         } else {
-            buy_per_sell
+            Ok(buy_per_sell)
         }
     }
 
@@ -184,7 +179,7 @@ impl ExecutionQuote {
 
     /// Return true if the sell token is USDC
     pub fn is_buy(&self) -> bool {
-        let usdc_mint = &Token::from_ticker(USDC_TICKER).get_ethers_address();
+        let usdc_mint = &Token::from_ticker(USDC_TICKER).get_alloy_address();
         &self.sell_token_address == usdc_mint
     }
 
@@ -199,7 +194,7 @@ impl ExecutionQuote {
     }
 
     /// Returns the volume in USDC
-    pub fn get_quote_amount(&self) -> f64 {
+    pub fn get_quote_amount(&self) -> Result<f64, String> {
         if self.is_buy() {
             self.get_decimal_corrected_sell_amount()
         } else {
@@ -209,11 +204,13 @@ impl ExecutionQuote {
 
     /// Returns the notional volume in USDC, taking into account the actual
     /// transfer amount for sell orders
-    pub fn notional_volume_usdc(&self, transfer_amount: U256) -> f64 {
+    pub fn notional_volume_usdc(&self, transfer_amount: U256) -> Result<f64, String> {
         if self.is_buy() {
             self.get_decimal_corrected_sell_amount()
         } else {
-            self.get_buy_token().convert_to_decimal(transfer_amount.as_u128())
+            let transfer_amount = u256_try_into_u128(transfer_amount)?;
+
+            Ok(self.get_buy_token().convert_to_decimal(transfer_amount))
         }
     }
 }
@@ -250,4 +247,14 @@ pub struct ExecuteSwapResponse {
 pub struct WithdrawToHyperliquidRequest {
     /// The amount of USDC to withdraw, in decimal format (i.e., whole units)
     pub amount: f64,
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Helper to attempt to convert a U256 to a u128, returning a String error
+/// if it fails
+fn u256_try_into_u128(u256: U256) -> Result<u128, String> {
+    u256.try_into().map_err(|e: FromUintError<u128>| e.to_string())
 }

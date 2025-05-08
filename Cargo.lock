@@ -387,6 +387,7 @@ dependencies = [
  "const-hex",
  "derive_more 2.0.1",
  "foldhash",
+ "getrandom 0.3.2",
  "hashbrown 0.15.2",
  "indexmap 2.9.0",
  "itoa",
@@ -4468,10 +4469,9 @@ dependencies = [
 name = "funds-manager-api"
 version = "0.1.0"
 dependencies = [
+ "alloy-primitives 1.0.0",
  "common",
- "ethers",
  "external-api",
- "hex 0.4.3",
  "http 0.2.12",
  "itertools 0.13.0",
  "rand 0.8.5",
