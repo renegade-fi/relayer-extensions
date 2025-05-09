@@ -139,7 +139,8 @@ impl Indexer {
         let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
         let wallet_key = wallet_keychain.symmetric_key();
 
-        self.relayer_client.check_wallet_indexed(wallet.id, self.chain_id, &eth_key).await?;
+        // Fetch the wallet, ensuring it is looked up on the relayer
+        self.relayer_client.get_wallet(wallet.id, &eth_key, wallet_keychain).await?;
 
         // Find the note in the tx body
         let tx_hash = TxHash::from_str(&tx).map_err(err_str!(FundsManagerError::Parse))?;

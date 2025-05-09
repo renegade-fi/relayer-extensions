@@ -81,15 +81,16 @@ impl Indexer {
         // Get the wallet's private key from secrets manager
         let eth_key = self.get_wallet_private_key(&wallet_metadata).await?;
 
-        // Derive the wallet keychain
-        let wallet_keychain =
-            derive_wallet_keychain(&eth_key, self.chain_id).map_err(FundsManagerError::custom)?;
-        let wallet_key = wallet_keychain.symmetric_key();
+        let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
 
         // Fetch the wallet from the relayer and replace the keychain so that we have
         // access to the full set of secret keys
-        let mut wallet =
-            self.relayer_client.get_wallet(wallet_metadata.id, &wallet_key).await?.wallet;
+        let mut wallet = self
+            .relayer_client
+            .get_wallet(wallet_metadata.id, &eth_key, wallet_keychain.clone())
+            .await?
+            .wallet;
+
         wallet.key_chain = wallet_keychain.into();
 
         Ok(wallet)

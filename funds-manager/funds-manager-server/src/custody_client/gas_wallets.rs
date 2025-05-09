@@ -2,11 +2,7 @@
 
 use std::str::FromStr;
 
-use ethers::{
-    signers::{LocalWallet, Signer},
-    utils::hex::ToHexExt,
-};
-use rand::thread_rng;
+use alloy::{hex::ToHexExt, signers::local::PrivateKeySigner};
 use tracing::info;
 
 use crate::{
@@ -56,7 +52,7 @@ impl CustodyClient {
     /// Create a new gas wallet
     pub(crate) async fn create_gas_wallet(&self) -> Result<String, FundsManagerError> {
         // Sample a new ethereum keypair
-        let keypair = LocalWallet::new(&mut thread_rng());
+        let keypair = PrivateKeySigner::random();
         let address = keypair.address().encode_hex();
 
         // Add the gas wallet to the database
@@ -64,7 +60,7 @@ impl CustodyClient {
 
         // Store the private key in secrets manager
         let secret_name = Self::gas_wallet_secret_name(&address);
-        let private_key = keypair.signer().to_bytes();
+        let private_key = keypair.credential().to_bytes();
         let secret_value = hex::encode(private_key);
         let description = "Gas wallet private key for use by Renegade relayers";
         create_secrets_manager_entry_with_description(

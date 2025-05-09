@@ -3,16 +3,14 @@
 //! We store funds in hot wallets to prevent excessive in/out-flow from
 //! Fireblocks
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use ethers::{
-    providers::{Http, Provider},
-    signers::{LocalWallet, Signer},
-    types::Address,
-    utils::hex::ToHexExt,
+use alloy::{hex::ToHexExt, signers::local::PrivateKeySigner};
+use alloy_primitives::Address;
+use funds_manager_api::{
+    hot_wallets::{TokenBalance, WalletWithBalances},
+    u256_try_into_u128,
 };
-use funds_manager_api::hot_wallets::{TokenBalance, WalletWithBalances};
-use rand::thread_rng;
 use tracing::info;
 use uuid::Uuid;
 
@@ -20,7 +18,7 @@ use super::CustodyClient;
 use crate::{
     custody_client::DepositWithdrawSource,
     error::FundsManagerError,
-    helpers::{create_secrets_manager_entry_with_description, get_secret, ERC20},
+    helpers::{create_secrets_manager_entry_with_description, get_secret, IERC20},
 };
 
 impl CustodyClient {
@@ -37,9 +35,9 @@ impl CustodyClient {
         internal_wallet_id: Uuid,
     ) -> Result<String, FundsManagerError> {
         // Generate a new Ethereum keypair
-        let wallet = LocalWallet::new(&mut thread_rng());
-        let address = wallet.address().encode_hex();
-        let private_key = wallet.signer().to_bytes();
+        let keypair = PrivateKeySigner::random();
+        let address = keypair.address().encode_hex();
+        let private_key = keypair.credential().to_bytes();
 
         // Store the private key in Secrets Manager
         let secret_name = Self::hot_wallet_secret_name(&address);
@@ -65,14 +63,13 @@ impl CustodyClient {
         mints: &[String],
     ) -> Result<Vec<WalletWithBalances>, FundsManagerError> {
         let hot_wallets = self.get_all_hot_wallets().await?;
-        let provider = Arc::new(self.get_rpc_provider()?);
 
         let mut hot_wallet_balances = Vec::new();
         for wallet in hot_wallets.iter().map(|w| w.address.clone()) {
             // Fetch token balances for the wallet
             let mut balances = Vec::new();
             for mint in mints.iter() {
-                let balance = self.get_token_balance(&wallet, mint, provider.clone()).await?;
+                let balance = self.get_token_balance(&wallet, mint).await?;
                 balances.push(TokenBalance { mint: mint.clone(), amount: balance });
             }
 
@@ -94,7 +91,7 @@ impl CustodyClient {
 
         // 2. Retrieve the wallet's private key from Secrets Manager
         let secret_value = get_secret(&hot_wallet.secret_id, &self.aws_config).await?;
-        let wallet = LocalWallet::from_str(&secret_value).map_err(FundsManagerError::parse)?;
+        let wallet = PrivateKeySigner::from_str(&secret_value).map_err(FundsManagerError::parse)?;
 
         // 3. Look up the vault deposit address
         let deposit_address = self.get_fireblocks_deposit_address(mint, &hot_wallet.vault).await?;
@@ -134,13 +131,11 @@ impl CustodyClient {
     pub async fn get_hot_wallet_private_key(
         &self,
         address: &str,
-    ) -> Result<LocalWallet, FundsManagerError> {
+    ) -> Result<PrivateKeySigner, FundsManagerError> {
         let secret_name = Self::hot_wallet_secret_name(address);
         let secret_value = get_secret(&secret_name, &self.aws_config).await?;
 
-        LocalWallet::from_str(&secret_value)
-            .map_err(FundsManagerError::parse)
-            .map(|w| w.with_chain_id(self.chain_id))
+        PrivateKeySigner::from_str(&secret_value).map_err(FundsManagerError::parse)
     }
 
     /// Fetch the token balance at the given address for a wallet
@@ -148,7 +143,6 @@ impl CustodyClient {
         &self,
         wallet_address: &str,
         token_address: &str,
-        provider: Arc<Provider<Http>>,
     ) -> Result<u128, FundsManagerError> {
         let wallet_address: Address = wallet_address.parse().map_err(|_| {
             FundsManagerError::parse(format!("Invalid wallet address: {wallet_address}"))
@@ -157,12 +151,10 @@ impl CustodyClient {
             FundsManagerError::parse(format!("Invalid token address: {token_address}"))
         })?;
 
-        let token = ERC20::new(token_address, provider);
-        token
-            .balance_of(wallet_address)
-            .call()
-            .await
-            .map(|balance| balance.as_u128())
-            .map_err(FundsManagerError::arbitrum)
+        let token = IERC20::new(token_address, self.arbitrum_provider.clone());
+        let balance =
+            token.balanceOf(wallet_address).call().await.map_err(FundsManagerError::arbitrum)?;
+
+        u256_try_into_u128(balance).map_err(FundsManagerError::parse)
     }
 }

@@ -24,9 +24,8 @@ use renegade_common::types::{
     hmac::HmacKey,
     token::Token,
     wallet::{
-        derivation::{
-            derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
-        },
+        derivation::{derive_blinder_seed, derive_share_seed, derive_wallet_id},
+        keychain::KeyChain,
         Wallet, WalletIdentifier,
     },
 };
@@ -85,48 +84,39 @@ impl RelayerClient {
     // | Wallet Methods |
     // ------------------
 
-    /// Get the wallet for a given id
+    /// Get the wallet for a given id, looking up the wallet if not initially
+    /// found
     pub async fn get_wallet(
         &self,
         wallet_id: WalletIdentifier,
-        wallet_key: &HmacKey,
+        eth_key: &PrivateKeySigner,
+        keychain: KeyChain,
     ) -> Result<GetWalletResponse, FundsManagerError> {
         let mut path = GET_WALLET_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
-        self.get_relayer_with_auth::<GetWalletResponse>(&path, wallet_key).await
-    }
 
-    /// Check that the relayer has a given wallet, lookup the wallet if not
-    pub async fn check_wallet_indexed(
-        &self,
-        wallet_id: WalletIdentifier,
-        chain_id: u64,
-        eth_key: &PrivateKeySigner,
-    ) -> Result<(), FundsManagerError> {
-        let mut path = GET_WALLET_ROUTE.to_string();
-        path = path.replace(":wallet_id", &wallet_id.to_string());
-
-        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
         let wallet_key = keychain.symmetric_key();
-        if self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await.is_ok() {
-            return Ok(());
-        }
 
-        // Otherwise lookup the wallet
-        self.lookup_wallet(chain_id, eth_key).await
+        match self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await {
+            Ok(resp) => Ok(resp),
+            Err(err) => {
+                warn!("Failed to get wallet {wallet_id} from relayer: {err}");
+                self.lookup_wallet(eth_key, keychain).await?;
+                self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await
+            },
+        }
     }
 
     /// Lookup a wallet in the configured relayer
     async fn lookup_wallet(
         &self,
-        chain_id: u64,
         eth_key: &PrivateKeySigner,
+        keychain: KeyChain,
     ) -> Result<(), FundsManagerError> {
         let path = FIND_WALLET_ROUTE.to_string();
         let wallet_id = derive_wallet_id(eth_key).unwrap();
         let blinder_seed = derive_blinder_seed(eth_key).unwrap();
         let share_seed = derive_share_seed(eth_key).unwrap();
-        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
         let wallet_key = keychain.symmetric_key();
 
         let body = FindWalletRequest {
