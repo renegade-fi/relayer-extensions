@@ -47,6 +47,8 @@ pub const GAS_SPONSORSHIP_VALUE: &str = "gas_sponsorship_value";
 
 /// Metric describing the number of unsuccessful relayer requests
 pub const UNSUCCESSFUL_RELAYER_REQUEST_COUNT: &str = "num_unsuccessful_relayer_requests";
+/// Metric describing the number of times a quote was not found
+pub const QUOTE_NOT_FOUND_COUNT: &str = "num_quotes_not_found";
 
 // ---------------
 // | METRIC TAGS |

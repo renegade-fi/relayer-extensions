@@ -20,6 +20,7 @@ use renegade_api::http::external_match::{
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{token::Token, TimestampedPrice};
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_util::hex::biguint_to_hex_addr;
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -28,7 +29,9 @@ use super::helpers::{
 };
 use super::Server;
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::{calculate_implied_price, record_relayer_request_500};
+use crate::telemetry::helpers::{
+    calculate_implied_price, record_quote_not_found, record_relayer_request_500,
+};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::{record_endpoint_metrics, record_external_match_metrics, record_fill_ratio},
@@ -77,6 +80,10 @@ impl Server {
         let status = resp.status();
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
+        }
+        if status == StatusCode::NO_CONTENT {
+            let base_mint = biguint_to_hex_addr(&external_quote_req.external_order.base_mint);
+            record_quote_not_found(key_desc.clone(), &base_mint);
         }
         if status != StatusCode::OK {
             log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
