@@ -15,6 +15,8 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use tracing::error;
 
+use crate::helpers::build_provider;
+
 use self::error::ExecutionClientError;
 
 /// The 0x api key header
@@ -40,9 +42,7 @@ impl ExecutionClient {
         base_url: String,
         rpc_url: &str,
     ) -> Result<Self, ExecutionClientError> {
-        let url = rpc_url.parse().map_err(ExecutionClientError::parse)?;
-        let provider = ProviderBuilder::new().on_http(url);
-        let rpc_provider = DynProvider::new(provider);
+        let rpc_provider = build_provider(rpc_url).map_err(ExecutionClientError::parse)?;
 
         Ok(Self { api_key, base_url, http_client: Arc::new(Client::new()), rpc_provider })
     }
@@ -83,7 +83,7 @@ impl ExecutionClient {
         response.json::<T>().await.map_err(ExecutionClientError::http)
     }
 
-    /// Get an instance of a signer middleware with the http provider attached
+    /// Get an instance of a signer with the http provider attached
     fn get_signer(&self, wallet: PrivateKeySigner) -> DynProvider {
         let provider = ProviderBuilder::new().wallet(wallet).on_provider(self.rpc_provider.clone());
         DynProvider::new(provider)

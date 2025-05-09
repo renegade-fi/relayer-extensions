@@ -37,6 +37,7 @@ alloy-dyn-abi = { workspace = true, features = ["eip712"] }
 alloy-json-rpc = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy = { workspace = true }
+ethers = "2"
 
 # === Renegade Dependencies === #
 renegade-darkpool-client = { package = "darkpool-client", workspace = true, features = [ "arbitrum" ] }

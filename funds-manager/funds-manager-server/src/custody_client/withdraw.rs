@@ -2,7 +2,7 @@
 use std::str::FromStr;
 
 use crate::{error::FundsManagerError, helpers::get_secret};
-use ethers::signers::LocalWallet;
+use alloy::signers::local::PrivateKeySigner;
 use fireblocks_sdk::{
     apis::{transactions_api::CreateTransactionParams, Api},
     models::{
@@ -10,8 +10,8 @@ use fireblocks_sdk::{
         TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,
     },
 };
-use renegade_arbitrum_client::constants::Chain;
 use renegade_common::types::token::{Token, USDC_TICKER};
+use renegade_darkpool_client::constants::Chain;
 use tracing::info;
 
 use super::{CustodyClient, DepositWithdrawSource};
@@ -140,7 +140,7 @@ impl CustodyClient {
         let secret_name = Self::hot_wallet_secret_name(&gas_wallet.address);
         let private_key = get_secret(&secret_name, &self.aws_config).await?;
         let wallet =
-            LocalWallet::from_str(private_key.as_str()).map_err(FundsManagerError::parse)?;
+            PrivateKeySigner::from_str(private_key.as_str()).map_err(FundsManagerError::parse)?;
 
         // Execute the transfer
         let tx = self.transfer_ether(to, amount, wallet).await?;
