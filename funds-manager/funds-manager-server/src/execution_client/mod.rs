@@ -6,10 +6,9 @@ pub mod swap;
 
 use std::sync::Arc;
 
-use ethers::{
-    middleware::SignerMiddleware,
-    providers::{Http, Provider},
-    signers::LocalWallet,
+use alloy::{
+    providers::{DynProvider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
 use reqwest::{Client, Url};
@@ -31,7 +30,7 @@ pub struct ExecutionClient {
     /// The underlying HTTP client
     http_client: Arc<Client>,
     /// The RPC provider
-    rpc_provider: Arc<Provider<Http>>,
+    rpc_provider: DynProvider,
 }
 
 impl ExecutionClient {
@@ -41,14 +40,11 @@ impl ExecutionClient {
         base_url: String,
         rpc_url: &str,
     ) -> Result<Self, ExecutionClientError> {
-        let provider =
-            Provider::<Http>::try_from(rpc_url).map_err(ExecutionClientError::arbitrum)?;
-        Ok(Self {
-            api_key,
-            base_url,
-            http_client: Arc::new(Client::new()),
-            rpc_provider: Arc::new(provider),
-        })
+        let url = rpc_url.parse().map_err(ExecutionClientError::parse)?;
+        let provider = ProviderBuilder::new().on_http(url);
+        let rpc_provider = DynProvider::new(provider);
+
+        Ok(Self { api_key, base_url, http_client: Arc::new(Client::new()), rpc_provider })
     }
 
     /// Get a full URL for a given endpoint
@@ -88,10 +84,8 @@ impl ExecutionClient {
     }
 
     /// Get an instance of a signer middleware with the http provider attached
-    fn get_signer(
-        &self,
-        wallet: LocalWallet,
-    ) -> SignerMiddleware<Arc<Provider<Http>>, LocalWallet> {
-        SignerMiddleware::new(self.rpc_provider.clone(), wallet)
+    fn get_signer(&self, wallet: PrivateKeySigner) -> DynProvider {
+        let provider = ProviderBuilder::new().wallet(wallet).on_provider(self.rpc_provider.clone());
+        DynProvider::new(provider)
     }
 }
