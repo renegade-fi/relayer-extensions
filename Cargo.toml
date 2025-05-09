@@ -23,9 +23,7 @@ lto = true
 [workspace.dependencies]
 # === Renegade Dependencies === #
 contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
-renegade-arbitrum-client = { package = "arbitrum-client", git = "https://github.com/renegade-fi/renegade.git", features = [
-    "rand",
-] }
+renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git"}
 renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", features = [
     "auth",
 ] }
@@ -38,6 +36,13 @@ renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["metered-channels"] }
 renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
+
+# === Blockchain Dependencies === #
+alloy-sol-types = "1.0.0"
+alloy-dyn-abi = "1.0.0"
+alloy-json-rpc = "0.14"
+alloy-primitives = "1.0.0"
+alloy = "0.14"
 
 # === Database Dependencies === #
 diesel = { version = "2.1" }

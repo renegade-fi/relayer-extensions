@@ -1,33 +1,27 @@
 //! Helpers for the funds manager server
 #![allow(missing_docs)]
 
+use alloy::sol;
 use aws_config::SdkConfig;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
-use ethers::{contract::abigen, types::H256};
 use renegade_util::err_str;
 
 use crate::error::FundsManagerError;
-
-/// A readable type alias for a transaction hash
-pub type TransactionHash = H256;
 
 // ---------
 // | ERC20 |
 // ---------
 
 // The ERC20 interface
-abigen!(
-    ERC20,
-    r#"[
-        event Transfer(address indexed from, address indexed to, uint256 value)
-        function symbol() external view returns (string memory)
-        function decimals() external view returns (uint8)
-        function balanceOf(address account) external view returns (uint256)
-        function allowance(address owner, address spender) external view returns (uint256)
-        function approve(address spender, uint256 value) external returns (bool)
-        function transfer(address recipient, uint256 amount) external returns (bool)
-    ]"#
-);
+sol! {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+    function balanceOf(address account) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 value) external returns (bool);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+}
 
 // -----------------------
 // | AWS Secrets Manager |

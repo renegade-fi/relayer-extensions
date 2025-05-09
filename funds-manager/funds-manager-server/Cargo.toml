@@ -32,15 +32,14 @@ postgres-native-tls = "0.5"
 tokio-postgres = "0.7.7"
 
 # === Blockchain Interaction === #
-alloy-sol-types = "1.0.0"
-alloy-dyn-abi = { version = "1.0.0", features = ["eip712"] }
-alloy-json-rpc = "0.14.0"
-ethers = "2"
+alloy-sol-types = { workspace = true }
+alloy-dyn-abi = { workspace = true, features = ["eip712"] }
+alloy-json-rpc = { workspace = true }
+alloy-primitives = { workspace = true, features = ["serde"] }
+alloy = { workspace = true }
 
 # === Renegade Dependencies === #
-renegade-arbitrum-client = { package = "arbitrum-client", workspace = true, features = [
-  "rand",
-] }
+renegade-darkpool-client = { package = "darkpool-client", workspace = true, features = [ "arbitrum" ] }
 renegade-api = { package = "external-api", workspace = true }
 renegade-common = { package = "common", workspace = true }
 renegade-config = { package = "config", workspace = true }

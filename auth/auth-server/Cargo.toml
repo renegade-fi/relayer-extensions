@@ -33,14 +33,14 @@ aes-gcm = "0.10.1"
 rand = "0.8.5"
 
 # === Ethereum Libraries === #
-alloy = { version = "0.14", features = ["provider-ws"] }
-alloy-primitives = { version = "1.0.0", features = ["serde", "k256"] }
-alloy-sol-types = "1.0.0"
+alloy = { workspace = true, features = ["provider-ws"] }
+alloy-primitives = { workspace = true, features = ["serde", "k256"] }
+alloy-sol-types = { workspace = true }
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 contracts-common = { workspace = true }
-renegade-arbitrum-client = { workspace = true }
+renegade-darkpool-client = { workspace = true }
 renegade-circuit-types = { workspace = true }
 renegade-common = { workspace = true }
 renegade-constants = { workspace = true }
