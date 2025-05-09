@@ -28,7 +28,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # === Renegade === #
 renegade-price-reporter = { package = "price-reporter", workspace = true }
 renegade-api = { package = "external-api", workspace = true }
-renegade-arbitrum-client = { package = "arbitrum-client", workspace = true }
+renegade-darkpool-client = { package = "darkpool-client", workspace = true }
 renegade-config = { package = "config", workspace = true }
 renegade-common = { package = "common", workspace = true }
 renegade-util = { package = "util", workspace = true }

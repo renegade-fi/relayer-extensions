@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use alloy::signers::local::PrivateKeySigner;
 use base64::engine::{general_purpose as b64_general_purpose, Engine};
-use ethers::signers::LocalWallet;
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
     http::{
@@ -101,7 +101,7 @@ impl RelayerClient {
         &self,
         wallet_id: WalletIdentifier,
         chain_id: u64,
-        eth_key: &LocalWallet,
+        eth_key: &PrivateKeySigner,
     ) -> Result<(), FundsManagerError> {
         let mut path = GET_WALLET_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
@@ -120,7 +120,7 @@ impl RelayerClient {
     async fn lookup_wallet(
         &self,
         chain_id: u64,
-        eth_key: &LocalWallet,
+        eth_key: &PrivateKeySigner,
     ) -> Result<(), FundsManagerError> {
         let path = FIND_WALLET_ROUTE.to_string();
         let wallet_id = derive_wallet_id(eth_key).unwrap();

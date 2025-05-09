@@ -57,7 +57,7 @@ use warp::Filter;
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use clap::Parser;
-use renegade_arbitrum_client::constants::Chain;
+use renegade_darkpool_client::constants::Chain;
 use tracing::{error, warn};
 
 use crate::custody_client::CustodyClient;
