@@ -1,21 +1,26 @@
 //! Phase one of the sweeper's execution; index all fees since the last
 //! consistent block
 
+use alloy::consensus::constants::SELECTOR_LEN;
+use alloy::consensus::Transaction;
+use alloy::providers::Provider;
+use alloy::rpc::types::Log;
+use alloy_primitives::TxHash;
 use alloy_sol_types::SolCall;
-use ethers::contract::LogMeta;
-use ethers::middleware::Middleware;
-use ethers::types::TxHash;
-use renegade_arbitrum_client::abi::settleOfflineFeeCall;
-use renegade_arbitrum_client::{
-    abi::NotePostedFilter, constants::SELECTOR_LEN,
-    helpers::parse_note_ciphertext_from_settle_offline_fee,
-};
-use renegade_circuit_types::elgamal::{DecryptionKey, ElGamalCiphertext};
+use renegade_circuit_types::elgamal::{BabyJubJubPoint, DecryptionKey, ElGamalCiphertext};
 use renegade_circuit_types::native_helpers::elgamal_decrypt;
 use renegade_circuit_types::note::{Note, NOTE_CIPHERTEXT_SIZE};
 use renegade_circuit_types::wallet::NoteCommitment;
 use renegade_constants::Scalar;
-use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128, u256_to_scalar};
+use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128};
+use renegade_darkpool_client::{
+    arbitrum::{
+        abi::Darkpool::{settleOfflineFeeCall, NotePosted},
+        contract_types::types::ValidOfflineFeeSettlementStatement as ContractValidOfflineFeeSettlementStatement,
+        helpers::deserialize_calldata,
+    },
+    conversion::u256_to_scalar,
+};
 use renegade_util::err_str;
 use tracing::{info, warn};
 
@@ -23,29 +28,34 @@ use crate::db::models::NewFee;
 use crate::error::FundsManagerError;
 use crate::Indexer;
 
+/// Error message for when a tx is not found
+const ERR_TX_NOT_FOUND: &str = "tx not found";
+/// Error message for when a block number is not found for a given event
+const ERR_NO_BLOCK_NUMBER: &str = "block number not found";
+/// Error message for when a tx hash is not found for a given event
+const ERR_NO_TX_HASH: &str = "tx hash not found";
+/// Error message for when a failed to create a note posted stream
+const ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM: &str = "failed to create note posted stream";
+
 impl Indexer {
     /// Index all fees since the given block
     pub async fn index_fees(&self) -> Result<(), FundsManagerError> {
         let block_number = self.get_latest_block().await?;
         info!("indexing fees from block {block_number}");
 
-        let darkpool_addr = self.arbitrum_client.get_darkpool_client().address();
-        let filter = self
-            .arbitrum_client
-            .get_darkpool_client()
-            .event::<NotePostedFilter>()
-            .address(darkpool_addr.into())
-            .from_block(block_number);
+        let filter = self.darkpool_client.event_filter::<NotePosted>().from_block(block_number);
 
         let events = filter
-            .query_with_meta()
+            .query()
             .await
-            .map_err(|_| FundsManagerError::arbitrum("failed to create note posted stream"))?;
+            .map_err(|_| FundsManagerError::arbitrum(ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM))?;
 
         let mut most_recent_block = block_number;
         for (event, meta) in events {
-            let block = meta.block_number.as_u64();
-            let note_comm = u256_to_scalar(&event.note_commitment);
+            let block =
+                meta.block_number.ok_or(FundsManagerError::arbitrum(ERR_NO_BLOCK_NUMBER))?;
+
+            let note_comm = u256_to_scalar(event.note_commitment);
             self.index_note(note_comm, meta).await?;
 
             if block > most_recent_block {
@@ -61,10 +71,11 @@ impl Indexer {
     async fn index_note(
         &self,
         note_comm: NoteCommitment,
-        meta: LogMeta,
+        meta: Log,
     ) -> Result<(), FundsManagerError> {
-        let maybe_note = self.get_note_from_tx(meta.transaction_hash, note_comm).await?;
-        let tx = format!("{:#x}", meta.transaction_hash);
+        let tx_hash = meta.transaction_hash.ok_or(FundsManagerError::arbitrum(ERR_NO_TX_HASH))?;
+        let maybe_note = self.get_note_from_tx(tx_hash, note_comm).await?;
+        let tx = format!("{:#x}", tx_hash);
         let note = match maybe_note {
             Some(note) => note,
             None => {
@@ -77,7 +88,7 @@ impl Indexer {
         // Check that the note's nullifier has not been spent
         let nullifier = note.nullifier();
         if self
-            .arbitrum_client
+            .darkpool_client
             .check_nullifier_used(nullifier)
             .await
             .map_err(|_| FundsManagerError::db("failed to check nullifier"))?
@@ -122,20 +133,18 @@ impl Indexer {
         tx_hash: TxHash,
     ) -> Result<ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>, FundsManagerError> {
         let tx = self
-            .arbitrum_client
-            .get_darkpool_client()
-            .client()
-            .get_transaction(tx_hash)
+            .darkpool_client
+            .provider()
+            .get_transaction_by_hash(tx_hash)
             .await
             .map_err(err_str!(FundsManagerError::Arbitrum))?
-            .ok_or_else(|| FundsManagerError::arbitrum("tx not found"))?;
+            .ok_or_else(|| FundsManagerError::arbitrum(ERR_TX_NOT_FOUND))?;
 
-        let calldata: Vec<u8> = tx.input.to_vec();
-        let selector: [u8; 4] = calldata[..SELECTOR_LEN].try_into().unwrap();
+        let calldata: Vec<u8> = tx.inner.input().to_vec();
+        let selector: [u8; SELECTOR_LEN] = calldata[..SELECTOR_LEN].try_into().unwrap();
         let encryption = match selector {
             <settleOfflineFeeCall as SolCall>::SELECTOR => {
-                parse_note_ciphertext_from_settle_offline_fee(&calldata)
-                    .map_err(err_str!(FundsManagerError::Arbitrum))?
+                parse_note_ciphertext_from_settle_offline_fee(&calldata)?
             },
             sel => {
                 return Err(FundsManagerError::arbitrum(format!(
@@ -186,4 +195,31 @@ impl Indexer {
             blinder: cleartext_values[2],
         }
     }
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Parse a note from calldata of a `settleOfflineFee` call
+// TODO: Move to renegade_darkpool_client
+fn parse_note_ciphertext_from_settle_offline_fee(
+    calldata: &[u8],
+) -> Result<ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>, FundsManagerError> {
+    let call = settleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::arbitrum)?;
+
+    let statement = deserialize_calldata::<ContractValidOfflineFeeSettlementStatement>(
+        &call.valid_offline_fee_settlement_statement,
+    )
+    .map_err(FundsManagerError::arbitrum)?;
+
+    let ciphertext = statement.note_ciphertext;
+
+    let key_encryption =
+        BabyJubJubPoint { x: Scalar::new(ciphertext.0.x), y: Scalar::new(ciphertext.0.y) };
+
+    let symmetric_ciphertext =
+        [Scalar::new(ciphertext.1), Scalar::new(ciphertext.2), Scalar::new(ciphertext.3)];
+
+    Ok(ElGamalCiphertext { ephemeral_key: key_encryption, ciphertext: symmetric_ciphertext })
 }

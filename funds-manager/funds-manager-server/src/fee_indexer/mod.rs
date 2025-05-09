@@ -1,8 +1,8 @@
 //! The indexer handles the indexing and redemption of fee notes
 
 use aws_config::SdkConfig as AwsConfig;
-use renegade_arbitrum_client::{client::ArbitrumClient, constants::Chain};
 use renegade_circuit_types::elgamal::DecryptionKey;
+use renegade_darkpool_client::{constants::Chain, DarkpoolClient};
 use renegade_util::err_str;
 use renegade_util::hex::jubjub_from_hex_string;
 use std::sync::Arc;
@@ -25,8 +25,8 @@ pub(crate) struct Indexer {
     pub chain: Chain,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
-    /// The Arbitrum client
-    pub arbitrum_client: ArbitrumClient,
+    /// The darkpool client
+    pub darkpool_client: DarkpoolClient,
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
     /// The database connection pool
@@ -44,7 +44,7 @@ impl Indexer {
         chain_id: u64,
         chain: Chain,
         aws_config: AwsConfig,
-        arbitrum_client: ArbitrumClient,
+        darkpool_client: DarkpoolClient,
         decryption_keys: Vec<DecryptionKey>,
         db_pool: Arc<DbPool>,
         relayer_client: RelayerClient,
@@ -53,7 +53,7 @@ impl Indexer {
         Indexer {
             chain_id,
             chain,
-            arbitrum_client,
+            darkpool_client,
             decryption_keys,
             db_pool,
             relayer_client,

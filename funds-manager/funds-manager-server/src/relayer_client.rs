@@ -343,6 +343,7 @@ fn reqwest_client() -> Result<Client, FundsManagerError> {
 }
 
 /// Build authentication headers for a request
+// TODO: Use v2 auth helpers from renegade-api
 fn build_auth_headers(key: &HmacKey, req_bytes: &[u8]) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     let expiration = get_current_time_millis() + SIG_EXPIRATION_BUFFER_MS;
