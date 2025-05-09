@@ -1,9 +1,9 @@
 //! API types for quoter management
-use alloy_primitives::{hex, ruint::FromUintError, Address, Bytes, U256};
+use alloy_primitives::{hex, Address, Bytes, U256};
 use renegade_common::types::token::{Token, USDC_TICKER};
 use serde::{Deserialize, Serialize};
 
-use crate::serialization::u256_string_serialization;
+use crate::{serialization::u256_string_serialization, u256_try_into_u128};
 
 // --------------
 // | Api Routes |
@@ -247,14 +247,4 @@ pub struct ExecuteSwapResponse {
 pub struct WithdrawToHyperliquidRequest {
     /// The amount of USDC to withdraw, in decimal format (i.e., whole units)
     pub amount: f64,
-}
-
-// -----------
-// | Helpers |
-// -----------
-
-/// Helper to attempt to convert a U256 to a u128, returning a String error
-/// if it fails
-fn u256_try_into_u128(u256: U256) -> Result<u128, String> {
-    u256.try_into().map_err(|e: FromUintError<u128>| e.to_string())
 }
