@@ -153,7 +153,7 @@ impl OnChainEventListenerExecutor {
 
             let event = log.log_decode::<NullifierSpent>()?;
             let nullifier = u256_to_scalar(event.data().nullifier);
-            self.handle_nullifier_spent(tx_hash, nullifier).await?;
+            self.handle_nullifier_spent(tx_hash, nullifier);
         }
 
         unreachable!()
@@ -175,7 +175,7 @@ impl OnChainEventListenerExecutor {
                 .ok_or_else(|| OnChainEventListenerError::arbitrum("no tx hash"))?;
             let nullifier = u256_to_scalar(event.nullifier);
 
-            self.handle_nullifier_spent(tx_hash, nullifier).await?;
+            self.handle_nullifier_spent(tx_hash, nullifier);
         }
 
         unreachable!()
@@ -186,12 +186,14 @@ impl OnChainEventListenerExecutor {
     // ----------------------
 
     /// Handle a nullifier spent event
-    async fn handle_nullifier_spent(
-        &self,
-        tx: TxHash,
-        nullifier: Nullifier,
-    ) -> Result<(), OnChainEventListenerError> {
-        self.check_external_match_settlement(nullifier, tx).await
+    fn handle_nullifier_spent(&self, tx: TxHash, nullifier: Nullifier) {
+        let self_clone = self.clone();
+        tokio::spawn(async move {
+            let res = self_clone.check_external_match_settlement(nullifier, tx).await;
+            if let Err(e) = res {
+                error!("failed to check external match settlement: {e}");
+            }
+        });
     }
 
     /// Check for an external match settlement on the given transaction hash. If
