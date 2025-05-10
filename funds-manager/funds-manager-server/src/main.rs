@@ -5,6 +5,7 @@
 #![deny(unsafe_code)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
+#![feature(trait_alias)]
 
 pub mod custody_client;
 pub mod db;
