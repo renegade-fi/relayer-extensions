@@ -35,7 +35,8 @@ use crate::{
 
 use super::{
     labels::{
-        KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS, REQUEST_PATH_METRIC_TAG, SIDE_TAG,
+        KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS, QUOTE_NOT_FOUND_COUNT,
+        REQUEST_PATH_METRIC_TAG, SIDE_TAG,
     },
     quote_comparison::QuoteComparison,
 };
@@ -240,6 +241,20 @@ pub(crate) fn record_relayer_request_500(key_description: String, path: String) 
     ];
 
     metrics::counter!(UNSUCCESSFUL_RELAYER_REQUEST_COUNT, &labels).increment(1);
+}
+
+/// Record a counter metric for quote requests for which the relayer could not
+/// produce a quote
+pub(crate) fn record_quote_not_found(key_description: String, base_mint: &str) {
+    let base_token = Token::from_addr(base_mint);
+    let base_asset = base_token.get_ticker().unwrap_or(base_mint.to_string());
+
+    let labels = vec![
+        (KEY_DESCRIPTION_METRIC_TAG.to_string(), key_description),
+        (BASE_ASSET_METRIC_TAG.to_string(), base_asset),
+    ];
+
+    metrics::counter!(QUOTE_NOT_FOUND_COUNT, &labels).increment(1);
 }
 
 // --- Settlement Processing --- //
