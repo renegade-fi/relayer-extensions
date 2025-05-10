@@ -35,7 +35,7 @@ impl ExecutionClient {
         quote: ExecutionQuote,
         wallet: &PrivateKeySigner,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
-        let client = self.get_signer(wallet.clone());
+        let client = self.get_signing_provider(wallet.clone());
 
         // Set approval for the sell token
         self.approve_erc20_allowance(quote.sell_token_address, quote.to, quote.sell_amount, wallet)
@@ -87,7 +87,7 @@ impl ExecutionClient {
         amount: U256,
         wallet: &PrivateKeySigner,
     ) -> Result<(), ExecutionClientError> {
-        let client = self.get_signer(wallet.clone());
+        let client = self.get_signing_provider(wallet.clone());
         let erc20 = IERC20::new(token_address, client);
 
         // First, check if the allowance is already sufficient
