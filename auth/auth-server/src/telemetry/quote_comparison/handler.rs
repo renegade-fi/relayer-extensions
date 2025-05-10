@@ -5,9 +5,9 @@ use std::sync::Arc;
 use alloy::providers::Provider;
 use alloy_primitives::{utils::format_units, U256};
 use futures_util::future::join_all;
-use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
+use renegade_darkpool_client::DarkpoolClient;
 
 use renegade_api::http::external_match::AtomicMatchApiBundle;
 use tracing::warn;
@@ -30,8 +30,8 @@ use crate::server::price_reporter_client::PriceReporterClient;
 pub struct QuoteComparisonHandler {
     /// The sources to compare quotes from
     sources: Vec<QuoteSource>,
-    /// The arbitrum client
-    arbitrum_client: ArbitrumClient,
+    /// The darkpool client
+    darkpool_client: DarkpoolClient,
     /// The price reporter client
     price_reporter_client: Arc<PriceReporterClient>,
 }
@@ -40,10 +40,10 @@ impl QuoteComparisonHandler {
     /// Create a new QuoteComparisonHandler with the given sources
     pub fn new(
         sources: Vec<QuoteSource>,
-        arbitrum_client: ArbitrumClient,
+        darkpool_client: DarkpoolClient,
         price_reporter_client: Arc<PriceReporterClient>,
     ) -> Self {
-        Self { sources, arbitrum_client, price_reporter_client }
+        Self { sources, darkpool_client, price_reporter_client }
     }
 
     /// Records metrics comparing quotes from different sources
@@ -119,7 +119,7 @@ impl QuoteComparisonHandler {
     async fn fetch_gas_price_eth(&self) -> Result<f64, AuthServerError> {
         // Fetch gas price in wei
         let gas_price: U256 = self
-            .arbitrum_client
+            .darkpool_client
             .provider()
             .get_gas_price()
             .await

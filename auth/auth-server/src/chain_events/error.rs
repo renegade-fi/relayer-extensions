@@ -2,7 +2,7 @@
 
 use std::{error::Error, fmt::Display};
 
-use renegade_arbitrum_client::errors::ArbitrumClientError;
+use renegade_darkpool_client::errors::DarkpoolClientError;
 
 use crate::error::AuthServerError;
 
@@ -10,8 +10,8 @@ use crate::error::AuthServerError;
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub enum OnChainEventListenerError {
-    /// An error executing some method in the Arbitrum client
-    Arbitrum(String),
+    /// An error executing some method in the darkpool client
+    Darkpool(String),
     /// An RPC error with the provider
     Rpc(String),
     /// Error setting up the on-chain event listener
@@ -23,10 +23,10 @@ pub enum OnChainEventListenerError {
 }
 
 impl OnChainEventListenerError {
-    /// Create a new arbitrum error
+    /// Create a new darkpool error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn arbitrum<T: ToString>(e: T) -> Self {
-        OnChainEventListenerError::Arbitrum(e.to_string())
+    pub fn darkpool<T: ToString>(e: T) -> Self {
+        OnChainEventListenerError::Darkpool(e.to_string())
     }
 
     /// Create a new auth server error
@@ -43,9 +43,9 @@ impl Display for OnChainEventListenerError {
 }
 impl Error for OnChainEventListenerError {}
 
-impl From<ArbitrumClientError> for OnChainEventListenerError {
-    fn from(e: ArbitrumClientError) -> Self {
-        OnChainEventListenerError::arbitrum(e)
+impl From<DarkpoolClientError> for OnChainEventListenerError {
+    fn from(e: DarkpoolClientError) -> Self {
+        OnChainEventListenerError::darkpool(e)
     }
 }
 
