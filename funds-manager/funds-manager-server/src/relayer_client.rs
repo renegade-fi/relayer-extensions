@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use alloy::signers::local::PrivateKeySigner;
-use base64::engine::{general_purpose as b64_general_purpose, Engine};
-use http::{HeaderMap, HeaderValue};
+use http::HeaderMap;
 use renegade_api::{
+    auth::add_expiring_auth_to_headers,
     http::{
         price_report::{GetPriceReportRequest, GetPriceReportResponse, PRICE_REPORT_ROUTE},
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
@@ -17,7 +17,6 @@ use renegade_api::{
         },
     },
     types::ApiKeychain,
-    RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
 use renegade_common::types::{
     exchange::PriceReporterState,
@@ -31,8 +30,8 @@ use renegade_common::types::{
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_biguint;
-use renegade_util::{err_str, get_current_time_millis};
-use reqwest::{Body, Client};
+use renegade_util::err_str;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
@@ -205,9 +204,12 @@ impl RelayerClient {
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
+        let expiration = Duration::from_millis(SIG_EXPIRATION_BUFFER_MS);
         let body_ser = serde_json::to_vec(body).map_err(err_str!(FundsManagerError::Custom))?;
-        let headers = build_auth_headers(wallet_key, &body_ser)
-            .map_err(err_str!(FundsManagerError::custom))?;
+        let mut headers = HeaderMap::new();
+
+        add_expiring_auth_to_headers(path, &mut headers, &body_ser, wallet_key, expiration);
+
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
@@ -263,8 +265,16 @@ impl RelayerClient {
     where
         Resp: for<'de> Deserialize<'de>,
     {
-        let headers =
-            build_auth_headers(wallet_key, &[]).map_err(err_str!(FundsManagerError::Custom))?;
+        let mut headers = HeaderMap::new();
+        let expiration = Duration::from_millis(SIG_EXPIRATION_BUFFER_MS);
+        add_expiring_auth_to_headers(
+            path,
+            &mut headers,
+            &[], // body
+            wallet_key,
+            expiration,
+        );
+
         self.get_relayer_with_headers(path, &headers).await
     }
 
@@ -330,24 +340,4 @@ fn reqwest_client() -> Result<Client, FundsManagerError> {
         .user_agent("fee-sweeper")
         .build()
         .map_err(|_| FundsManagerError::custom("Failed to create reqwest client"))
-}
-
-/// Build authentication headers for a request
-// TODO: Use v2 auth helpers from renegade-api
-fn build_auth_headers(key: &HmacKey, req_bytes: &[u8]) -> Result<HeaderMap, String> {
-    let mut headers = HeaderMap::new();
-    let expiration = get_current_time_millis() + SIG_EXPIRATION_BUFFER_MS;
-    headers.insert(RENEGADE_SIG_EXPIRATION_HEADER_NAME, expiration.into());
-
-    // Concatenate the message and the timestamp
-    let body = Body::from(req_bytes.to_vec());
-    let msg_bytes = body.as_bytes().unwrap();
-    let payload = [msg_bytes, &expiration.to_le_bytes()].concat();
-
-    // Compute the hmac
-    let hmac = key.compute_mac(&payload);
-    let encoded_sig = b64_general_purpose::STANDARD_NO_PAD.encode(hmac);
-    headers.insert(RENEGADE_AUTH_HEADER_NAME, HeaderValue::from_str(&encoded_sig).unwrap());
-
-    Ok(headers)
 }
