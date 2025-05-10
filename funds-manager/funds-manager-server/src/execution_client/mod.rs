@@ -84,7 +84,7 @@ impl ExecutionClient {
     }
 
     /// Get an instance of a signer with the http provider attached
-    fn get_signer(&self, wallet: PrivateKeySigner) -> DynProvider {
+    fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
         let provider = ProviderBuilder::new().wallet(wallet).on_provider(self.rpc_provider.clone());
         DynProvider::new(provider)
     }

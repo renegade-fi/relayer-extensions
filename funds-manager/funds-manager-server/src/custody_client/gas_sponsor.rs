@@ -212,7 +212,7 @@ impl CustodyClient {
         amount: f64,
         signer: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let client = self.get_signer(signer);
+        let client = self.get_signing_provider(signer);
 
         let calldata = sol::receiveEthCall {}.abi_encode();
 

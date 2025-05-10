@@ -5,6 +5,7 @@
 #![deny(unsafe_code)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
+#![feature(trait_alias)]
 
 pub mod custody_client;
 pub mod db;
@@ -180,21 +181,8 @@ impl Cli {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_stack_size(1024 * 1024 * 10)
-        .build()
-        .unwrap()
-        .block_on(async { main_inner().await })
-}
-
-// -----------
-// | Helpers |
-// -----------
-
-/// Temp fn
-async fn main_inner() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     cli.validate()?;
     if cli.hmac_key.is_none() {
@@ -432,6 +420,10 @@ async fn main_inner() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Handle a rejection from an endpoint handler
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
