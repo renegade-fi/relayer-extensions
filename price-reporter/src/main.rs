@@ -7,28 +7,33 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 
-use std::{collections::HashSet, net::SocketAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+};
 
 use errors::ServerError;
 use http_server::HttpServer;
 use renegade_common::types::{
+    chain_token::default_exchange_stable_on_chain,
     exchange::Exchange,
-    token::{
-        default_exchange_stable, read_token_remap, Token, USDC_TICKER, USDT_TICKER, USD_TICKER,
-    },
+    token::{Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
 use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{parse_config_env_vars, setup_logging};
+use utils::{get_all_tokens_filtered, parse_config_env_vars, setup_logging};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
 mod http_server;
 mod utils;
 mod ws_server;
+
+/// Stablecoin tickers to filter
+const STABLECOIN_TICKERS: [&str; 3] = [USD_TICKER, USDC_TICKER, USDT_TICKER];
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
@@ -98,22 +103,28 @@ pub fn init_default_price_streams(
 
     let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
 
-    // Get the default token remap
-    let remap = read_token_remap();
-    for (addr, ticker) in remap.iter() {
-        // Skip stables
-        if [USD_TICKER, USDC_TICKER, USDT_TICKER].contains(&ticker.as_str()) {
-            continue;
-        }
+    // Get tokens with distinct tickers from the token remap
+    let distinct_tokens = get_all_tokens_filtered(&STABLECOIN_TICKERS).into_iter().fold(
+        HashMap::new(),
+        |mut m, token| {
+            if let Some(ticker) = token.get_ticker() {
+                m.entry(ticker.to_string()).or_insert(token);
+            }
+            m
+        },
+    );
 
-        let base_token = Token::from_addr(addr);
+    // Iterate over distinct tokens
+    for base_token in distinct_tokens.into_values() {
         let supported_exchanges: Vec<Exchange> = get_supported_exchanges(&base_token, config)
             .difference(&disabled_exchanges_set)
             .copied()
             .collect();
 
+        let chain = base_token.get_chain();
+
         for exchange in supported_exchanges {
-            let quote_token = default_exchange_stable(&exchange);
+            let quote_token = default_exchange_stable_on_chain(&exchange, chain);
             // We assume that the exchange has a market between the base token
             // and its default stable token
             init_price_stream(

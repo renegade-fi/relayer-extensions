@@ -6,9 +6,15 @@ use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 
 use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
+use itertools::Itertools;
 use matchit::Router;
-use renegade_common::types::{exchange::Exchange, hmac::HmacKey, token::Token, Price};
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::{
+    chain::Chain,
+    exchange::Exchange,
+    hmac::HmacKey,
+    token::{get_all_tokens, Token, USDC_TICKER},
+    Price,
+};
 use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
@@ -268,9 +274,15 @@ pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
 pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
     let parts: Vec<&str> = topic.split('-').collect();
     let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-    let base = Token::from_addr(parts[1]);
-    let quote =
-        if exchange == Exchange::Renegade { Token::usdc() } else { Token::from_addr(parts[2]) };
+    let base = Token::from_addr_without_chain(parts[1]).ok_or_else(|| {
+        ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
+    })?;
+    let chain = base.get_chain();
+    let quote = if exchange == Exchange::Renegade {
+        Token::from_ticker_on_chain(USDC_TICKER, chain)
+    } else {
+        Token::from_addr_on_chain(parts[2], chain)
+    };
 
     Ok((exchange, base, quote))
 }
@@ -297,4 +309,12 @@ pub async fn validate_subscription(pair_info: &PairInfo) -> Result<(), ServerErr
     }
 
     Ok(())
+}
+
+/// Get all tokens from the token map filtering out given tokens
+pub fn get_all_tokens_filtered(filtered_tokens: &[&str]) -> Vec<Token> {
+    get_all_tokens()
+        .into_iter()
+        .filter(|t| !filtered_tokens.contains(&t.get_ticker().unwrap().as_str()))
+        .collect_vec()
 }
