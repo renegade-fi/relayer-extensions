@@ -7,27 +7,38 @@ mod queries;
 pub mod rpc_shim;
 pub mod withdraw;
 
+use alloy::{
+    network::TransactionBuilder,
+    providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
+};
+use alloy_primitives::{
+    utils::{format_units, parse_units},
+    Address,
+};
 use aws_config::SdkConfig as AwsConfig;
-use ethers::middleware::SignerMiddleware;
-use ethers::providers::{Http, Middleware, Provider};
-use ethers::signers::{LocalWallet, Signer};
-use ethers::types::{Address, TransactionReceipt, TransactionRequest};
-use ethers::utils::format_units;
-use fireblocks_sdk::apis::blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams};
-use fireblocks_sdk::apis::vaults_api::GetPagedVaultAccountsParams;
-use fireblocks_sdk::apis::Api;
-use fireblocks_sdk::models::{TransactionResponse, VaultAccount};
-use fireblocks_sdk::{Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder};
-use renegade_arbitrum_client::constants::Chain;
-use renegade_util::err_str;
+use fireblocks_sdk::{
+    apis::{
+        blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams},
+        vaults_api::GetPagedVaultAccountsParams,
+        Api,
+    },
+    models::{TransactionResponse, VaultAccount},
+    Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
+};
+use renegade_darkpool_client::constants::Chain;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info};
 
-use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
-use crate::helpers::ERC20;
+use crate::helpers::IERC20;
+use crate::{
+    db::{DbConn, DbPool},
+    helpers::build_provider,
+};
 
 /// The error message for when the Arbitrum blockchain is not found
 /// in the Fireblocks `/blockchains` endpoint response
@@ -88,8 +99,8 @@ pub struct CustodyClient {
     chain_id: u64,
     /// The Fireblocks API client
     fireblocks_client: Arc<FireblocksClient>,
-    /// The arbitrum RPC url to use for the custody client
-    arbitrum_rpc_url: String,
+    /// The arbitrum RPC provider to use for the custody client
+    arbitrum_provider: DynProvider,
     /// The database connection pool
     db_pool: Arc<DbPool>,
     /// The AWS config
@@ -124,11 +135,13 @@ impl CustodyClient {
             hyperliquid_address: None,
         });
 
+        let arbitrum_provider = build_provider(&arbitrum_rpc_url)?;
+
         Ok(Self {
             chain,
             chain_id,
             fireblocks_client,
-            arbitrum_rpc_url,
+            arbitrum_provider,
             db_pool,
             aws_config,
             gas_sponsor_address,
@@ -238,19 +251,22 @@ impl CustodyClient {
 
     // --- Arbitrum JSON RPC --- //
 
-    /// Get a JSON RPC provider for the given RPC url
-    pub fn get_rpc_provider(&self) -> Result<Provider<Http>, FundsManagerError> {
-        Provider::<Http>::try_from(&self.arbitrum_rpc_url)
-            .map_err(err_str!(FundsManagerError::Arbitrum))
+    /// Get an instance of a signer with the http provider attached
+    fn get_signer(&self, wallet: PrivateKeySigner) -> DynProvider {
+        let provider =
+            ProviderBuilder::new().wallet(wallet).on_provider(self.arbitrum_provider.clone());
+
+        DynProvider::new(provider)
     }
 
     /// Get the native token balance of an address
     pub(crate) async fn get_ether_balance(&self, address: &str) -> Result<f64, FundsManagerError> {
-        let provider = self.get_rpc_provider()?;
-        let client = Arc::new(provider);
         let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
-        let balance =
-            client.get_balance(address, None).await.map_err(FundsManagerError::arbitrum)?;
+        let balance = self
+            .arbitrum_provider
+            .get_balance(address)
+            .await
+            .map_err(FundsManagerError::arbitrum)?;
 
         // Convert U256 to f64
         let balance_str = format_units(balance, "ether").map_err(FundsManagerError::parse)?;
@@ -262,24 +278,19 @@ impl CustodyClient {
         &self,
         to: &str,
         amount: f64,
-        wallet: LocalWallet,
+        wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let wallet = wallet.with_chain_id(self.chain_id);
-        let provider = self.get_rpc_provider()?;
-        let client = SignerMiddleware::new(provider, wallet);
+        let client = self.get_signer(wallet);
 
         let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
-        let amount_units = ethers::utils::parse_units(amount.to_string(), "ether")
-            .map_err(FundsManagerError::parse)?;
+        let amount_units =
+            parse_units(&amount.to_string(), "ether").map_err(FundsManagerError::parse)?.into();
 
         info!("Transferring {amount} ETH to {to:#x}");
-        let tx = TransactionRequest::new().to(to).value(amount_units);
-        let pending_tx =
-            client.send_transaction(tx, None).await.map_err(FundsManagerError::arbitrum)?;
-        pending_tx
-            .await
-            .map_err(FundsManagerError::arbitrum)?
-            .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))
+        let tx = TransactionRequest::default().with_to(to).with_value(amount_units);
+        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::arbitrum)?;
+
+        pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
     }
 
     /// Get the erc20 balance of an address
@@ -291,14 +302,12 @@ impl CustodyClient {
         // Setup the provider
         let token_address = Address::from_str(token_address).map_err(FundsManagerError::parse)?;
         let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
-        let provider = self.get_rpc_provider()?;
-        let client = Arc::new(provider);
-        let erc20 = ERC20::new(token_address, client);
+        let erc20 = IERC20::new(token_address, self.arbitrum_provider.clone());
 
         // Fetch the balance and correct for the ERC20 decimal precision
-        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::arbitrum)? as u32;
-        let balance =
-            erc20.balance_of(address).call().await.map_err(FundsManagerError::arbitrum)?;
+        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::arbitrum)?;
+        let balance = erc20.balanceOf(address).call().await.map_err(FundsManagerError::arbitrum)?;
+
         let bal_str = format_units(balance, decimals).map_err(FundsManagerError::parse)?;
         let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
 
@@ -311,22 +320,17 @@ impl CustodyClient {
         mint: &str,
         to_address: &str,
         amount: f64,
-        wallet: LocalWallet,
+        wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        // Set the chain ID
-        let wallet = wallet.with_chain_id(self.chain_id);
-
         // Setup the provider
-        let provider = self.get_rpc_provider()?;
-        let client = SignerMiddleware::new(provider, wallet);
+        let client = self.get_signer(wallet);
         let token_address = Address::from_str(mint).map_err(FundsManagerError::parse)?;
-        let token = ERC20::new(token_address, Arc::new(client));
+        let token = IERC20::new(token_address, client);
 
         // Convert the amount using the token's decimals
-        let decimals = token.decimals().call().await.map_err(FundsManagerError::arbitrum)? as u32;
-        let amount = ethers::utils::parse_units(amount.to_string(), decimals)
-            .map_err(FundsManagerError::parse)?
-            .into();
+        let decimals = token.decimals().call().await.map_err(FundsManagerError::arbitrum)?;
+        let amount =
+            parse_units(&amount.to_string(), decimals).map_err(FundsManagerError::parse)?.into();
 
         // Transfer the tokens
         let to_address = Address::from_str(to_address).map_err(FundsManagerError::parse)?;
@@ -335,9 +339,6 @@ impl CustodyClient {
             FundsManagerError::arbitrum(format!("Failed to send transaction: {}", e))
         })?;
 
-        pending_tx
-            .await
-            .map_err(FundsManagerError::arbitrum)?
-            .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))
+        pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
     }
 }

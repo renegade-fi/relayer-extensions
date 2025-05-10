@@ -9,7 +9,7 @@ use tracing::{info, warn};
 use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
-    helpers::Transfer,
+    helpers::IERC20::Transfer,
     metrics::labels::{
         ASSET_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
         SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
