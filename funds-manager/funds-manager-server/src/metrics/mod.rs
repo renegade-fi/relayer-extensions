@@ -1,8 +1,8 @@
 //! General metrics recording functionality
 
-use alloy::providers::{DynProvider, ProviderBuilder};
+use alloy::providers::DynProvider;
 
-use crate::relayer_client::RelayerClient;
+use crate::{helpers::build_provider, relayer_client::RelayerClient};
 
 pub mod cost;
 pub mod labels;
@@ -20,10 +20,8 @@ pub struct MetricsRecorder {
 impl MetricsRecorder {
     /// Create a new metrics recorder
     pub fn new(relayer_client: RelayerClient, rpc_url: String) -> Self {
-        let url = rpc_url.parse().expect("invalid RPC URL");
-        let provider = ProviderBuilder::new().on_http(url);
-        let dyn_provider = DynProvider::new(provider);
+        let provider = build_provider(&rpc_url).expect("invalid RPC URL");
 
-        MetricsRecorder { relayer_client, provider: dyn_provider }
+        MetricsRecorder { relayer_client, provider }
     }
 }

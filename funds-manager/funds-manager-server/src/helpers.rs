@@ -1,7 +1,13 @@
 //! Helpers for the funds manager server
 #![allow(missing_docs)]
 
-use alloy::sol;
+use alloy::{
+    providers::{
+        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
+        DynProvider, ProviderBuilder,
+    },
+    sol,
+};
 use aws_config::SdkConfig;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use renegade_util::err_str;
@@ -24,6 +30,25 @@ sol! {
         function approve(address spender, uint256 value) external returns (bool);
         function transfer(address recipient, uint256 amount) external returns (bool);
     }
+}
+
+// ----------------
+// | ETH JSON RPC |
+// ----------------
+
+/// Build a provider for the given RPC url, using simple nonce management
+/// and other sensible defaults
+pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
+    let url = url.parse().map_err(FundsManagerError::parse)?;
+    let provider = ProviderBuilder::new()
+        .disable_recommended_fillers()
+        .with_simple_nonce_management()
+        .filler(ChainIdFiller::default())
+        .filler(GasFiller)
+        .filler(BlobGasFiller)
+        .on_http(url);
+
+    Ok(DynProvider::new(provider))
 }
 
 // -----------------------
