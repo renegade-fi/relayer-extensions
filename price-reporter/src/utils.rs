@@ -8,7 +8,6 @@ use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
 use itertools::Itertools;
 use matchit::Router;
-use renegade_common::types::token::read_token_remaps;
 use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
@@ -16,6 +15,7 @@ use renegade_common::types::{
     token::{get_all_tokens, read_token_remaps, Token, USDC_TICKER},
     Price,
 };
+use renegade_config::setup_token_remaps;
 use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
@@ -62,9 +62,6 @@ const DEFAULT_WS_PORT: u16 = 4000;
 const HTTP_PORT_ENV_VAR: &str = "HTTP_PORT";
 /// The default port on which the server listens for http requests
 const DEFAULT_HTTP_PORT: u16 = 3000;
-/// The name of the environment variable specifying the path to the token
-/// remap file
-const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
 /// The name of the environment variable specifying the chain to use
 /// for token remapping
 const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
@@ -194,10 +191,8 @@ pub struct PriceReporterConfig {
     pub ws_port: u16,
     /// The port on which the server listens for incoming http requests
     pub http_port: u16,
-    /// The path to the token remap file
-    pub token_remap_path: Option<String>,
-    /// The chain to use for token remapping
-    pub remap_chain: Chain,
+    /// The chains to use for token remapping
+    pub remap_chains: Vec<Chain>,
     /// The configuration options that may be used by exchange connections
     pub exchange_conn_config: ExchangeConnectionsConfig,
     /// The HMAC key for the admin API. If one is not provided, the admin API
@@ -226,9 +221,12 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let ws_port = env::var(WS_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_WS_PORT);
     let http_port =
         env::var(HTTP_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_HTTP_PORT);
-    let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
-    let remap_chain =
-        env::var(CHAIN_ID_ENV_VAR).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_CHAIN);
+    let remap_chains = match env::var(CHAIN_ID_ENV_VAR) {
+        Err(_) => vec![DEFAULT_CHAIN],
+        Ok(c) => {
+            c.split(',').map(Chain::from_str).collect::<Result<Vec<_>, _>>().unwrap_or_default()
+        },
+    };
     let coinbase_key_name = env::var(CB_API_KEY_ENV_VAR).ok();
     let coinbase_key_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
     let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
@@ -248,8 +246,7 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     PriceReporterConfig {
         ws_port,
         http_port,
-        token_remap_path,
-        remap_chain,
+        remap_chains,
         exchange_conn_config: ExchangeConnectionsConfig {
             coinbase_key_name,
             coinbase_key_secret,
@@ -328,4 +325,14 @@ pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
         }
     }
     None
+}
+
+/// Setup token remaps for all given chains
+///
+/// Will fetch the Renegade maintained remap file from the default location
+pub fn setup_all_token_remaps(remap_chains: &[Chain]) -> Result<(), ServerError> {
+    for chain in remap_chains {
+        setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))?;
+    }
+    Ok(())
 }

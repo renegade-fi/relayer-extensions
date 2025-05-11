@@ -18,12 +18,13 @@ use renegade_common::types::{
     exchange::Exchange,
     token::{default_exchange_stable, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
-use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{get_all_tokens_filtered, parse_config_env_vars, setup_logging};
+use utils::{
+    get_all_tokens_filtered, parse_config_env_vars, setup_all_token_remaps, setup_logging,
+};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
@@ -43,10 +44,9 @@ async fn main() -> Result<(), ServerError> {
     let price_reporter_config = parse_config_env_vars();
 
     // Set up the token remapping
-    let token_remap_path = price_reporter_config.token_remap_path.clone();
-    let remap_chain = price_reporter_config.remap_chain;
+    let remap_chains = price_reporter_config.remap_chains.clone();
     tokio::task::spawn_blocking(move || {
-        setup_token_remaps(token_remap_path, remap_chain).map_err(err_str!(ServerError::TokenRemap))
+        setup_all_token_remaps(&remap_chains).map_err(err_str!(ServerError::TokenRemap))
     })
     .await
     .unwrap()?;
