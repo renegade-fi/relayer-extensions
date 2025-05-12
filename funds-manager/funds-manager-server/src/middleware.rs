@@ -6,9 +6,7 @@ use bytes::Bytes;
 use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
 use http::{HeaderMap, Method};
 use renegade_api::auth::validate_expiring_auth;
-use renegade_util::err_str;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
 use std::sync::Arc;
 use warp::filters::path::FullPath;
 use warp::Filter;
@@ -31,16 +29,16 @@ pub(crate) fn with_hmac_auth(server: Arc<Server>) -> impl FilterExtracts<(Bytes,
 fn with_hmac_inputs() -> impl FilterExtracts<(String, Option<String>, Method, HeaderMap, Bytes)> {
     warp::any()
         .and(warp::path::full())
-        .and(warp::query::<HashMap<String, String>>())
-        .and_then(|path: FullPath, query: HashMap<String, String>| async move {
+        .and(
+            warp::query::raw()
+                .or_else(|_| async move { Ok::<(String,), warp::Rejection>(("".to_string(),)) }),
+        )
+        .and_then(|path: FullPath, query: String| async move {
             let path_str = if query.is_empty() {
                 path.as_str().to_string()
             } else {
-                let query_str =
-                    serde_urlencoded::to_string(query).map_err(err_str!(ApiError::BadRequest))?;
-                format!("{}?{}", path.as_str(), query_str)
+                format!("{}?{}", path.as_str(), query)
             };
-
             Ok::<_, warp::Rejection>(path_str)
         })
         .and(warp::header::optional::<String>(X_SIGNATURE_HEADER))
@@ -81,7 +79,9 @@ async fn verify_hmac(
         },
     };
 
-    let expected = get_request_bytes(method.as_str(), path.as_str(), &headers, &body);
+    let path = path.split("?").next().unwrap_or(&path);
+
+    let expected = get_request_bytes(method.as_str(), path, &headers, &body);
     let provided = hex::decode(&signature)
         .map_err(|_| warp::reject::custom(ApiError::BadRequest("Invalid signature".to_string())))?;
     if !hmac_key.verify_mac(&expected, &provided) {
