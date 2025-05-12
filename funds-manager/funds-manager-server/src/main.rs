@@ -7,6 +7,7 @@
 #![feature(trivial_bounds)]
 #![feature(trait_alias)]
 
+pub mod cli;
 pub mod custody_client;
 pub mod db;
 pub mod error;
@@ -19,6 +20,8 @@ pub mod middleware;
 pub mod relayer_client;
 pub mod server;
 
+use clap::Parser;
+use cli::Cli;
 use custody_client::rpc_shim::JsonRpcRequest;
 use fee_indexer::Indexer;
 use funds_manager_api::fees::{
@@ -50,16 +53,12 @@ use handlers::{
     withdraw_gas_handler, withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_hmac_auth, with_json_body};
-use renegade_common::types::hmac::HmacKey;
-use renegade_util::telemetry::configure_telemetry;
 use server::Server;
-use warp::Filter;
 
+use renegade_util::telemetry::configure_telemetry;
 use std::{collections::HashMap, error::Error, sync::Arc};
-
-use clap::Parser;
-use renegade_darkpool_client::constants::Chain;
 use tracing::{error, warn};
+use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
@@ -67,119 +66,6 @@ use crate::error::ApiError;
 // -------
 // | Cli |
 // -------
-
-/// The cli for the fee sweeper
-#[rustfmt::skip]
-#[derive(Parser)]
-#[clap(about = "Funds manager server")]
-struct Cli {
-    // --- Authentication --- //
-
-    /// The HMAC key to use for authentication
-    #[clap(long, conflicts_with = "disable_auth", env = "HMAC_KEY")]
-    hmac_key: Option<String>,
-    /// The HMAC key to use for signing quotes
-    #[clap(long, env = "QUOTE_HMAC_KEY")]
-    quote_hmac_key: String,
-    /// Whether to disable authentication
-    #[clap(long, conflicts_with = "hmac_key")]
-    disable_auth: bool,
-
-    // --- Environment Configs --- //
-
-    /// The URL of the relayer to use
-    #[clap(long, env = "RELAYER_URL")]
-    relayer_url: String,
-    /// The address of the darkpool contract
-    #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
-    darkpool_address: String,
-    /// The chain to redeem fees for
-    #[clap(long, default_value = "mainnet", env = "CHAIN")]
-    chain: Chain,
-    /// The token address of the USDC token, used to get prices for fee
-    /// redemption
-    #[clap(long, env = "USDC_MINT")]
-    usdc_mint: String,
-    /// The address of the gas sponsor contract
-    #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
-    gas_sponsor_address: String,
-
-    // --- Decryption Keys --- //
-
-    /// The fee decryption key to use
-    #[clap(long, env = "RELAYER_DECRYPTION_KEY")]
-    relayer_decryption_key: String,
-    /// The fee decryption key to use for the protocol fees
-    ///
-    /// This argument is not necessary, protocol fee indexing is skipped if this
-    /// is omitted
-    #[clap(long, env = "PROTOCOL_DECRYPTION_KEY")]
-    protocol_decryption_key: Option<String>,
-
-    //  --- Api Secrets --- //
-
-    /// The Arbitrum RPC url to use
-    #[clap(short, long, env = "RPC_URL")]
-    rpc_url: String,
-    /// The database url
-    #[clap(long, env = "DATABASE_URL")]
-    db_url: String,
-    /// The fireblocks api key
-    #[clap(long, env = "FIREBLOCKS_API_KEY")]
-    fireblocks_api_key: String,
-    /// The fireblocks api secret
-    #[clap(long, env = "FIREBLOCKS_API_SECRET")]
-    fireblocks_api_secret: String,
-    /// The execution venue api key
-    #[clap(long, env = "EXECUTION_VENUE_API_KEY")]
-    execution_venue_api_key: String,
-    /// The execution venue base url
-    #[clap(long, env = "EXECUTION_VENUE_BASE_URL")]
-    execution_venue_base_url: String,
-
-    // --- Server Config --- //
-
-    /// The port to run the server on
-    #[clap(long, default_value = "3000")]
-    port: u16,
-
-    // -------------
-    // | Telemetry |
-    // -------------
-    /// Whether to enable datadog formatted logs
-    #[clap(long, default_value = "false")]
-    datadog_logging: bool,
-    /// Whether or not to enable metrics collection
-    #[clap(long, env = "ENABLE_METRICS")]
-    metrics_enabled: bool,
-    /// The StatsD recorder host to send metrics to
-    #[clap(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
-    statsd_host: String,
-    /// The StatsD recorder port to send metrics to
-    #[clap(long, env = "STATSD_PORT", default_value = "8125")]
-    statsd_port: u16,
-}
-
-impl Cli {
-    /// Validate the CLI arguments
-    fn validate(&self) -> Result<(), String> {
-        if self.hmac_key.is_none() && !self.disable_auth {
-            Err("Either --hmac-key or --disable-auth must be provided".to_string())
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Get the HMAC key
-    fn get_hmac_key(&self) -> Option<HmacKey> {
-        self.hmac_key.as_ref().map(|key| HmacKey::from_hex_string(key).expect("Invalid HMAC key"))
-    }
-
-    /// Get the quote HMAC key
-    fn get_quote_hmac_key(&self) -> HmacKey {
-        HmacKey::from_hex_string(&self.quote_hmac_key).expect("Invalid quote HMAC key")
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

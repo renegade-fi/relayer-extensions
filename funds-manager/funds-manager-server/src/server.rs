@@ -65,17 +65,23 @@ pub(crate) struct Server {
 impl Server {
     /// Build a server from the CLI
     pub async fn build_from_cli(args: Cli) -> Result<Self, Box<dyn Error>> {
-        tokio::task::spawn_blocking(move || {
-            setup_token_remaps(None /* token_remap_file */, args.chain)
-        })
-        .await
-        .unwrap()?;
-
         // Parse an AWS config
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(DEFAULT_REGION))
             .load()
             .await;
+
+        let chain_configs = args.parse_chain_configs(&config).await?;
+
+        for chain_config in chain_configs {
+            tokio::task::spawn_blocking(move || {
+                setup_token_remaps(None /* token_remap_file */, chain_config.chain)
+            })
+            .await
+            .unwrap()?;
+        }
+
+        todo!("instantiate chain-specific clients at request time");
 
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
