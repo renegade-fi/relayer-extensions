@@ -123,7 +123,7 @@ impl Server {
             &args.rpc_url,
         )?;
 
-        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), args.rpc_url.clone());
+        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), &args.rpc_url);
 
         Ok(Server {
             chain_id,

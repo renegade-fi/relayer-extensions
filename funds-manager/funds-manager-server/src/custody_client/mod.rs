@@ -252,7 +252,7 @@ impl CustodyClient {
     // --- Arbitrum JSON RPC --- //
 
     /// Get an instance of a signer with the http provider attached
-    fn get_signer(&self, wallet: PrivateKeySigner) -> DynProvider {
+    fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
         let provider =
             ProviderBuilder::new().wallet(wallet).on_provider(self.arbitrum_provider.clone());
 
@@ -280,7 +280,7 @@ impl CustodyClient {
         amount: f64,
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let client = self.get_signer(wallet);
+        let client = self.get_signing_provider(wallet);
 
         let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
         let amount_units =
@@ -323,7 +323,7 @@ impl CustodyClient {
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Setup the provider
-        let client = self.get_signer(wallet);
+        let client = self.get_signing_provider(wallet);
         let token_address = Address::from_str(mint).map_err(FundsManagerError::parse)?;
         let token = IERC20::new(token_address, client);
 

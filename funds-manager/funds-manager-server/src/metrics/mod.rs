@@ -19,8 +19,8 @@ pub struct MetricsRecorder {
 
 impl MetricsRecorder {
     /// Create a new metrics recorder
-    pub fn new(relayer_client: RelayerClient, rpc_url: String) -> Self {
-        let provider = build_provider(&rpc_url).expect("invalid RPC URL");
+    pub fn new(relayer_client: RelayerClient, rpc_url: &str) -> Self {
+        let provider = build_provider(rpc_url).expect("invalid RPC URL");
 
         MetricsRecorder { relayer_client, provider }
     }

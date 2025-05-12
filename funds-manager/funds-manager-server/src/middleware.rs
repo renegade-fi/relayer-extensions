@@ -1,42 +1,77 @@
 //! Middleware for the funds manager server
 
 use crate::error::ApiError;
-use crate::Server;
+use crate::{with_server, Server};
 use bytes::Bytes;
 use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
+use http::{HeaderMap, Method};
+use renegade_api::auth::validate_expiring_auth;
+use renegade_util::err_str;
 use serde::de::DeserializeOwned;
+use std::collections::HashMap;
 use std::sync::Arc;
+use warp::filters::path::FullPath;
 use warp::Filter;
 
+// ---------
+// | Types |
+// ---------
+
+/// A trait alias for a warp filter that extracts the given type,
+/// erroring with `warp::Rejection` if the extraction fails
+pub trait FilterExtracts<T> = Filter<Extract = T, Error = warp::Rejection> + Clone + Send;
+
 /// Add HMAC authentication to a route
-pub(crate) fn with_hmac_auth(
-    server: Arc<Server>,
-) -> impl Filter<Extract = (Bytes,), Error = warp::Rejection> + Clone {
+pub(crate) fn with_hmac_auth(server: Arc<Server>) -> impl FilterExtracts<(Bytes,)> {
+    warp::any().and(with_server(server)).and(with_hmac_inputs()).and_then(verify_hmac).untuple_one()
+}
+
+/// Extract the path, headers, and body from the request
+/// for use in HMAC authentication
+fn with_hmac_inputs() -> impl FilterExtracts<(String, Option<String>, Method, HeaderMap, Bytes)> {
     warp::any()
-        .and(warp::any().map(move || server.clone()))
+        .and(warp::path::full())
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(|path: FullPath, query: HashMap<String, String>| async move {
+            let path_str = if query.is_empty() {
+                path.as_str().to_string()
+            } else {
+                let query_str =
+                    serde_urlencoded::to_string(query).map_err(err_str!(ApiError::BadRequest))?;
+                format!("{}?{}", path.as_str(), query_str)
+            };
+
+            Ok::<_, warp::Rejection>(path_str)
+        })
         .and(warp::header::optional::<String>(X_SIGNATURE_HEADER))
         .and(warp::method())
-        .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and_then(verify_hmac)
 }
 
 /// Verify the HMAC signature
 async fn verify_hmac(
     server: Arc<Server>,
+    path: String,
     signature: Option<String>,
-    method: warp::http::Method,
-    path: warp::path::FullPath,
-    headers: warp::http::HeaderMap,
+    method: Method,
+    headers: HeaderMap,
     body: Bytes,
-) -> Result<Bytes, warp::Rejection> {
-    // Unwrap the key and signature
+) -> Result<(Bytes,), warp::Rejection> {
+    // Unwrap the key
     let hmac_key = match &server.hmac_key {
         Some(hmac_key) => hmac_key,
-        None => return Ok(body), // Auth is disabled, allow the request
+        None => return Ok((body,)), // Auth is disabled, allow the request
     };
 
+    // Try v2 auth first
+    if validate_expiring_auth(&path, &headers, &body, hmac_key).is_ok() {
+        return Ok((body,));
+    }
+
+    // Fall back to v1 auth
+
+    // Unwrap the signature
     let signature = match signature {
         Some(sig) => sig,
         None => {
@@ -55,7 +90,7 @@ async fn verify_hmac(
         )));
     }
 
-    Ok(body)
+    Ok((body,))
 }
 
 /// Extract a JSON body from a request
