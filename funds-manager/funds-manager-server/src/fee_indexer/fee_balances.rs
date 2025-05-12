@@ -3,18 +3,12 @@
 use crate::custody_client::DepositWithdrawSource;
 use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
-use ethers::{
-    core::k256::ecdsa::SigningKey,
-    types::{Signature, U256},
-    utils::keccak256,
-};
+use alloy::signers::k256::ecdsa::SigningKey;
+use alloy_primitives::{keccak256, Signature};
 use num_bigint::BigUint;
 use renegade_api::{
     http::wallet::{WalletUpdateAuthorization, WithdrawBalanceRequest},
     types::ApiWallet,
-};
-use renegade_arbitrum_client::{
-    conversion::to_contract_external_transfer, helpers::serialize_calldata,
 };
 use renegade_circuit_types::{
     keychain::SecretSigningKey,
@@ -22,6 +16,9 @@ use renegade_circuit_types::{
     Amount,
 };
 use renegade_common::types::wallet::{derivation::derive_wallet_keychain, Wallet};
+use renegade_darkpool_client::arbitrum::{
+    contract_types::conversion::to_contract_external_transfer, helpers::serialize_calldata,
+};
 use renegade_util::hex::biguint_from_hex_string;
 use uuid::Uuid;
 
@@ -84,15 +81,16 @@ impl Indexer {
         // Get the wallet's private key from secrets manager
         let eth_key = self.get_wallet_private_key(&wallet_metadata).await?;
 
-        // Derive the wallet keychain
-        let wallet_keychain =
-            derive_wallet_keychain(&eth_key, self.chain_id).map_err(FundsManagerError::custom)?;
-        let wallet_key = wallet_keychain.symmetric_key();
+        let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
 
         // Fetch the wallet from the relayer and replace the keychain so that we have
         // access to the full set of secret keys
-        let mut wallet =
-            self.relayer_client.get_wallet(wallet_metadata.id, &wallet_key).await?.wallet;
+        let mut wallet = self
+            .relayer_client
+            .get_wallet(wallet_metadata.id, &eth_key, wallet_keychain.clone())
+            .await?
+            .wallet;
+
         wallet.key_chain = wallet_keychain.into();
 
         Ok(wallet)
@@ -132,16 +130,14 @@ impl Indexer {
             dest_bigint.clone(),
         )?;
 
-        let update_auth = WalletUpdateAuthorization {
-            statement_sig: commitment_sig.to_vec(),
-            new_root_key: None,
-        };
+        let update_auth =
+            WalletUpdateAuthorization { statement_sig: commitment_sig.into(), new_root_key: None };
 
         Ok(WithdrawBalanceRequest {
             destination_addr: dest_bigint,
             amount: BigUint::from(bal.amount),
             update_auth,
-            external_transfer_sig: transfer_sig.to_vec(),
+            external_transfer_sig: transfer_sig.into(),
         })
     }
 
@@ -167,13 +163,10 @@ impl Indexer {
             to_contract_external_transfer(&transfer).map_err(FundsManagerError::custom)?;
         let buf = serialize_calldata(&contract_transfer).map_err(FundsManagerError::custom)?;
         let digest = keccak256(&buf);
-        let (sig, recovery_id) =
-            converted_key.sign_prehash_recoverable(&digest).map_err(FundsManagerError::custom)?;
+        let recoverable_sig = converted_key
+            .sign_prehash_recoverable(digest.as_slice())
+            .map_err(FundsManagerError::custom)?;
 
-        Ok(Signature {
-            r: U256::from_big_endian(&sig.r().to_bytes()),
-            s: U256::from_big_endian(&sig.s().to_bytes()),
-            v: recovery_id.to_byte() as u64,
-        })
+        Ok(recoverable_sig.into())
     }
 }

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use alloy::primitives::{Address, U256};
 use alloy::sol;
 use rand::{thread_rng, RngCore};
-use renegade_arbitrum_client::client::RenegadeProvider;
+use renegade_darkpool_client::client::RenegadeProvider;
 use renegade_system_clock::{SystemClock, SystemClockError};
 use tokio::sync::RwLock;
 

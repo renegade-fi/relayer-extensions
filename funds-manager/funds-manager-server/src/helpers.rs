@@ -1,33 +1,55 @@
 //! Helpers for the funds manager server
 #![allow(missing_docs)]
 
+use alloy::{
+    providers::{
+        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
+        DynProvider, ProviderBuilder,
+    },
+    sol,
+};
 use aws_config::SdkConfig;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
-use ethers::{contract::abigen, types::H256};
 use renegade_util::err_str;
 
 use crate::error::FundsManagerError;
-
-/// A readable type alias for a transaction hash
-pub type TransactionHash = H256;
 
 // ---------
 // | ERC20 |
 // ---------
 
 // The ERC20 interface
-abigen!(
-    ERC20,
-    r#"[
-        event Transfer(address indexed from, address indexed to, uint256 value)
-        function symbol() external view returns (string memory)
-        function decimals() external view returns (uint8)
-        function balanceOf(address account) external view returns (uint256)
-        function allowance(address owner, address spender) external view returns (uint256)
-        function approve(address spender, uint256 value) external returns (bool)
-        function transfer(address recipient, uint256 amount) external returns (bool)
-    ]"#
-);
+sol! {
+    #[sol(rpc)]
+    contract IERC20 {
+        event Transfer(address indexed from, address indexed to, uint256 value);
+        function symbol() external view returns (string memory);
+        function decimals() external view returns (uint8);
+        function balanceOf(address account) external view returns (uint256);
+        function allowance(address owner, address spender) external view returns (uint256);
+        function approve(address spender, uint256 value) external returns (bool);
+        function transfer(address recipient, uint256 amount) external returns (bool);
+    }
+}
+
+// ----------------
+// | ETH JSON RPC |
+// ----------------
+
+/// Build a provider for the given RPC url, using simple nonce management
+/// and other sensible defaults
+pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
+    let url = url.parse().map_err(FundsManagerError::parse)?;
+    let provider = ProviderBuilder::new()
+        .disable_recommended_fillers()
+        .with_simple_nonce_management()
+        .filler(ChainIdFiller::default())
+        .filler(GasFiller)
+        .filler(BlobGasFiller)
+        .on_http(url);
+
+    Ok(DynProvider::new(provider))
+}
 
 // -----------------------
 // | AWS Secrets Manager |

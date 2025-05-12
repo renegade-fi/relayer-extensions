@@ -1,16 +1,17 @@
 //! Handlers for executing swaps
 
-use std::sync::Arc;
-
-use ethers::{
-    providers::Middleware,
-    signers::{LocalWallet, Signer},
-    types::{Address, BlockNumber, Eip1559TransactionRequest, TransactionReceipt, U256},
+use alloy::{
+    eips::BlockId,
+    network::TransactionBuilder,
+    providers::Provider,
+    rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
 };
-use funds_manager_api::quoters::ExecutionQuote;
+use alloy_primitives::{Address, U256};
+use funds_manager_api::{quoters::ExecutionQuote, u256_try_into_u64};
 use tracing::info;
 
-use crate::helpers::ERC20;
+use crate::helpers::IERC20;
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -19,7 +20,7 @@ impl ExecutionClient {
     pub async fn execute_swap(
         &self,
         quote: ExecutionQuote,
-        wallet: &LocalWallet,
+        wallet: &PrivateKeySigner,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
         // Execute the swap
         let receipt = self.execute_swap_tx(quote, wallet).await?;
@@ -32,46 +33,46 @@ impl ExecutionClient {
     async fn execute_swap_tx(
         &self,
         quote: ExecutionQuote,
-        wallet: &LocalWallet,
+        wallet: &PrivateKeySigner,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
-        let client = self.get_signer(wallet.clone());
+        let client = self.get_signing_provider(wallet.clone());
 
         // Set approval for the sell token
         self.approve_erc20_allowance(quote.sell_token_address, quote.to, quote.sell_amount, wallet)
             .await?;
 
         let latest_block = client
-            .get_block(BlockNumber::Latest)
+            .get_block(BlockId::latest())
             .await
             .map_err(ExecutionClientError::arbitrum)?
             .ok_or(ExecutionClientError::arbitrum("No latest block found"))?;
 
         let latest_basefee = latest_block
+            .header
             .base_fee_per_gas
-            .ok_or(ExecutionClientError::arbitrum("No basefee found"))?;
+            .ok_or(ExecutionClientError::arbitrum("No basefee found"))?
+            as u128;
 
-        let tx = Eip1559TransactionRequest::new()
-            .to(quote.to)
-            .from(quote.from)
-            .value(quote.value)
-            .data(quote.data)
-            .max_fee_per_gas(latest_basefee * 2)
-            .max_priority_fee_per_gas(latest_basefee * 2)
-            .gas(quote.gas_limit);
+        let gas_limit =
+            u256_try_into_u64(quote.gas_limit).map_err(ExecutionClientError::arbitrum)?;
+
+        let tx = TransactionRequest::default()
+            .with_to(quote.to)
+            .with_from(quote.from)
+            .with_value(quote.value)
+            .with_input(quote.data)
+            .with_max_fee_per_gas(latest_basefee * 2)
+            .with_max_priority_fee_per_gas(latest_basefee * 2)
+            .with_gas_limit(gas_limit);
 
         // Send the transaction
-        let pending_tx = client
-            .send_transaction(tx, None /* block */)
-            .await
-            .map_err(ExecutionClientError::arbitrum)?;
-        let receipt = pending_tx
-            .await
-            .map_err(ExecutionClientError::arbitrum)?
-            .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))?;
+        let pending_tx =
+            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
 
-        let status = receipt.status.expect("status is `Some` after EIP-658");
-        if status.is_zero() {
-            let error_msg = format!("tx ({:#x}) failed with status 0", receipt.transaction_hash);
+        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)?;
+
+        if !receipt.status() {
+            let error_msg = format!("tx ({:#x}) failed", receipt.transaction_hash);
             return Err(ExecutionClientError::arbitrum(error_msg));
         }
 
@@ -84,16 +85,18 @@ impl ExecutionClient {
         token_address: Address,
         spender: Address,
         amount: U256,
-        wallet: &LocalWallet,
+        wallet: &PrivateKeySigner,
     ) -> Result<(), ExecutionClientError> {
-        let client = self.get_signer(wallet.clone());
-        let erc20 = ERC20::new(token_address, Arc::new(client));
+        let client = self.get_signing_provider(wallet.clone());
+        let erc20 = IERC20::new(token_address, client);
 
         // First, check if the allowance is already sufficient
         let allowance = erc20
             .allowance(wallet.address(), spender)
+            .call()
             .await
             .map_err(ExecutionClientError::arbitrum)?;
+
         if allowance >= amount {
             info!("Already approved erc20 allowance for {spender:#x}");
             return Ok(());
@@ -103,10 +106,8 @@ impl ExecutionClient {
         let tx = erc20.approve(spender, amount);
         let pending_tx = tx.send().await.map_err(ExecutionClientError::arbitrum)?;
 
-        let receipt = pending_tx
-            .await
-            .map_err(ExecutionClientError::arbitrum)?
-            .ok_or_else(|| ExecutionClientError::arbitrum("Transaction failed"))?;
+        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)?;
+
         info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
         Ok(())
     }

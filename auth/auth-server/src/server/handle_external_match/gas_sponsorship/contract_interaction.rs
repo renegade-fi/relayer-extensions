@@ -3,7 +3,7 @@
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{sol, SolCall};
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
-use renegade_arbitrum_client::abi::Darkpool::{
+use renegade_darkpool_client::arbitrum::abi::Darkpool::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
     processMalleableAtomicMatchSettleCall, processMalleableAtomicMatchSettleWithReceiverCall,
 };

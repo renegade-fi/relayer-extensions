@@ -2,15 +2,16 @@
 
 use std::collections::HashMap;
 
+use alloy::{
+    eips::BlockId,
+    network::TransactionBuilder,
+    providers::Provider,
+    rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
+};
+use alloy_primitives::utils::parse_ether;
 use alloy_sol_types::SolCall;
 use aws_sdk_s3::Client as S3Client;
-use ethers::{
-    middleware::SignerMiddleware,
-    providers::Middleware,
-    signers::{LocalWallet, Signer},
-    types::{BlockNumber, TransactionReceipt, TransactionRequest},
-    utils::parse_ether,
-};
 use renegade_common::types::token::Token;
 use tracing::info;
 
@@ -209,39 +210,35 @@ impl CustodyClient {
     async fn send_receive_eth_tx(
         &self,
         amount: f64,
-        signer: LocalWallet,
+        signer: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let wallet = signer.with_chain_id(self.chain_id);
-        let provider = self.get_rpc_provider()?;
-        let client = SignerMiddleware::new(provider, wallet);
+        let client = self.get_signing_provider(signer);
 
         let calldata = sol::receiveEthCall {}.abi_encode();
 
-        let amount_units = parse_ether(amount.to_string()).map_err(FundsManagerError::parse)?;
+        let amount_units = parse_ether(&amount.to_string()).map_err(FundsManagerError::parse)?;
 
         let latest_block = client
-            .get_block(BlockNumber::Latest)
+            .get_block(BlockId::latest())
             .await
             .map_err(FundsManagerError::arbitrum)?
             .ok_or(FundsManagerError::arbitrum("No latest block found".to_string()))?;
 
         let latest_basefee = latest_block
+            .header
             .base_fee_per_gas
-            .ok_or(FundsManagerError::arbitrum("No basefee found".to_string()))?;
+            .ok_or(FundsManagerError::arbitrum("No basefee found".to_string()))?
+            as u128;
 
-        let tx = TransactionRequest::new()
-            .data(calldata)
-            .to(self.gas_sponsor_address)
-            .value(amount_units)
-            .gas_price(latest_basefee * 2);
+        let tx = TransactionRequest::default()
+            .with_input(calldata)
+            .with_to(self.gas_sponsor_address)
+            .with_value(amount_units)
+            .with_gas_price(latest_basefee * 2);
 
-        let pending_tx =
-            client.send_transaction(tx, None).await.map_err(FundsManagerError::arbitrum)?;
+        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::arbitrum)?;
 
-        let receipt = pending_tx
-            .await
-            .map_err(FundsManagerError::arbitrum)?
-            .ok_or_else(|| FundsManagerError::arbitrum("Transaction failed".to_string()))?;
+        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)?;
 
         Ok(receipt)
     }

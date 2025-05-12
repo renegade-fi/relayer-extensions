@@ -1,18 +1,16 @@
 //! Defines the server which encapsulates all dependencies for funds manager
 //! execution
 
-use std::{error::Error, str::FromStr, sync::Arc};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::Address;
 use aws_config::{BehaviorVersion, Region, SdkConfig};
-use ethers::{signers::LocalWallet, types::Address};
 use funds_manager_api::quoters::ExecutionQuote;
-use renegade_arbitrum_client::{
-    client::{ArbitrumClient, ArbitrumClientConfig},
-    constants::Chain,
-};
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::hmac::HmacKey;
 use renegade_config::setup_token_remaps;
+use renegade_darkpool_client::{client::DarkpoolClientConfig, constants::Chain, DarkpoolClient};
 use renegade_util::raw_err_str;
 
 use crate::{
@@ -30,16 +28,10 @@ use crate::{
 // | Constants |
 // -------------
 
-/// The block polling interval for the Arbitrum client
-const BLOCK_POLLING_INTERVAL_MS: u64 = 100;
+/// The block polling interval for the darkpool client
+const BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
 /// The default region in which to provision secrets manager secrets
 const DEFAULT_REGION: &str = "us-east-2";
-/// The dummy private key used to instantiate the arbitrum client
-///
-/// We don't need any client functionality using a real private key, so instead
-/// we use the key deployed by Arbitrum on local devnets
-const DUMMY_PRIVATE_KEY: &str =
-    "0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659";
 
 /// The server
 #[derive(Clone)]
@@ -50,8 +42,8 @@ pub(crate) struct Server {
     pub chain: Chain,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
-    /// The Arbitrum client
-    pub arbitrum_client: ArbitrumClient,
+    /// The darkpool client
+    pub darkpool_client: DarkpoolClient,
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
     /// The database connection pool
@@ -85,16 +77,16 @@ impl Server {
             .load()
             .await;
 
-        // Build an Arbitrum client
-        let wallet = LocalWallet::from_str(DUMMY_PRIVATE_KEY)?;
-        let conf = ArbitrumClientConfig {
+        // Build a darkpool client
+        let private_key = PrivateKeySigner::random();
+        let conf = DarkpoolClientConfig {
             darkpool_addr: args.darkpool_address.clone(),
             chain: args.chain,
             rpc_url: args.rpc_url.clone(),
-            arb_priv_keys: vec![wallet],
-            block_polling_interval_ms: BLOCK_POLLING_INTERVAL_MS,
+            private_key,
+            block_polling_interval: BLOCK_POLLING_INTERVAL,
         };
-        let client = ArbitrumClient::new(conf).await?;
+        let client = DarkpoolClient::new(conf)?;
         let chain_id =
             client.chain_id().await.map_err(raw_err_str!("Error fetching chain ID: {}"))?;
 
@@ -131,13 +123,13 @@ impl Server {
             &args.rpc_url,
         )?;
 
-        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), args.rpc_url.clone());
+        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), &args.rpc_url);
 
         Ok(Server {
             chain_id,
             chain: args.chain,
             relayer_client: relayer_client.clone(),
-            arbitrum_client: client.clone(),
+            darkpool_client: client.clone(),
             decryption_keys,
             db_pool: arc_pool,
             custody_client,
@@ -150,17 +142,17 @@ impl Server {
     }
 
     /// Build an indexer
-    pub fn build_indexer(&self) -> Result<Indexer, FundsManagerError> {
-        Ok(Indexer::new(
+    pub fn build_indexer(&self) -> Indexer {
+        Indexer::new(
             self.chain_id,
             self.chain,
             self.aws_config.clone(),
-            self.arbitrum_client.clone(),
+            self.darkpool_client.clone(),
             self.decryption_keys.clone(),
             self.db_pool.clone(),
             self.relayer_client.clone(),
             self.custody_client.clone(),
-        ))
+        )
     }
 
     /// Sign a quote using the quote HMAC key and returns the signature as a

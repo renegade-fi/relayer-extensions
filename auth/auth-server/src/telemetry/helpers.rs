@@ -4,14 +4,14 @@
 use alloy_sol_types::SolCall;
 use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
-use renegade_arbitrum_client::{
-    abi::Darkpool::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
-    helpers::deserialize_calldata,
-};
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
 use renegade_common::types::token::Token;
 use renegade_constants::{
     Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
+};
+use renegade_darkpool_client::arbitrum::{
+    abi::Darkpool::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
+    helpers::deserialize_calldata,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::warn;

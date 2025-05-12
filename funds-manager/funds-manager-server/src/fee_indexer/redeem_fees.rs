@@ -3,11 +3,9 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::TxHash;
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
-use ethers::core::rand::thread_rng;
-use ethers::signers::LocalWallet;
-use ethers::types::TxHash;
-use ethers::utils::hex;
 use renegade_api::http::wallet::RedeemNoteRequest;
 use renegade_circuit_types::note::Note;
 use renegade_common::types::wallet::derivation::{
@@ -108,8 +106,8 @@ impl Indexer {
     /// Create a new Renegade wallet on-chain
     async fn create_renegade_wallet(
         &self,
-    ) -> Result<(WalletIdentifier, LocalWallet), FundsManagerError> {
-        let root_key = LocalWallet::new(&mut thread_rng());
+    ) -> Result<(WalletIdentifier, PrivateKeySigner), FundsManagerError> {
+        let root_key = PrivateKeySigner::random();
 
         let wallet_id = derive_wallet_id(&root_key).map_err(FundsManagerError::custom)?;
         let blinder_seed = derive_blinder_seed(&root_key).map_err(FundsManagerError::custom)?;
@@ -141,7 +139,8 @@ impl Indexer {
         let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
         let wallet_key = wallet_keychain.symmetric_key();
 
-        self.relayer_client.check_wallet_indexed(wallet.id, self.chain_id, &eth_key).await?;
+        // Fetch the wallet, ensuring it is looked up on the relayer
+        self.relayer_client.get_wallet(wallet.id, &eth_key, wallet_keychain).await?;
 
         // Find the note in the tx body
         let tx_hash = TxHash::from_str(&tx).map_err(err_str!(FundsManagerError::Parse))?;
@@ -167,7 +166,7 @@ impl Indexer {
     ) -> Result<(), FundsManagerError> {
         let nullifier = note.nullifier();
         if !self
-            .arbitrum_client
+            .darkpool_client
             .check_nullifier_used(nullifier)
             .await
             .map_err(err_str!(FundsManagerError::Arbitrum))?
@@ -191,13 +190,13 @@ impl Indexer {
     async fn store_wallet_secret(
         &self,
         id: WalletIdentifier,
-        wallet: LocalWallet,
+        wallet: PrivateKeySigner,
     ) -> Result<String, FundsManagerError> {
         let secret_name = format!("redemption-wallet-{}-{id}", self.chain);
-        let secret_val = hex::encode(wallet.signer().to_bytes());
+        let secret_val = hex::encode(wallet.to_bytes());
 
-        // Check that the `LocalWallet` recovers the same
-        debug_assert_eq!(LocalWallet::from_str(&secret_val).unwrap(), wallet);
+        // Check that the `PrivateKeySigner` recovers the same
+        debug_assert_eq!(PrivateKeySigner::from_str(&secret_val).unwrap(), wallet);
         create_secrets_manager_entry_with_description(
             &secret_name,
             &secret_val,
@@ -212,7 +211,7 @@ impl Indexer {
     pub(crate) async fn get_wallet_private_key(
         &self,
         metadata: &RenegadeWalletMetadata,
-    ) -> Result<LocalWallet, FundsManagerError> {
+    ) -> Result<PrivateKeySigner, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
         let secret_name = format!("redemption-wallet-{}-{}", self.chain, metadata.id);
 
@@ -225,7 +224,7 @@ impl Indexer {
 
         let secret_str = secret.secret_string().unwrap();
         let wallet =
-            LocalWallet::from_str(secret_str).map_err(err_str!(FundsManagerError::Parse))?;
+            PrivateKeySigner::from_str(secret_str).map_err(err_str!(FundsManagerError::Parse))?;
         Ok(wallet)
     }
 }

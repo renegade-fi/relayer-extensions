@@ -2,10 +2,10 @@
 
 use std::time::Duration;
 
-use base64::engine::{general_purpose as b64_general_purpose, Engine};
-use ethers::signers::LocalWallet;
-use http::{HeaderMap, HeaderValue};
+use alloy::signers::local::PrivateKeySigner;
+use http::HeaderMap;
 use renegade_api::{
+    auth::add_expiring_auth_to_headers,
     http::{
         price_report::{GetPriceReportRequest, GetPriceReportResponse, PRICE_REPORT_ROUTE},
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
@@ -17,23 +17,21 @@ use renegade_api::{
         },
     },
     types::ApiKeychain,
-    RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
 use renegade_common::types::{
     exchange::PriceReporterState,
     hmac::HmacKey,
     token::Token,
     wallet::{
-        derivation::{
-            derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
-        },
+        derivation::{derive_blinder_seed, derive_share_seed, derive_wallet_id},
+        keychain::KeyChain,
         Wallet, WalletIdentifier,
     },
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_biguint;
-use renegade_util::{err_str, get_current_time_millis};
-use reqwest::{Body, Client};
+use renegade_util::err_str;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
@@ -85,48 +83,39 @@ impl RelayerClient {
     // | Wallet Methods |
     // ------------------
 
-    /// Get the wallet for a given id
+    /// Get the wallet for a given id, looking up the wallet if not initially
+    /// found
     pub async fn get_wallet(
         &self,
         wallet_id: WalletIdentifier,
-        wallet_key: &HmacKey,
+        eth_key: &PrivateKeySigner,
+        keychain: KeyChain,
     ) -> Result<GetWalletResponse, FundsManagerError> {
         let mut path = GET_WALLET_ROUTE.to_string();
         path = path.replace(":wallet_id", &wallet_id.to_string());
-        self.get_relayer_with_auth::<GetWalletResponse>(&path, wallet_key).await
-    }
 
-    /// Check that the relayer has a given wallet, lookup the wallet if not
-    pub async fn check_wallet_indexed(
-        &self,
-        wallet_id: WalletIdentifier,
-        chain_id: u64,
-        eth_key: &LocalWallet,
-    ) -> Result<(), FundsManagerError> {
-        let mut path = GET_WALLET_ROUTE.to_string();
-        path = path.replace(":wallet_id", &wallet_id.to_string());
-
-        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
         let wallet_key = keychain.symmetric_key();
-        if self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await.is_ok() {
-            return Ok(());
-        }
 
-        // Otherwise lookup the wallet
-        self.lookup_wallet(chain_id, eth_key).await
+        match self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await {
+            Ok(resp) => Ok(resp),
+            Err(err) => {
+                warn!("Failed to get wallet {wallet_id} from relayer: {err}");
+                self.lookup_wallet(eth_key, keychain).await?;
+                self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await
+            },
+        }
     }
 
     /// Lookup a wallet in the configured relayer
     async fn lookup_wallet(
         &self,
-        chain_id: u64,
-        eth_key: &LocalWallet,
+        eth_key: &PrivateKeySigner,
+        keychain: KeyChain,
     ) -> Result<(), FundsManagerError> {
         let path = FIND_WALLET_ROUTE.to_string();
         let wallet_id = derive_wallet_id(eth_key).unwrap();
         let blinder_seed = derive_blinder_seed(eth_key).unwrap();
         let share_seed = derive_share_seed(eth_key).unwrap();
-        let keychain = derive_wallet_keychain(eth_key, chain_id).unwrap();
         let wallet_key = keychain.symmetric_key();
 
         let body = FindWalletRequest {
@@ -215,9 +204,12 @@ impl RelayerClient {
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
+        let expiration = Duration::from_millis(SIG_EXPIRATION_BUFFER_MS);
         let body_ser = serde_json::to_vec(body).map_err(err_str!(FundsManagerError::Custom))?;
-        let headers = build_auth_headers(wallet_key, &body_ser)
-            .map_err(err_str!(FundsManagerError::custom))?;
+        let mut headers = HeaderMap::new();
+
+        add_expiring_auth_to_headers(path, &mut headers, &body_ser, wallet_key, expiration);
+
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
@@ -273,8 +265,16 @@ impl RelayerClient {
     where
         Resp: for<'de> Deserialize<'de>,
     {
-        let headers =
-            build_auth_headers(wallet_key, &[]).map_err(err_str!(FundsManagerError::Custom))?;
+        let mut headers = HeaderMap::new();
+        let expiration = Duration::from_millis(SIG_EXPIRATION_BUFFER_MS);
+        add_expiring_auth_to_headers(
+            path,
+            &mut headers,
+            &[], // body
+            wallet_key,
+            expiration,
+        );
+
         self.get_relayer_with_headers(path, &headers).await
     }
 
@@ -340,23 +340,4 @@ fn reqwest_client() -> Result<Client, FundsManagerError> {
         .user_agent("fee-sweeper")
         .build()
         .map_err(|_| FundsManagerError::custom("Failed to create reqwest client"))
-}
-
-/// Build authentication headers for a request
-fn build_auth_headers(key: &HmacKey, req_bytes: &[u8]) -> Result<HeaderMap, String> {
-    let mut headers = HeaderMap::new();
-    let expiration = get_current_time_millis() + SIG_EXPIRATION_BUFFER_MS;
-    headers.insert(RENEGADE_SIG_EXPIRATION_HEADER_NAME, expiration.into());
-
-    // Concatenate the message and the timestamp
-    let body = Body::from(req_bytes.to_vec());
-    let msg_bytes = body.as_bytes().unwrap();
-    let payload = [msg_bytes, &expiration.to_le_bytes()].concat();
-
-    // Compute the hmac
-    let hmac = key.compute_mac(&payload);
-    let encoded_sig = b64_general_purpose::STANDARD_NO_PAD.encode(hmac);
-    headers.insert(RENEGADE_AUTH_HEADER_NAME, HeaderValue::from_str(&encoded_sig).unwrap());
-
-    Ok(headers)
 }

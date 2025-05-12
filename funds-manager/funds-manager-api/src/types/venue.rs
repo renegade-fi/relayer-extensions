@@ -1,6 +1,6 @@
 //! Types specific to execution venue (LiFi) integration
 //! as defined in https://apidocs.li.fi/reference/get_v1-quote
-use ethers::types::{Bytes, U256};
+use alloy_primitives::{hex, Bytes, U256};
 use serde::Deserialize;
 
 use super::quoters::ExecutionQuote;

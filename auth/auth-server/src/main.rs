@@ -26,7 +26,7 @@ mod server;
 mod store;
 mod telemetry;
 
-use renegade_arbitrum_client::constants::Chain;
+use renegade_darkpool_client::constants::Chain;
 use renegade_system_clock::SystemClock;
 
 use auth_server_api::API_KEYS_PATH;
@@ -95,7 +95,7 @@ pub struct Cli {
     /// The Ethereum RPC node websocket address to dial for on-chain data
     #[clap(long = "eth-websocket-url", value_parser, env = "ETH_WEBSOCKET_URL")]
     pub eth_websocket_addr: Option<String>,
-    /// The Arbitrum RPC url to use
+    /// The RPC url to use
     #[clap(short, long, env = "RPC_URL")]
     rpc_url: String,
     /// The address of the darkpool contract

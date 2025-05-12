@@ -1,14 +1,15 @@
 //! Defines functionality to compute and record data for swap execution
 
-use ethers::types::{Address, TransactionReceipt, U256};
-use funds_manager_api::quoters::ExecutionQuote;
+use alloy::{contract::Event, rpc::types::TransactionReceipt};
+use alloy_primitives::{Address, TxHash, U256};
+use funds_manager_api::{quoters::ExecutionQuote, u256_try_into_u128};
 use serde::Serialize;
 use tracing::{info, warn};
 
 use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
-    helpers::{TransactionHash, TransferFilter, ERC20},
+    helpers::IERC20::Transfer,
     metrics::labels::{
         ASSET_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
         SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
@@ -96,23 +97,33 @@ impl MetricsRecorder {
         receipt: &TransactionReceipt,
         quote: &ExecutionQuote,
     ) -> Result<SwapExecutionData, FundsManagerError> {
-        let mint = quote.get_base_token().get_ethers_address();
+        let mint = quote.get_base_token().get_alloy_address();
 
         let binance_price = self.get_binance_price(&mint).await?;
         let buy_amount_actual = self.get_buy_amount_actual(receipt, mint, quote.from).await?;
 
-        let execution_price = quote.get_price(Some(buy_amount_actual));
-        let notional_volume_usdc = quote.notional_volume_usdc(buy_amount_actual);
+        let execution_price =
+            quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;
+        let notional_volume_usdc =
+            quote.notional_volume_usdc(buy_amount_actual).map_err(FundsManagerError::parse)?;
 
         let trade_side_factor = if quote.is_buy() { 1.0 } else { -1.0 };
         let relative_spread = trade_side_factor * (execution_price - binance_price) / binance_price;
         let execution_cost_usdc = notional_volume_usdc * relative_spread;
 
         // Calculate slippage metrics
-        let decimal_corrected_buy_amount_estimated = quote.get_decimal_corrected_buy_amount();
-        let decimal_corrected_buy_amount_min = quote.get_decimal_corrected_buy_amount_min();
+        let decimal_corrected_buy_amount_estimated =
+            quote.get_decimal_corrected_buy_amount().map_err(FundsManagerError::parse)?;
+        let decimal_corrected_buy_amount_min =
+            quote.get_decimal_corrected_buy_amount_min().map_err(FundsManagerError::parse)?;
+
+        let buy_amount_actual =
+            u256_try_into_u128(buy_amount_actual).map_err(FundsManagerError::parse)?;
         let decimal_corrected_buy_amount_actual =
-            quote.get_buy_token().convert_to_decimal(buy_amount_actual.as_u128());
+            quote.get_buy_token().convert_to_decimal(buy_amount_actual);
+
+        let sell_amount =
+            quote.get_decimal_corrected_sell_amount().map_err(FundsManagerError::parse)?;
 
         let slippage_budget =
             decimal_corrected_buy_amount_estimated - decimal_corrected_buy_amount_min;
@@ -126,7 +137,7 @@ impl MetricsRecorder {
             // Token information
             buy_token_address: quote.get_buy_token_address(),
             sell_token_address: quote.get_sell_token_address(),
-            sell_amount: quote.get_decimal_corrected_sell_amount().to_string(),
+            sell_amount: sell_amount.to_string(),
             buy_amount_estimated: decimal_corrected_buy_amount_estimated.to_string(),
             buy_amount_min: decimal_corrected_buy_amount_min.to_string(),
             from_address: quote.get_from_address(),
@@ -173,7 +184,7 @@ impl MetricsRecorder {
         quote: &ExecutionQuote,
         receipt: &TransactionReceipt,
     ) -> Vec<(String, String)> {
-        let mint = format!("{:#x}", quote.get_base_token().get_ethers_address());
+        let mint = format!("{:#x}", quote.get_base_token().get_alloy_address());
         let asset = quote.get_base_token().get_ticker().unwrap_or(mint);
         let side_label = if quote.is_buy() { "buy" } else { "sell" };
 
@@ -191,24 +202,22 @@ impl MetricsRecorder {
         mint: Address,
         recipient: Address,
     ) -> Result<U256, FundsManagerError> {
-        let block_number = receipt.block_number.unwrap_or_default().as_u64();
+        let block_number = receipt.block_number.unwrap_or_default();
 
-        let contract = ERC20::new(mint, self.provider.clone());
-        let filter = contract
-            .event::<TransferFilter>()
+        let filter = Event::<_, Transfer>::new_sol(&self.provider, &mint)
             .from_block(block_number)
             .to_block(block_number)
             .topic2(recipient);
 
         let events = filter
-            .query_with_meta()
+            .query()
             .await
             .map_err(|_| FundsManagerError::arbitrum("failed to create transfer stream"))?;
 
         // Find the transfer event that matches our transaction hash
         let transfer_event = events
             .iter()
-            .find(|(_, meta)| meta.transaction_hash == receipt.transaction_hash)
+            .find(|(_, meta)| meta.transaction_hash == Some(receipt.transaction_hash))
             .ok_or_else(|| FundsManagerError::custom("No matching transfer event found"))?;
 
         Ok(transfer_event.0.value)
@@ -221,7 +230,7 @@ impl MetricsRecorder {
     }
 
     /// Log swap cost data in a Datadog-compatible format
-    fn log_swap_cost_data(&self, cost_data: &SwapExecutionData, tx_hash: TransactionHash) {
+    fn log_swap_cost_data(&self, cost_data: &SwapExecutionData, tx_hash: TxHash) {
         info!(
             buy_token_address = %cost_data.buy_token_address,
             sell_token_address = %cost_data.sell_token_address,

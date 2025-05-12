@@ -43,9 +43,7 @@ pub const MIN_HYPERLIQUID_DEPOSIT_AMOUNT: f64 = 5.0; // USDC
 
 /// Handler for indexing fees
 pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
-    let indexer = server
-        .build_indexer()
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    let indexer = server.build_indexer();
     indexer
         .index_fees()
         .await
@@ -55,9 +53,7 @@ pub(crate) async fn index_fees_handler(server: Arc<Server>) -> Result<Json, warp
 
 /// Handler for redeeming fees
 pub(crate) async fn redeem_fees_handler(server: Arc<Server>) -> Result<Json, warp::Rejection> {
-    let indexer = server
-        .build_indexer()
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    let indexer = server.build_indexer();
     indexer
         .redeem_fees()
         .await
@@ -70,7 +66,7 @@ pub(crate) async fn get_fee_wallets_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let indexer = server.build_indexer()?;
+    let indexer = server.build_indexer();
     let wallets = indexer.fetch_fee_wallets().await?;
     Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
 }
@@ -80,7 +76,7 @@ pub(crate) async fn withdraw_fee_balance_handler(
     req: WithdrawFeeBalanceRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let indexer = server.build_indexer()?;
+    let indexer = server.build_indexer();
     indexer
         .withdraw_fee_balance(req.wallet_id, req.mint)
         .await
