@@ -40,7 +40,7 @@ alloy-sol-types = { workspace = true }
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 contracts-common = { workspace = true }
-renegade-darkpool-client = { workspace = true }
+renegade-darkpool-client = { workspace = true, features = ["arbitrum"] }
 renegade-circuit-types = { workspace = true }
 renegade-common = { workspace = true }
 renegade-constants = { workspace = true }

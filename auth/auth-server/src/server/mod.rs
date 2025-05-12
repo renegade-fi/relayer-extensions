@@ -15,7 +15,7 @@ mod redis_queries;
 use std::{iter, sync::Arc, time::Duration};
 
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
-use crate::helpers::create_arbitrum_client;
+use crate::helpers::create_darkpool_client;
 use crate::server::price_reporter_client::PriceReporterClient;
 use crate::store::BundleStore;
 use crate::{
@@ -46,13 +46,13 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
-use renegade_arbitrum_client::client::ArbitrumClient;
 use renegade_common::types::{
     hmac::HmacKey,
     token::{get_all_tokens, Token},
 };
 use renegade_config::setup_token_remaps;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
+use renegade_darkpool_client::DarkpoolClient;
 use renegade_system_clock::SystemClock;
 use renegade_util::{
     on_chain::{set_external_match_fee, PROTOCOL_FEE},
@@ -122,17 +122,17 @@ impl Server {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
 
-        // Create the arbitrum client
-        let arbitrum_client = create_arbitrum_client(
+        // Create the darkpool client
+        let darkpool_client = create_darkpool_client(
             args.darkpool_address.clone(),
             args.chain_id,
             args.rpc_url.clone(),
         )
         .await
-        .expect("failed to create arbitrum client");
+        .expect("failed to create darkpool client");
 
         // Set the external match fees & protocol fee
-        set_external_match_fees(&arbitrum_client).await?;
+        set_external_match_fees(&darkpool_client).await?;
 
         // Setup the DB connection pool
         let db_pool = Arc::new(create_db_pool(&args.database_url).await?);
@@ -156,7 +156,7 @@ impl Server {
         // Setup quote metrics
         let quote_metrics = maybe_setup_quote_metrics(
             &args,
-            arbitrum_client.clone(),
+            darkpool_client.clone(),
             price_reporter_client.clone(),
         );
 
@@ -164,7 +164,7 @@ impl Server {
 
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
-                arbitrum_client.provider().clone(),
+                darkpool_client.provider().clone(),
                 gas_sponsor_address,
                 system_clock,
             )
@@ -177,7 +177,7 @@ impl Server {
         // Start the on-chain event listener
         let chain_listener_config = OnChainEventListenerConfig {
             websocket_addr: args.eth_websocket_addr.clone(),
-            arbitrum_client: arbitrum_client.clone(),
+            darkpool_client: darkpool_client.clone(),
         };
         let mut chain_listener = OnChainEventListener::new(
             chain_listener_config,
@@ -362,8 +362,8 @@ async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
 }
 
 /// Set the external match fees & protocol fee
-async fn set_external_match_fees(arbitrum_client: &ArbitrumClient) -> Result<(), AuthServerError> {
-    let protocol_fee = arbitrum_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
+async fn set_external_match_fees(darkpool_client: &DarkpoolClient) -> Result<(), AuthServerError> {
+    let protocol_fee = darkpool_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
 
     PROTOCOL_FEE
         .set(protocol_fee)
@@ -378,7 +378,7 @@ async fn set_external_match_fees(arbitrum_client: &ArbitrumClient) -> Result<(),
         // Fetch the fee override from the contract
         let addr = token.get_alloy_address();
         let fee =
-            arbitrum_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
+            darkpool_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
 
         // Write the fee into the mapping
         let addr_bigint = token.get_addr_biguint();
@@ -462,7 +462,7 @@ async fn create_redis_client(redis_url: &str) -> Result<ConnectionManager, AuthS
 /// Setup the quote metrics recorder and sources if enabled
 fn maybe_setup_quote_metrics(
     args: &Cli,
-    arbitrum_client: ArbitrumClient,
+    darkpool_client: DarkpoolClient,
     price_reporter: Arc<PriceReporterClient>,
 ) -> Option<Arc<QuoteComparisonHandler>> {
     if !args.enable_quote_comparison {
@@ -470,7 +470,7 @@ fn maybe_setup_quote_metrics(
     }
 
     let odos_source = QuoteSource::odos_default();
-    Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source], arbitrum_client, price_reporter)))
+    Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source], darkpool_client, price_reporter)))
 }
 
 /// Parse the gas sponsor address from the CLI args
