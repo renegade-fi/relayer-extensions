@@ -12,7 +12,7 @@ use fireblocks_sdk::{
         TransactionRequest, TransactionStatus, UnsignedMessage,
     },
 };
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::chain::Chain;
 use serde_json::Value;
 use tracing::error;
 

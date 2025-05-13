@@ -10,8 +10,10 @@ use fireblocks_sdk::{
         TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,
     },
 };
-use renegade_common::types::token::{Token, USDC_TICKER};
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::{
+    chain::Chain,
+    token::{Token, USDC_TICKER},
+};
 use tracing::info;
 
 use super::{CustodyClient, DepositWithdrawSource};
