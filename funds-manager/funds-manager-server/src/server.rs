@@ -3,15 +3,20 @@
 
 use std::{collections::HashMap, error::Error, sync::Arc};
 
-use aws_config::{BehaviorVersion, Region, SdkConfig};
+use aws_config::{BehaviorVersion, Region};
 use funds_manager_api::quoters::ExecutionQuote;
 use renegade_common::types::{chain::Chain, hmac::HmacKey, token::Token};
 use renegade_config::setup_token_remaps;
 
 use crate::{
-    cli::{ChainClients, Cli},
-    db::{create_db_pool, DbPool},
+    cli::{ChainClients, Cli, Environment},
+    custody_client::CustodyClient,
+    db::create_db_pool,
     error::FundsManagerError,
+    execution_client::ExecutionClient,
+    metrics::MetricsRecorder,
+    relayer_client::RelayerClient,
+    Indexer,
 };
 
 // -------------
@@ -24,10 +29,8 @@ const DEFAULT_REGION: &str = "us-east-2";
 /// The server
 #[derive(Clone)]
 pub(crate) struct Server {
-    /// The database connection pool
-    pub db_pool: Arc<DbPool>,
-    /// The AWS config
-    pub aws_config: SdkConfig,
+    /// The chain-agnostic environment the server is running in
+    pub environment: Environment,
     /// The HMAC key for custody endpoint authentication
     pub hmac_key: Option<HmacKey>,
     /// The HMAC key for signing quotes
@@ -81,7 +84,7 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server { db_pool: arc_pool, aws_config, hmac_key, quote_hmac_key, chain_clients })
+        Ok(Server { hmac_key, quote_hmac_key, chain_clients, environment: args.environment })
     }
 
     /// Sign a quote using the quote HMAC key and returns the signature as a
@@ -91,5 +94,57 @@ impl Server {
         let sig = self.quote_hmac_key.compute_mac(canonical_string.as_bytes());
         let signature = hex::encode(sig);
         Ok(signature)
+    }
+
+    /// Get the relayer client for the given chain
+    pub fn get_relayer_client(
+        &self,
+        chain: &Chain,
+    ) -> Result<Arc<RelayerClient>, FundsManagerError> {
+        self.chain_clients
+            .get(chain)
+            .map(|clients| clients.relayer_client.clone())
+            .ok_or(FundsManagerError::custom(format!("No relayer client configured for {chain}")))
+    }
+
+    /// Get the custody client for the given chain
+    pub fn get_custody_client(
+        &self,
+        chain: &Chain,
+    ) -> Result<Arc<CustodyClient>, FundsManagerError> {
+        self.chain_clients
+            .get(chain)
+            .map(|clients| clients.custody_client.clone())
+            .ok_or(FundsManagerError::custom(format!("No custody client configured for {chain}")))
+    }
+
+    /// Get the execution client for the given chain
+    pub fn get_execution_client(
+        &self,
+        chain: &Chain,
+    ) -> Result<Arc<ExecutionClient>, FundsManagerError> {
+        self.chain_clients
+            .get(chain)
+            .map(|clients| clients.execution_client.clone())
+            .ok_or(FundsManagerError::custom(format!("No execution client configured for {chain}")))
+    }
+
+    /// Get the metrics recorder for the given chain
+    pub fn get_metrics_recorder(
+        &self,
+        chain: &Chain,
+    ) -> Result<Arc<MetricsRecorder>, FundsManagerError> {
+        self.chain_clients
+            .get(chain)
+            .map(|clients| clients.metrics_recorder.clone())
+            .ok_or(FundsManagerError::custom(format!("No metrics recorder configured for {chain}")))
+    }
+
+    /// Get the fee indexer for the given chain
+    pub fn get_fee_indexer(&self, chain: &Chain) -> Result<Arc<Indexer>, FundsManagerError> {
+        self.chain_clients
+            .get(chain)
+            .map(|clients| clients.fee_indexer.clone())
+            .ok_or(FundsManagerError::custom(format!("No fee indexer configured for {chain}")))
     }
 }

@@ -6,6 +6,7 @@ use bytes::Bytes;
 use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
 use http::{HeaderMap, Method};
 use renegade_api::auth::validate_expiring_auth;
+use renegade_common::types::chain::Chain;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use warp::filters::path::FullPath;
@@ -91,6 +92,15 @@ async fn verify_hmac(
     }
 
     Ok((body,))
+}
+
+/// Extract a JSON body from a request
+#[allow(clippy::needless_pass_by_value)]
+pub fn with_chain_and_json_body<T: DeserializeOwned + Send>(
+    chain: Chain,
+    body: Bytes,
+) -> Result<(Chain, T), warp::Rejection> {
+    with_json_body(body).map(|body| (chain, body))
 }
 
 /// Extract a JSON body from a request
