@@ -12,7 +12,7 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{get_all_tokens, Token, USDC_TICKER},
+    token::{get_all_tokens, read_token_remaps, Token, USDC_TICKER},
     Price,
 };
 use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
@@ -274,10 +274,9 @@ pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
 pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
     let parts: Vec<&str> = topic.split('-').collect();
     let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-    let base = Token::from_addr_without_chain(parts[1]).ok_or_else(|| {
+    let (base, chain) = get_token_and_chain(parts[1]).ok_or_else(|| {
         ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
     })?;
-    let chain = base.get_chain();
     let quote = if exchange == Exchange::Renegade {
         Token::from_ticker_on_chain(USDC_TICKER, chain)
     } else {
@@ -317,4 +316,15 @@ pub fn get_all_tokens_filtered(filtered_tokens: &[&str]) -> Vec<Token> {
         .into_iter()
         .filter(|t| !filtered_tokens.contains(&t.get_ticker().unwrap().as_str()))
         .collect_vec()
+}
+
+/// Given an address, search through the token remaps to find the token and
+/// chain it belongs to
+pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
+    for (chain, token_map) in read_token_remaps().iter() {
+        if token_map.get_by_left(addr).is_some() {
+            return Some((Token::from_addr_on_chain(addr, *chain), *chain));
+        }
+    }
+    None
 }
