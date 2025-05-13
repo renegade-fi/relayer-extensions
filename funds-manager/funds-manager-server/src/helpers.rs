@@ -9,6 +9,7 @@ use alloy::{
     sol,
 };
 use aws_config::SdkConfig;
+use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use renegade_util::err_str;
 
@@ -105,4 +106,27 @@ pub async fn create_secrets_manager_entry_with_description(
         .map_err(err_str!(FundsManagerError::SecretsManager))?;
 
     Ok(())
+}
+
+// ----------
+// | AWS S3 |
+// ----------
+
+/// Fetch an object from S3
+pub async fn fetch_s3_object(
+    bucket: &str,
+    key: &str,
+    config: &SdkConfig,
+) -> Result<String, FundsManagerError> {
+    let client = S3Client::new(config);
+
+    // Fetch the object from S3
+    let resp =
+        client.get_object().bucket(bucket).key(key).send().await.map_err(FundsManagerError::s3)?;
+
+    // Aggregate the response stream into bytes
+    let data = resp.body.collect().await.map_err(FundsManagerError::s3)?;
+
+    // Convert the bytes to a string
+    String::from_utf8(data.into_bytes().to_vec()).map_err(FundsManagerError::parse)
 }

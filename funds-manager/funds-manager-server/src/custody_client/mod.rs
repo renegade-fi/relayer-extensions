@@ -27,7 +27,7 @@ use fireblocks_sdk::{
     models::{TransactionResponse, VaultAccount},
     Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
 };
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::chain::Chain;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
