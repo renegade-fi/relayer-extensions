@@ -15,9 +15,8 @@ use std::{
 use errors::ServerError;
 use http_server::HttpServer;
 use renegade_common::types::{
-    chain_token::default_exchange_stable_on_chain,
     exchange::Exchange,
-    token::{Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{default_exchange_stable, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
 use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
@@ -121,10 +120,8 @@ pub fn init_default_price_streams(
             .copied()
             .collect();
 
-        let chain = base_token.get_chain();
-
         for exchange in supported_exchanges {
-            let quote_token = default_exchange_stable_on_chain(&exchange, chain);
+            let quote_token = default_exchange_stable(&exchange);
             // We assume that the exchange has a market between the base token
             // and its default stable token
             init_price_stream(
