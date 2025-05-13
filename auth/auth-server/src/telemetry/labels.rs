@@ -65,8 +65,6 @@ pub const SETTLEMENT_STATUS_TAG: &str = "did_settle";
 pub const REQUEST_ID_METRIC_TAG: &str = "request_id";
 /// Metric tag for the base asset of an external order or match
 pub const BASE_ASSET_METRIC_TAG: &str = "base_asset";
-/// Metric tag to indicate data was recorded post decimal correction fix
-pub const DECIMAL_CORRECTION_FIXED_METRIC_TAG: &str = "post_decimal_fix";
 /// Metric tag for the path of the request
 pub const REQUEST_PATH_METRIC_TAG: &str = "request_path";
 /// Metric tag for the SDK version of the request
