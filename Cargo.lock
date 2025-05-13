@@ -2588,7 +2588,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2599,7 +2599,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -2630,7 +2630,7 @@ dependencies = [
 [[package]]
 name = "circuits"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "ark-crypto-primitives",
  "ark-ec",
@@ -2818,7 +2818,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "alloy",
  "ark-mpc",
@@ -2881,7 +2881,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "alloy",
  "base64 0.13.1",
@@ -2954,7 +2954,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3263,7 +3263,7 @@ dependencies = [
 [[package]]
 name = "darkpool-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "alloy",
  "alloy-contract",
@@ -4199,7 +4199,7 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "alloy",
  "base64 0.22.1",
@@ -4709,7 +4709,7 @@ dependencies = [
 [[package]]
 name = "gossip-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "bincode",
  "circuit-types",
@@ -5547,7 +5547,7 @@ dependencies = [
 [[package]]
 name = "job-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "ark-mpc",
  "circuit-types",
@@ -7166,7 +7166,7 @@ dependencies = [
 [[package]]
 name = "price-reporter"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "async-trait",
  "atomic_float 0.1.0",
@@ -7789,7 +7789,7 @@ dependencies = [
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
@@ -7839,7 +7839,7 @@ dependencies = [
 [[package]]
 name = "renegade-metrics"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "atomic_float 1.1.0",
  "circuit-types",
@@ -9297,7 +9297,7 @@ dependencies = [
 [[package]]
 name = "system-bus"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "bus",
  "common",
@@ -9309,7 +9309,7 @@ dependencies = [
 [[package]]
 name = "system-clock"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "tokio",
  "tokio-cron-scheduler",
@@ -10231,7 +10231,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#57b6271a915b6a2c856b7f5c4acaefbb934c07c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=sehyun/chain-remap#4d4ae957f0285573616f4dd5931643d41cb9d82e"
 dependencies = [
  "alloy",
  "ark-ec",

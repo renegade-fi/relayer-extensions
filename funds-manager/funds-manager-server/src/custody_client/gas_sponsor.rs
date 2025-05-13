@@ -11,11 +11,10 @@ use alloy::{
 };
 use alloy_primitives::utils::parse_ether;
 use alloy_sol_types::SolCall;
-use aws_sdk_s3::Client as S3Client;
 use renegade_common::types::token::Token;
 use tracing::info;
 
-use crate::error::FundsManagerError;
+use crate::{error::FundsManagerError, helpers::fetch_s3_object};
 
 use super::{CustodyClient, DepositWithdrawSource};
 
@@ -78,26 +77,8 @@ impl CustodyClient {
     async fn fetch_gas_sponsor_allocation(
         &self,
     ) -> Result<GasSponsorAllocation, FundsManagerError> {
-        // Create S3 client
-        let s3_client = S3Client::new(&self.aws_config);
-
         let bucket = format!("{}-{ALLOCATION_SPONSOR_BUCKET_SUFFIX}", self.chain);
-
-        // Fetch the object from S3
-        let resp = s3_client
-            .get_object()
-            .bucket(bucket)
-            .key(ALLOCATION_OBJECT_KEY)
-            .send()
-            .await
-            .map_err(FundsManagerError::s3)?;
-
-        // Aggregate the response stream into bytes
-        let data = resp.body.collect().await.map_err(FundsManagerError::s3)?;
-
-        // Convert the bytes to a string
-        let json_str =
-            String::from_utf8(data.into_bytes().to_vec()).map_err(FundsManagerError::parse)?;
+        let json_str = fetch_s3_object(&bucket, ALLOCATION_OBJECT_KEY, &self.aws_config).await?;
 
         // Parse the JSON string to GasSponsorAllocation
         let allocation: GasSponsorAllocation =

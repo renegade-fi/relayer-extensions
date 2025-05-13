@@ -2,7 +2,8 @@
 
 use aws_config::SdkConfig as AwsConfig;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_darkpool_client::{constants::Chain, DarkpoolClient};
+use renegade_common::types::chain::Chain;
+use renegade_darkpool_client::DarkpoolClient;
 use renegade_util::err_str;
 use renegade_util::hex::jubjub_from_hex_string;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub mod queries;
 pub mod redeem_fees;
 
 /// Stores the dependencies needed to index the chain
+#[derive(Clone)]
 pub(crate) struct Indexer {
     /// The id of the chain this indexer targets
     pub chain_id: u64,
