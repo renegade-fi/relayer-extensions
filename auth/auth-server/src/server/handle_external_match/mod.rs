@@ -22,6 +22,7 @@ use renegade_common::types::{token::Token, TimestampedPrice};
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use renegade_util::hex::biguint_to_hex_addr;
 use tracing::{error, info, instrument, warn};
+use uuid::Uuid;
 use warp::{reject::Rejection, reply::Reply};
 
 use super::helpers::{
@@ -32,12 +33,14 @@ use crate::error::AuthServerError;
 use crate::telemetry::helpers::{
     calculate_implied_price, record_quote_not_found, record_relayer_request_500,
 };
-use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
+use crate::telemetry::labels::{
+    BASE_ASSET_METRIC_TAG, GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG,
+};
+use crate::telemetry::QUOTE_FILL_RATIO_IGNORE_THRESHOLD;
 use crate::telemetry::{
     helpers::{record_endpoint_metrics, record_external_match_metrics, record_fill_ratio},
     labels::{
-        DECIMAL_CORRECTION_FIXED_METRIC_TAG, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT,
-        KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+        EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
     },
 };
 
@@ -82,8 +85,7 @@ impl Server {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status == StatusCode::NO_CONTENT {
-            let base_mint = biguint_to_hex_addr(&external_quote_req.external_order.base_mint);
-            record_quote_not_found(key_desc.clone(), &base_mint);
+            self.handle_no_quote_found(&key_desc, &external_quote_req);
         }
         if status != StatusCode::OK {
             log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
@@ -92,7 +94,6 @@ impl Server {
 
         let sponsored_quote_response =
             self.maybe_apply_gas_sponsorship_to_quote_response(resp.body(), gas_sponsorship_info)?;
-
         overwrite_response_body(&mut resp, sponsored_quote_response.clone())?;
 
         let server_clone = self.clone();
@@ -524,6 +525,40 @@ impl Server {
 
     // --- Bundle Tracking --- //
 
+    /// Handle a no quote found response
+    fn handle_no_quote_found(&self, key: &str, req: &ExternalQuoteRequest) {
+        let self_clone = self.clone();
+        let key = key.to_string();
+        let rid = Uuid::new_v4();
+        let req = req.clone();
+
+        // TODO(@joeykraut): Make this cleaner when we go cross-chain
+        tokio::spawn(async move {
+            let order = &req.external_order;
+            let base_mint = biguint_to_hex_addr(&order.base_mint);
+            record_quote_not_found(key.clone(), &base_mint);
+
+            // Record a zero fill ratio
+            let price_f64 = self_clone.price_reporter_client.get_price(&base_mint).await.unwrap();
+            let price = FixedPoint::from_f64_round_down(price_f64);
+            let relayer_fee = FixedPoint::zero();
+            let quote_amt = order.get_quote_amount(price, relayer_fee);
+
+            // We ignore excessively large quotes for telemetry, as they're likely spam
+            if quote_amt >= QUOTE_FILL_RATIO_IGNORE_THRESHOLD {
+                return;
+            }
+
+            let labels = vec![
+                (REQUEST_ID_METRIC_TAG.to_string(), rid.to_string()),
+                (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
+                (BASE_ASSET_METRIC_TAG.to_string(), base_mint),
+            ];
+            record_fill_ratio(quote_amt, 0 /* matched_quote_amount */, &labels)
+                .expect("Failed to record fill ratio");
+        });
+    }
+
     /// Handle a bundle response from a quote assembly request
     fn handle_quote_assembly_bundle_response(
         &self,
@@ -594,7 +629,6 @@ impl Server {
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.to_string()),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
-            (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
             (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.to_string()),
         ];
@@ -652,7 +686,6 @@ impl Server {
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
-            (DECIMAL_CORRECTION_FIXED_METRIC_TAG.to_string(), "true".to_string()),
             (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
         ];
         record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
