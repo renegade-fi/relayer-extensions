@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::{collections::HashMap, env, str::FromStr, sync::Arc};
+use std::{collections::HashMap, env, hash::Hash, str::FromStr, sync::Arc};
 
 use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
@@ -95,9 +95,50 @@ pub type PriceSender = WatchSender<Price>;
 /// A type alias for a price receiver
 pub type PriceReceiver = WatchReceiver<Price>;
 
+/// Used to uniquely identify a price stream
+pub struct TickerPairInfo {
+    /// The exchange
+    pub exchange: Exchange,
+    /// The base ticker
+    pub base: String,
+    /// The quote ticker
+    pub quote: String,
+    /// The chain
+    pub chain: Chain,
+}
+
+impl PartialEq for TickerPairInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.exchange == other.exchange && self.base == other.base && self.quote == other.quote
+    }
+}
+
+impl Eq for TickerPairInfo {}
+
+impl Hash for TickerPairInfo {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.exchange.hash(state);
+        self.base.hash(state);
+        self.quote.hash(state);
+    }
+}
+
+impl From<PairInfo> for TickerPairInfo {
+    fn from(pair_info: PairInfo) -> Self {
+        assert!(pair_info.1.get_chain() == pair_info.2.get_chain());
+
+        Self {
+            exchange: pair_info.0,
+            base: pair_info.1.get_ticker().unwrap(),
+            quote: pair_info.2.get_ticker().unwrap(),
+            chain: pair_info.1.get_chain(),
+        }
+    }
+}
+
 /// A type alias for a shareable map of price streams, indexed by the (source,
 /// base, quote) tuple
-pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceReceiver>>>;
+pub type SharedPriceStreams = Arc<RwLock<HashMap<TickerPairInfo, PriceReceiver>>>;
 
 /// A type alias for a price stream
 pub type SinglePriceStream = WatchStream<Price>;
@@ -212,7 +253,7 @@ pub fn setup_logging() {
         .with(
             EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy(),
         )
-        .with(fmt::layer().with_file(true).with_line_number(true).json().flatten_event(true))
+        .with(fmt::layer().with_file(true).with_line_number(true).pretty())
         .init();
 }
 

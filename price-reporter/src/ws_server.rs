@@ -27,8 +27,9 @@ use crate::{
     utils::{
         get_pair_info_topic, get_subscribed_topics, parse_pair_info_from_topic,
         requires_quote_conversion, validate_subscription, ClosureSender, PairInfo, PriceMessage,
-        PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream,
-        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+        PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
+        TickerPairInfo, WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS,
+        MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -55,12 +56,14 @@ impl GlobalPriceStreams {
 
     /// Add a price stream to the global map
     pub async fn add_price_stream(&self, pair_info: PairInfo, price_rx: PriceReceiver) {
-        self.price_streams.write().await.insert(pair_info, price_rx);
+        let key: TickerPairInfo = pair_info.into();
+        info!("Adding price stream for {}", format!("{}-{}-{}", key.exchange, key.base, key.quote));
+        self.price_streams.write().await.insert(key, price_rx);
     }
 
     /// Remove a price stream from the global map
     pub async fn remove_price_stream(&self, pair_info: PairInfo) {
-        self.price_streams.write().await.remove(&pair_info);
+        self.price_streams.write().await.remove(&pair_info.into());
     }
 
     /// Initialize a price stream for the given pair info
@@ -266,7 +269,7 @@ impl GlobalPriceStreams {
     ) -> Result<PriceReceiver, ServerError> {
         let maybe_stream_rx = {
             let price_streams = self.price_streams.read().await;
-            price_streams.get(&pair_info).cloned()
+            price_streams.get(&pair_info.clone().into()).cloned()
         };
 
         let recv = match maybe_stream_rx {
