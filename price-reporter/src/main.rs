@@ -23,7 +23,7 @@ use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
 use utils::{
-    get_all_tokens_filtered, parse_config_env_vars, setup_all_token_remaps, setup_logging,
+    get_all_tokens_filtered, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
 };
 use ws_server::{handle_connection, GlobalPriceStreams};
 
@@ -146,11 +146,15 @@ fn init_price_stream(
     global_price_streams: &GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
-    let pair_info = (exchange, base_token.clone(), quote_token.clone());
+    let pair_info = PairInfo::new(
+        exchange,
+        base_token.get_ticker().unwrap(),
+        quote_token.get_ticker().unwrap(),
+        None,
+    );
     let streams = global_price_streams.clone();
     tokio::spawn(async move {
-        if let Err(e) = streams.get_or_create_price_stream(pair_info.clone(), config.clone()).await
-        {
+        if let Err(e) = streams.get_or_create_price_stream(pair_info, config).await {
             let ticker = base_token.get_ticker().expect("Failed to get ticker");
             error!("Error initializing price stream for {ticker}: {e}");
         }
