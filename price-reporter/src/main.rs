@@ -14,6 +14,7 @@ use std::{
 
 use errors::ServerError;
 use http_server::HttpServer;
+use pair_info::PairInfo;
 use renegade_common::types::{
     exchange::Exchange,
     token::{default_exchange_stable, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
@@ -29,6 +30,7 @@ use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
 mod http_server;
+mod pair_info;
 mod utils;
 mod ws_server;
 
@@ -146,11 +148,15 @@ fn init_price_stream(
     global_price_streams: &GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
-    let pair_info = (exchange, base_token.clone(), quote_token.clone());
+    let pair_info = PairInfo::new(
+        exchange,
+        base_token.get_ticker().unwrap(),
+        quote_token.get_ticker().unwrap(),
+        None, // chain
+    );
     let streams = global_price_streams.clone();
     tokio::spawn(async move {
-        if let Err(e) = streams.get_or_create_price_stream(pair_info.clone(), config.clone()).await
-        {
+        if let Err(e) = streams.get_or_create_price_stream(pair_info, config).await {
             let ticker = base_token.get_ticker().expect("Failed to get ticker");
             error!("Error initializing price stream for {ticker}: {e}");
         }
