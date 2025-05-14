@@ -191,7 +191,7 @@ impl CustodyClient {
     /// Get the Fireblocks blockchain ID for the current chain
     async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
         let list_blockchains_params = ListBlockchainsParams::builder()
-            .test(matches!(self.chain, Chain::Testnet))
+            .test(matches!(self.chain, Chain::ArbitrumSepolia | Chain::BaseSepolia))
             .deprecated(false)
             .build();
 

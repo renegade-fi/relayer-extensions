@@ -8,10 +8,12 @@ use alloy_primitives::TxHash;
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use renegade_api::http::wallet::RedeemNoteRequest;
 use renegade_circuit_types::note::Note;
+use renegade_common::types::chain::Chain;
 use renegade_common::types::wallet::derivation::{
     derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
 };
 use renegade_common::types::wallet::{Wallet, WalletIdentifier};
+use renegade_darkpool_client::traits::DarkpoolImpl;
 use renegade_util::err_str;
 use tracing::{info, warn};
 
@@ -20,10 +22,12 @@ use crate::error::FundsManagerError;
 use crate::helpers::create_secrets_manager_entry_with_description;
 use crate::Indexer;
 
+use super::ERR_UNSUPPORTED_CHAIN;
+
 /// The maximum number of fees to redeem in a given run of the indexer
 pub(crate) const MAX_FEES_REDEEMED: usize = 20;
 
-impl Indexer {
+impl<D: DarkpoolImpl> Indexer<D> {
     /// Redeem the most valuable open fees
     pub async fn redeem_fees(&self) -> Result<(), FundsManagerError> {
         info!("redeeming fees...");
@@ -192,7 +196,7 @@ impl Indexer {
         id: WalletIdentifier,
         wallet: PrivateKeySigner,
     ) -> Result<String, FundsManagerError> {
-        let secret_name = format!("redemption-wallet-{}-{id}", self.chain);
+        let secret_name = self.get_wallet_secret_name(id)?;
         let secret_val = hex::encode(wallet.to_bytes());
 
         // Check that the `PrivateKeySigner` recovers the same
@@ -213,7 +217,7 @@ impl Indexer {
         metadata: &RenegadeWalletMetadata,
     ) -> Result<PrivateKeySigner, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
-        let secret_name = format!("redemption-wallet-{}-{}", self.chain, metadata.id);
+        let secret_name = self.get_wallet_secret_name(metadata.id)?;
 
         let secret = client
             .get_secret_value()
@@ -226,5 +230,16 @@ impl Indexer {
         let wallet =
             PrivateKeySigner::from_str(secret_str).map_err(err_str!(FundsManagerError::Parse))?;
         Ok(wallet)
+    }
+
+    /// Get the secret name for a wallet
+    fn get_wallet_secret_name(&self, id: WalletIdentifier) -> Result<String, FundsManagerError> {
+        match self.chain {
+            Chain::ArbitrumOne => Ok(format!("/arbitrum/one/redemption-wallet-{}", id)),
+            Chain::ArbitrumSepolia => Ok(format!("/arbitrum/sepolia/redemption-wallet-{}", id)),
+            Chain::BaseMainnet => Ok(format!("/base/mainnet/redemption-wallet-{}", id)),
+            Chain::BaseSepolia => Ok(format!("/base/mainnet/redemption-wallet-{}", id)),
+            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
+        }
     }
 }

@@ -13,6 +13,7 @@ use renegade_circuit_types::note::{Note, NOTE_CIPHERTEXT_SIZE};
 use renegade_circuit_types::wallet::NoteCommitment;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128};
+use renegade_darkpool_client::traits::DarkpoolImpl;
 use renegade_darkpool_client::{
     arbitrum::{
         abi::Darkpool::{settleOfflineFeeCall, NotePosted},
@@ -37,7 +38,7 @@ const ERR_NO_TX_HASH: &str = "tx hash not found";
 /// Error message for when a failed to create a note posted stream
 const ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM: &str = "failed to create note posted stream";
 
-impl Indexer {
+impl<D: DarkpoolImpl> Indexer<D> {
     /// Index all fees since the given block
     pub async fn index_fees(&self) -> Result<(), FundsManagerError> {
         let block_number = self.get_latest_block().await?;

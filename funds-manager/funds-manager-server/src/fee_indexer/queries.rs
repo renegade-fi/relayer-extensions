@@ -16,6 +16,7 @@ use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use renegade_common::types::wallet::WalletIdentifier;
 use renegade_constants::MAX_BALANCES;
+use renegade_darkpool_client::traits::DarkpoolImpl;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -82,7 +83,7 @@ pub(crate) struct FeeValue {
 // | Query Implementations |
 // -------------------------
 
-impl Indexer {
+impl<D: DarkpoolImpl> Indexer<D> {
     // ------------------
     // | Metadata Table |
     // ------------------

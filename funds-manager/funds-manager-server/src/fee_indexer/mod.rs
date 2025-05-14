@@ -3,7 +3,7 @@
 use aws_config::SdkConfig as AwsConfig;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::chain::Chain;
-use renegade_darkpool_client::DarkpoolClient;
+use renegade_darkpool_client::{client::DarkpoolClientInner, traits::DarkpoolImpl};
 use renegade_util::err_str;
 use renegade_util::hex::jubjub_from_hex_string;
 use std::sync::Arc;
@@ -18,9 +18,12 @@ pub mod index_fees;
 pub mod queries;
 pub mod redeem_fees;
 
+/// The error message for when the chain is not supported
+pub(crate) const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
+
 /// Stores the dependencies needed to index the chain
 #[derive(Clone)]
-pub(crate) struct Indexer {
+pub(crate) struct Indexer<D: DarkpoolImpl> {
     /// The id of the chain this indexer targets
     pub chain_id: u64,
     /// The chain this indexer targets
@@ -28,7 +31,7 @@ pub(crate) struct Indexer {
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
     /// The darkpool client
-    pub darkpool_client: DarkpoolClient,
+    pub darkpool_client: DarkpoolClientInner<D>,
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
     /// The database connection pool
@@ -39,14 +42,14 @@ pub(crate) struct Indexer {
     pub custody_client: CustodyClient,
 }
 
-impl Indexer {
+impl<D: DarkpoolImpl> Indexer<D> {
     /// Constructor
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_id: u64,
         chain: Chain,
         aws_config: AwsConfig,
-        darkpool_client: DarkpoolClient,
+        darkpool_client: DarkpoolClientInner<D>,
         decryption_keys: Vec<DecryptionKey>,
         db_pool: Arc<DbPool>,
         relayer_client: RelayerClient,

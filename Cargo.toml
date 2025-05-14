@@ -23,19 +23,19 @@ lto = true
 [workspace.dependencies]
 # === Renegade Dependencies === #
 contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
-renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap"}
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap", features = [
+renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients", features = [
     "auth",
 ] }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap", features = ["metered-channels"] }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "sehyun/chain-remap" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients", features = ["metered-channels"] }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/multiple-darkpool-clients" }
 
 # === Blockchain Dependencies === #
 alloy-sol-types = "1.0.0"
