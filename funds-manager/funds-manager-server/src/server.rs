@@ -4,7 +4,7 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
-use funds_manager_api::quoters::ExecutionQuote;
+use funds_manager_api::quoters::AugmentedExecutionQuote;
 use renegade_common::types::{
     chain::Chain,
     hmac::HmacKey,
@@ -92,7 +92,7 @@ impl Server {
 
     /// Sign a quote using the quote HMAC key and returns the signature as a
     /// hex string
-    pub fn sign_quote(&self, quote: &ExecutionQuote) -> Result<String, FundsManagerError> {
+    pub fn sign_quote(&self, quote: &AugmentedExecutionQuote) -> Result<String, FundsManagerError> {
         let canonical_string = quote.to_canonical_string();
         let sig = self.quote_hmac_key.compute_mac(canonical_string.as_bytes());
         let signature = hex::encode(sig);

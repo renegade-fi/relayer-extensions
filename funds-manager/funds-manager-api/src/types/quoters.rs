@@ -95,26 +95,6 @@ pub struct ExecutionQuote {
     pub gas_limit: U256,
 }
 
-impl ExecutionQuote {
-    /// Convert the quote to a canonical string representation for HMAC signing
-    pub fn to_canonical_string(&self) -> String {
-        format!(
-            "{}{}{}{}{}{}{}{}{}{}{}",
-            self.buy_token_address,
-            self.sell_token_address,
-            self.sell_amount,
-            self.buy_amount,
-            self.from,
-            self.to,
-            hex::encode(&self.data),
-            self.value,
-            self.gas_price,
-            self.estimated_gas,
-            self.gas_limit
-        )
-    }
-}
-
 /// An execution quote, augmented with additional contextual data
 #[derive(Clone, Debug)]
 pub struct AugmentedExecutionQuote {
@@ -128,6 +108,25 @@ impl AugmentedExecutionQuote {
     /// Create a new augmented execution quote
     pub fn new(quote: ExecutionQuote, chain: Chain) -> Self {
         Self { quote, chain }
+    }
+
+    /// Convert the quote to a canonical string representation for HMAC signing
+    pub fn to_canonical_string(&self) -> String {
+        format!(
+            "{}{}{}{}{}{}{}{}{}{}{}{}",
+            self.quote.buy_token_address,
+            self.quote.sell_token_address,
+            self.quote.sell_amount,
+            self.quote.buy_amount,
+            self.quote.from,
+            self.quote.to,
+            hex::encode(&self.quote.data),
+            self.quote.value,
+            self.quote.gas_price,
+            self.quote.estimated_gas,
+            self.quote.gas_limit,
+            self.chain,
+        )
     }
 
     /// Get the buy token address as a formatted string

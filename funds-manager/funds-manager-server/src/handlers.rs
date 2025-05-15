@@ -175,9 +175,11 @@ pub(crate) async fn get_execution_quote_handler(
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    let signature = server.sign_quote(&quote)?;
+    let augmented_quote = AugmentedExecutionQuote::new(quote, chain);
 
-    let resp = GetExecutionQuoteResponse { quote, signature };
+    let signature = server.sign_quote(&augmented_quote)?;
+
+    let resp = GetExecutionQuoteResponse { quote: augmented_quote.quote, signature };
     Ok(warp::reply::json(&resp))
 }
 
@@ -196,12 +198,13 @@ pub(crate) async fn execute_swap_handler(
     let provided = hex::decode(&req.signature)
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    if !hmac_key.verify_mac(req.quote.to_canonical_string().as_bytes(), &provided) {
+    let augmented_quote = AugmentedExecutionQuote::new(req.quote.clone(), chain);
+
+    if !hmac_key.verify_mac(augmented_quote.to_canonical_string().as_bytes(), &provided) {
         return Err(warp::reject::custom(ApiError::Unauthenticated(
             "Invalid quote signature".to_string(),
         )));
     }
-    let augmented_quote = AugmentedExecutionQuote::new(req.quote.clone(), chain);
 
     let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
