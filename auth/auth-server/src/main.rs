@@ -26,7 +26,7 @@ mod server;
 mod store;
 mod telemetry;
 
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::chain::Chain;
 use renegade_system_clock::SystemClock;
 
 use auth_server_api::API_KEYS_PATH;
