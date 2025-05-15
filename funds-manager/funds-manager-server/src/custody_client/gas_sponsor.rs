@@ -100,7 +100,7 @@ impl CustodyClient {
                 continue;
             }
 
-            let token = Token::from_ticker(ticker);
+            let token = Token::from_ticker_on_chain(ticker, self.chain);
 
             // Get the gas sponsor's balance of the token
             let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
