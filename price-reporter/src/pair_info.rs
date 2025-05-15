@@ -5,9 +5,9 @@
 //! addresses for uniqueness. This is necessary in a multi-chain environment
 //! where multiple addresses can map to the same ticker.
 
-use std::hash::Hash;
 use std::str::FromStr;
 
+use derivative::Derivative;
 use renegade_common::types::token::{default_chain, USDC_TICKER};
 use renegade_common::types::{chain::Chain, exchange::Exchange, token::Token};
 use renegade_price_reporter::exchange::supports_pair;
@@ -17,7 +17,7 @@ use crate::errors::ServerError;
 use crate::utils::{get_token_and_chain, PriceTopic};
 
 /// Used to uniquely identify a price stream
-#[derive(Clone)]
+#[derive(Derivative, Clone, PartialEq, Eq, Hash)]
 pub struct PairInfo {
     /// The exchange
     pub exchange: Exchange,
@@ -26,6 +26,7 @@ pub struct PairInfo {
     /// The quote ticker
     pub quote: String,
     /// The chain
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub chain: Chain,
 }
 
@@ -92,22 +93,6 @@ impl PairInfo {
         }
 
         Ok(())
-    }
-}
-
-impl PartialEq for PairInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.exchange == other.exchange && self.base == other.base && self.quote == other.quote
-    }
-}
-
-impl Eq for PairInfo {}
-
-impl Hash for PairInfo {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.exchange.hash(state);
-        self.base.hash(state);
-        self.quote.hash(state);
     }
 }
 
