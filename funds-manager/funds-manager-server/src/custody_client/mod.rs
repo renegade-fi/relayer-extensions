@@ -33,19 +33,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info};
 
-use crate::error::FundsManagerError;
-use crate::helpers::IERC20;
+use crate::helpers::{to_env_agnostic_name, IERC20};
 use crate::{
     db::{DbConn, DbPool},
     helpers::build_provider,
 };
+use crate::{error::FundsManagerError, helpers::titlecase};
 
 /// The error message for when the Arbitrum blockchain is not found
 /// in the Fireblocks `/blockchains` endpoint response
 const ERR_ARB_CHAIN_NOT_FOUND: &str = "Arbitrum blockchain not found";
 
 /// The source of a deposit
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DepositWithdrawSource {
     /// A Renegade quoter deposit or withdrawal
     Quoter,
@@ -58,20 +58,23 @@ pub(crate) enum DepositWithdrawSource {
 impl DepositWithdrawSource {
     /// Get the Fireblocks vault name into which the given deposit source should
     /// deposit funds
-    pub(crate) fn vault_name(&self) -> &str {
+    pub(crate) fn vault_name(&self, chain: Chain) -> String {
+        let env_name = titlecase(&to_env_agnostic_name(chain));
         match self {
-            Self::Quoter => "Quoters",
-            Self::FeeRedemption => "Fee Collection",
-            Self::Gas => "Arbitrum Gas",
+            Self::Quoter => format!("{env_name} Quoters"),
+            Self::FeeRedemption => format!("{env_name} Fee Collection"),
+            Self::Gas => format!("{env_name} Gas"),
         }
     }
 
     /// Build a `DepositWithdrawSource` from a vault name
-    pub fn from_vault_name(name: &str) -> Result<Self, FundsManagerError> {
-        match name.to_lowercase().as_str() {
-            "quoters" => Ok(Self::Quoter),
-            "fee collection" => Ok(Self::FeeRedemption),
-            "arbitrum gas" => Ok(Self::Gas),
+    pub fn from_vault_name(name: &str, chain: Chain) -> Result<Self, FundsManagerError> {
+        let env_name = to_env_agnostic_name(chain);
+        let full_name = format!("{env_name} {name}").to_lowercase();
+        match full_name.to_lowercase().as_str() {
+            "arbitrum quoters" | "base quoters" => Ok(Self::Quoter),
+            "arbitrum fee collection" | "base fee collection" => Ok(Self::FeeRedemption),
+            "arbitrum gas" | "base gas" => Ok(Self::Gas),
             _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
         }
     }

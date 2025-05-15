@@ -12,36 +12,7 @@ use renegade_crypto::fields::scalar_to_bigint;
 use renegade_util::hex::{biguint_to_hex_addr, jubjub_to_hex_string};
 use uuid::Uuid;
 
-use crate::{cli::Environment, db::schema::fees};
-
-/// Convert a chain to its expected representation in the database,
-/// which is agnostic of the environment (testnet, mainnet)
-pub fn to_db_chain(chain: Chain) -> String {
-    match chain {
-        Chain::ArbitrumOne | Chain::ArbitrumSepolia => "arbitrum".to_string(),
-        Chain::BaseMainnet | Chain::BaseSepolia => "base".to_string(),
-        _ => chain.to_string(),
-    }
-}
-
-/// Convert a chain as specified in the database to the expected `Chain` enum,
-/// accounting for the environment (testnet, mainnet)
-pub fn from_db_chain(chain: &str, environment: Environment) -> Chain {
-    let arb_chain = match environment {
-        Environment::Mainnet => Chain::ArbitrumOne,
-        Environment::Testnet => Chain::ArbitrumSepolia,
-    };
-    let base_chain = match environment {
-        Environment::Mainnet => Chain::BaseMainnet,
-        Environment::Testnet => Chain::BaseSepolia,
-    };
-
-    match chain {
-        "arbitrum" => arb_chain,
-        "base" => base_chain,
-        _ => Chain::from_str(chain).unwrap(),
-    }
-}
+use crate::helpers::to_env_agnostic_name;
 
 /// A fee that has been indexed by the indexer
 #[derive(Queryable, Selectable)]
@@ -61,7 +32,7 @@ pub struct Fee {
 
 /// A new fee inserted into the database
 #[derive(Insertable)]
-#[diesel(table_name = fees)]
+#[diesel(table_name = crate::db::schema::fees)]
 pub struct NewFee {
     pub tx_hash: String,
     pub mint: String,
@@ -79,7 +50,7 @@ impl NewFee {
         let blinder = scalar_to_bigint(&note.blinder).into();
         let receiver = jubjub_to_hex_string(&note.receiver);
 
-        let chain = to_db_chain(chain);
+        let chain = to_env_agnostic_name(chain);
 
         NewFee { tx_hash, mint, amount, blinder, receiver, chain }
     }
@@ -111,7 +82,7 @@ pub struct RenegadeWalletMetadata {
 impl RenegadeWalletMetadata {
     /// Construct a new wallet metadata entry
     pub fn empty(id: Uuid, secret_id: String, chain: Chain) -> Self {
-        let chain = to_db_chain(chain);
+        let chain = to_env_agnostic_name(chain);
         RenegadeWalletMetadata { id, mints: vec![], secret_id, chain }
     }
 }
@@ -138,7 +109,7 @@ impl HotWallet {
         internal_wallet_id: Uuid,
         chain: Chain,
     ) -> Self {
-        let chain = to_db_chain(chain);
+        let chain = to_env_agnostic_name(chain);
         HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id, chain }
     }
 }
@@ -211,7 +182,7 @@ impl GasWallet {
     pub fn new(address: String, chain: Chain) -> Self {
         let id = Uuid::new_v4();
         let status = GasWalletStatus::Inactive.to_string();
-        let chain = to_db_chain(chain);
+        let chain = to_env_agnostic_name(chain);
         GasWallet { id, address, peer_id: None, status, created_at: SystemTime::now(), chain }
     }
 }

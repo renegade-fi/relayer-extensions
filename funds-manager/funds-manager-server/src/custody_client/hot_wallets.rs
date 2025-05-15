@@ -114,7 +114,7 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<(), FundsManagerError> {
         // Fetch the wallet info, then withdraw
-        let source = DepositWithdrawSource::from_vault_name(vault)?;
+        let source = DepositWithdrawSource::from_vault_name(vault, self.chain)?;
         self.withdraw_from_fireblocks(source, mint, amount).await
     }
 
