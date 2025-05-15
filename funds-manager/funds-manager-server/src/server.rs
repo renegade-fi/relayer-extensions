@@ -5,7 +5,11 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
 use funds_manager_api::quoters::ExecutionQuote;
-use renegade_common::types::{chain::Chain, hmac::HmacKey, token::Token};
+use renegade_common::types::{
+    chain::Chain,
+    hmac::HmacKey,
+    token::{Token, USDC_TICKER},
+};
 use renegade_config::setup_token_remaps;
 
 use crate::{
@@ -66,10 +70,9 @@ impl Server {
         let db_pool = create_db_pool(&args.db_url).await?;
         let arc_pool = Arc::new(db_pool);
 
-        let usdc_mint = Token::usdc().get_addr();
-
         let mut chain_clients = HashMap::new();
         for (chain, config) in chain_configs {
+            let usdc_mint = Token::from_ticker_on_chain(USDC_TICKER, chain).get_addr();
             let clients = config
                 .build_clients(
                     chain,

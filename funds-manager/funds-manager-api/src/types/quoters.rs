@@ -1,6 +1,9 @@
 //! API types for quoter management
 use alloy_primitives::{hex, Address, Bytes, U256};
-use renegade_common::types::token::{Token, USDC_TICKER};
+use renegade_common::types::{
+    chain::Chain,
+    token::{Token, USDC_TICKER},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{serialization::u256_string_serialization, u256_try_into_u128};
@@ -110,52 +113,68 @@ impl ExecutionQuote {
             self.gas_limit
         )
     }
+}
+
+/// An execution quote, augmented with additional contextual data
+#[derive(Clone, Debug)]
+pub struct AugmentedExecutionQuote {
+    /// The quote
+    pub quote: ExecutionQuote,
+    /// The chain the quote is for
+    pub chain: Chain,
+}
+
+impl AugmentedExecutionQuote {
+    /// Create a new augmented execution quote
+    pub fn new(quote: ExecutionQuote, chain: Chain) -> Self {
+        Self { quote, chain }
+    }
 
     /// Get the buy token address as a formatted string
     pub fn get_buy_token_address(&self) -> String {
-        format!("{:#x}", self.buy_token_address)
+        format!("{:#x}", self.quote.buy_token_address)
     }
 
     /// Get the sell token address as a formatted string
     pub fn get_sell_token_address(&self) -> String {
-        format!("{:#x}", self.sell_token_address)
+        format!("{:#x}", self.quote.sell_token_address)
     }
 
     /// Get the from address as a formatted string
     pub fn get_from_address(&self) -> String {
-        format!("{:#x}", self.from)
+        format!("{:#x}", self.quote.from)
     }
 
     /// Get the to address as a formatted string
     pub fn get_to_address(&self) -> String {
-        format!("{:#x}", self.to)
+        format!("{:#x}", self.quote.to)
     }
 
     /// Get the buy amount as a decimal-corrected string
     pub fn get_decimal_corrected_buy_amount(&self) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(self.buy_amount)?;
+        let buy_amount = u256_try_into_u128(self.quote.buy_amount)?;
         Ok(self.get_buy_token().convert_to_decimal(buy_amount))
     }
 
     /// Get the sell amount as a decimal-corrected string
     pub fn get_decimal_corrected_sell_amount(&self) -> Result<f64, String> {
-        let sell_amount = u256_try_into_u128(self.sell_amount)?;
+        let sell_amount = u256_try_into_u128(self.quote.sell_amount)?;
         Ok(self.get_sell_token().convert_to_decimal(sell_amount))
     }
 
     /// Get the buy amount min as a decimal-corrected string
     pub fn get_decimal_corrected_buy_amount_min(&self) -> Result<f64, String> {
-        let buy_amount_min = u256_try_into_u128(self.buy_amount_min)?;
+        let buy_amount_min = u256_try_into_u128(self.quote.buy_amount_min)?;
         Ok(self.get_buy_token().convert_to_decimal(buy_amount_min))
     }
 }
 
-impl ExecutionQuote {
+impl AugmentedExecutionQuote {
     /// Get the price in units of USDC per base token.
     /// If a custom buy amount is provided, it is used in place of the standard
     /// buy amount.
     pub fn get_price(&self, buy_amount: Option<U256>) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(buy_amount.unwrap_or(self.buy_amount))?;
+        let buy_amount = u256_try_into_u128(buy_amount.unwrap_or(self.quote.buy_amount))?;
         let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount);
 
         let decimal_sell_amount = self.get_decimal_corrected_sell_amount()?;
@@ -179,18 +198,18 @@ impl ExecutionQuote {
 
     /// Return true if the sell token is USDC
     pub fn is_buy(&self) -> bool {
-        let usdc_mint = &Token::from_ticker(USDC_TICKER).get_alloy_address();
-        &self.sell_token_address == usdc_mint
+        let usdc_mint = &Token::from_ticker_on_chain(USDC_TICKER, self.chain).get_alloy_address();
+        &self.quote.sell_token_address == usdc_mint
     }
 
     /// Returns the token being bought
     pub fn get_buy_token(&self) -> Token {
-        Token::from_addr(&self.get_buy_token_address())
+        Token::from_addr_on_chain(&self.get_buy_token_address(), self.chain)
     }
 
     /// Returns the token being sold
     pub fn get_sell_token(&self) -> Token {
-        Token::from_addr(&self.get_sell_token_address())
+        Token::from_addr_on_chain(&self.get_sell_token_address(), self.chain)
     }
 
     /// Returns the volume in USDC

@@ -2,7 +2,7 @@
 
 use alloy::{contract::Event, rpc::types::TransactionReceipt};
 use alloy_primitives::{Address, TxHash, U256};
-use funds_manager_api::{quoters::ExecutionQuote, u256_try_into_u128};
+use funds_manager_api::{quoters::AugmentedExecutionQuote, u256_try_into_u128};
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -70,7 +70,11 @@ pub struct SwapExecutionData {
 
 impl MetricsRecorder {
     /// Record the cost metrics for a swap operation
-    pub async fn record_swap_cost(&self, receipt: &TransactionReceipt, quote: &ExecutionQuote) {
+    pub async fn record_swap_cost(
+        &self,
+        receipt: &TransactionReceipt,
+        quote: &AugmentedExecutionQuote,
+    ) {
         match self.build_swap_cost_data(receipt, quote).await {
             Ok(cost_data) => {
                 // Record metrics from the cost data
@@ -95,12 +99,12 @@ impl MetricsRecorder {
     async fn build_swap_cost_data(
         &self,
         receipt: &TransactionReceipt,
-        quote: &ExecutionQuote,
+        quote: &AugmentedExecutionQuote,
     ) -> Result<SwapExecutionData, FundsManagerError> {
         let mint = quote.get_base_token().get_alloy_address();
 
         let binance_price = self.get_binance_price(&mint).await?;
-        let buy_amount_actual = self.get_buy_amount_actual(receipt, mint, quote.from).await?;
+        let buy_amount_actual = self.get_buy_amount_actual(receipt, mint, quote.quote.from).await?;
 
         let execution_price =
             quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;
@@ -166,7 +170,7 @@ impl MetricsRecorder {
     fn record_metrics_from_cost_data(
         &self,
         receipt: &TransactionReceipt,
-        quote: &ExecutionQuote,
+        quote: &AugmentedExecutionQuote,
         cost_data: &SwapExecutionData,
     ) {
         let labels = self.get_labels(quote, receipt);
@@ -181,7 +185,7 @@ impl MetricsRecorder {
     /// Derive the labels given a quote and a transaction receipt
     fn get_labels(
         &self,
-        quote: &ExecutionQuote,
+        quote: &AugmentedExecutionQuote,
         receipt: &TransactionReceipt,
     ) -> Vec<(String, String)> {
         let mint = format!("{:#x}", quote.get_base_token().get_alloy_address());

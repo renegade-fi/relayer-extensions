@@ -164,7 +164,7 @@ impl CustodyClient {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
 
         let usdc_mint = match self.chain {
-            Chain::ArbitrumOne => &Token::from_ticker(USDC_TICKER).addr,
+            Chain::ArbitrumOne => &Token::from_ticker_on_chain(USDC_TICKER, self.chain).addr,
             Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_USDC_ADDRESS,
             _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };

@@ -16,8 +16,8 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse, GetExecutionQuoteResponse,
-    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
+    AugmentedExecutionQuote, DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse,
+    GetExecutionQuoteResponse, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use itertools::Itertools;
 use renegade_common::types::chain::Chain;
@@ -201,7 +201,7 @@ pub(crate) async fn execute_swap_handler(
             "Invalid quote signature".to_string(),
         )));
     }
-    let quote_clone = req.quote.clone();
+    let augmented_quote = AugmentedExecutionQuote::new(req.quote.clone(), chain);
 
     let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
@@ -210,7 +210,7 @@ pub(crate) async fn execute_swap_handler(
 
     // Record swap cost metrics
     tokio::spawn(async move {
-        metrics_recorder.record_swap_cost(&receipt, &quote_clone).await;
+        metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
     });
 
     let resp = ExecuteSwapResponse { tx_hash: format!("{:#x}", tx_hash) };
