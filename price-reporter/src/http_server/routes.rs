@@ -11,7 +11,8 @@ use renegade_util::err_str;
 use crate::{
     errors::ServerError,
     init_default_price_streams,
-    utils::{parse_pair_info_from_topic, setup_all_token_remaps, UrlParams},
+    pair_info::PairInfo,
+    utils::{setup_all_token_remaps, UrlParams},
     ws_server::GlobalPriceStreams,
 };
 
@@ -74,7 +75,7 @@ impl PriceHandler {
     pub async fn get_price(&self, topic: &str) -> Result<Price, ServerError> {
         let self_clone = self.clone();
 
-        let pair_info = parse_pair_info_from_topic(topic)?;
+        let pair_info = PairInfo::from_topic(topic)?;
         let mut price_stream = self_clone
             .price_streams
             .get_or_create_price_stream(pair_info, self_clone.config.clone())

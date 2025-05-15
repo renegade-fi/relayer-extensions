@@ -1,5 +1,6 @@
 //! Miscellaneous utility types and helper functions.
 
+use std::collections::HashSet;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, env, str::FromStr, sync::Arc};
@@ -12,11 +13,11 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{get_all_tokens, read_token_remaps, Token, USDC_TICKER},
+    token::{get_all_tokens, read_token_remaps, Token},
     Price,
 };
 use renegade_config::setup_token_remaps;
-use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -34,6 +35,7 @@ use tracing_subscriber::{
 };
 use tungstenite::Message;
 
+use crate::pair_info::PairInfo;
 use crate::{errors::ServerError, http_server::routes::Handler};
 
 // ----------
@@ -87,7 +89,7 @@ const DISABLED_EXCHANGES_ENV_VAR: &str = "DISABLED_EXCHANGES";
 // ---------
 
 /// A type alias for a tuple of (exchange, base token, quote token)
-pub type PairInfo = (Exchange, Token, Token);
+pub type PriceTopic = (Exchange, Token, Token);
 
 /// A type alias for the sender end of a price channel
 pub type PriceSender = WatchSender<Price>;
@@ -161,7 +163,7 @@ impl PriceStream {
 
 /// A type alias for a mapped stream prices, indexed by the (source, base,
 /// quote) tuple
-pub type PriceStreamMap = StreamMap<PairInfo, PriceStream>;
+pub type PriceStreamMap = StreamMap<PriceTopic, PriceStream>;
 
 /// A type alias for a websocket write stream
 pub type WsWriteStream = SplitSink<WebSocketStream<TcpStream>, Message>;
@@ -258,8 +260,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
 }
 
 /// Get the topic name for a given pair info
-pub fn get_pair_info_topic(pair_info: &PairInfo) -> String {
-    format!("{}-{}-{}", pair_info.0, pair_info.1, pair_info.2)
+pub fn get_price_topic_str(topic: &PriceTopic) -> String {
+    format!("{}-{}-{}", topic.0, topic.1, topic.2)
 }
 
 /// Whether the exchange requires quote conversion
@@ -268,52 +270,21 @@ pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
     exchange == &Exchange::Renegade
 }
 
-/// Parse the pair info from a given topic
-pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
-    let parts: Vec<&str> = topic.split('-').collect();
-    let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-    let (base, chain) = get_token_and_chain(parts[1]).ok_or_else(|| {
-        ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
-    })?;
-    let quote = if exchange == Exchange::Renegade {
-        Token::from_ticker_on_chain(USDC_TICKER, chain)
-    } else {
-        Token::from_addr_on_chain(parts[2], chain)
-    };
-
-    Ok((exchange, base, quote))
-}
-
 /// Get all the topics that are subscribed to in a `PriceStreamMap`
 pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
-    subscriptions.keys().map(get_pair_info_topic).collect()
+    subscriptions.keys().map(get_price_topic_str).collect_vec()
 }
 
-/// Validate a pair info tuple, checking that the exchange supports the base
-/// and quote tokens
-pub async fn validate_subscription(pair_info: &PairInfo) -> Result<(), ServerError> {
-    let (exchange, base, quote) = pair_info;
+/// Get all distinct tickers from configured token remap(s)
+pub fn get_all_distinct_tickers() -> Vec<String> {
+    let mut tickers = HashSet::new();
+    get_all_tokens().into_iter().for_each(|t| {
+        if let Some(ticker) = t.get_ticker() {
+            tickers.insert(ticker);
+        }
+    });
 
-    if exchange == &Exchange::UniswapV3 {
-        return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
-    }
-
-    if !supports_pair(exchange, base, quote).await.map_err(ServerError::ExchangeConnection)? {
-        return Err(ServerError::InvalidPairInfo(format!(
-            "{} does not support the pair ({}, {})",
-            exchange, base, quote
-        )));
-    }
-
-    Ok(())
-}
-
-/// Get all tokens from the token map filtering out given tokens
-pub fn get_all_tokens_filtered(filtered_tokens: &[&str]) -> Vec<Token> {
-    get_all_tokens()
-        .into_iter()
-        .filter(|t| !filtered_tokens.contains(&t.get_ticker().unwrap().as_str()))
-        .collect_vec()
+    tickers.into_iter().collect_vec()
 }
 
 /// Given an address, search through the token remaps to find the token and

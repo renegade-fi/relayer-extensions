@@ -7858,6 +7858,7 @@ dependencies = [
  "async-trait",
  "common",
  "config",
+ "derivative",
  "external-api",
  "futures-util",
  "hyper 0.14.32",
