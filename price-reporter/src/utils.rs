@@ -70,7 +70,7 @@ const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
 /// for token remapping
 const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
 /// The default chain to use for token remapping
-const DEFAULT_CHAIN: Chain = Chain::Testnet;
+const DEFAULT_CHAIN: Chain = Chain::Devnet;
 /// The name of the environment variable specifying the Coinbase
 /// API key
 const CB_API_KEY_ENV_VAR: &str = "CB_API_KEY";
