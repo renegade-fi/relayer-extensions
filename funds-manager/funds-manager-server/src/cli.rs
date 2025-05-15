@@ -8,14 +8,14 @@ use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
-use renegade_darkpool_client::{client::DarkpoolClientConfig, DarkpoolClient};
+use renegade_darkpool_client::client::DarkpoolClientConfig;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 use crate::{
     custody_client::CustodyClient, db::DbPool, error::FundsManagerError,
     execution_client::ExecutionClient, helpers::fetch_s3_object, metrics::MetricsRecorder,
-    relayer_client::RelayerClient, Indexer,
+    mux_darkpool_client::MuxDarkpoolClient, relayer_client::RelayerClient, Indexer,
 };
 
 // -------------
@@ -38,10 +38,10 @@ type ChainConfigsMap = HashMap<Chain, ChainConfig>;
 /// The (chain-agnostic) environment the server is running in.
 #[derive(Clone, ValueEnum)]
 pub enum Environment {
-    /// The production environment
-    Production,
-    /// The development environment
-    Development,
+    /// The mainnet environment
+    Mainnet,
+    /// The testnet environment
+    Testnet,
 }
 
 /// The cli for the fee sweeper
@@ -64,7 +64,7 @@ pub struct Cli {
     // --- Chain-Agnostic Config --- //
 
     /// The environment to run the server in
-    #[clap(long, env = "ENVIRONMENT")]
+    #[clap(long, env = "ENVIRONMENT", default_value = "testnet")]
     pub environment: Environment,
 
     // --- Chain-Specific Config --- //
@@ -207,8 +207,8 @@ impl ChainConfig {
             private_key,
             block_polling_interval: BLOCK_POLLING_INTERVAL,
         };
-        // TODO: Use separate `DarkpoolClientInner` for the given chain
-        let darkpool_client = DarkpoolClient::new(conf).map_err(FundsManagerError::custom)?;
+        let darkpool_client =
+            MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
         let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::arbitrum)?;
 
         // Build a custody client

@@ -27,6 +27,8 @@ use std::sync::Arc;
 use tracing::warn;
 use warp::reply::Json;
 
+// --- Constants --- //
+
 /// The "mints" query param
 pub const MINTS_QUERY_PARAM: &str = "mints";
 /// The asset used for gas (ETH)
@@ -79,6 +81,7 @@ pub(crate) async fn get_fee_wallets_handler(
 ) -> Result<Json, warp::Rejection> {
     let indexer = server.get_fee_indexer(&chain)?;
     let wallets = indexer.fetch_fee_wallets().await?;
+
     Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
 }
 
@@ -221,8 +224,8 @@ pub(crate) async fn withdraw_to_hyperliquid_handler(
 ) -> Result<Json, warp::Rejection> {
     // TODO: Separate out chain-agnostic hedging client from custody client
     let chain = match server.environment {
-        Environment::Production => Chain::Mainnet,
-        Environment::Development => Chain::Testnet,
+        Environment::Mainnet => Chain::ArbitrumOne,
+        Environment::Testnet => Chain::ArbitrumSepolia,
     };
 
     if req.amount < MIN_HYPERLIQUID_DEPOSIT_AMOUNT {
@@ -428,8 +431,8 @@ pub(crate) async fn rpc_handler(
 ) -> Result<Json, warp::Rejection> {
     // TODO: Have chain-agnostic hedging client subsume this
     let chain = match server.environment {
-        Environment::Production => Chain::Mainnet,
-        Environment::Development => Chain::Testnet,
+        Environment::Mainnet => Chain::ArbitrumOne,
+        Environment::Testnet => Chain::ArbitrumSepolia,
     };
 
     let custody_client = server.get_custody_client(&chain)?;
