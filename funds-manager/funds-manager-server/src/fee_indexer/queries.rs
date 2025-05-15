@@ -19,19 +19,10 @@ use renegade_constants::MAX_BALANCES;
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::db::models::to_db_chain;
 use crate::db::models::RenegadeWalletMetadata;
 use crate::db::models::{Metadata, NewFee};
-use crate::db::schema::{
-    fees::dsl::{
-        fees as fees_table, mint as mint_col, redeemed as redeemed_col, tx_hash as tx_hash_col,
-    },
-    indexing_metadata::dsl::{
-        indexing_metadata as metadata_table, key as metadata_key, value as metadata_value,
-    },
-    renegade_wallets::dsl::{
-        id as wallet_id_col, mints as managed_mints_col, renegade_wallets as renegade_wallet_table,
-    },
-};
+use crate::db::schema::{fees, indexing_metadata, renegade_wallets};
 use crate::error::FundsManagerError;
 use crate::Indexer;
 
@@ -87,15 +78,13 @@ impl Indexer {
     // | Metadata Table |
     // ------------------
 
-    /// Get the latest block number
+    /// Get the latest indexed block number on the chain managed by the Indexer
     pub(crate) async fn get_latest_block(&self) -> Result<u64, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let entry = metadata_table
-            .filter(metadata_key.eq(LAST_INDEXED_BLOCK_KEY))
-            .limit(1)
-            .load::<Metadata>(&mut conn)
+        let entry = indexing_metadata::table
+            .find((LAST_INDEXED_BLOCK_KEY, to_db_chain(self.chain)))
+            .first::<Metadata>(&mut conn)
             .await
-            .map(|res| res[0].clone())
             .map_err(|_| FundsManagerError::db("failed to query latest block"))?;
 
         entry
@@ -104,19 +93,22 @@ impl Indexer {
             .map_err(|_| FundsManagerError::db("could not parse latest block"))
     }
 
-    /// Update the latest block number
+    /// Update the latest indexed block number on the chain managed by the
+    /// Indexer
     pub(crate) async fn update_latest_block(
         &self,
         block_number: u64,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let block_string = block_number.to_string();
-        diesel::update(metadata_table.find(LAST_INDEXED_BLOCK_KEY))
-            .set(metadata_value.eq(block_string))
-            .execute(&mut conn)
-            .await
-            .map_err(|_| FundsManagerError::db("failed to update latest block"))
-            .map(|_| ())
+        diesel::update(
+            indexing_metadata::table.find((LAST_INDEXED_BLOCK_KEY, to_db_chain(self.chain))),
+        )
+        .set(indexing_metadata::value.eq(block_string))
+        .execute(&mut conn)
+        .await
+        .map_err(|_| FundsManagerError::db("failed to update latest block"))
+        .map(|_| ())
     }
 
     // --------------
@@ -126,7 +118,7 @@ impl Indexer {
     /// Insert a fee into the fees table
     pub(crate) async fn insert_fee(&self, fee: NewFee) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        match diesel::insert_into(fees_table).values(vec![fee]).execute(&mut conn).await {
+        match diesel::insert_into(fees::table).values(vec![fee]).execute(&mut conn).await {
             Ok(_) => Ok(()),
             Err(DieselError::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -142,9 +134,10 @@ impl Indexer {
     /// Get all mints that have unredeemed fees
     pub(crate) async fn get_unredeemed_fee_mints(&self) -> Result<Vec<String>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let mints = fees_table
-            .select(mint_col)
-            .filter(redeemed_col.eq(false))
+        let mints = fees::table
+            .select(fees::mint)
+            .filter(fees::redeemed.eq(false))
+            .filter(fees::chain.eq(to_db_chain(self.chain)))
             .distinct()
             .load::<String>(&mut conn)
             .await
@@ -159,9 +152,9 @@ impl Indexer {
         tx_hash: &str,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let filter = tx_hash_col.eq(tx_hash);
-        diesel::update(fees_table.filter(filter))
-            .set(redeemed_col.eq(true))
+        let filter = fees::tx_hash.eq(tx_hash);
+        diesel::update(fees::table.filter(filter))
+            .set(fees::redeemed.eq(true))
             .execute(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to mark fee as redeemed"))
@@ -189,6 +182,7 @@ impl Indexer {
         //      ELSE 0
         //  END as value
         //  FROM fees
+        //  WHERE redeemed = false AND chain = '<chain>'
         //  ORDER BY value DESC;
         let mut query_string = String::new();
         query_string.push_str("SELECT tx_hash, mint, receiver, ");
@@ -199,7 +193,10 @@ impl Indexer {
             query_string.push_str(&format!("WHEN mint = '{}' then amount * {} ", mint, price));
         }
         query_string.push_str("ELSE 0 END as value ");
-        query_string.push_str("FROM fees WHERE redeemed = false ");
+        query_string.push_str(&format!(
+            "FROM fees WHERE redeemed = false AND chain = '{}' ",
+            to_db_chain(self.chain)
+        ));
 
         // Sort and limit
         query_string.push_str(&format!("ORDER BY value DESC LIMIT {};", MAX_FEES_REDEEMED));
@@ -222,19 +219,21 @@ impl Indexer {
         wallet_id: &Uuid,
     ) -> Result<RenegadeWalletMetadata, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        renegade_wallet_table
-            .filter(wallet_id_col.eq(wallet_id))
+        renegade_wallets::table
+            .filter(renegade_wallets::id.eq(wallet_id))
+            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
             .first::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to get wallet by ID: {}", e)))
     }
 
-    /// Get all wallets in the table
+    /// Get all wallets in the table on the chain managed by the Indexer
     pub(crate) async fn get_all_wallets(
         &self,
     ) -> Result<Vec<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let wallets = renegade_wallet_table
+        let wallets = renegade_wallets::table
+            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to load wallets: {}", e)))?;
@@ -247,8 +246,9 @@ impl Indexer {
         mint: &str,
     ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let wallets: Vec<RenegadeWalletMetadata> = renegade_wallet_table
-            .filter(managed_mints_col.contains(vec![mint]))
+        let wallets: Vec<RenegadeWalletMetadata> = renegade_wallets::table
+            .filter(renegade_wallets::mints.contains(vec![mint]))
+            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallet for mint"))?;
@@ -261,9 +261,10 @@ impl Indexer {
         &self,
     ) -> Result<Option<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        let n_mints = coalesce(array_length(managed_mints_col, 1 /* dim */), 0);
-        let wallets = renegade_wallet_table
+        let n_mints = coalesce(array_length(renegade_wallets::mints, 1 /* dim */), 0);
+        let wallets = renegade_wallets::table
             .filter(n_mints.lt(MAX_BALANCES as i32))
+            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallets with empty balances"))?;
@@ -277,7 +278,7 @@ impl Indexer {
         wallet: RenegadeWalletMetadata,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        diesel::insert_into(renegade_wallet_table)
+        diesel::insert_into(renegade_wallets::table)
             .values(vec![wallet])
             .execute(&mut conn)
             .await
@@ -292,8 +293,8 @@ impl Indexer {
         mint: &str,
     ) -> Result<(), FundsManagerError> {
         let mut conn = self.get_conn().await?;
-        diesel::update(renegade_wallet_table.find(wallet_id))
-            .set(managed_mints_col.eq(array_append(managed_mints_col, mint)))
+        diesel::update(renegade_wallets::table.find(wallet_id))
+            .set(renegade_wallets::mints.eq(array_append(renegade_wallets::mints, mint)))
             .execute(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to add mint to wallet"))

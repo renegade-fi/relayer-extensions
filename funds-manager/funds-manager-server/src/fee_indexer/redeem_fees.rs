@@ -97,7 +97,7 @@ impl Indexer {
         let secret_name = self.store_wallet_secret(wallet_id, root_key).await?;
 
         // 3. Add an entry in the wallets table for the newly created wallet
-        let entry = RenegadeWalletMetadata::empty(wallet_id, secret_name);
+        let entry = RenegadeWalletMetadata::empty(wallet_id, secret_name, self.chain);
         self.insert_wallet(entry.clone()).await?;
 
         Ok(entry)

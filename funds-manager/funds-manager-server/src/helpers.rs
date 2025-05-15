@@ -60,10 +60,10 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
 /// Get the prefix for a chain-specific secret
 pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
     match chain {
-        Chain::ArbitrumOne => Ok("/arbitrum/one/".to_string()),
-        Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia/".to_string()),
-        Chain::BaseMainnet => Ok("/base/mainnet/".to_string()),
-        Chain::BaseSepolia => Ok("/base/mainnet/".to_string()),
+        Chain::ArbitrumOne => Ok("/arbitrum/one".to_string()),
+        Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia".to_string()),
+        Chain::BaseMainnet => Ok("/base/mainnet".to_string()),
+        Chain::BaseSepolia => Ok("/base/mainnet".to_string()),
         _ => Err(FundsManagerError::custom("Unsupported chain")),
     }
 }
