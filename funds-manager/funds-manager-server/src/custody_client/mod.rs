@@ -191,7 +191,7 @@ impl CustodyClient {
     /// Get the Fireblocks blockchain ID for the current chain
     async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
         let list_blockchains_params = ListBlockchainsParams::builder()
-            .test(matches!(self.chain, Chain::Testnet))
+            .test(matches!(self.chain, Chain::ArbitrumSepolia | Chain::BaseSepolia))
             .deprecated(false)
             .build();
 
@@ -254,7 +254,7 @@ impl CustodyClient {
     /// Get an instance of a signer with the http provider attached
     fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
         let provider =
-            ProviderBuilder::new().wallet(wallet).on_provider(self.arbitrum_provider.clone());
+            ProviderBuilder::new().wallet(wallet).connect_provider(self.arbitrum_provider.clone());
 
         DynProvider::new(provider)
     }

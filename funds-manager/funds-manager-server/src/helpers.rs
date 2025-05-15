@@ -11,6 +11,7 @@ use alloy::{
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
+use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
 
 use crate::error::FundsManagerError;
@@ -47,7 +48,7 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
         .filler(BlobGasFiller)
-        .on_http(url);
+        .connect_http(url);
 
     Ok(DynProvider::new(provider))
 }
@@ -55,6 +56,17 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
 // -----------------------
 // | AWS Secrets Manager |
 // -----------------------
+
+/// Get the prefix for a chain-specific secret
+pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
+    match chain {
+        Chain::ArbitrumOne => Ok("/arbitrum/one/".to_string()),
+        Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia/".to_string()),
+        Chain::BaseMainnet => Ok("/base/mainnet/".to_string()),
+        Chain::BaseSepolia => Ok("/base/mainnet/".to_string()),
+        _ => Err(FundsManagerError::custom("Unsupported chain")),
+    }
+}
 
 /// Get a secret from AWS Secrets Manager
 pub async fn get_secret(

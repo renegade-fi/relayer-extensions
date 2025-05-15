@@ -5,17 +5,17 @@ use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::Address;
 use aws_config::SdkConfig;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
-use renegade_darkpool_client::{client::DarkpoolClientConfig, DarkpoolClient};
+use renegade_darkpool_client::client::DarkpoolClientConfig;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 use crate::{
     custody_client::CustodyClient, db::DbPool, error::FundsManagerError,
     execution_client::ExecutionClient, helpers::fetch_s3_object, metrics::MetricsRecorder,
-    relayer_client::RelayerClient, Indexer,
+    mux_darkpool_client::MuxDarkpoolClient, relayer_client::RelayerClient, Indexer,
 };
 
 // -------------
@@ -34,8 +34,15 @@ const BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
 
 /// A type alias for a map of chain configs
 type ChainConfigsMap = HashMap<Chain, ChainConfig>;
-/// A type alias for a map of chain clients
-type ChainClientsMap = HashMap<Chain, ChainClients>;
+
+/// The (chain-agnostic) environment the server is running in.
+#[derive(Clone, ValueEnum)]
+pub enum Environment {
+    /// The mainnet environment
+    Mainnet,
+    /// The testnet environment
+    Testnet,
+}
 
 /// The cli for the fee sweeper
 #[rustfmt::skip]
@@ -53,6 +60,12 @@ pub struct Cli {
     /// Whether to disable authentication
     #[clap(long, conflicts_with = "hmac_key")]
     pub disable_auth: bool,
+
+    // --- Chain-Agnostic Config --- //
+
+    /// The environment to run the server in
+    #[clap(long, env = "ENVIRONMENT", default_value = "testnet")]
+    pub environment: Environment,
 
     // --- Chain-Specific Config --- //
 
@@ -131,7 +144,7 @@ impl Cli {
         aws_config: &SdkConfig,
     ) -> Result<ChainConfigsMap, FundsManagerError> {
         let json_str = if let Some(bucket) = &self.chain_configs_bucket {
-            fetch_s3_object(bucket, CHAIN_CONFIGS_OBJECT_NAME, &aws_config).await
+            fetch_s3_object(bucket, CHAIN_CONFIGS_OBJECT_NAME, aws_config).await
         } else {
             read_to_string(self.chain_configs_path.as_ref().expect("no chain configs file path"))
                 .await
@@ -194,7 +207,8 @@ impl ChainConfig {
             private_key,
             block_polling_interval: BLOCK_POLLING_INTERVAL,
         };
-        let darkpool_client = DarkpoolClient::new(conf).map_err(FundsManagerError::custom)?;
+        let darkpool_client =
+            MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
         let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::arbitrum)?;
 
         // Build a custody client
@@ -243,9 +257,14 @@ impl ChainConfig {
             custody_client.clone(),
         );
 
+        let relayer_client = Arc::new(relayer_client);
+        let custody_client = Arc::new(custody_client);
+        let execution_client = Arc::new(execution_client);
+        let metrics_recorder = Arc::new(metrics_recorder);
+        let fee_indexer = Arc::new(fee_indexer);
+
         Ok(ChainClients {
             relayer_client,
-            darkpool_client,
             custody_client,
             execution_client,
             metrics_recorder,
@@ -256,20 +275,18 @@ impl ChainConfig {
 
 /// Chain-specific clients used by the funds manager, parsed from a
 /// configuration object
-// TODO: Do I need to wrap these in `Arc`s?
 #[derive(Clone)]
 pub struct ChainClients {
     /// The client for the relayer deployed for the given chain
-    relayer_client: RelayerClient,
-    /// The client for the darkpool contract deployed onto the given chain
-    darkpool_client: DarkpoolClient,
+    pub(crate) relayer_client: Arc<RelayerClient>,
     /// The custody client for managing funds on the given chain
-    custody_client: CustodyClient,
+    pub(crate) custody_client: Arc<CustodyClient>,
     /// The execution client for executing swaps on the given chain
-    execution_client: ExecutionClient,
+    pub(crate) execution_client: Arc<ExecutionClient>,
     /// The metrics recorder for the given chain
-    // TODO: Have the `ExecutionClient` subsume this
-    metrics_recorder: MetricsRecorder,
+    // TODO: Turn into top-level chain-agnostic struct that holds references to
+    // necessary chain-specific clients
+    pub(crate) metrics_recorder: Arc<MetricsRecorder>,
     /// The fee indexer for the given chain
-    fee_indexer: Indexer,
+    pub(crate) fee_indexer: Arc<Indexer>,
 }
