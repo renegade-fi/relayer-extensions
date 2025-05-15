@@ -43,9 +43,10 @@ async fn main() -> Result<(), ServerError> {
     let price_reporter_config = parse_config_env_vars();
 
     // Set up the token remapping
-    let remap_chains = price_reporter_config.remap_chains.clone();
+    let token_remap_path = price_reporter_config.token_remap_path.clone();
+    let chains = price_reporter_config.chains.clone();
     tokio::task::spawn_blocking(move || {
-        setup_all_token_remaps(&remap_chains).map_err(err_str!(ServerError::TokenRemap))
+        setup_all_token_remaps(token_remap_path, &chains).map_err(err_str!(ServerError::TokenRemap))
     })
     .await
     .unwrap()?;

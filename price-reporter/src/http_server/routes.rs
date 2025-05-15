@@ -120,8 +120,10 @@ pub const REFRESH_TOKEN_MAPPING_ROUTE: &str = "/refresh-token-mapping";
 pub struct RefreshTokenMappingHandler {
     /// The HMAC key for the admin API
     admin_key: Option<HmacKey>,
+    /// The path to the token remap file
+    token_remap_path: Option<String>,
     /// The chains to use for the token remap
-    remap_chains: Vec<Chain>,
+    chains: Vec<Chain>,
     /// The global price streams
     price_streams: GlobalPriceStreams,
     /// The configuration for the exchange connections
@@ -134,12 +136,13 @@ impl RefreshTokenMappingHandler {
     /// Create a new token mapping refresh handler
     pub fn new(
         admin_key: Option<HmacKey>,
-        remap_chains: Vec<Chain>,
+        token_remap_path: Option<String>,
+        chains: Vec<Chain>,
         price_streams: GlobalPriceStreams,
         config: ExchangeConnectionsConfig,
         disabled_exchanges: Vec<Exchange>,
     ) -> Self {
-        Self { admin_key, remap_chains, price_streams, config, disabled_exchanges }
+        Self { admin_key, token_remap_path, chains, price_streams, config, disabled_exchanges }
     }
 
     /// Authenticate a token mapping refresh request using the admin HMAC key.
@@ -157,8 +160,9 @@ impl RefreshTokenMappingHandler {
 
     /// Refresh the token mapping from the remote source
     pub async fn refresh_token_mapping(&self) -> Result<(), ServerError> {
-        let remap_chains = self.remap_chains.clone();
-        tokio::task::spawn_blocking(move || setup_all_token_remaps(&remap_chains))
+        let token_remap_path = self.token_remap_path.clone();
+        let chains = self.chains.clone();
+        tokio::task::spawn_blocking(move || setup_all_token_remaps(token_remap_path, &chains))
             .await
             .map_err(err_str!(ServerError::TokenRemap))
             .and_then(|res| res.map_err(err_str!(ServerError::TokenRemap)))?;

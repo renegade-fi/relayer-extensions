@@ -64,6 +64,8 @@ const DEFAULT_WS_PORT: u16 = 4000;
 const HTTP_PORT_ENV_VAR: &str = "HTTP_PORT";
 /// The default port on which the server listens for http requests
 const DEFAULT_HTTP_PORT: u16 = 3000;
+/// The name of the environment variable specifying the path to the token remap
+const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
 /// The name of the environment variable specifying the chain to use
 /// for token remapping
 const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
@@ -193,8 +195,10 @@ pub struct PriceReporterConfig {
     pub ws_port: u16,
     /// The port on which the server listens for incoming http requests
     pub http_port: u16,
+    /// The path to the token remap file
+    pub token_remap_path: Option<String>,
     /// The chains to use for token remapping
-    pub remap_chains: Vec<Chain>,
+    pub chains: Vec<Chain>,
     /// The configuration options that may be used by exchange connections
     pub exchange_conn_config: ExchangeConnectionsConfig,
     /// The HMAC key for the admin API. If one is not provided, the admin API
@@ -223,7 +227,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let ws_port = env::var(WS_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_WS_PORT);
     let http_port =
         env::var(HTTP_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_HTTP_PORT);
-    let remap_chains = match env::var(CHAIN_ID_ENV_VAR) {
+    let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
+    let chains = match env::var(CHAIN_ID_ENV_VAR) {
         Err(_) => vec![DEFAULT_CHAIN],
         Ok(c) => {
             c.split(',').map(Chain::from_str).collect::<Result<Vec<_>, _>>().unwrap_or_default()
@@ -248,7 +253,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     PriceReporterConfig {
         ws_port,
         http_port,
-        remap_chains,
+        token_remap_path,
+        chains,
         exchange_conn_config: ExchangeConnectionsConfig {
             coinbase_key_name,
             coinbase_key_secret,
@@ -300,10 +306,26 @@ pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
 
 /// Setup token remaps for all given chains
 ///
-/// Will fetch the Renegade maintained remap file from the default location
-pub fn setup_all_token_remaps(remap_chains: &[Chain]) -> Result<(), ServerError> {
-    for chain in remap_chains {
-        setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))?;
+/// If a token remap path is provided, will fetch the remap file from the
+/// given path. Otherwise, will fetch the Renegade maintained remap file from
+/// the default location.
+///
+/// # Errors
+/// Returns an error if a token remap path is provided but multiple chains are
+/// specified
+pub fn setup_all_token_remaps(
+    token_remap_path: Option<String>,
+    chains: &[Chain],
+) -> Result<(), ServerError> {
+    match token_remap_path {
+        Some(_) if chains.len() != 1 => Err(ServerError::TokenRemap(
+            "When providing a token remap path, exactly one chain must be specified".to_string(),
+        )),
+        Some(path) => {
+            setup_token_remaps(Some(path), chains[0]).map_err(err_str!(ServerError::TokenRemap))
+        },
+        None => chains.iter().try_for_each(|chain| {
+            setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
+        }),
     }
-    Ok(())
 }

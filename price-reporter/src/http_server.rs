@@ -57,7 +57,8 @@ impl HttpServer {
                 REFRESH_TOKEN_MAPPING_ROUTE,
                 Box::new(RefreshTokenMappingHandler::new(
                     config.admin_key,
-                    config.remap_chains.clone(),
+                    config.token_remap_path.clone(),
+                    config.chains.clone(),
                     price_streams,
                     config.exchange_conn_config.clone(),
                     config.disabled_exchanges.clone(),
