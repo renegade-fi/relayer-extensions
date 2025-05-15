@@ -38,6 +38,8 @@ const HYPERLIQUID_USDC_BUFFER: f64 = 0.000001;
 const ERR_HYPERLIQUID_BRIDGE_NOT_FOUND: &str = "Hyperliquid bridge not found";
 /// The error message for when the USDC asset is not found in Fireblocks
 const ERR_USDC_ASSET_NOT_FOUND: &str = "USDC asset not found";
+/// The error message for when the chain is not supported
+const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
 
 // ---------------
 // | Client impl |
@@ -162,8 +164,9 @@ impl CustodyClient {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
 
         let usdc_mint = match self.chain {
-            Chain::Mainnet => &Token::from_ticker(USDC_TICKER).addr,
-            _ => TESTNET_HYPERLIQUID_USDC_ADDRESS,
+            Chain::ArbitrumOne => &Token::from_ticker(USDC_TICKER).addr,
+            Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_USDC_ADDRESS,
+            _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };
 
         let hl_bal = self.get_erc20_balance(usdc_mint, &hyperliquid_address).await?;
@@ -253,9 +256,9 @@ impl CustodyClient {
     /// to allow ERC20 transfers to it.
     async fn get_hyperliquid_bridge_id(&self) -> Result<String, FundsManagerError> {
         let bridge_address = match self.chain {
-            Chain::Mainnet => MAINNET_HYPERLIQUID_BRIDGE_ADDRESS,
-            Chain::Testnet => TESTNET_HYPERLIQUID_BRIDGE_ADDRESS,
-            _ => return Err(FundsManagerError::Custom("Unsupported chain".to_string())),
+            Chain::ArbitrumOne => MAINNET_HYPERLIQUID_BRIDGE_ADDRESS,
+            Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_BRIDGE_ADDRESS,
+            _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };
 
         let whitelisted_wallets = self

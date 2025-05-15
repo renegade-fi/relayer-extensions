@@ -17,7 +17,7 @@ use tracing::{info, warn};
 
 use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
-use crate::helpers::create_secrets_manager_entry_with_description;
+use crate::helpers::{create_secrets_manager_entry_with_description, get_secret_prefix};
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
@@ -192,7 +192,7 @@ impl Indexer {
         id: WalletIdentifier,
         wallet: PrivateKeySigner,
     ) -> Result<String, FundsManagerError> {
-        let secret_name = format!("redemption-wallet-{}-{id}", self.chain);
+        let secret_name = self.get_wallet_secret_name(id)?;
         let secret_val = hex::encode(wallet.to_bytes());
 
         // Check that the `PrivateKeySigner` recovers the same
@@ -213,7 +213,7 @@ impl Indexer {
         metadata: &RenegadeWalletMetadata,
     ) -> Result<PrivateKeySigner, FundsManagerError> {
         let client = SecretsManagerClient::new(&self.aws_config);
-        let secret_name = format!("redemption-wallet-{}-{}", self.chain, metadata.id);
+        let secret_name = self.get_wallet_secret_name(metadata.id)?;
 
         let secret = client
             .get_secret_value()
@@ -226,5 +226,10 @@ impl Indexer {
         let wallet =
             PrivateKeySigner::from_str(secret_str).map_err(err_str!(FundsManagerError::Parse))?;
         Ok(wallet)
+    }
+
+    /// Get the secret name for a wallet
+    fn get_wallet_secret_name(&self, id: WalletIdentifier) -> Result<String, FundsManagerError> {
+        Ok(format!("{}/redemption-wallet-{}", get_secret_prefix(self.chain)?, id))
     }
 }
