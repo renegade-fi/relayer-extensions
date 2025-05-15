@@ -8,26 +8,22 @@ use alloy_primitives::TxHash;
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use renegade_api::http::wallet::RedeemNoteRequest;
 use renegade_circuit_types::note::Note;
-use renegade_common::types::chain::Chain;
 use renegade_common::types::wallet::derivation::{
     derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
 };
 use renegade_common::types::wallet::{Wallet, WalletIdentifier};
-use renegade_darkpool_client::traits::DarkpoolImpl;
 use renegade_util::err_str;
 use tracing::{info, warn};
 
 use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
-use crate::helpers::create_secrets_manager_entry_with_description;
+use crate::helpers::{create_secrets_manager_entry_with_description, get_secret_prefix};
 use crate::Indexer;
-
-use super::ERR_UNSUPPORTED_CHAIN;
 
 /// The maximum number of fees to redeem in a given run of the indexer
 pub(crate) const MAX_FEES_REDEEMED: usize = 20;
 
-impl<D: DarkpoolImpl> Indexer<D> {
+impl Indexer {
     /// Redeem the most valuable open fees
     pub async fn redeem_fees(&self) -> Result<(), FundsManagerError> {
         info!("redeeming fees...");
@@ -234,12 +230,6 @@ impl<D: DarkpoolImpl> Indexer<D> {
 
     /// Get the secret name for a wallet
     fn get_wallet_secret_name(&self, id: WalletIdentifier) -> Result<String, FundsManagerError> {
-        match self.chain {
-            Chain::ArbitrumOne => Ok(format!("/arbitrum/one/redemption-wallet-{}", id)),
-            Chain::ArbitrumSepolia => Ok(format!("/arbitrum/sepolia/redemption-wallet-{}", id)),
-            Chain::BaseMainnet => Ok(format!("/base/mainnet/redemption-wallet-{}", id)),
-            Chain::BaseSepolia => Ok(format!("/base/mainnet/redemption-wallet-{}", id)),
-            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
-        }
+        Ok(format!("{}/redemption-wallet-{}", get_secret_prefix(self.chain)?, id))
     }
 }

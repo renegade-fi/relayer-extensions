@@ -17,6 +17,7 @@ pub mod handlers;
 pub mod helpers;
 pub mod metrics;
 pub mod middleware;
+pub mod mux_darkpool_client;
 pub mod relayer_client;
 pub mod server;
 

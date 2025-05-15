@@ -1,14 +1,22 @@
 //! CLI argument definition & parsing for the funds manager server
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::Address;
 use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
+use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
+use renegade_darkpool_client::client::DarkpoolClientConfig;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
-use crate::{error::FundsManagerError, helpers::fetch_s3_object};
+use crate::{
+    custody_client::CustodyClient, db::DbPool, error::FundsManagerError,
+    execution_client::ExecutionClient, helpers::fetch_s3_object, metrics::MetricsRecorder,
+    mux_darkpool_client::MuxDarkpoolClient, relayer_client::RelayerClient, Indexer,
+};
 
 // -------------
 // | Constants |
@@ -17,12 +25,15 @@ use crate::{error::FundsManagerError, helpers::fetch_s3_object};
 /// The name of the chain configs object in S3
 const CHAIN_CONFIGS_OBJECT_NAME: &str = "chain_configs.json";
 
+/// The block polling interval for the darkpool client
+const BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
+
 // ---------
 // | Types |
 // ---------
 
 /// A type alias for a map of chain configs
-pub type ChainConfigsMap = HashMap<Chain, ChainConfig>;
+type ChainConfigsMap = HashMap<Chain, ChainConfig>;
 
 /// The (chain-agnostic) environment the server is running in.
 #[derive(Clone, ValueEnum)]
@@ -147,10 +158,6 @@ impl Cli {
 /// Funds manager configuration options for a given chain
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChainConfig {
-    // --- Chain Params --- //
-    /// The chain id
-    pub chain_id: u64,
-
     // --- Relayer Params --- //
     /// The URL of the relayer to use
     pub relayer_url: String,
@@ -175,4 +182,111 @@ pub struct ChainConfig {
     pub execution_venue_api_key: String,
     /// The execution venue base url
     pub execution_venue_base_url: String,
+}
+
+impl ChainConfig {
+    /// Build chain-specific clients from the given config
+    pub async fn build_clients(
+        &self,
+        chain: Chain,
+        fireblocks_api_key: String,
+        fireblocks_api_secret: String,
+        db_pool: Arc<DbPool>,
+        aws_config: SdkConfig,
+        usdc_mint: &str,
+    ) -> Result<ChainClients, FundsManagerError> {
+        // Build a relayer client
+        let relayer_client = RelayerClient::new(&self.relayer_url, usdc_mint);
+
+        // Build a darkpool client
+        let private_key = PrivateKeySigner::random();
+        let conf = DarkpoolClientConfig {
+            darkpool_addr: self.darkpool_address.clone(),
+            chain,
+            rpc_url: self.rpc_url.clone(),
+            private_key,
+            block_polling_interval: BLOCK_POLLING_INTERVAL,
+        };
+        let darkpool_client =
+            MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
+        let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::arbitrum)?;
+
+        // Build a custody client
+        let gas_sponsor_address =
+            Address::from_str(&self.gas_sponsor_address).map_err(FundsManagerError::parse)?;
+
+        let custody_client = CustodyClient::new(
+            chain,
+            chain_id,
+            fireblocks_api_key,
+            fireblocks_api_secret,
+            self.rpc_url.clone(),
+            db_pool.clone(),
+            aws_config.clone(),
+            gas_sponsor_address,
+        )?;
+
+        // Build an execution client
+        let execution_client = ExecutionClient::new(
+            self.execution_venue_api_key.clone(),
+            self.execution_venue_base_url.clone(),
+            &self.rpc_url,
+        )
+        .map_err(FundsManagerError::custom)?;
+
+        // Build a metrics recorder
+        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), &self.rpc_url);
+
+        // Build a fee indexer
+        let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)
+            .map_err(FundsManagerError::parse)?];
+
+        if let Some(protocol_key) = &self.protocol_decryption_key {
+            decryption_keys
+                .push(DecryptionKey::from_hex_str(protocol_key).map_err(FundsManagerError::parse)?);
+        }
+
+        let fee_indexer = Indexer::new(
+            chain_id,
+            chain,
+            aws_config.clone(),
+            darkpool_client.clone(),
+            decryption_keys,
+            db_pool.clone(),
+            relayer_client.clone(),
+            custody_client.clone(),
+        );
+
+        let relayer_client = Arc::new(relayer_client);
+        let custody_client = Arc::new(custody_client);
+        let execution_client = Arc::new(execution_client);
+        let metrics_recorder = Arc::new(metrics_recorder);
+        let fee_indexer = Arc::new(fee_indexer);
+
+        Ok(ChainClients {
+            relayer_client,
+            custody_client,
+            execution_client,
+            metrics_recorder,
+            fee_indexer,
+        })
+    }
+}
+
+/// Chain-specific clients used by the funds manager, parsed from a
+/// configuration object
+#[derive(Clone)]
+pub struct ChainClients {
+    /// The client for the relayer deployed for the given chain
+    pub(crate) relayer_client: Arc<RelayerClient>,
+    /// The custody client for managing funds on the given chain
+    pub(crate) custody_client: Arc<CustodyClient>,
+    /// The execution client for executing swaps on the given chain
+    pub(crate) execution_client: Arc<ExecutionClient>,
+    /// The metrics recorder for the given chain
+    // TODO: Turn into top-level chain-agnostic struct that holds references to
+    // necessary chain-specific clients
+    pub(crate) metrics_recorder: Arc<MetricsRecorder>,
+    /// The fee indexer for the given chain
+    pub(crate) fee_indexer: Arc<Indexer>,
 }

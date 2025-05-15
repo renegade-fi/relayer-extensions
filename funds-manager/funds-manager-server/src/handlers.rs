@@ -3,8 +3,8 @@
 use crate::cli::Environment;
 use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
-use crate::error::{ApiError, FundsManagerError};
-use crate::{with_fee_indexer, Indexer, Server};
+use crate::error::ApiError;
+use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
@@ -21,8 +21,6 @@ use funds_manager_api::quoters::{
 };
 use itertools::Itertools;
 use renegade_common::types::chain::Chain;
-use renegade_darkpool_client::arbitrum::ArbitrumDarkpool;
-use renegade_darkpool_client::base::BaseDarkpool;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,9 +43,6 @@ pub const MAX_WITHDRAWAL_VALUE: f64 = 50_000.; // USD
 /// The minimum amount of USDC that can be deposited into Hyperliquid
 pub const MIN_HYPERLIQUID_DEPOSIT_AMOUNT: f64 = 5.0; // USDC
 
-/// The error message for when the chain is not supported
-const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
-
 // --- Fee Indexing --- //
 
 /// Handler for indexing fees
@@ -55,12 +50,11 @@ pub(crate) async fn index_fees_handler(
     chain: Chain,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    with_fee_indexer!(
-        server,
-        chain,
-        |indexer: Indexer<_>| async move { indexer.index_fees().await }
-    )
-    .map_err(|e| warp::reject::custom(ApiError::IndexingError(e.to_string())))?;
+    let indexer = server.get_fee_indexer(&chain)?;
+    indexer
+        .index_fees()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::IndexingError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Fees indexed successfully"))
 }
@@ -70,12 +64,11 @@ pub(crate) async fn redeem_fees_handler(
     chain: Chain,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    with_fee_indexer!(
-        server,
-        chain,
-        |indexer: Indexer<_>| async move { indexer.redeem_fees().await }
-    )
-    .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
+    let indexer = server.get_fee_indexer(&chain)?;
+    indexer
+        .redeem_fees()
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Fees redeemed successfully"))
 }
@@ -86,9 +79,8 @@ pub(crate) async fn get_fee_wallets_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let wallets = with_fee_indexer!(server, chain, |indexer: Indexer<_>| async move {
-        indexer.fetch_fee_wallets().await
-    })?;
+    let indexer = server.get_fee_indexer(&chain)?;
+    let wallets = indexer.fetch_fee_wallets().await?;
 
     Ok(warp::reply::json(&FeeWalletsResponse { wallets }))
 }
@@ -99,10 +91,11 @@ pub(crate) async fn withdraw_fee_balance_handler(
     req: WithdrawFeeBalanceRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    with_fee_indexer!(server, chain, |indexer: Indexer<_>| async move {
-        indexer.withdraw_fee_balance(req.wallet_id, req.mint).await
-    })
-    .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+    let indexer = server.get_fee_indexer(&chain)?;
+    indexer
+        .withdraw_fee_balance(req.wallet_id, req.mint)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Fee withdrawal initiated..."))
 }
@@ -117,7 +110,7 @@ pub(crate) async fn quoter_withdraw_handler(
 ) -> Result<Json, warp::Rejection> {
     // Get the price of the token
     // TODO: Replace w/ price reporter client
-    let relayer_client = server.get_relayer_client(chain)?;
+    let relayer_client = server.get_relayer_client(&chain)?;
     let maybe_price = relayer_client.get_binance_price(&withdraw_request.mint).await?;
 
     if let Some(price) = maybe_price {
@@ -137,7 +130,7 @@ pub(crate) async fn quoter_withdraw_handler(
     }
 
     // Withdraw the funds
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     custody_client
         .withdraw_from_hot_wallet(
@@ -157,7 +150,7 @@ pub(crate) async fn get_deposit_address_handler(
     chain: Chain,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     let address = custody_client
         .get_deposit_address(DepositWithdrawSource::Quoter)
         .await
@@ -174,7 +167,7 @@ pub(crate) async fn get_execution_quote_handler(
     query_params: HashMap<String, String>,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let execution_client = server.get_execution_client(chain)?;
+    let execution_client = server.get_execution_client(&chain)?;
 
     // Forward the query parameters to the execution client
     let quote = execution_client
@@ -194,9 +187,9 @@ pub(crate) async fn execute_swap_handler(
     req: ExecuteSwapRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let execution_client = server.get_execution_client(chain)?;
-    let custody_client = server.get_custody_client(chain)?;
-    let metrics_recorder = server.get_metrics_recorder(chain)?;
+    let execution_client = server.get_execution_client(&chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
+    let metrics_recorder = server.get_metrics_recorder(&chain)?;
 
     // Verify the signature
     let hmac_key = server.quote_hmac_key;
@@ -242,7 +235,7 @@ pub(crate) async fn withdraw_to_hyperliquid_handler(
         ))));
     }
 
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     custody_client.withdraw_to_hyperliquid(req.amount).await?;
 
     Ok(warp::reply::json(&"Withdrawal to Hyperliquid complete"))
@@ -263,7 +256,7 @@ pub(crate) async fn withdraw_gas_handler(
         ))));
     }
 
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     custody_client
         .withdraw_gas(withdraw_request.amount, &withdraw_request.destination_address)
         .await
@@ -286,7 +279,7 @@ pub(crate) async fn refill_gas_handler(
         ))));
     }
 
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     custody_client.refill_gas_wallets(req.amount).await?;
 
     let resp = json!({});
@@ -299,7 +292,7 @@ pub(crate) async fn create_gas_wallet_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     let address = custody_client
         .create_gas_wallet()
@@ -316,7 +309,7 @@ pub(crate) async fn register_gas_wallet_handler(
     req: RegisterGasWalletRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     let key = custody_client
         .register_gas_wallet(&req.peer_id)
@@ -333,7 +326,7 @@ pub(crate) async fn report_active_peers_handler(
     req: ReportActivePeersRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     custody_client
         .record_active_gas_wallet(req.peers)
         .await
@@ -349,7 +342,7 @@ pub(crate) async fn refill_gas_sponsor_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     custody_client.refill_gas_sponsor().await?;
 
     let resp = json!({});
@@ -364,7 +357,7 @@ pub(crate) async fn create_hot_wallet_handler(
     req: CreateHotWalletRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     let address = custody_client
         .create_hot_wallet(req.vault, req.internal_wallet_id)
@@ -382,7 +375,7 @@ pub(crate) async fn get_hot_wallet_balances_handler(
     query_params: HashMap<String, String>,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     let mints = query_params
         .get(MINTS_QUERY_PARAM)
@@ -404,7 +397,7 @@ pub(crate) async fn transfer_to_vault_handler(
     req: TransferToVaultRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     custody_client
         .transfer_from_hot_wallet_to_vault(&req.hot_wallet_address, &req.mint, req.amount)
@@ -420,7 +413,7 @@ pub(crate) async fn withdraw_from_vault_handler(
     req: WithdrawToHotWalletRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
 
     custody_client
         .transfer_from_vault_to_hot_wallet(&req.vault, &req.mint, req.amount)
@@ -442,7 +435,7 @@ pub(crate) async fn rpc_handler(
         Environment::Testnet => Chain::ArbitrumSepolia,
     };
 
-    let custody_client = server.get_custody_client(chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
     let rpc_response = custody_client.handle_rpc_request(req).await;
 
     Ok(warp::reply::json(&rpc_response))

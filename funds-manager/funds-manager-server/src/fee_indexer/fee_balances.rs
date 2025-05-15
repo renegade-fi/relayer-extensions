@@ -16,18 +16,15 @@ use renegade_circuit_types::{
     Amount,
 };
 use renegade_common::types::wallet::{derivation::derive_wallet_keychain, Wallet};
-use renegade_darkpool_client::{
-    arbitrum::{
-        contract_types::conversion::to_contract_external_transfer, helpers::serialize_calldata,
-    },
-    traits::DarkpoolImpl,
+use renegade_darkpool_client::arbitrum::{
+    contract_types::conversion::to_contract_external_transfer, helpers::serialize_calldata,
 };
 use renegade_util::hex::biguint_from_hex_string;
 use uuid::Uuid;
 
 use super::Indexer;
 
-impl<D: DarkpoolImpl> Indexer<D> {
+impl Indexer {
     // -------------
     // | Interface |
     // -------------
