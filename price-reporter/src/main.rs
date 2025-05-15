@@ -104,8 +104,8 @@ pub fn init_default_price_streams(
 
     // Get distinct tickers from the token remap(s)
     let distinct_tickers = get_all_distinct_tickers();
-    // Iterate over distinct tokens
     for base_ticker in distinct_tickers {
+        // Skip stables
         if STABLECOIN_TICKERS.contains(&base_ticker.as_str()) {
             continue;
         }

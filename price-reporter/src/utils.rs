@@ -70,7 +70,7 @@ const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
 /// for token remapping
 const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
 /// The default chain to use for token remapping
-const DEFAULT_CHAIN: Chain = Chain::Testnet;
+const DEFAULT_CHAIN: Chain = Chain::Devnet;
 /// The name of the environment variable specifying the Coinbase
 /// API key
 const CB_API_KEY_ENV_VAR: &str = "CB_API_KEY";
@@ -305,25 +305,21 @@ pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
 }
 
 /// Setup token remaps for all given chains
-///
-/// If a token remap path is provided, will fetch the remap file from the
-/// given path. Otherwise, will fetch the Renegade maintained remap file from
-/// the default location.
-///
-/// # Errors
-/// Returns an error if a token remap path is provided but multiple chains are
-/// specified
 pub fn setup_all_token_remaps(
     token_remap_path: Option<String>,
     chains: &[Chain],
 ) -> Result<(), ServerError> {
     match token_remap_path {
+        // If a token remap path is provided, but multiple chains are specified,
+        // return an error
         Some(_) if chains.len() != 1 => Err(ServerError::TokenRemap(
             "When providing a token remap path, exactly one chain must be specified".to_string(),
         )),
+        // If a token remap path is provided, use it
         Some(path) => {
             setup_token_remaps(Some(path), chains[0]).map_err(err_str!(ServerError::TokenRemap))
         },
+        // Otherwise, fetch remap from default location
         None => chains.iter().try_for_each(|chain| {
             setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
         }),
