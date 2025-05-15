@@ -1,5 +1,6 @@
 //! Miscellaneous utility types and helper functions.
 
+use std::collections::HashSet;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, env, str::FromStr, sync::Arc};
@@ -12,10 +13,11 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{get_all_tokens, read_token_remaps, Token, USDC_TICKER},
+    token::{get_all_tokens, read_token_remaps, Token},
     Price,
 };
-use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
+use renegade_config::setup_token_remaps;
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -33,6 +35,7 @@ use tracing_subscriber::{
 };
 use tungstenite::Message;
 
+use crate::pair_info::PairInfo;
 use crate::{errors::ServerError, http_server::routes::Handler};
 
 // ----------
@@ -61,8 +64,7 @@ const DEFAULT_WS_PORT: u16 = 4000;
 const HTTP_PORT_ENV_VAR: &str = "HTTP_PORT";
 /// The default port on which the server listens for http requests
 const DEFAULT_HTTP_PORT: u16 = 3000;
-/// The name of the environment variable specifying the path to the token
-/// remap file
+/// The name of the environment variable specifying the path to the token remap
 const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
 /// The name of the environment variable specifying the chain to use
 /// for token remapping
@@ -89,7 +91,7 @@ const DISABLED_EXCHANGES_ENV_VAR: &str = "DISABLED_EXCHANGES";
 // ---------
 
 /// A type alias for a tuple of (exchange, base token, quote token)
-pub type PairInfo = (Exchange, Token, Token);
+pub type PriceTopic = (Exchange, Token, Token);
 
 /// A type alias for the sender end of a price channel
 pub type PriceSender = WatchSender<Price>;
@@ -163,7 +165,7 @@ impl PriceStream {
 
 /// A type alias for a mapped stream prices, indexed by the (source, base,
 /// quote) tuple
-pub type PriceStreamMap = StreamMap<PairInfo, PriceStream>;
+pub type PriceStreamMap = StreamMap<PriceTopic, PriceStream>;
 
 /// A type alias for a websocket write stream
 pub type WsWriteStream = SplitSink<WebSocketStream<TcpStream>, Message>;
@@ -195,8 +197,8 @@ pub struct PriceReporterConfig {
     pub http_port: u16,
     /// The path to the token remap file
     pub token_remap_path: Option<String>,
-    /// The chain to use for token remapping
-    pub remap_chain: Chain,
+    /// The chains to use for token remapping
+    pub chains: Vec<Chain>,
     /// The configuration options that may be used by exchange connections
     pub exchange_conn_config: ExchangeConnectionsConfig,
     /// The HMAC key for the admin API. If one is not provided, the admin API
@@ -226,8 +228,12 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
     let http_port =
         env::var(HTTP_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_HTTP_PORT);
     let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
-    let remap_chain =
-        env::var(CHAIN_ID_ENV_VAR).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_CHAIN);
+    let chains = match env::var(CHAIN_ID_ENV_VAR) {
+        Err(_) => vec![DEFAULT_CHAIN],
+        Ok(c) => {
+            c.split(',').map(Chain::from_str).collect::<Result<Vec<_>, _>>().unwrap_or_default()
+        },
+    };
     let coinbase_key_name = env::var(CB_API_KEY_ENV_VAR).ok();
     let coinbase_key_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
     let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
@@ -248,7 +254,7 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
         ws_port,
         http_port,
         token_remap_path,
-        remap_chain,
+        chains,
         exchange_conn_config: ExchangeConnectionsConfig {
             coinbase_key_name,
             coinbase_key_secret,
@@ -260,8 +266,8 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
 }
 
 /// Get the topic name for a given pair info
-pub fn get_pair_info_topic(pair_info: &PairInfo) -> String {
-    format!("{}-{}-{}", pair_info.0, pair_info.1, pair_info.2)
+pub fn get_price_topic_str(topic: &PriceTopic) -> String {
+    format!("{}-{}-{}", topic.0, topic.1, topic.2)
 }
 
 /// Whether the exchange requires quote conversion
@@ -270,52 +276,21 @@ pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
     exchange == &Exchange::Renegade
 }
 
-/// Parse the pair info from a given topic
-pub fn parse_pair_info_from_topic(topic: &str) -> Result<PairInfo, ServerError> {
-    let parts: Vec<&str> = topic.split('-').collect();
-    let exchange = Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-    let (base, chain) = get_token_and_chain(parts[1]).ok_or_else(|| {
-        ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
-    })?;
-    let quote = if exchange == Exchange::Renegade {
-        Token::from_ticker_on_chain(USDC_TICKER, chain)
-    } else {
-        Token::from_addr_on_chain(parts[2], chain)
-    };
-
-    Ok((exchange, base, quote))
-}
-
 /// Get all the topics that are subscribed to in a `PriceStreamMap`
 pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
-    subscriptions.keys().map(get_pair_info_topic).collect()
+    subscriptions.keys().map(get_price_topic_str).collect_vec()
 }
 
-/// Validate a pair info tuple, checking that the exchange supports the base
-/// and quote tokens
-pub async fn validate_subscription(pair_info: &PairInfo) -> Result<(), ServerError> {
-    let (exchange, base, quote) = pair_info;
+/// Get all distinct tickers from configured token remap(s)
+pub fn get_all_distinct_tickers() -> Vec<String> {
+    let mut tickers = HashSet::new();
+    get_all_tokens().into_iter().for_each(|t| {
+        if let Some(ticker) = t.get_ticker() {
+            tickers.insert(ticker);
+        }
+    });
 
-    if exchange == &Exchange::UniswapV3 {
-        return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
-    }
-
-    if !supports_pair(exchange, base, quote).await.map_err(ServerError::ExchangeConnection)? {
-        return Err(ServerError::InvalidPairInfo(format!(
-            "{} does not support the pair ({}, {})",
-            exchange, base, quote
-        )));
-    }
-
-    Ok(())
-}
-
-/// Get all tokens from the token map filtering out given tokens
-pub fn get_all_tokens_filtered(filtered_tokens: &[&str]) -> Vec<Token> {
-    get_all_tokens()
-        .into_iter()
-        .filter(|t| !filtered_tokens.contains(&t.get_ticker().unwrap().as_str()))
-        .collect_vec()
+    tickers.into_iter().collect_vec()
 }
 
 /// Given an address, search through the token remaps to find the token and
@@ -327,4 +302,30 @@ pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
         }
     }
     None
+}
+
+/// Setup token remaps for all given chains
+///
+/// If a token remap path is provided, will fetch the remap file from the
+/// given path. Otherwise, will fetch the Renegade maintained remap file from
+/// the default location.
+///
+/// # Errors
+/// Returns an error if a token remap path is provided but multiple chains are
+/// specified
+pub fn setup_all_token_remaps(
+    token_remap_path: Option<String>,
+    chains: &[Chain],
+) -> Result<(), ServerError> {
+    match token_remap_path {
+        Some(_) if chains.len() != 1 => Err(ServerError::TokenRemap(
+            "When providing a token remap path, exactly one chain must be specified".to_string(),
+        )),
+        Some(path) => {
+            setup_token_remaps(Some(path), chains[0]).map_err(err_str!(ServerError::TokenRemap))
+        },
+        None => chains.iter().try_for_each(|chain| {
+            setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
+        }),
+    }
 }
