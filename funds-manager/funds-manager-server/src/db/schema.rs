@@ -9,6 +9,7 @@ diesel::table! {
         blinder -> Numeric,
         receiver -> Text,
         redeemed -> Bool,
+        chain -> Text,
     }
 }
 
@@ -19,6 +20,7 @@ diesel::table! {
         peer_id -> Nullable<Text>,
         status -> Text,
         created_at -> Timestamp,
+        chain -> Text,
     }
 }
 
@@ -29,13 +31,15 @@ diesel::table! {
         vault -> Text,
         address -> Text,
         internal_wallet_id -> Uuid,
+        chain -> Text,
     }
 }
 
 diesel::table! {
-    indexing_metadata (key) {
+    indexing_metadata (key, chain) {
         key -> Text,
         value -> Text,
+        chain -> Text,
     }
 }
 
@@ -44,6 +48,7 @@ diesel::table! {
         id -> Uuid,
         mints -> Array<Nullable<Text>>,
         secret_id -> Text,
+        chain -> Text,
     }
 }
 
