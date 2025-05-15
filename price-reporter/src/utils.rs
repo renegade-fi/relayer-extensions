@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::{collections::HashMap, env, hash::Hash, str::FromStr, sync::Arc};
+use std::{collections::HashMap, env, str::FromStr, sync::Arc};
 
 use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
@@ -12,11 +12,11 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{default_chain, get_all_tokens, read_token_remaps, Token, USDC_TICKER},
+    token::{get_all_tokens, read_token_remaps, Token},
     Price,
 };
 use renegade_config::setup_token_remaps;
-use renegade_price_reporter::{exchange::supports_pair, worker::ExchangeConnectionsConfig};
+use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -34,6 +34,7 @@ use tracing_subscriber::{
 };
 use tungstenite::Message;
 
+use crate::pair_info::PairInfo;
 use crate::{errors::ServerError, http_server::routes::Handler};
 
 // ----------
@@ -94,107 +95,6 @@ pub type PriceSender = WatchSender<Price>;
 
 /// A type alias for a price receiver
 pub type PriceReceiver = WatchReceiver<Price>;
-
-/// Used to uniquely identify a price stream
-#[derive(Clone)]
-pub struct PairInfo {
-    /// The exchange
-    pub exchange: Exchange,
-    /// The base ticker
-    pub base: String,
-    /// The quote ticker
-    pub quote: String,
-    /// The chain
-    pub chain: Chain,
-}
-
-impl PairInfo {
-    /// Create a new pair info
-    pub fn new(exchange: Exchange, base: String, quote: String, chain: Option<Chain>) -> Self {
-        Self { exchange, base, quote, chain: chain.unwrap_or(default_chain()) }
-    }
-
-    /// Get the base token for a given pair info
-    pub fn base_token(&self) -> Token {
-        Token::from_ticker_on_chain(self.base.as_str(), self.chain)
-    }
-
-    /// Get the quote token for a given pair info
-    pub fn quote_token(&self) -> Token {
-        Token::from_ticker_on_chain(self.quote.as_str(), self.chain)
-    }
-
-    /// Parse the pair info from a given topic
-    pub fn from_topic(topic: &str) -> Result<Self, ServerError> {
-        let parts: Vec<&str> = topic.split('-').collect();
-        let exchange =
-            Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-        let (base, chain) = get_token_and_chain(parts[1]).ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
-        })?;
-        let quote = if exchange == Exchange::Renegade {
-            Token::from_ticker_on_chain(USDC_TICKER, chain)
-        } else {
-            Token::from_addr_on_chain(parts[2], chain)
-        };
-
-        Ok(Self {
-            exchange,
-            base: base.get_ticker().unwrap(),
-            quote: quote.get_ticker().unwrap(),
-            chain,
-        })
-    }
-
-    /// Get the topic name for a given pair info as a string
-    pub fn to_topic(&self) -> String {
-        format!("{}-{}-{}", self.exchange, self.base, self.quote)
-    }
-
-    /// Validate a pair info tuple, checking that the exchange supports the base
-    /// and quote tokens
-    pub async fn validate_subscription(&self) -> Result<(), ServerError> {
-        let (exchange, base, quote) = (self.exchange, self.base_token(), self.quote_token());
-
-        if exchange == Exchange::UniswapV3 {
-            return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
-        }
-
-        if !supports_pair(&exchange, &base, &quote)
-            .await
-            .map_err(ServerError::ExchangeConnection)?
-        {
-            return Err(ServerError::InvalidPairInfo(format!(
-                "{} does not support the pair ({}, {})",
-                self.exchange, base, quote
-            )));
-        }
-
-        Ok(())
-    }
-}
-
-impl PartialEq for PairInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.exchange == other.exchange && self.base == other.base && self.quote == other.quote
-    }
-}
-
-impl Eq for PairInfo {}
-
-impl Hash for PairInfo {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.exchange.hash(state);
-        self.base.hash(state);
-        self.quote.hash(state);
-    }
-}
-
-impl From<PairInfo> for PriceTopic {
-    fn from(pair_info: PairInfo) -> Self {
-        (pair_info.exchange, pair_info.base_token(), pair_info.quote_token())
-    }
-}
 
 /// A type alias for a shareable map of price streams, indexed by the (source,
 /// base, quote) tuple

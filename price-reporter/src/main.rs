@@ -14,6 +14,7 @@ use std::{
 
 use errors::ServerError;
 use http_server::HttpServer;
+use pair_info::PairInfo;
 use renegade_common::types::{
     exchange::Exchange,
     token::{default_exchange_stable, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
@@ -23,12 +24,13 @@ use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
 use utils::{
-    get_all_tokens_filtered, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
+    get_all_tokens_filtered, parse_config_env_vars, setup_all_token_remaps, setup_logging,
 };
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
 mod http_server;
+mod pair_info;
 mod utils;
 mod ws_server;
 
@@ -150,7 +152,7 @@ fn init_price_stream(
         exchange,
         base_token.get_ticker().unwrap(),
         quote_token.get_ticker().unwrap(),
-        None,
+        None, // chain
     );
     let streams = global_price_streams.clone();
     tokio::spawn(async move {

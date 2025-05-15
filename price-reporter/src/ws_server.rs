@@ -24,11 +24,12 @@ use tungstenite::Message;
 
 use crate::{
     errors::ServerError,
+    pair_info::PairInfo,
     utils::{
         get_price_topic_str, get_subscribed_topics, requires_quote_conversion, ClosureSender,
-        PairInfo, PriceMessage, PriceReceiver, PriceSender, PriceStream, PriceStreamMap,
-        SharedPriceStreams, WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS,
-        MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+        PriceMessage, PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
+        WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES,
+        MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
