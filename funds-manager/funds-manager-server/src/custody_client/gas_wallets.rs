@@ -142,8 +142,8 @@ impl CustodyClient {
         wallets: Vec<(String, f64)>, // (address, fill amount)
     ) -> Result<(), FundsManagerError> {
         // Get the gas hot wallet's private key
-        let source = DepositWithdrawSource::Gas.vault_name();
-        let gas_wallet = self.get_hot_wallet_by_vault(source).await?;
+        let source = DepositWithdrawSource::Gas.vault_name(self.chain);
+        let gas_wallet = self.get_hot_wallet_by_vault(&source).await?;
         let signer = self.get_hot_wallet_private_key(&gas_wallet.address).await?;
 
         // Check that the gas wallet has enough ETH to cover the refill

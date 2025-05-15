@@ -100,7 +100,7 @@ impl CustodyClient {
                 continue;
             }
 
-            let token = Token::from_ticker(ticker);
+            let token = Token::from_ticker_on_chain(ticker, self.chain);
 
             // Get the gas sponsor's balance of the token
             let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
@@ -170,8 +170,8 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Get the gas hot wallet's private key
-        let source = DepositWithdrawSource::Gas.vault_name();
-        let gas_wallet = self.get_hot_wallet_by_vault(source).await?;
+        let source = DepositWithdrawSource::Gas.vault_name(self.chain);
+        let gas_wallet = self.get_hot_wallet_by_vault(&source).await?;
         let signer = self.get_hot_wallet_private_key(&gas_wallet.address).await?;
 
         // Check that the gas wallet has enough ETH to cover the refill

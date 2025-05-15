@@ -19,11 +19,11 @@ use renegade_constants::MAX_BALANCES;
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::db::models::to_db_chain;
 use crate::db::models::RenegadeWalletMetadata;
 use crate::db::models::{Metadata, NewFee};
 use crate::db::schema::{fees, indexing_metadata, renegade_wallets};
 use crate::error::FundsManagerError;
+use crate::helpers::to_env_agnostic_name;
 use crate::Indexer;
 
 use super::redeem_fees::MAX_FEES_REDEEMED;
@@ -82,7 +82,7 @@ impl Indexer {
     pub(crate) async fn get_latest_block(&self) -> Result<u64, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let entry = indexing_metadata::table
-            .find((LAST_INDEXED_BLOCK_KEY, to_db_chain(self.chain)))
+            .find((LAST_INDEXED_BLOCK_KEY, to_env_agnostic_name(self.chain)))
             .first::<Metadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query latest block"))?;
@@ -102,7 +102,8 @@ impl Indexer {
         let mut conn = self.get_conn().await?;
         let block_string = block_number.to_string();
         diesel::update(
-            indexing_metadata::table.find((LAST_INDEXED_BLOCK_KEY, to_db_chain(self.chain))),
+            indexing_metadata::table
+                .find((LAST_INDEXED_BLOCK_KEY, to_env_agnostic_name(self.chain))),
         )
         .set(indexing_metadata::value.eq(block_string))
         .execute(&mut conn)
@@ -137,7 +138,7 @@ impl Indexer {
         let mints = fees::table
             .select(fees::mint)
             .filter(fees::redeemed.eq(false))
-            .filter(fees::chain.eq(to_db_chain(self.chain)))
+            .filter(fees::chain.eq(to_env_agnostic_name(self.chain)))
             .distinct()
             .load::<String>(&mut conn)
             .await
@@ -195,7 +196,7 @@ impl Indexer {
         query_string.push_str("ELSE 0 END as value ");
         query_string.push_str(&format!(
             "FROM fees WHERE redeemed = false AND chain = '{}' ",
-            to_db_chain(self.chain)
+            to_env_agnostic_name(self.chain)
         ));
 
         // Sort and limit
@@ -221,7 +222,7 @@ impl Indexer {
         let mut conn = self.get_conn().await?;
         renegade_wallets::table
             .filter(renegade_wallets::id.eq(wallet_id))
-            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
+            .filter(renegade_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .first::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to get wallet by ID: {}", e)))
@@ -233,7 +234,7 @@ impl Indexer {
     ) -> Result<Vec<RenegadeWalletMetadata>, FundsManagerError> {
         let mut conn = self.get_conn().await?;
         let wallets = renegade_wallets::table
-            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
+            .filter(renegade_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|e| FundsManagerError::db(format!("failed to load wallets: {}", e)))?;
@@ -248,7 +249,7 @@ impl Indexer {
         let mut conn = self.get_conn().await?;
         let wallets: Vec<RenegadeWalletMetadata> = renegade_wallets::table
             .filter(renegade_wallets::mints.contains(vec![mint]))
-            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
+            .filter(renegade_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallet for mint"))?;
@@ -264,7 +265,7 @@ impl Indexer {
         let n_mints = coalesce(array_length(renegade_wallets::mints, 1 /* dim */), 0);
         let wallets = renegade_wallets::table
             .filter(n_mints.lt(MAX_BALANCES as i32))
-            .filter(renegade_wallets::chain.eq(to_db_chain(self.chain)))
+            .filter(renegade_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<RenegadeWalletMetadata>(&mut conn)
             .await
             .map_err(|_| FundsManagerError::db("failed to query wallets with empty balances"))?;

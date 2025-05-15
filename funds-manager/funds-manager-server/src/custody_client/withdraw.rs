@@ -59,7 +59,7 @@ impl CustodyClient {
         amount: f64,
     ) -> Result<(), FundsManagerError> {
         // Find the wallet for the given destination and check its balance
-        let wallet = self.get_hot_wallet_by_vault(source.vault_name()).await?;
+        let wallet = self.get_hot_wallet_by_vault(&source.vault_name(self.chain)).await?;
         let bal = self.get_erc20_balance(token_address, &wallet.address).await?;
         if bal < amount {
             return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
@@ -85,12 +85,12 @@ impl CustodyClient {
         mint: &str,
         withdraw_amount: f64,
     ) -> Result<(), FundsManagerError> {
-        let vault_name = source.vault_name();
-        let hot_wallet = self.get_hot_wallet_by_vault(vault_name).await?;
+        let vault_name = source.vault_name(self.chain);
+        let hot_wallet = self.get_hot_wallet_by_vault(&vault_name).await?;
 
         // Get the vault account and asset to transfer from
         let vault = self
-            .get_vault_account(vault_name)
+            .get_vault_account(&vault_name)
             .await?
             .ok_or_else(|| FundsManagerError::Custom("Vault not found".to_string()))?;
         let asset_id = self.get_asset_id_for_address(mint).await?.ok_or_else(|| {
@@ -133,8 +133,8 @@ impl CustodyClient {
         to: &str,
     ) -> Result<(), FundsManagerError> {
         // Check the gas wallet's balance
-        let gas_vault_name = DepositWithdrawSource::Gas.vault_name();
-        let gas_wallet = self.get_hot_wallet_by_vault(gas_vault_name).await?;
+        let gas_vault_name = DepositWithdrawSource::Gas.vault_name(self.chain);
+        let gas_wallet = self.get_hot_wallet_by_vault(&gas_vault_name).await?;
         let bal = self.get_ether_balance(&gas_wallet.address).await?;
         if bal < amount {
             return Err(FundsManagerError::custom("Insufficient balance"));
@@ -164,7 +164,7 @@ impl CustodyClient {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
 
         let usdc_mint = match self.chain {
-            Chain::ArbitrumOne => &Token::from_ticker(USDC_TICKER).addr,
+            Chain::ArbitrumOne => &Token::from_ticker_on_chain(USDC_TICKER, self.chain).addr,
             Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_USDC_ADDRESS,
             _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };

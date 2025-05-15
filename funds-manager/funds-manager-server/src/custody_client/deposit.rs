@@ -10,8 +10,8 @@ impl CustodyClient {
         &self,
         source: DepositWithdrawSource,
     ) -> Result<String, FundsManagerError> {
-        let vault_name = source.vault_name();
-        self.get_deposit_address_by_vault_name(vault_name).await
+        let vault_name = source.vault_name(self.chain);
+        self.get_deposit_address_by_vault_name(&vault_name).await
     }
 
     /// Get the deposit address given a vault name

@@ -196,7 +196,7 @@ impl ChainConfig {
         usdc_mint: &str,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
-        let relayer_client = RelayerClient::new(&self.relayer_url, usdc_mint);
+        let relayer_client = RelayerClient::new(&self.relayer_url, usdc_mint, chain);
 
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
