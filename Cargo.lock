@@ -7213,6 +7213,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "price-reporter-client"
+version = "0.1.0"
+dependencies = [
+ "atomic_float 1.1.0",
+ "bigdecimal 0.4.8",
+ "common",
+ "external-api",
+ "futures-util",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+]
+
+[[package]]
 name = "primitive-types"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
