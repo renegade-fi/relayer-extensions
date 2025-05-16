@@ -14,15 +14,13 @@ use http_server::HttpServer;
 use pair_info::PairInfo;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{default_exchange_stable, read_exchange_support, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{
-    get_all_distinct_tickers, parse_config_env_vars, setup_all_token_remaps, setup_logging,
-};
+use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
@@ -102,29 +100,18 @@ pub fn init_default_price_streams(
 
     let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
 
-    // Get distinct tickers from the token remap(s)
-    let distinct_tickers = get_all_distinct_tickers();
-    for base_ticker in distinct_tickers {
+    for base_token in get_all_tokens() {
         // Skip stables
-        if STABLECOIN_TICKERS.contains(&base_ticker.as_str()) {
+        if STABLECOIN_TICKERS.contains(&base_token.get_ticker().unwrap().as_str()) {
             continue;
         }
-        let supported_exchanges: Vec<Exchange> = get_supported_exchanges(&base_ticker, config)
+        let supported_exchanges: Vec<Exchange> = get_supported_exchanges(&base_token, config)
             .difference(&disabled_exchanges_set)
             .copied()
             .collect();
 
         for exchange in supported_exchanges {
-            let quote_ticker = default_exchange_stable(&exchange).get_ticker().unwrap().to_string();
-            // We assume that the exchange has a market between the base token
-            // and its default stable token
-            init_price_stream(
-                base_ticker.clone(),
-                quote_ticker.clone(),
-                exchange,
-                global_price_streams,
-                config.clone(),
-            )?;
+            init_price_stream(base_token.clone(), exchange, global_price_streams, config.clone())?;
         }
     }
 
@@ -134,22 +121,19 @@ pub fn init_default_price_streams(
 /// Spawn a task to initialize a price stream for a given token pair
 #[allow(clippy::needless_pass_by_value)]
 fn init_price_stream(
-    base_ticker: String,
-    quote_ticker: String,
+    base_token: Token,
     exchange: Exchange,
     global_price_streams: &GlobalPriceStreams,
     config: ExchangeConnectionsConfig,
 ) -> Result<(), ServerError> {
-    let pair_info = PairInfo::new(
-        exchange,
-        base_ticker.clone(),
-        quote_ticker.clone(),
-        None, // chain
-    );
+    // We assume that the exchange has a market between the base token
+    // and its default stable token
+    let pair_info = PairInfo::new_default_stable(exchange, &base_token.get_addr());
     let streams = global_price_streams.clone();
     tokio::spawn(async move {
-        if let Err(e) = streams.get_or_create_price_stream(pair_info, config).await {
-            error!("Error initializing price stream for {base_ticker}/{quote_ticker}: {e}");
+        if let Err(e) = streams.get_or_create_price_stream(pair_info, config.clone()).await {
+            let ticker = base_token.get_ticker().expect("Failed to get ticker");
+            error!("Error initializing price stream for {ticker}: {e}");
         }
     });
 
@@ -157,17 +141,17 @@ fn init_price_stream(
 }
 
 /// Get the listing exchanges for a given base token
-fn get_supported_exchanges(ticker: &str, config: &ExchangeConnectionsConfig) -> HashSet<Exchange> {
-    let mut supported_exchanges: HashSet<Exchange> = read_exchange_support()
-        .get(ticker)
-        .map(|exchanges| exchanges.keys().copied().collect())
-        .unwrap_or_default();
+fn get_supported_exchanges(
+    base_token: &Token,
+    config: &ExchangeConnectionsConfig,
+) -> HashSet<Exchange> {
+    let mut supported_exchanges = base_token.supported_exchanges();
 
     if !config.coinbase_configured() {
         supported_exchanges.remove(&Exchange::Coinbase);
     }
-    if config.uniswap_v3_configured() {
-        supported_exchanges.insert(Exchange::UniswapV3);
+    if !config.uniswap_v3_configured() {
+        supported_exchanges.remove(&Exchange::UniswapV3);
     }
 
     supported_exchanges
