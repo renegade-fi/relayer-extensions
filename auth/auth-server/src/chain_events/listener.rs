@@ -10,6 +10,7 @@ use alloy::{
 };
 use alloy_primitives::TxHash;
 use futures_util::StreamExt;
+use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_darkpool_client::{
@@ -18,8 +19,7 @@ use renegade_darkpool_client::{
 use tracing::{error, info};
 
 use crate::server::{
-    gas_estimation::gas_cost_sampler::GasCostSampler, price_reporter_client::PriceReporterClient,
-    rate_limiter::AuthServerRateLimiter,
+    gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
 };
 use crate::store::{helpers::generate_bundle_id, BundleStore};
 
@@ -55,7 +55,7 @@ impl OnChainEventListenerConfig {
         // Connect to the websocket
         let addr = self.websocket_addr.clone().unwrap();
         let conn = WsConnect::new(addr);
-        let provider = ProviderBuilder::new().on_ws(conn).await?;
+        let provider = ProviderBuilder::new().connect_ws(conn).await?;
         Ok(DynProvider::new(provider))
     }
 }

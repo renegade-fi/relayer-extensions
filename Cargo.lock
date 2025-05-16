@@ -1398,6 +1398,7 @@ dependencies = [
  "metrics",
  "native-tls",
  "postgres-native-tls",
+ "price-reporter-client",
  "rand 0.8.5",
  "ratelimit",
  "redis",

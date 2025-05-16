@@ -2,8 +2,8 @@
 
 use thiserror::Error;
 
-use crate::server::price_reporter_client::error::PriceReporterError;
 use crate::ApiError;
+use price_reporter_client::error::PriceReporterClientError;
 
 /// Custom error type for server errors
 #[derive(Error, Debug)]
@@ -46,7 +46,7 @@ pub enum AuthServerError {
     Custom(String),
     /// Price reporter error
     #[error("Price reporter error: {0}")]
-    PriceReporter(#[from] PriceReporterError),
+    PriceReporter(#[from] PriceReporterClientError),
     /// Darkpool client error
     #[error("Darkpool client error: {0}")]
     DarkpoolClient(String),

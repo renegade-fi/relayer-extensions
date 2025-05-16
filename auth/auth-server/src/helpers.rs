@@ -1,6 +1,7 @@
 //! Helper methods for the auth server
 use alloy::signers::local::PrivateKeySigner;
-use renegade_darkpool_client::{client::DarkpoolClientConfig, constants::Chain, DarkpoolClient};
+use renegade_common::types::chain::Chain;
+use renegade_darkpool_client::{client::DarkpoolClientConfig, DarkpoolClient};
 use std::time::Duration;
 
 /// The interval at which we poll filter updates

@@ -7,7 +7,6 @@ pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;
 mod order_book;
-pub mod price_reporter_client;
 mod queries;
 pub(crate) mod rate_limiter;
 mod redis_queries;
@@ -16,7 +15,6 @@ use std::{iter, sync::Arc, time::Duration};
 
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use crate::helpers::create_darkpool_client;
-use crate::server::price_reporter_client::PriceReporterClient;
 use crate::store::BundleStore;
 use crate::{
     error::AuthServerError,
@@ -42,6 +40,7 @@ use http::header::CONTENT_LENGTH;
 use http::{HeaderMap, Method, Response};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
+use price_reporter_client::PriceReporterClient;
 use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
