@@ -7,11 +7,12 @@ use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use num_bigint::BigInt;
 use renegade_circuit_types::note::Note;
+use renegade_common::types::chain::Chain;
 use renegade_crypto::fields::scalar_to_bigint;
 use renegade_util::hex::{biguint_to_hex_addr, jubjub_to_hex_string};
 use uuid::Uuid;
 
-use crate::db::schema::fees;
+use crate::helpers::to_env_agnostic_name;
 
 /// A fee that has been indexed by the indexer
 #[derive(Queryable, Selectable)]
@@ -26,28 +27,32 @@ pub struct Fee {
     pub blinder: BigDecimal,
     pub receiver: String,
     pub redeemed: bool,
+    pub chain: String,
 }
 
 /// A new fee inserted into the database
 #[derive(Insertable)]
-#[diesel(table_name = fees)]
+#[diesel(table_name = crate::db::schema::fees)]
 pub struct NewFee {
     pub tx_hash: String,
     pub mint: String,
     pub amount: BigDecimal,
     pub blinder: BigDecimal,
     pub receiver: String,
+    pub chain: String,
 }
 
 impl NewFee {
     /// Construct a fee from a note
-    pub fn new_from_note(note: &Note, tx_hash: String) -> Self {
+    pub fn new_from_note(note: &Note, tx_hash: String, chain: Chain) -> Self {
         let mint = biguint_to_hex_addr(&note.mint);
         let amount = BigInt::from(note.amount).into();
         let blinder = scalar_to_bigint(&note.blinder).into();
         let receiver = jubjub_to_hex_string(&note.receiver);
 
-        NewFee { tx_hash, mint, amount, blinder, receiver }
+        let chain = to_env_agnostic_name(chain);
+
+        NewFee { tx_hash, mint, amount, blinder, receiver, chain }
     }
 }
 
@@ -59,6 +64,7 @@ impl NewFee {
 pub struct Metadata {
     pub key: String,
     pub value: String,
+    pub chain: String,
 }
 
 /// A metadata entry for a wallet managed by the indexer
@@ -70,12 +76,14 @@ pub struct RenegadeWalletMetadata {
     pub id: Uuid,
     pub mints: Vec<Option<String>>,
     pub secret_id: String,
+    pub chain: String,
 }
 
 impl RenegadeWalletMetadata {
     /// Construct a new wallet metadata entry
-    pub fn empty(id: Uuid, secret_id: String) -> Self {
-        RenegadeWalletMetadata { id, mints: vec![], secret_id }
+    pub fn empty(id: Uuid, secret_id: String, chain: Chain) -> Self {
+        let chain = to_env_agnostic_name(chain);
+        RenegadeWalletMetadata { id, mints: vec![], secret_id, chain }
     }
 }
 
@@ -89,6 +97,7 @@ pub struct HotWallet {
     pub vault: String,
     pub address: String,
     pub internal_wallet_id: Uuid,
+    pub chain: String,
 }
 
 impl HotWallet {
@@ -98,8 +107,10 @@ impl HotWallet {
         vault: String,
         address: String,
         internal_wallet_id: Uuid,
+        chain: Chain,
     ) -> Self {
-        HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id }
+        let chain = to_env_agnostic_name(chain);
+        HotWallet { id: Uuid::new_v4(), secret_id, vault, address, internal_wallet_id, chain }
     }
 }
 
@@ -163,13 +174,15 @@ pub struct GasWallet {
     pub peer_id: Option<String>,
     pub status: String,
     pub created_at: SystemTime,
+    pub chain: String,
 }
 
 impl GasWallet {
     /// Construct a new gas wallet
-    pub fn new(address: String) -> Self {
+    pub fn new(address: String, chain: Chain) -> Self {
         let id = Uuid::new_v4();
         let status = GasWalletStatus::Inactive.to_string();
-        GasWallet { id, address, peer_id: None, status, created_at: SystemTime::now() }
+        let chain = to_env_agnostic_name(chain);
+        GasWallet { id, address, peer_id: None, status, created_at: SystemTime::now(), chain }
     }
 }

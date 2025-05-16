@@ -98,7 +98,7 @@ impl Indexer {
         }
 
         // Otherwise, index the note
-        let fee = NewFee::new_from_note(&note, tx);
+        let fee = NewFee::new_from_note(&note, tx, self.chain);
         self.insert_fee(fee).await
     }
 

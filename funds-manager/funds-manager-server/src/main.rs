@@ -7,6 +7,7 @@
 #![feature(trivial_bounds)]
 #![feature(trait_alias)]
 
+pub mod cli;
 pub mod custody_client;
 pub mod db;
 pub mod error;
@@ -16,9 +17,13 @@ pub mod handlers;
 pub mod helpers;
 pub mod metrics;
 pub mod middleware;
+pub mod mux_darkpool_client;
 pub mod relayer_client;
 pub mod server;
 
+use bytes::Bytes;
+use clap::Parser;
+use cli::{Cli, Environment};
 use custody_client::rpc_shim::JsonRpcRequest;
 use fee_indexer::Indexer;
 use funds_manager_api::fees::{
@@ -49,17 +54,14 @@ use handlers::{
     transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
     withdraw_gas_handler, withdraw_to_hyperliquid_handler,
 };
-use middleware::{identity, with_hmac_auth, with_json_body};
-use renegade_common::types::hmac::HmacKey;
-use renegade_util::telemetry::configure_telemetry;
+use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
+use renegade_common::types::chain::Chain;
 use server::Server;
-use warp::Filter;
 
+use renegade_util::telemetry::configure_telemetry;
 use std::{collections::HashMap, error::Error, sync::Arc};
-
-use clap::Parser;
-use renegade_darkpool_client::constants::Chain;
 use tracing::{error, warn};
+use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
@@ -67,119 +69,6 @@ use crate::error::ApiError;
 // -------
 // | Cli |
 // -------
-
-/// The cli for the fee sweeper
-#[rustfmt::skip]
-#[derive(Parser)]
-#[clap(about = "Funds manager server")]
-struct Cli {
-    // --- Authentication --- //
-
-    /// The HMAC key to use for authentication
-    #[clap(long, conflicts_with = "disable_auth", env = "HMAC_KEY")]
-    hmac_key: Option<String>,
-    /// The HMAC key to use for signing quotes
-    #[clap(long, env = "QUOTE_HMAC_KEY")]
-    quote_hmac_key: String,
-    /// Whether to disable authentication
-    #[clap(long, conflicts_with = "hmac_key")]
-    disable_auth: bool,
-
-    // --- Environment Configs --- //
-
-    /// The URL of the relayer to use
-    #[clap(long, env = "RELAYER_URL")]
-    relayer_url: String,
-    /// The address of the darkpool contract
-    #[clap(short = 'a', long, env = "DARKPOOL_ADDRESS")]
-    darkpool_address: String,
-    /// The chain to redeem fees for
-    #[clap(long, default_value = "mainnet", env = "CHAIN")]
-    chain: Chain,
-    /// The token address of the USDC token, used to get prices for fee
-    /// redemption
-    #[clap(long, env = "USDC_MINT")]
-    usdc_mint: String,
-    /// The address of the gas sponsor contract
-    #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
-    gas_sponsor_address: String,
-
-    // --- Decryption Keys --- //
-
-    /// The fee decryption key to use
-    #[clap(long, env = "RELAYER_DECRYPTION_KEY")]
-    relayer_decryption_key: String,
-    /// The fee decryption key to use for the protocol fees
-    ///
-    /// This argument is not necessary, protocol fee indexing is skipped if this
-    /// is omitted
-    #[clap(long, env = "PROTOCOL_DECRYPTION_KEY")]
-    protocol_decryption_key: Option<String>,
-
-    //  --- Api Secrets --- //
-
-    /// The Arbitrum RPC url to use
-    #[clap(short, long, env = "RPC_URL")]
-    rpc_url: String,
-    /// The database url
-    #[clap(long, env = "DATABASE_URL")]
-    db_url: String,
-    /// The fireblocks api key
-    #[clap(long, env = "FIREBLOCKS_API_KEY")]
-    fireblocks_api_key: String,
-    /// The fireblocks api secret
-    #[clap(long, env = "FIREBLOCKS_API_SECRET")]
-    fireblocks_api_secret: String,
-    /// The execution venue api key
-    #[clap(long, env = "EXECUTION_VENUE_API_KEY")]
-    execution_venue_api_key: String,
-    /// The execution venue base url
-    #[clap(long, env = "EXECUTION_VENUE_BASE_URL")]
-    execution_venue_base_url: String,
-
-    // --- Server Config --- //
-
-    /// The port to run the server on
-    #[clap(long, default_value = "3000")]
-    port: u16,
-
-    // -------------
-    // | Telemetry |
-    // -------------
-    /// Whether to enable datadog formatted logs
-    #[clap(long, default_value = "false")]
-    datadog_logging: bool,
-    /// Whether or not to enable metrics collection
-    #[clap(long, env = "ENABLE_METRICS")]
-    metrics_enabled: bool,
-    /// The StatsD recorder host to send metrics to
-    #[clap(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
-    statsd_host: String,
-    /// The StatsD recorder port to send metrics to
-    #[clap(long, env = "STATSD_PORT", default_value = "8125")]
-    statsd_port: u16,
-}
-
-impl Cli {
-    /// Validate the CLI arguments
-    fn validate(&self) -> Result<(), String> {
-        if self.hmac_key.is_none() && !self.disable_auth {
-            Err("Either --hmac-key or --disable-auth must be provided".to_string())
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Get the HMAC key
-    fn get_hmac_key(&self) -> Option<HmacKey> {
-        self.hmac_key.as_ref().map(|key| HmacKey::from_hex_string(key).expect("Invalid HMAC key"))
-    }
-
-    /// Get the quote HMAC key
-    fn get_quote_hmac_key(&self) -> HmacKey {
-        HmacKey::from_hex_string(&self.quote_hmac_key).expect("Invalid quote HMAC key")
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -215,18 +104,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let index_fees = warp::post()
         .and(warp::path("fees"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path(INDEX_FEES_ROUTE))
         .and(with_server(server.clone()))
         .and_then(index_fees_handler);
 
     let redeem_fees = warp::post()
         .and(warp::path("fees"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path(REDEEM_FEES_ROUTE))
         .and(with_server(server.clone()))
         .and_then(redeem_fees_handler);
 
     let get_balances = warp::get()
         .and(warp::path("fees"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path(GET_FEE_WALLETS_ROUTE))
         .and(with_hmac_auth(server.clone()))
         .and(with_server(server.clone()))
@@ -234,10 +126,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let withdraw_fee_balance = warp::post()
         .and(warp::path("fees"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path(WITHDRAW_FEE_BALANCE_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<WithdrawFeeBalanceRequest>)
+        .map(with_chain_and_json_body::<WithdrawFeeBalanceRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(withdraw_fee_balance_handler);
 
@@ -245,16 +139,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let withdraw_custody = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("quoters"))
         .and(warp::path(WITHDRAW_CUSTODY_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<WithdrawFundsRequest>)
+        .map(with_chain_and_json_body::<WithdrawFundsRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(quoter_withdraw_handler);
 
     let get_deposit_address = warp::get()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("quoters"))
         .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
         .and(with_server(server.clone()))
@@ -262,6 +159,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let get_execution_quote = warp::get()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("quoters"))
         .and(warp::path(GET_EXECUTION_QUOTE_ROUTE))
         .and(with_hmac_auth(server.clone()))
@@ -271,11 +169,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let execute_swap = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("quoters"))
         .and(warp::path(EXECUTE_SWAP_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<ExecuteSwapRequest>)
+        .map(with_chain_and_json_body::<ExecuteSwapRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(execute_swap_handler);
 
@@ -293,26 +193,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let withdraw_gas = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas"))
         .and(warp::path(WITHDRAW_GAS_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<WithdrawGasRequest>)
+        .map(with_chain_and_json_body::<WithdrawGasRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(withdraw_gas_handler);
 
     let refill_gas = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas"))
         .and(warp::path(REFILL_GAS_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<RefillGasRequest>)
+        .map(with_chain_and_json_body::<RefillGasRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(refill_gas_handler);
 
     let add_gas_wallet = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas-wallets"))
         .and(with_hmac_auth(server.clone()))
         .and(with_server(server.clone()))
@@ -320,26 +225,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let register_gas_wallet = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas-wallets"))
         .and(warp::path(REGISTER_GAS_WALLET_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<RegisterGasWalletRequest>)
+        .map(with_chain_and_json_body::<RegisterGasWalletRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(register_gas_wallet_handler);
 
     let report_active_peers = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas-wallets"))
         .and(warp::path(REPORT_ACTIVE_PEERS_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<ReportActivePeersRequest>)
+        .map(with_chain_and_json_body::<ReportActivePeersRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(report_active_peers_handler);
 
     let refill_gas_sponsor = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("gas"))
         .and(warp::path(REFILL_GAS_SPONSOR_ROUTE))
         .and(with_hmac_auth(server.clone()))
@@ -350,15 +260,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let create_hot_wallet = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("hot-wallets"))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<CreateHotWalletRequest>)
+        .map(with_chain_and_json_body::<CreateHotWalletRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(create_hot_wallet_handler);
 
     let get_hot_wallet_balances = warp::get()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("hot-wallets"))
         .and(with_hmac_auth(server.clone()))
         .and(warp::query::<HashMap<String, String>>())
@@ -367,21 +280,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let transfer_to_vault = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("hot-wallets"))
         .and(warp::path(TRANSFER_TO_VAULT_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<TransferToVaultRequest>)
+        .map(with_chain_and_json_body::<TransferToVaultRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(transfer_to_vault_handler);
 
     let transfer_to_hot_wallet = warp::post()
         .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
         .and(warp::path("hot-wallets"))
         .and(warp::path(WITHDRAW_TO_HOT_WALLET_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_json_body::<WithdrawToHotWalletRequest>)
+        .map(with_chain_and_json_body::<WithdrawToHotWalletRequest>)
         .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
         .and_then(withdraw_from_vault_handler);
 
@@ -393,6 +310,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and_then(identity)
         .and(with_server(server.clone()))
         .and_then(rpc_handler);
+
+    let backwards_compatibility_routes = backwards_compatibility_routes(server.clone());
 
     let routes = ping
         .or(index_fees)
@@ -415,10 +334,240 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_hot_wallet_balances)
         .or(create_hot_wallet)
         .or(rpc)
+        .or(backwards_compatibility_routes)
         .recover(handle_rejection);
+
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 
     Ok(())
+}
+
+/// Backwards-compatible route definitions, routing paths excluding the chain
+/// parameter to Arbitrum-specific handler invocations
+fn backwards_compatibility_routes(
+    server: Arc<Server>,
+) -> impl Filter<Extract: warp::Reply, Error = warp::Rejection> + Clone + Send {
+    // --- Fee Indexing --- //
+
+    let arb_chain = match server.environment {
+        Environment::Mainnet => Chain::ArbitrumOne,
+        Environment::Testnet => Chain::ArbitrumSepolia,
+    };
+
+    let index_fees = warp::post()
+        .and(warp::path("fees"))
+        .and(warp::path(INDEX_FEES_ROUTE))
+        .and(with_server(server.clone()))
+        .and_then(move |server: Arc<Server>| index_fees_handler(arb_chain, server));
+
+    let redeem_fees = warp::post()
+        .and(warp::path("fees"))
+        .and(warp::path(REDEEM_FEES_ROUTE))
+        .and(with_server(server.clone()))
+        .and_then(move |server: Arc<Server>| redeem_fees_handler(arb_chain, server));
+
+    let get_balances = warp::get()
+        .and(warp::path("fees"))
+        .and(warp::path(GET_FEE_WALLETS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(move |body: Bytes, server: Arc<Server>| {
+            get_fee_wallets_handler(arb_chain, body, server)
+        });
+
+    let withdraw_fee_balance = warp::post()
+        .and(warp::path("fees"))
+        .and(warp::path(WITHDRAW_FEE_BALANCE_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawFeeBalanceRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: WithdrawFeeBalanceRequest, server: Arc<Server>| {
+            withdraw_fee_balance_handler(arb_chain, req, server)
+        });
+
+    // --- Quoters --- //
+
+    let withdraw_custody = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(WITHDRAW_CUSTODY_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawFundsRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: WithdrawFundsRequest, server: Arc<Server>| {
+            quoter_withdraw_handler(arb_chain, req, server)
+        });
+
+    let get_deposit_address = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
+        .and(with_server(server.clone()))
+        .and_then(move |server: Arc<Server>| get_deposit_address_handler(arb_chain, server));
+
+    let get_execution_quote = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(GET_EXECUTION_QUOTE_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(warp::query::<HashMap<String, String>>())
+        .and(with_server(server.clone()))
+        .and_then(
+            move |body: Bytes, query_params: HashMap<String, String>, server: Arc<Server>| {
+                get_execution_quote_handler(arb_chain, body, query_params, server)
+            },
+        );
+
+    let execute_swap = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("quoters"))
+        .and(warp::path(EXECUTE_SWAP_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<ExecuteSwapRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: ExecuteSwapRequest, server: Arc<Server>| {
+            execute_swap_handler(arb_chain, req, server)
+        });
+
+    // --- Gas --- //
+
+    let withdraw_gas = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas"))
+        .and(warp::path(WITHDRAW_GAS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawGasRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: WithdrawGasRequest, server: Arc<Server>| {
+            withdraw_gas_handler(arb_chain, req, server)
+        });
+
+    let refill_gas = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas"))
+        .and(warp::path(REFILL_GAS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<RefillGasRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: RefillGasRequest, server: Arc<Server>| {
+            refill_gas_handler(arb_chain, req, server)
+        });
+
+    let add_gas_wallet = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas-wallets"))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(move |body: Bytes, server: Arc<Server>| {
+            create_gas_wallet_handler(arb_chain, body, server)
+        });
+
+    let register_gas_wallet = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas-wallets"))
+        .and(warp::path(REGISTER_GAS_WALLET_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<RegisterGasWalletRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: RegisterGasWalletRequest, server: Arc<Server>| {
+            register_gas_wallet_handler(arb_chain, req, server)
+        });
+
+    let report_active_peers = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas-wallets"))
+        .and(warp::path(REPORT_ACTIVE_PEERS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<ReportActivePeersRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: ReportActivePeersRequest, server: Arc<Server>| {
+            report_active_peers_handler(arb_chain, req, server)
+        });
+
+    let refill_gas_sponsor = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("gas"))
+        .and(warp::path(REFILL_GAS_SPONSOR_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(move |body: Bytes, server: Arc<Server>| {
+            refill_gas_sponsor_handler(arb_chain, body, server)
+        });
+
+    // --- Hot Wallets --- //
+
+    let create_hot_wallet = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("hot-wallets"))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<CreateHotWalletRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: CreateHotWalletRequest, server: Arc<Server>| {
+            create_hot_wallet_handler(arb_chain, req, server)
+        });
+
+    let get_hot_wallet_balances = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path("hot-wallets"))
+        .and(with_hmac_auth(server.clone()))
+        .and(warp::query::<HashMap<String, String>>())
+        .and(with_server(server.clone()))
+        .and_then(
+            move |body: Bytes, query_params: HashMap<String, String>, server: Arc<Server>| {
+                get_hot_wallet_balances_handler(arb_chain, body, query_params, server)
+            },
+        );
+
+    let transfer_to_vault = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("hot-wallets"))
+        .and(warp::path(TRANSFER_TO_VAULT_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<TransferToVaultRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: TransferToVaultRequest, server: Arc<Server>| {
+            transfer_to_vault_handler(arb_chain, req, server)
+        });
+
+    let transfer_to_hot_wallet = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path("hot-wallets"))
+        .and(warp::path(WITHDRAW_TO_HOT_WALLET_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<WithdrawToHotWalletRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(move |req: WithdrawToHotWalletRequest, server: Arc<Server>| {
+            withdraw_from_vault_handler(arb_chain, req, server)
+        });
+
+    index_fees
+        .or(redeem_fees)
+        .or(withdraw_custody)
+        .or(get_deposit_address)
+        .or(get_execution_quote)
+        .or(execute_swap)
+        .or(withdraw_gas)
+        .or(refill_gas)
+        .or(report_active_peers)
+        .or(refill_gas_sponsor)
+        .or(register_gas_wallet)
+        .or(add_gas_wallet)
+        .or(get_balances)
+        .or(withdraw_fee_balance)
+        .or(transfer_to_vault)
+        .or(transfer_to_hot_wallet)
+        .or(get_hot_wallet_balances)
+        .or(create_hot_wallet)
 }
 
 // -----------

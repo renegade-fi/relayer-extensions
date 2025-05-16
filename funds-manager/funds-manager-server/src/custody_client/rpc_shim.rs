@@ -12,7 +12,7 @@ use fireblocks_sdk::{
         TransactionRequest, TransactionStatus, UnsignedMessage,
     },
 };
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::chain::Chain;
 use serde_json::Value;
 use tracing::error;
 
@@ -40,10 +40,14 @@ const ETH_ACCOUNTS_METHOD: &str = "eth_accounts";
 /// The method name for the `eth_signTypedData_v4` JSON-RPC method.
 const ETH_SIGN_TYPED_DATA_V4_METHOD: &str = "eth_signTypedData_v4";
 
-/// The Fireblocks asset ID for ETH on Arbitrum mainnet
-const ARB_MAINNET_ETH_ASSET_ID: &str = "ETH-AETH";
-/// The Fireblocks asset ID for ETH on Arbitrum testnet
-const ARB_TESTNET_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
+/// The Fireblocks asset ID for ETH on Arbitrum One
+const ARB_ONE_ETH_ASSET_ID: &str = "ETH-AETH";
+/// The Fireblocks asset ID for ETH on Arbitrum Sepolia
+const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
+/// The Fireblocks asset ID for ETH on Base mainnet
+const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
+/// The Fireblocks asset ID for ETH on Base Sepolia
+const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
 /// The name of the Fireblocks vault custodying the Hyperliquid keypair
 const HYPERLIQUID_VAULT_NAME: &str = "Hyperliquid";
 /// The EIP-712 domain name for Hyperliquid L1 actions
@@ -242,8 +246,10 @@ impl CustodyClient {
     /// chain.
     fn get_native_eth_asset_id(&self) -> Result<String, FundsManagerError> {
         match self.chain {
-            Chain::Mainnet => Ok(ARB_MAINNET_ETH_ASSET_ID.to_string()),
-            Chain::Testnet => Ok(ARB_TESTNET_ETH_ASSET_ID.to_string()),
+            Chain::ArbitrumOne => Ok(ARB_ONE_ETH_ASSET_ID.to_string()),
+            Chain::ArbitrumSepolia => Ok(ARB_SEPOLIA_ETH_ASSET_ID.to_string()),
+            Chain::BaseMainnet => Ok(BASE_MAINNET_ETH_ASSET_ID.to_string()),
+            Chain::BaseSepolia => Ok(BASE_SEPOLIA_ETH_ASSET_ID.to_string()),
             _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }

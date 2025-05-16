@@ -2,7 +2,7 @@
 
 use aws_config::SdkConfig as AwsConfig;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_darkpool_client::{constants::Chain, DarkpoolClient};
+use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
 use renegade_util::hex::jubjub_from_hex_string;
 use std::sync::Arc;
@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::custody_client::CustodyClient;
 use crate::db::{DbConn, DbPool};
 use crate::error::FundsManagerError;
+use crate::mux_darkpool_client::MuxDarkpoolClient;
 use crate::relayer_client::RelayerClient;
 
 pub mod fee_balances;
@@ -18,6 +19,7 @@ pub mod queries;
 pub mod redeem_fees;
 
 /// Stores the dependencies needed to index the chain
+#[derive(Clone)]
 pub(crate) struct Indexer {
     /// The id of the chain this indexer targets
     pub chain_id: u64,
@@ -26,7 +28,7 @@ pub(crate) struct Indexer {
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
     /// The darkpool client
-    pub darkpool_client: DarkpoolClient,
+    pub darkpool_client: MuxDarkpoolClient,
     /// The decryption key
     pub decryption_keys: Vec<DecryptionKey>,
     /// The database connection pool
@@ -44,7 +46,7 @@ impl Indexer {
         chain_id: u64,
         chain: Chain,
         aws_config: AwsConfig,
-        darkpool_client: DarkpoolClient,
+        darkpool_client: MuxDarkpoolClient,
         decryption_keys: Vec<DecryptionKey>,
         db_pool: Arc<DbPool>,
         relayer_client: RelayerClient,

@@ -7,9 +7,9 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::db::models::{GasWallet, GasWalletStatus, HotWallet};
-use crate::db::schema::gas_wallets;
-use crate::db::schema::hot_wallets;
+use crate::db::schema::{gas_wallets, hot_wallets};
 use crate::error::FundsManagerError;
+use crate::helpers::to_env_agnostic_name;
 use crate::CustodyClient;
 
 use super::DepositWithdrawSource;
@@ -21,32 +21,35 @@ impl CustodyClient {
 
     // --- Getters --- //
 
-    /// Get all gas wallets
+    /// Get all gas wallets on the chain managed by the CustodyClient
     pub async fn get_all_gas_wallets(&self) -> Result<Vec<GasWallet>, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
         gas_wallets::table
+            .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<GasWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
     }
 
-    /// Get all active gas wallets
+    /// Get all active gas wallets on the chain managed by the CustodyClient
     pub async fn get_active_gas_wallets(&self) -> Result<Vec<GasWallet>, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
         let active = GasWalletStatus::Active.to_string();
         gas_wallets::table
             .filter(gas_wallets::status.eq(active))
+            .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<GasWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
     }
 
-    /// Find an inactive gas wallet
+    /// Find an inactive gas wallet on the chain managed by the CustodyClient
     pub async fn find_inactive_gas_wallet(&self) -> Result<GasWallet, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
         let inactive = GasWalletStatus::Inactive.to_string();
         gas_wallets::table
             .filter(gas_wallets::status.eq(inactive))
+            .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .first::<GasWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
@@ -57,7 +60,7 @@ impl CustodyClient {
     /// Add a new gas wallet
     pub async fn add_gas_wallet(&self, address: &str) -> Result<(), FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
-        let entry = GasWallet::new(address.to_string());
+        let entry = GasWallet::new(address.to_string(), self.chain);
         diesel::insert_into(gas_wallets::table)
             .values(entry)
             .execute(&mut conn)
@@ -76,11 +79,15 @@ impl CustodyClient {
             gas_wallets::peer_id.eq(None::<String>),
         );
 
-        diesel::update(gas_wallets::table.filter(gas_wallets::address.eq(address)))
-            .set(updates)
-            .execute(&mut conn)
-            .await
-            .map_err(err_str!(FundsManagerError::Db))?;
+        diesel::update(
+            gas_wallets::table
+                .filter(gas_wallets::address.eq(address))
+                .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
+        )
+        .set(updates)
+        .execute(&mut conn)
+        .await
+        .map_err(err_str!(FundsManagerError::Db))?;
 
         Ok(())
     }
@@ -90,11 +97,15 @@ impl CustodyClient {
         info!("Marking gas wallet as pending: {address}");
         let mut conn = self.get_db_conn().await?;
         let pending = GasWalletStatus::Pending.to_string();
-        diesel::update(gas_wallets::table.filter(gas_wallets::address.eq(address)))
-            .set(gas_wallets::status.eq(pending))
-            .execute(&mut conn)
-            .await
-            .map_err(err_str!(FundsManagerError::Db))?;
+        diesel::update(
+            gas_wallets::table
+                .filter(gas_wallets::address.eq(address))
+                .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
+        )
+        .set(gas_wallets::status.eq(pending))
+        .execute(&mut conn)
+        .await
+        .map_err(err_str!(FundsManagerError::Db))?;
 
         Ok(())
     }
@@ -109,11 +120,15 @@ impl CustodyClient {
         let mut conn = self.get_db_conn().await?;
         let active = GasWalletStatus::Active.to_string();
         let updates = (gas_wallets::status.eq(active), gas_wallets::peer_id.eq(peer_id));
-        diesel::update(gas_wallets::table.filter(gas_wallets::address.eq(address)))
-            .set(updates)
-            .execute(&mut conn)
-            .await
-            .map_err(err_str!(FundsManagerError::Db))?;
+        diesel::update(
+            gas_wallets::table
+                .filter(gas_wallets::address.eq(address))
+                .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
+        )
+        .set(updates)
+        .execute(&mut conn)
+        .await
+        .map_err(err_str!(FundsManagerError::Db))?;
 
         Ok(())
     }
@@ -124,10 +139,11 @@ impl CustodyClient {
 
     // --- Getters --- //
 
-    /// Get all hot wallets
+    /// Get all hot wallets on the chain managed by the CustodyClient
     pub async fn get_all_hot_wallets(&self) -> Result<Vec<HotWallet>, FundsManagerError> {
         let mut conn = self.get_db_conn().await?;
         let wallets = hot_wallets::table
+            .filter(hot_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<HotWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))?;
@@ -143,6 +159,7 @@ impl CustodyClient {
         let mut conn = self.get_db_conn().await?;
         hot_wallets::table
             .filter(hot_wallets::address.eq(address))
+            .filter(hot_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .first::<HotWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
@@ -156,6 +173,7 @@ impl CustodyClient {
         let mut conn = self.get_db_conn().await?;
         hot_wallets::table
             .filter(hot_wallets::vault.eq(vault))
+            .filter(hot_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .first::<HotWallet>(&mut conn)
             .await
             .map_err(err_str!(FundsManagerError::Db))
@@ -163,8 +181,8 @@ impl CustodyClient {
 
     /// Convenience method for getting the quoter hot wallet
     pub async fn get_quoter_hot_wallet(&self) -> Result<HotWallet, FundsManagerError> {
-        let vault = DepositWithdrawSource::Quoter.vault_name();
-        self.get_hot_wallet_by_vault(vault).await
+        let vault = DepositWithdrawSource::Quoter.vault_name(self.chain);
+        self.get_hot_wallet_by_vault(&vault).await
     }
 
     // --- Setters --- //
@@ -183,6 +201,7 @@ impl CustodyClient {
             vault.to_string(),
             address.to_string(),
             *internal_wallet_id,
+            self.chain,
         );
         diesel::insert_into(hot_wallets::table)
             .values(entry)

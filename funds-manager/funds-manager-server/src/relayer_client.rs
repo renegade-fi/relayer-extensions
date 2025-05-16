@@ -19,6 +19,7 @@ use renegade_api::{
     types::ApiKeychain,
 };
 use renegade_common::types::{
+    chain::Chain,
     exchange::PriceReporterState,
     hmac::HmacKey,
     token::Token,
@@ -50,12 +51,14 @@ pub struct RelayerClient {
     base_url: String,
     /// The mind of the USDC token
     usdc_mint: String,
+    /// The chain the relayer is targeting
+    pub chain: Chain,
 }
 
 impl RelayerClient {
     /// Create a new relayer client
-    pub fn new(base_url: &str, usdc_mint: &str) -> Self {
-        Self { base_url: base_url.to_string(), usdc_mint: usdc_mint.to_string() }
+    pub fn new(base_url: &str, usdc_mint: &str, chain: Chain) -> Self {
+        Self { base_url: base_url.to_string(), usdc_mint: usdc_mint.to_string(), chain }
     }
 
     /// Get the price for a given mint
@@ -65,8 +68,8 @@ impl RelayerClient {
         }
 
         let body = GetPriceReportRequest {
-            base_token: Token::from_addr(mint),
-            quote_token: Token::from_addr(&self.usdc_mint),
+            base_token: Token::from_addr_on_chain(mint, self.chain),
+            quote_token: Token::from_addr_on_chain(&self.usdc_mint, self.chain),
         };
         let response: GetPriceReportResponse = self.post_relayer(PRICE_REPORT_ROUTE, &body).await?;
 

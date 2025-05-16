@@ -1,6 +1,8 @@
 //! Helpers for the funds manager server
 #![allow(missing_docs)]
 
+use std::str::FromStr;
+
 use alloy::{
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
@@ -9,10 +11,12 @@ use alloy::{
     sol,
 };
 use aws_config::SdkConfig;
+use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
+use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
 
-use crate::error::FundsManagerError;
+use crate::{cli::Environment, error::FundsManagerError};
 
 // ---------
 // | ERC20 |
@@ -46,7 +50,7 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
         .filler(BlobGasFiller)
-        .on_http(url);
+        .connect_http(url);
 
     Ok(DynProvider::new(provider))
 }
@@ -54,6 +58,17 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
 // -----------------------
 // | AWS Secrets Manager |
 // -----------------------
+
+/// Get the prefix for a chain-specific secret
+pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
+    match chain {
+        Chain::ArbitrumOne => Ok("/arbitrum/one".to_string()),
+        Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia".to_string()),
+        Chain::BaseMainnet => Ok("/base/mainnet".to_string()),
+        Chain::BaseSepolia => Ok("/base/mainnet".to_string()),
+        _ => Err(FundsManagerError::custom("Unsupported chain")),
+    }
+}
 
 /// Get a secret from AWS Secrets Manager
 pub async fn get_secret(
@@ -105,4 +120,66 @@ pub async fn create_secrets_manager_entry_with_description(
         .map_err(err_str!(FundsManagerError::SecretsManager))?;
 
     Ok(())
+}
+
+// ----------
+// | AWS S3 |
+// ----------
+
+/// Fetch an object from S3
+pub async fn fetch_s3_object(
+    bucket: &str,
+    key: &str,
+    config: &SdkConfig,
+) -> Result<String, FundsManagerError> {
+    let client = S3Client::new(config);
+
+    // Fetch the object from S3
+    let resp =
+        client.get_object().bucket(bucket).key(key).send().await.map_err(FundsManagerError::s3)?;
+
+    // Aggregate the response stream into bytes
+    let data = resp.body.collect().await.map_err(FundsManagerError::s3)?;
+
+    // Convert the bytes to a string
+    String::from_utf8(data.into_bytes().to_vec()).map_err(FundsManagerError::parse)
+}
+
+// --------
+// | Misc |
+// --------
+
+/// Convert a chain to its environment-agnostic name
+pub fn to_env_agnostic_name(chain: Chain) -> String {
+    match chain {
+        Chain::ArbitrumOne | Chain::ArbitrumSepolia => "arbitrum".to_string(),
+        Chain::BaseMainnet | Chain::BaseSepolia => "base".to_string(),
+        _ => chain.to_string(),
+    }
+}
+
+/// Convert an environment-agnostic name to a `Chain` variant
+pub fn from_env_agnostic_name(chain: &str, environment: Environment) -> Chain {
+    let arb_chain = match environment {
+        Environment::Mainnet => Chain::ArbitrumOne,
+        Environment::Testnet => Chain::ArbitrumSepolia,
+    };
+    let base_chain = match environment {
+        Environment::Mainnet => Chain::BaseMainnet,
+        Environment::Testnet => Chain::BaseSepolia,
+    };
+
+    match chain {
+        "arbitrum" => arb_chain,
+        "base" => base_chain,
+        _ => Chain::from_str(chain).unwrap(),
+    }
+}
+
+/// Convert a string to title case
+pub fn titlecase(s: &str) -> String {
+    s.split_whitespace()
+        .map(|w| w.chars().next().unwrap().to_uppercase().to_string() + &w[1..])
+        .collect::<Vec<String>>()
+        .join(" ")
 }
