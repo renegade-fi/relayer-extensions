@@ -11,7 +11,6 @@ use std::{collections::HashSet, net::SocketAddr};
 
 use errors::ServerError;
 use http_server::HttpServer;
-use pair_info::PairInfo;
 use renegade_common::types::{
     exchange::Exchange,
     token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
@@ -20,12 +19,11 @@ use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging};
+use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
 mod http_server;
-mod pair_info;
 mod utils;
 mod ws_server;
 

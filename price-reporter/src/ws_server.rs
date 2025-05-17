@@ -5,11 +5,7 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
-use renegade_common::types::{
-    exchange::Exchange,
-    token::{USDC_TICKER, USDT_TICKER},
-    Price,
-};
+use renegade_common::types::{exchange::Exchange, Price};
 use renegade_price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},
@@ -24,12 +20,10 @@ use tungstenite::Message;
 
 use crate::{
     errors::ServerError,
-    pair_info::PairInfo,
     utils::{
-        get_price_topic_str, get_subscribed_topics, requires_quote_conversion, ClosureSender,
-        PriceMessage, PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams,
-        WsWriteStream, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES,
-        MAX_CONN_RETRY_WINDOW_MS,
+        get_price_topic_str, get_subscribed_topics, ClosureSender, PairInfo, PriceMessage,
+        PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream,
+        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -222,24 +216,31 @@ impl GlobalPriceStreams {
             .map_err(ServerError::ExchangeConnection)
     }
 
+    /// Returns a tuple of (canonicalized pair info, requires quote conversion),
+    /// if needed
+    fn normalize_pair_info(&self, pair_info: PairInfo) -> Result<PairInfo, ServerError> {
+        if pair_info.exchange != Exchange::Renegade {
+            return Ok(pair_info);
+        }
+
+        let base_mint = pair_info.base_token().get_addr();
+        let new_pair_info = PairInfo::new_canonical_exchange(&base_mint)?;
+        Ok(new_pair_info)
+    }
+
     /// Fetch a price stream for the given pair info from the global map
     pub async fn get_or_create_price_stream(
         &self,
-        mut pair_info: PairInfo,
+        pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
-        let requires_quote_conversion = requires_quote_conversion(&pair_info.exchange);
-        // Replace the `Renegade` exchange with `Binance`
-        if pair_info.exchange == Exchange::Renegade {
-            let exchange = Exchange::Binance;
-            let base_mint = pair_info.base_token().get_addr();
-            pair_info = PairInfo::new_default_stable(exchange, &base_mint);
-        }
+        let normalized_pair_info = self.normalize_pair_info(pair_info.clone())?;
+        let requires_conversion = normalized_pair_info.requires_quote_conversion()?;
 
-        let exchange = pair_info.exchange;
-        let price_rx = self.get_or_create_price_receiver(pair_info, config.clone()).await?;
-        let stream = if requires_quote_conversion {
-            let conversion_rx = self.quote_conversion_stream(exchange, config).await?;
+        let price_rx =
+            self.get_or_create_price_receiver(normalized_pair_info.clone(), config.clone()).await?;
+        let stream = if requires_conversion {
+            let conversion_rx = self.quote_conversion_stream(normalized_pair_info, config).await?;
             PriceStream::new_with_conversion(price_rx.into(), conversion_rx.into())
         } else {
             PriceStream::new(price_rx.into())
@@ -254,11 +255,10 @@ impl GlobalPriceStreams {
     /// this method does not configure the conversion tokens.
     async fn quote_conversion_stream(
         &self,
-        exchange: Exchange,
+        pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
-        let conversion_pair =
-            PairInfo::new(exchange, USDC_TICKER.to_string(), USDT_TICKER.to_string(), None);
+        let conversion_pair = pair_info.get_conversion_pair();
         let conversion_rx = self.get_or_create_price_receiver(conversion_pair, config).await?;
         Ok(conversion_rx)
     }
