@@ -48,6 +48,12 @@ pub fn get_canonical_exchange(mint: &str) -> Result<Exchange, ServerError> {
     Ok(canonical_exchange)
 }
 
+/// Get all canonical exchanges
+pub fn get_canonical_exchanges() -> Vec<Exchange> {
+    let map = read_canonical_exchange_map();
+    map.values().copied().collect()
+}
+
 /// Set the static mapping of token tickers to the canonical exchange to use as
 /// a price source
 pub fn set_canonical_exchange_map(chain: Chain) {

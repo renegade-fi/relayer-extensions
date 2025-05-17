@@ -39,7 +39,7 @@ use crate::{errors::ServerError, http_server::routes::Handler};
 mod canonical_exchange;
 mod pair_info;
 
-pub use canonical_exchange::set_canonical_exchange_map;
+pub use canonical_exchange::{get_canonical_exchanges, set_canonical_exchange_map};
 pub use pair_info::PairInfo;
 
 // ----------
