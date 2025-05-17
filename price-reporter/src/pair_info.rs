@@ -75,12 +75,14 @@ impl PairInfo {
             Token::from_addr_on_chain(parts[2], chain)
         };
 
-        Ok(Self::new(
-            exchange,
-            base.get_ticker().unwrap(),
-            quote.get_ticker().unwrap(),
-            Some(chain),
-        ))
+        let base_ticker = base.get_ticker().ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", base))
+        })?;
+        let quote_ticker = quote.get_ticker().ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", quote))
+        })?;
+
+        Ok(Self::new(exchange, base_ticker, quote_ticker, Some(chain)))
     }
 
     /// Get the topic name for a given pair info as a string
