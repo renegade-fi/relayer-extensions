@@ -230,7 +230,9 @@ impl GlobalPriceStreams {
     ) -> Result<PriceStream, ServerError> {
         // Replace the `Renegade` exchange with `Binance`
         if pair_info.exchange == Exchange::Renegade {
-            pair_info.exchange = Exchange::Binance;
+            let exchange = Exchange::Binance;
+            let base_mint = pair_info.base_token().get_addr();
+            pair_info = PairInfo::new_default_stable(exchange, &base_mint);
         }
 
         let exchange = pair_info.exchange;
