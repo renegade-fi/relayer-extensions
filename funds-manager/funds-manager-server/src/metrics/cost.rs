@@ -3,6 +3,7 @@
 use alloy::{contract::Event, rpc::types::TransactionReceipt};
 use alloy_primitives::{Address, TxHash, U256};
 use funds_manager_api::{quoters::AugmentedExecutionQuote, u256_try_into_u128};
+use renegade_common::types::chain::Chain;
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -103,7 +104,7 @@ impl MetricsRecorder {
     ) -> Result<SwapExecutionData, FundsManagerError> {
         let mint = quote.get_base_token().get_alloy_address();
 
-        let binance_price = self.get_binance_price(&mint).await?;
+        let binance_price = self.get_price(&mint, quote.chain).await?;
         let buy_amount_actual = self.get_buy_amount_actual(receipt, mint, quote.quote.from).await?;
 
         let execution_price =
@@ -227,10 +228,10 @@ impl MetricsRecorder {
         Ok(transfer_event.0.value)
     }
 
-    /// Get the Binance price for a token
-    async fn get_binance_price(&self, mint: &Address) -> Result<f64, FundsManagerError> {
-        let price = self.relayer_client.get_binance_price(&format!("{:#x}", mint)).await?;
-        price.ok_or_else(|| FundsManagerError::custom("No Binance price available for token"))
+    /// Get the price for a token
+    async fn get_price(&self, mint: &Address, chain: Chain) -> Result<f64, FundsManagerError> {
+        let price = self.price_reporter.get_price(&format!("{:#x}", mint), chain).await?;
+        Ok(price)
     }
 
     /// Log swap cost data in a Datadog-compatible format

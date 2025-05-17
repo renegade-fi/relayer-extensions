@@ -6,6 +6,7 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::Address;
 use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
+use price_reporter_client::PriceReporterClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_darkpool_client::client::DarkpoolClientConfig;
@@ -66,6 +67,9 @@ pub struct Cli {
     /// The environment to run the server in
     #[clap(long, env = "ENVIRONMENT", default_value = "testnet")]
     pub environment: Environment,
+    /// The URL of the price reporter
+    #[clap(long, env = "PRICE_REPORTER_URL")]
+    pub price_reporter_url: String,
 
     // --- Chain-Specific Config --- //
 
@@ -193,10 +197,10 @@ impl ChainConfig {
         fireblocks_api_secret: String,
         db_pool: Arc<DbPool>,
         aws_config: SdkConfig,
-        usdc_mint: &str,
+        price_reporter: Arc<PriceReporterClient>,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
-        let relayer_client = RelayerClient::new(&self.relayer_url, usdc_mint, chain);
+        let relayer_client = RelayerClient::new(&self.relayer_url, chain);
 
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
@@ -235,7 +239,7 @@ impl ChainConfig {
         .map_err(FundsManagerError::custom)?;
 
         // Build a metrics recorder
-        let metrics_recorder = MetricsRecorder::new(relayer_client.clone(), &self.rpc_url);
+        let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), &self.rpc_url);
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)
@@ -255,21 +259,15 @@ impl ChainConfig {
             db_pool.clone(),
             relayer_client.clone(),
             custody_client.clone(),
+            price_reporter,
         );
 
-        let relayer_client = Arc::new(relayer_client);
         let custody_client = Arc::new(custody_client);
         let execution_client = Arc::new(execution_client);
         let metrics_recorder = Arc::new(metrics_recorder);
         let fee_indexer = Arc::new(fee_indexer);
 
-        Ok(ChainClients {
-            relayer_client,
-            custody_client,
-            execution_client,
-            metrics_recorder,
-            fee_indexer,
-        })
+        Ok(ChainClients { custody_client, execution_client, metrics_recorder, fee_indexer })
     }
 }
 
@@ -277,8 +275,6 @@ impl ChainConfig {
 /// configuration object
 #[derive(Clone)]
 pub struct ChainClients {
-    /// The client for the relayer deployed for the given chain
-    pub(crate) relayer_client: Arc<RelayerClient>,
     /// The custody client for managing funds on the given chain
     pub(crate) custody_client: Arc<CustodyClient>,
     /// The execution client for executing swaps on the given chain

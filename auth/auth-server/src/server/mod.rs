@@ -45,6 +45,7 @@ use rand::Rng;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
 use renegade_api::auth::add_expiring_auth_to_headers;
+use renegade_common::types::chain::Chain;
 use renegade_common::types::{
     hmac::HmacKey,
     token::{get_all_tokens, Token},
@@ -78,6 +79,8 @@ pub type ApiKeyCache = Arc<RwLock<UnboundCache<Uuid, ApiKey>>>;
 /// The server struct that holds all the necessary components
 #[derive(Clone)]
 pub struct Server {
+    /// The chain for which the server is configured
+    pub chain: Chain,
     /// The database connection pool
     pub db_pool: Arc<DbPool>,
     /// The Redis client
@@ -184,12 +187,14 @@ impl Server {
             rate_limiter.clone(),
             price_reporter_client.clone(),
             gas_cost_sampler.clone(),
+            args.chain_id,
         )
         .expect("failed to build on-chain event listener");
         chain_listener.start().expect("failed to start on-chain event listener");
         chain_listener.watch();
 
         Ok(Self {
+            chain: args.chain_id,
             db_pool,
             redis_client,
             relayer_url: args.relayer_url,

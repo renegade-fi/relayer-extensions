@@ -109,24 +109,25 @@ pub(crate) async fn quoter_withdraw_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // Get the price of the token
-    // TODO: Replace w/ price reporter client
-    let relayer_client = server.get_relayer_client(&chain)?;
-    let maybe_price = relayer_client.get_binance_price(&withdraw_request.mint).await?;
+    let maybe_price = server.price_reporter.get_price(&withdraw_request.mint, chain).await;
 
-    if let Some(price) = maybe_price {
-        // If a price was found, check that the withdrawal value is less than the
-        // allowable maximum. If no price was found, we do not block the
-        // withdrawal.
+    match maybe_price {
+        Ok(price) => {
+            // If a price was found, check that the withdrawal value is less than the
+            // allowable maximum. If no price was found, we do not block the
+            // withdrawal.
 
-        let value = withdraw_request.amount * price;
-        if value > MAX_WITHDRAWAL_VALUE {
-            return Err(warp::reject::custom(ApiError::BadRequest(format!(
-                "Requested withdrawal of ${} of {} exceeds maximum allowed withdrawal of ${}",
-                value, withdraw_request.mint, MAX_WITHDRAWAL_VALUE
-            ))));
-        }
-    } else {
-        warn!("No price found for {}, allowing withdrawal", withdraw_request.mint);
+            let value = withdraw_request.amount * price;
+            if value > MAX_WITHDRAWAL_VALUE {
+                return Err(warp::reject::custom(ApiError::BadRequest(format!(
+                    "Requested withdrawal of ${} of {} exceeds maximum allowed withdrawal of ${}",
+                    value, withdraw_request.mint, MAX_WITHDRAWAL_VALUE
+                ))));
+            }
+        },
+        Err(e) => {
+            warn!("Error getting price for {}, allowing withdrawal: {e}", withdraw_request.mint);
+        },
     }
 
     // Withdraw the funds
