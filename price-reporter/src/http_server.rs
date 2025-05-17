@@ -58,7 +58,7 @@ impl HttpServer {
                 Box::new(RefreshTokenMappingHandler::new(
                     config.admin_key,
                     config.token_remap_path.clone(),
-                    config.remap_chain,
+                    config.chains.clone(),
                     price_streams,
                     config.exchange_conn_config.clone(),
                     config.disabled_exchanges.clone(),

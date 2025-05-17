@@ -4,16 +4,15 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
 use renegade_api::auth::validate_expiring_auth;
-use renegade_common::types::{exchange::Exchange, hmac::HmacKey, Price};
-use renegade_config::setup_token_remaps;
-use renegade_darkpool_client::constants::Chain;
+use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey, Price};
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 
 use crate::{
     errors::ServerError,
     init_default_price_streams,
-    utils::{parse_pair_info_from_topic, UrlParams},
+    pair_info::PairInfo,
+    utils::{setup_all_token_remaps, UrlParams},
     ws_server::GlobalPriceStreams,
 };
 
@@ -76,7 +75,7 @@ impl PriceHandler {
     pub async fn get_price(&self, topic: &str) -> Result<Price, ServerError> {
         let self_clone = self.clone();
 
-        let pair_info = parse_pair_info_from_topic(topic)?;
+        let pair_info = PairInfo::from_topic(topic)?;
         let mut price_stream = self_clone
             .price_streams
             .get_or_create_price_stream(pair_info, self_clone.config.clone())
@@ -123,8 +122,8 @@ pub struct RefreshTokenMappingHandler {
     admin_key: Option<HmacKey>,
     /// The path to the token remap file
     token_remap_path: Option<String>,
-    /// The chain to use for the token remap
-    remap_chain: Chain,
+    /// The chains to use for the token remap
+    chains: Vec<Chain>,
     /// The global price streams
     price_streams: GlobalPriceStreams,
     /// The configuration for the exchange connections
@@ -138,12 +137,12 @@ impl RefreshTokenMappingHandler {
     pub fn new(
         admin_key: Option<HmacKey>,
         token_remap_path: Option<String>,
-        remap_chain: Chain,
+        chains: Vec<Chain>,
         price_streams: GlobalPriceStreams,
         config: ExchangeConnectionsConfig,
         disabled_exchanges: Vec<Exchange>,
     ) -> Self {
-        Self { admin_key, token_remap_path, remap_chain, price_streams, config, disabled_exchanges }
+        Self { admin_key, token_remap_path, chains, price_streams, config, disabled_exchanges }
     }
 
     /// Authenticate a token mapping refresh request using the admin HMAC key.
@@ -162,8 +161,8 @@ impl RefreshTokenMappingHandler {
     /// Refresh the token mapping from the remote source
     pub async fn refresh_token_mapping(&self) -> Result<(), ServerError> {
         let token_remap_path = self.token_remap_path.clone();
-        let remap_chain = self.remap_chain;
-        tokio::task::spawn_blocking(move || setup_token_remaps(token_remap_path, remap_chain))
+        let chains = self.chains.clone();
+        tokio::task::spawn_blocking(move || setup_all_token_remaps(token_remap_path, &chains))
             .await
             .map_err(err_str!(ServerError::TokenRemap))
             .and_then(|res| res.map_err(err_str!(ServerError::TokenRemap)))?;
