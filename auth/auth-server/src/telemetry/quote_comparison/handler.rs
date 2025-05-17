@@ -5,11 +5,11 @@ use std::sync::Arc;
 use alloy::providers::Provider;
 use alloy_primitives::{utils::format_units, U256};
 use futures_util::future::join_all;
+use price_reporter_client::PriceReporterClient;
+use renegade_api::http::external_match::AtomicMatchApiBundle;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_darkpool_client::DarkpoolClient;
-
-use renegade_api::http::external_match::AtomicMatchApiBundle;
 use tracing::warn;
 
 use crate::{
@@ -24,7 +24,6 @@ use crate::{
 };
 
 use super::QuoteComparison;
-use crate::server::price_reporter_client::PriceReporterClient;
 
 /// Records metrics comparing quotes from different sources
 pub struct QuoteComparisonHandler {

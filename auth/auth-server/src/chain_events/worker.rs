@@ -1,12 +1,12 @@
 //! The worker implementation for the on-chain event listener
+use price_reporter_client::PriceReporterClient;
 use std::{sync::Arc, thread::Builder};
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
 use crate::{
     server::{
-        gas_estimation::gas_cost_sampler::GasCostSampler,
-        price_reporter_client::PriceReporterClient, rate_limiter::AuthServerRateLimiter,
+        gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
     },
     store::BundleStore,
 };

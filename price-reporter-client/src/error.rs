@@ -2,11 +2,9 @@
 
 use thiserror::Error;
 
-use crate::http_utils::HttpError;
-
 /// Error type for price reporter operations
 #[derive(Debug, Error)]
-pub enum PriceReporterError {
+pub enum PriceReporterClientError {
     /// Setup error
     #[error("Setup error: {0}")]
     Setup(String),
@@ -21,7 +19,7 @@ pub enum PriceReporterError {
 
     /// HTTP error
     #[error("HTTP error: {0}")]
-    Http(HttpError),
+    Http(String),
 
     /// WebSocket error
     #[error("WebSocket error: {0}")]
@@ -32,13 +30,7 @@ pub enum PriceReporterError {
     Custom(String),
 }
 
-impl From<HttpError> for PriceReporterError {
-    fn from(err: HttpError) -> Self {
-        Self::Http(err)
-    }
-}
-
-impl PriceReporterError {
+impl PriceReporterClientError {
     /// Create a new setup error
     #[allow(clippy::needless_pass_by_value)]
     pub fn setup<T: ToString>(msg: T) -> Self {
@@ -55,6 +47,12 @@ impl PriceReporterError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn conversion<T: ToString>(msg: T) -> Self {
         Self::Conversion(msg.to_string())
+    }
+
+    /// Create a new HTTP error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn http<T: ToString>(msg: T) -> Self {
+        Self::Http(msg.to_string())
     }
 
     /// Create a new web socket error

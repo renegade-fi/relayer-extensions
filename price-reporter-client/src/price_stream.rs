@@ -20,9 +20,7 @@ use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{error, info, warn};
 
-use crate::{http_utils::HttpError, server::price_reporter_client::construct_price_topic};
-
-use super::{error::PriceReporterError, get_base_mint_from_topic};
+use super::{construct_price_topic, error::PriceReporterClientError, get_base_mint_from_topic};
 
 // -------------
 // | Constants |
@@ -150,7 +148,7 @@ impl MultiPriceStream {
         state: Arc<MultiPriceStreamState>,
         ws_url: &str,
         mints: &[String],
-    ) -> Result<(), PriceReporterError> {
+    ) -> Result<(), PriceReporterClientError> {
         let read = connect_and_subscribe(ws_url, mints).await?;
         state.set_connected(true);
         Self::handle_price_updates(read, state).await
@@ -161,9 +159,9 @@ impl MultiPriceStream {
     async fn handle_price_updates(
         mut ws_read: WsReadStream,
         state: Arc<MultiPriceStreamState>,
-    ) -> Result<(), PriceReporterError> {
+    ) -> Result<(), PriceReporterClientError> {
         while let Some(res) = ws_read.next().await {
-            let msg = res.map_err(PriceReporterError::websocket)?;
+            let msg = res.map_err(PriceReporterClientError::websocket)?;
 
             // Attempt to parse price messages from the websocket.
             // Any malformed messages are ignored.
@@ -188,27 +186,30 @@ impl MultiPriceStream {
 async fn connect_and_subscribe(
     ws_url: &str,
     mints: &[String],
-) -> Result<WsReadStream, PriceReporterError> {
+) -> Result<WsReadStream, PriceReporterClientError> {
     let (mut write, read) = ws_connect(ws_url).await?;
 
     for mint in mints {
         let topic = construct_price_topic(mint);
         let message = WebsocketMessage::Subscribe { topic };
-        let message_ser =
-            Message::text(serde_json::to_string(&message).map_err(HttpError::parsing)?);
+        let message_ser = Message::text(
+            serde_json::to_string(&message).map_err(PriceReporterClientError::parsing)?,
+        );
 
         info!("Subscribing to price stream for {mint}...");
-        write.send(message_ser).await.map_err(PriceReporterError::websocket)?;
+        write.send(message_ser).await.map_err(PriceReporterClientError::websocket)?;
     }
 
     Ok(read)
 }
 
 /// Build a websocket connection to the given endpoint
-async fn ws_connect(ws_url: &str) -> Result<(WsWriteStream, WsReadStream), PriceReporterError> {
+async fn ws_connect(
+    ws_url: &str,
+) -> Result<(WsWriteStream, WsReadStream), PriceReporterClientError> {
     let ws_conn = connect_async(ws_url)
         .await
-        .map_err(PriceReporterError::websocket)
+        .map_err(PriceReporterClientError::websocket)
         .map(|(conn, _resp)| conn)?;
 
     let (ws_write, ws_read) = ws_conn.split();
