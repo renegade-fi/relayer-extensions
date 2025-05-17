@@ -1,6 +1,5 @@
 //! Miscellaneous utility types and helper functions.
 
-use std::collections::HashSet;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, env, str::FromStr, sync::Arc};
@@ -13,7 +12,7 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{get_all_tokens, read_token_remaps, Token},
+    token::{read_token_remaps, Token},
     Price,
 };
 use renegade_config::setup_token_remaps;
@@ -281,24 +280,14 @@ pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
     subscriptions.keys().map(get_price_topic_str).collect_vec()
 }
 
-/// Get all distinct tickers from configured token remap(s)
-pub fn get_all_distinct_tickers() -> Vec<String> {
-    let mut tickers = HashSet::new();
-    get_all_tokens().into_iter().for_each(|t| {
-        if let Some(ticker) = t.get_ticker() {
-            tickers.insert(ticker);
-        }
-    });
-
-    tickers.into_iter().collect_vec()
-}
-
 /// Given an address, search through the token remaps to find the token and
 /// chain it belongs to
 pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
-    for (chain, token_map) in read_token_remaps().iter() {
-        if token_map.get_by_left(addr).is_some() {
-            return Some((Token::from_addr_on_chain(addr, *chain), *chain));
+    let addr = addr.to_lowercase();
+    let remaps = read_token_remaps();
+    for (chain, token_map) in remaps.iter() {
+        if token_map.get_by_left(&addr).is_some() {
+            return Some((Token::from_addr_on_chain(&addr, *chain), *chain));
         }
     }
     None

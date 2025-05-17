@@ -8,7 +8,7 @@
 use std::str::FromStr;
 
 use derivative::Derivative;
-use renegade_common::types::token::{default_chain, USDC_TICKER};
+use renegade_common::types::token::{default_chain, default_exchange_stable, USDC_TICKER};
 use renegade_common::types::{chain::Chain, exchange::Exchange, token::Token};
 use renegade_price_reporter::exchange::supports_pair;
 use renegade_util::err_str;
@@ -17,7 +17,8 @@ use crate::errors::ServerError;
 use crate::utils::{get_token_and_chain, PriceTopic};
 
 /// Used to uniquely identify a price stream
-#[derive(Derivative, Clone, PartialEq, Eq, Hash)]
+#[derive(Derivative, Clone)]
+#[derivative(PartialEq, Eq, Hash)]
 pub struct PairInfo {
     /// The exchange
     pub exchange: Exchange,
@@ -34,6 +35,20 @@ impl PairInfo {
     /// Create a new pair info
     pub fn new(exchange: Exchange, base: String, quote: String, chain: Option<Chain>) -> Self {
         Self { exchange, base, quote, chain: chain.unwrap_or(default_chain()) }
+    }
+
+    /// Create a new pair info with the default stable token of the given
+    /// exchange
+    pub fn new_default_stable(exchange: Exchange, base_mint: &str) -> Self {
+        let (base, chain) = get_token_and_chain(base_mint).unwrap();
+        let quote = default_exchange_stable(&exchange).get_ticker().unwrap();
+        let quote_token = Token::from_ticker_on_chain(quote.as_str(), chain);
+        Self::new(
+            exchange,
+            base.get_ticker().unwrap(),
+            quote_token.get_ticker().unwrap(),
+            Some(chain),
+        )
     }
 
     /// Get the base token for a given pair info
@@ -60,12 +75,12 @@ impl PairInfo {
             Token::from_addr_on_chain(parts[2], chain)
         };
 
-        Ok(Self {
+        Ok(Self::new(
             exchange,
-            base: base.get_ticker().unwrap(),
-            quote: quote.get_ticker().unwrap(),
-            chain,
-        })
+            base.get_ticker().unwrap(),
+            quote.get_ticker().unwrap(),
+            Some(chain),
+        ))
     }
 
     /// Get the topic name for a given pair info as a string
