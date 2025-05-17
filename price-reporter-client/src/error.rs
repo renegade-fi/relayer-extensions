@@ -3,7 +3,7 @@
 use thiserror::Error;
 
 /// Error type for price reporter operations
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum PriceReporterClientError {
     /// Setup error
     #[error("Setup error: {0}")]

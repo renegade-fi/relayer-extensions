@@ -79,7 +79,8 @@ impl Server {
         let eth_price = BigDecimal::from_f64(eth_price_f64)
             .ok_or(AuthServerError::gas_sponsorship(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
 
-        let buy_token_price = self.price_reporter_client.get_nominal_price(&buy_mint).await?;
+        let buy_token_price =
+            self.price_reporter_client.get_nominal_price(&buy_mint, self.chain).await?;
 
         let conversion_rate = eth_price / buy_token_price;
 

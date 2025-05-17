@@ -35,11 +35,14 @@ impl Indexer {
         // fees first
         let mut prices = HashMap::new();
         for mint in mints.into_iter() {
-            let maybe_price = self.relayer_client.get_binance_price(&mint).await?;
-            if let Some(price) = maybe_price {
-                prices.insert(mint, price);
-            } else {
-                warn!("{}: no price", mint);
+            let maybe_price = self.price_reporter.get_price(&mint, self.chain).await;
+            match maybe_price {
+                Ok(price) => {
+                    prices.insert(mint, price);
+                },
+                Err(e) => {
+                    warn!("{}: error getting price: {e}", mint);
+                },
             }
         }
 

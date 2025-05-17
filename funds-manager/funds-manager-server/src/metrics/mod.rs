@@ -1,8 +1,11 @@
 //! General metrics recording functionality
 
-use alloy::providers::DynProvider;
+use std::sync::Arc;
 
-use crate::{helpers::build_provider, relayer_client::RelayerClient};
+use alloy::providers::DynProvider;
+use price_reporter_client::PriceReporterClient;
+
+use crate::helpers::build_provider;
 
 pub mod cost;
 pub mod labels;
@@ -11,17 +14,17 @@ pub mod labels;
 /// metrics.
 #[derive(Clone)]
 pub struct MetricsRecorder {
-    /// Client for interacting with the relayer
-    pub relayer_client: RelayerClient,
+    /// Client for interacting with the price reporter
+    pub price_reporter: Arc<PriceReporterClient>,
     /// Ethereum provider for querying chain events
     pub provider: DynProvider,
 }
 
 impl MetricsRecorder {
     /// Create a new metrics recorder
-    pub fn new(relayer_client: RelayerClient, rpc_url: &str) -> Self {
+    pub fn new(price_reporter: Arc<PriceReporterClient>, rpc_url: &str) -> Self {
         let provider = build_provider(rpc_url).expect("invalid RPC URL");
 
-        MetricsRecorder { relayer_client, provider }
+        MetricsRecorder { price_reporter, provider }
     }
 }

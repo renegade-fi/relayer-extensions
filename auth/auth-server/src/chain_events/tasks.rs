@@ -78,8 +78,10 @@ impl OnChainEventListenerExecutor {
                 OrderSide::Sell => Token::from_addr(&match_result.quote_mint),
             }
         };
-        let nominal_price =
-            self.price_reporter_client.get_nominal_price(&refund_asset.get_addr()).await?;
+        let nominal_price = self
+            .price_reporter_client
+            .get_nominal_price(&refund_asset.get_addr(), self.chain)
+            .await?;
 
         let nominal_amount = BigDecimal::from_u128(gas_sponsorship_info.refund_amount)
             .expect("u128 should be representable as BigDecimal");

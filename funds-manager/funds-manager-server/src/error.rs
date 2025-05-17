@@ -2,6 +2,7 @@
 
 use std::{error::Error, fmt::Display};
 
+use price_reporter_client::error::PriceReporterClientError;
 use warp::reject::Reject;
 
 use fireblocks_sdk::{apis::Error as FireblocksApiError, FireblocksError};
@@ -25,6 +26,8 @@ pub enum FundsManagerError {
     S3(String),
     /// An error with a JSON-RPC request
     JsonRpc(String),
+    /// An error with the price reporter
+    PriceReporter(PriceReporterClientError),
     /// A miscellaneous error
     Custom(String),
 }
@@ -89,6 +92,7 @@ impl Display for FundsManagerError {
             FundsManagerError::JsonRpc(e) => write!(f, "JSON-RPC error: {}", e),
             FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
+            FundsManagerError::PriceReporter(e) => write!(f, "Price reporter error: {}", e),
         }
     }
 }
@@ -104,6 +108,12 @@ impl<T> From<FireblocksApiError<T>> for FundsManagerError {
 impl From<FireblocksError> for FundsManagerError {
     fn from(error: FireblocksError) -> Self {
         FundsManagerError::Fireblocks(error.to_string())
+    }
+}
+
+impl From<PriceReporterClientError> for FundsManagerError {
+    fn from(error: PriceReporterClientError) -> Self {
+        FundsManagerError::PriceReporter(error)
     }
 }
 

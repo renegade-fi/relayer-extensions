@@ -1,5 +1,6 @@
 //! The worker implementation for the on-chain event listener
 use price_reporter_client::PriceReporterClient;
+use renegade_common::types::chain::Chain;
 use std::{sync::Arc, thread::Builder};
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
@@ -24,6 +25,7 @@ impl OnChainEventListener {
         rate_limiter: AuthServerRateLimiter,
         price_reporter_client: Arc<PriceReporterClient>,
         gas_cost_sampler: Arc<GasCostSampler>,
+        chain: Chain,
     ) -> Result<Self, OnChainEventListenerError> {
         let executor = OnChainEventListenerExecutor::new(
             config,
@@ -31,6 +33,7 @@ impl OnChainEventListener {
             rate_limiter,
             price_reporter_client,
             gas_cost_sampler,
+            chain,
         );
         Ok(Self { executor: Some(executor), executor_handle: None })
     }

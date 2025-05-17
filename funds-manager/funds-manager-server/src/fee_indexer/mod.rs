@@ -1,6 +1,7 @@
 //! The indexer handles the indexing and redemption of fee notes
 
 use aws_config::SdkConfig as AwsConfig;
+use price_reporter_client::PriceReporterClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
@@ -25,6 +26,8 @@ pub(crate) struct Indexer {
     pub chain_id: u64,
     /// The chain this indexer targets
     pub chain: Chain,
+    /// The price reporter client
+    pub price_reporter: Arc<PriceReporterClient>,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
     /// The darkpool client
@@ -51,6 +54,7 @@ impl Indexer {
         db_pool: Arc<DbPool>,
         relayer_client: RelayerClient,
         custody_client: CustodyClient,
+        price_reporter: Arc<PriceReporterClient>,
     ) -> Self {
         Indexer {
             chain_id,
@@ -61,6 +65,7 @@ impl Indexer {
             relayer_client,
             aws_config,
             custody_client,
+            price_reporter,
         }
     }
 
