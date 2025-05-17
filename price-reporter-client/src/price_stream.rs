@@ -15,6 +15,7 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use renegade_api::websocket::WebsocketMessage;
+use renegade_common::types::chain::Chain;
 use serde::Deserialize;
 use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -99,12 +100,12 @@ pub struct MultiPriceStream {
 impl MultiPriceStream {
     /// Create a new multi-price stream, starting the subscription to the price
     /// topics
-    pub fn new(ws_url: String, mints: Vec<String>) -> Self {
+    pub fn new(ws_url: String, chain_mints: Vec<(Chain, String)>) -> Self {
         let inner = Arc::new(MultiPriceStreamState::new());
         let inner_clone = inner.clone();
 
         tokio::spawn(async move {
-            Self::run_websocket_loop(inner_clone, ws_url, mints).await;
+            Self::run_websocket_loop(inner_clone, ws_url, chain_mints).await;
         });
 
         Self { inner }
@@ -130,10 +131,10 @@ impl MultiPriceStream {
     async fn run_websocket_loop(
         state: Arc<MultiPriceStreamState>,
         ws_url: String,
-        mints: Vec<String>,
+        chain_mints: Vec<(Chain, String)>,
     ) {
         loop {
-            if let Err(e) = Self::stream_prices(state.clone(), &ws_url, &mints).await {
+            if let Err(e) = Self::stream_prices(state.clone(), &ws_url, &chain_mints).await {
                 error!("Error streaming prices: {e}");
             }
 
@@ -147,9 +148,9 @@ impl MultiPriceStream {
     async fn stream_prices(
         state: Arc<MultiPriceStreamState>,
         ws_url: &str,
-        mints: &[String],
+        chain_mints: &[(Chain, String)],
     ) -> Result<(), PriceReporterClientError> {
-        let read = connect_and_subscribe(ws_url, mints).await?;
+        let read = connect_and_subscribe(ws_url, chain_mints).await?;
         state.set_connected(true);
         Self::handle_price_updates(read, state).await
     }
@@ -185,12 +186,12 @@ impl MultiPriceStream {
 /// of the given token mints, returning the read stream
 async fn connect_and_subscribe(
     ws_url: &str,
-    mints: &[String],
+    chain_mints: &[(Chain, String)],
 ) -> Result<WsReadStream, PriceReporterClientError> {
     let (mut write, read) = ws_connect(ws_url).await?;
 
-    for mint in mints {
-        let topic = construct_price_topic(mint);
+    for (chain, mint) in chain_mints {
+        let topic = construct_price_topic(mint, *chain);
         let message = WebsocketMessage::Subscribe { topic };
         let message_ser = Message::text(
             serde_json::to_string(&message).map_err(PriceReporterClientError::parsing)?,

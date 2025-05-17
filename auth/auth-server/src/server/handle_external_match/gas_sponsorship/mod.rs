@@ -213,7 +213,7 @@ impl Server {
         let base_token = Token::from_addr(&base_mint);
         let base_amount_f64 = base_token.convert_to_decimal(base_amount);
 
-        let expected_price = self.price_reporter_client.get_price(&base_mint).await?;
+        let expected_price = self.price_reporter_client.get_price(&base_mint, self.chain).await?;
         Ok(expected_price * base_amount_f64)
     }
 }

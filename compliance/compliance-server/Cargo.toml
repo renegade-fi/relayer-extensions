@@ -13,7 +13,7 @@ compliance-api = { path = "../compliance-api" }
 diesel = { workspace = true, features = ["postgres", "r2d2"] }
 
 # === Renegade Dependencies === #
-renegade-util = { workspace = true }
+renegade-util = { workspace = true, features = [ "telemetry" ] }
 
 # === Misc === #
 clap = { version = "4.5", features = ["derive", "env"] }

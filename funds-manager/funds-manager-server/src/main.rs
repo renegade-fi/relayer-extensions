@@ -545,7 +545,7 @@ fn backwards_compatibility_routes(
         .and(with_hmac_auth(server.clone()))
         .map(with_json_body::<WithdrawToHotWalletRequest>)
         .and_then(identity)
-        .and(with_server(server.clone()))
+        .and(with_server(server))
         .and_then(move |req: WithdrawToHotWalletRequest, server: Arc<Server>| {
             withdraw_from_vault_handler(arb_chain, req, server)
         });
