@@ -306,11 +306,12 @@ pub fn setup_all_token_remaps(
         )),
         // If a token remap path is provided, use it
         Some(path) => {
+            set_canonical_exchange_map(Some(path.clone()), chains[0])?;
             setup_token_remaps(Some(path), chains[0]).map_err(err_str!(ServerError::TokenRemap))
         },
         // Otherwise, fetch remap from default location
         None => chains.iter().try_for_each(|chain| {
-            set_canonical_exchange_map(*chain);
+            set_canonical_exchange_map(None /* remap file */, *chain)?;
             setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
         }),
     }

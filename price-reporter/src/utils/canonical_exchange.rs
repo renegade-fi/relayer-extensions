@@ -11,8 +11,8 @@ use std::{
 };
 
 use renegade_common::types::{chain::Chain, exchange::Exchange};
-use renegade_config::fetch_remap_from_repo;
-use renegade_util::concurrency::RwStatic;
+use renegade_config::{fetch_remap_from_repo, parse_remap_from_file};
+use renegade_util::{concurrency::RwStatic, err_str};
 
 use crate::{errors::ServerError, utils::get_token_and_chain};
 
@@ -56,8 +56,17 @@ pub fn get_canonical_exchanges() -> Vec<Exchange> {
 
 /// Set the static mapping of token tickers to the canonical exchange to use as
 /// a price source
-pub fn set_canonical_exchange_map(chain: Chain) {
-    let map = fetch_remap_from_repo(chain).unwrap();
+pub fn set_canonical_exchange_map(
+    remap_file: Option<String>,
+    chain: Chain,
+) -> Result<(), ServerError> {
+    let map = if let Some(file) = remap_file {
+        parse_remap_from_file(file)
+    } else {
+        fetch_remap_from_repo(chain)
+    }
+    .map_err(err_str!(ServerError::TokenRemap))?;
+
     let chain_canonical_exchange_map = map.get_canonical_exchange_map();
 
     let mut global_canonical_exchange_map = write_canonical_exchange_map();
@@ -65,6 +74,8 @@ pub fn set_canonical_exchange_map(chain: Chain) {
     // We extend to effectively merge the two maps. This is safe because we
     // assume each ticker has one canonical exchange.
     global_canonical_exchange_map.extend(chain_canonical_exchange_map);
+
+    Ok(())
 }
 
 /// Returns a read lock guard to the canonical exchange map
