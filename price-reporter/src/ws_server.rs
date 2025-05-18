@@ -228,6 +228,7 @@ impl GlobalPriceStreams {
         mut pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
+        let requires_quote_conversion = requires_quote_conversion(&pair_info.exchange);
         // Replace the `Renegade` exchange with `Binance`
         if pair_info.exchange == Exchange::Renegade {
             let exchange = Exchange::Binance;
@@ -237,7 +238,7 @@ impl GlobalPriceStreams {
 
         let exchange = pair_info.exchange;
         let price_rx = self.get_or_create_price_receiver(pair_info, config.clone()).await?;
-        let stream = if requires_quote_conversion(&exchange) {
+        let stream = if requires_quote_conversion {
             let conversion_rx = self.quote_conversion_stream(exchange, config).await?;
             PriceStream::new_with_conversion(price_rx.into(), conversion_rx.into())
         } else {

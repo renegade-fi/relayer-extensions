@@ -141,8 +141,9 @@ impl Stream for PriceStream {
         };
 
         // Divide main price by conversion price
-        // Practically this will be [USDT / BASE] * [USDC / USDT] = USDC / BASE
-        let converted_price = main_price * conversion_price;
+        // Practically this will be [USDT / BASE] / [USDT / USDC] = USDC / BASE
+        let converted_price =
+            if conversion_price == 0.0 { 0.0 } else { main_price / conversion_price };
         Poll::Ready(Some(converted_price))
     }
 }
