@@ -11,8 +11,7 @@ use renegade_util::err_str;
 use crate::{
     errors::ServerError,
     init_default_price_streams,
-    pair_info::PairInfo,
-    utils::{setup_all_token_remaps, UrlParams},
+    utils::{setup_all_token_remaps, PairInfo, UrlParams},
     ws_server::GlobalPriceStreams,
 };
 

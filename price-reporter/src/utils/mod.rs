@@ -12,7 +12,7 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
-    token::{read_token_remaps, Token},
+    token::{default_exchange_stable as _default_exchange_stable, read_token_remaps, Token},
     Price,
 };
 use renegade_config::setup_token_remaps;
@@ -34,8 +34,13 @@ use tracing_subscriber::{
 };
 use tungstenite::Message;
 
-use crate::pair_info::PairInfo;
 use crate::{errors::ServerError, http_server::routes::Handler};
+
+mod canonical_exchange;
+mod pair_info;
+
+pub use canonical_exchange::{get_canonical_exchanges, set_canonical_exchange_map};
+pub use pair_info::PairInfo;
 
 // ----------
 // | CONSTS |
@@ -270,12 +275,6 @@ pub fn get_price_topic_str(topic: &PriceTopic) -> String {
     format!("{}-{}-{}", topic.0, topic.1, topic.2)
 }
 
-/// Whether the exchange requires quote conversion
-pub fn requires_quote_conversion(exchange: &Exchange) -> bool {
-    // Only Renegade exchange requires quote conversion
-    exchange == &Exchange::Renegade
-}
-
 /// Get all the topics that are subscribed to in a `PriceStreamMap`
 pub fn get_subscribed_topics(subscriptions: &PriceStreamMap) -> Vec<String> {
     subscriptions.keys().map(get_price_topic_str).collect_vec()
@@ -307,11 +306,20 @@ pub fn setup_all_token_remaps(
         )),
         // If a token remap path is provided, use it
         Some(path) => {
+            set_canonical_exchange_map(Some(path.clone()), chains[0])?;
             setup_token_remaps(Some(path), chains[0]).map_err(err_str!(ServerError::TokenRemap))
         },
         // Otherwise, fetch remap from default location
         None => chains.iter().try_for_each(|chain| {
+            set_canonical_exchange_map(None /* remap file */, *chain)?;
             setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
         }),
     }
+}
+
+/// Get the default stable token on the given chain
+pub fn default_exchange_stable(exchange: &Exchange, chain: Chain) -> Token {
+    let stable = _default_exchange_stable(exchange);
+    let ticker = stable.get_ticker().unwrap();
+    Token::from_ticker_on_chain(ticker.as_str(), chain)
 }

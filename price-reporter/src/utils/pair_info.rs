@@ -4,17 +4,24 @@
 //! contrast, `PriceTopic` is a tuple of (Exchange, Token, Token) that uses
 //! addresses for uniqueness. This is necessary in a multi-chain environment
 //! where multiple addresses can map to the same ticker.
-
 use std::str::FromStr;
 
 use derivative::Derivative;
-use renegade_common::types::token::{default_chain, default_exchange_stable, USDC_TICKER};
-use renegade_common::types::{chain::Chain, exchange::Exchange, token::Token};
+use renegade_common::types::{
+    chain::Chain,
+    exchange::Exchange,
+    token::{default_chain, Token, USDC_TICKER},
+};
 use renegade_price_reporter::exchange::supports_pair;
 use renegade_util::err_str;
 
-use crate::errors::ServerError;
-use crate::utils::{get_token_and_chain, PriceTopic};
+use crate::{
+    errors::ServerError,
+    utils::{
+        canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
+        PriceTopic,
+    },
+};
 
 /// Used to uniquely identify a price stream
 #[derive(Derivative, Clone)]
@@ -41,14 +48,22 @@ impl PairInfo {
     /// exchange
     pub fn new_default_stable(exchange: Exchange, base_mint: &str) -> Self {
         let (base, chain) = get_token_and_chain(base_mint).unwrap();
-        let quote = default_exchange_stable(&exchange).get_ticker().unwrap();
-        let quote_token = Token::from_ticker_on_chain(quote.as_str(), chain);
+        let quote_token = default_exchange_stable(&exchange, chain);
+
         Self::new(
             exchange,
             base.get_ticker().unwrap(),
             quote_token.get_ticker().unwrap(),
             Some(chain),
         )
+    }
+
+    /// Derive a new pair info using the canonical exchange and its default
+    /// stable
+    pub fn new_canonical_exchange(base_mint: &str) -> Result<Self, ServerError> {
+        let canonical_exchange = get_canonical_exchange(base_mint)?;
+
+        Ok(Self::new_default_stable(canonical_exchange, base_mint))
     }
 
     /// Get the base token for a given pair info
@@ -60,6 +75,10 @@ impl PairInfo {
     pub fn quote_token(&self) -> Token {
         Token::from_ticker_on_chain(self.quote.as_str(), self.chain)
     }
+
+    // ---------------
+    // | Price Topic |
+    // ---------------
 
     /// Parse the pair info from a given topic
     pub fn from_topic(topic: &str) -> Result<Self, ServerError> {
@@ -110,6 +129,38 @@ impl PairInfo {
         }
 
         Ok(())
+    }
+
+    // --------------------
+    // | Quote Conversion |
+    // --------------------
+
+    /// Whether the pair info requires quote conversion
+    pub fn requires_quote_conversion(&self) -> Result<bool, ServerError> {
+        // We only convert if explicitly using Renegade topic
+        let is_renegade = self.exchange == Exchange::Renegade;
+
+        let base_mint = self.base_token().get_addr();
+        let canonical_exchange = get_canonical_exchange(&base_mint)?;
+
+        // If canonical exchange is Coinbase, we don't need to convert (USD == USDC)
+        let is_canonical_coinbase = canonical_exchange == Exchange::Coinbase;
+
+        // If the canonical exchange's default stable is USDC, we don't need to convert
+        let is_canonical_stable_usdc =
+            default_exchange_stable(&canonical_exchange, self.chain).get_ticker().unwrap()
+                == USDC_TICKER;
+
+        Ok(is_renegade && !is_canonical_coinbase && !is_canonical_stable_usdc)
+    }
+
+    /// Get the pair info for the quote conversion pair
+    ///
+    /// This is just the price of USDC against the default stable of the
+    /// exchange.
+    pub fn get_conversion_pair(&self) -> PairInfo {
+        let usdc = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
+        Self::new_default_stable(self.exchange, usdc.get_addr().as_str())
     }
 }
 

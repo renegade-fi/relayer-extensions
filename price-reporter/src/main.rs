@@ -11,7 +11,6 @@ use std::{collections::HashSet, net::SocketAddr};
 
 use errors::ServerError;
 use http_server::HttpServer;
-use pair_info::PairInfo;
 use renegade_common::types::{
     exchange::Exchange,
     token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
@@ -20,12 +19,13 @@ use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging};
+use utils::{
+    get_canonical_exchanges, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
+};
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
 mod http_server;
-mod pair_info;
 mod utils;
 mod ws_server;
 
@@ -101,7 +101,19 @@ pub fn init_default_price_streams(
     let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
 
     for base_token in get_all_tokens() {
-        // Skip stables
+        // Initalize USDC streams to be used for quote conversion
+        if base_token.get_ticker().unwrap() == USDC_TICKER {
+            for exchange in get_canonical_exchanges() {
+                init_price_stream(
+                    base_token.clone(),
+                    exchange,
+                    global_price_streams,
+                    config.clone(),
+                )?;
+            }
+            continue;
+        }
+        // Skip other stables
         if STABLECOIN_TICKERS.contains(&base_token.get_ticker().unwrap().as_str()) {
             continue;
         }
