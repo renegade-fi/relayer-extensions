@@ -200,7 +200,7 @@ async fn main() {
     let system_clock = SystemClock::new().await;
 
     // Create the server
-    let server_inner = Server::new(args, &system_clock).await.expect("Failed to create server");
+    let server_inner = Server::setup(args, &system_clock).await.expect("Failed to create server");
     let server = Arc::new(server_inner);
 
     // --- Management Routes --- //

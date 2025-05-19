@@ -23,10 +23,62 @@
 use std::time::Duration;
 
 use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
+use tracing::warn;
 use user_rate_limiter::ApiTokenRateLimiter;
+
+use crate::ApiError;
+
+use super::Server;
 
 mod gas_sponsorship_rate_limiter;
 mod user_rate_limiter;
+
+// -----------------------------
+// | Server Rate Limit Methods |
+// -----------------------------
+
+impl Server {
+    /// Check the quote rate limiter
+    pub async fn check_quote_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
+        if !self.rate_limiter.check_quote_token(key_description.clone()).await {
+            warn!("Quote rate limit exceeded for key: {key_description}");
+            return Err(ApiError::TooManyRequests);
+        }
+        Ok(())
+    }
+
+    /// Check the bundle rate limiter
+    pub async fn check_bundle_rate_limit(
+        &self,
+        key_description: String,
+        shared: bool,
+    ) -> Result<(), ApiError> {
+        if !self.rate_limiter.check_bundle_token(key_description.clone(), shared).await {
+            warn!("Bundle rate limit exceeded for key: {key_description}");
+            return Err(ApiError::TooManyRequests);
+        }
+        Ok(())
+    }
+
+    /// Check the gas sponsorship rate limiter
+    ///
+    /// Returns a boolean indicating whether or not the gas sponsorship rate
+    /// limit has been exceeded.
+    pub async fn check_gas_sponsorship_rate_limit(&self, key_description: String) -> bool {
+        if !self.rate_limiter.check_gas_sponsorship(key_description.clone()).await {
+            warn!(
+                key_description = key_description.as_str(),
+                "Gas sponsorship rate limit exceeded for key: {key_description}"
+            );
+            return false;
+        }
+        true
+    }
+}
+
+// ----------------
+// | Rate Limiter |
+// ----------------
 
 /// The bundle rate limiter
 #[derive(Clone)]
