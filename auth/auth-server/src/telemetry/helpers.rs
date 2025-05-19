@@ -19,7 +19,8 @@ use tracing::warn;
 use crate::{
     error::AuthServerError,
     server::{
-        handle_external_match::sponsorAtomicMatchSettleWithRefundOptionsCall, helpers::get_selector,
+        gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall,
+        helpers::get_selector,
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
