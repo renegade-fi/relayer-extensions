@@ -5,6 +5,20 @@ name: Clippy Check
 jobs:
   clippy-check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [
+          "auth-server",
+          "auth-server-api",
+          "compliance-server",
+          "compliance-api",
+          "renegade-dealer",
+          "renegade-dealer-api",
+          "funds-manager-api",
+          "funds-manager",
+          "price-reporter",
+          "price-reporter-client"
+        ]
     steps:
       - uses: actions/checkout@v1
       - name: Install Protoc
@@ -12,13 +26,16 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: rustup component add clippy
-      - uses: actions-rs/clippy-check@v1
+      - name: Run clippy on ${{ matrix.package }}
+        uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: >
+            -p ${{ matrix.package }}
             --tests
             --benches
-            --all-features -- 
+            -- 
+            --no-deps
             -D warnings 
             -D unsafe_code 
             -D missing_docs

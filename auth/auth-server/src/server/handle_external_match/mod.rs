@@ -539,7 +539,11 @@ impl Server {
             record_quote_not_found(key.clone(), &base_mint);
 
             // Record a zero fill ratio
-            let price_f64 = self_clone.price_reporter_client.get_price(&base_mint).await.unwrap();
+            let price_f64 = self_clone
+                .price_reporter_client
+                .get_price(&base_mint, self_clone.chain)
+                .await
+                .unwrap();
             let price = FixedPoint::from_f64_round_down(price_f64);
             let relayer_fee = FixedPoint::zero();
             let quote_amt = order.get_quote_amount(price, relayer_fee);
