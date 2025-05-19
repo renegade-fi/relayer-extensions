@@ -13,6 +13,7 @@ use auth_server_api::{
 };
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
+use rand::Rng;
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
     ExternalQuoteRequest, ExternalQuoteResponse, MalleableExternalMatchResponse,
@@ -561,6 +562,12 @@ impl Server {
     }
 
     // --- Bundle Tracking --- //
+
+    /// Determines if the current request should be sampled for metrics
+    /// collection
+    pub fn should_sample_metrics(&self) -> bool {
+        rand::thread_rng().gen_bool(self.metrics_sampling_rate)
+    }
 
     /// Handle a no quote found response
     fn handle_no_quote_found(&self, key: &str, req: &ExternalQuoteRequest) {
