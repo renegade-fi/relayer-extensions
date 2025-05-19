@@ -1,6 +1,9 @@
 //! Handles key management requests
 
-use crate::models::NewApiKey;
+use crate::{
+    models::NewApiKey,
+    server::helpers::{aes_encrypt, empty_json_reply},
+};
 use auth_server_api::CreateApiKeyRequest;
 use bytes::Bytes;
 use http::HeaderMap;
@@ -9,10 +12,7 @@ use warp::{filters::path::FullPath, reject::Rejection, reply::Reply};
 
 use crate::ApiError;
 
-use super::{
-    helpers::{aes_encrypt, empty_json_reply},
-    Server,
-};
+use super::Server;
 
 impl Server {
     /// Add a new API key to the database
