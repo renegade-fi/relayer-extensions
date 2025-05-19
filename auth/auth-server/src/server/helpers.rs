@@ -4,16 +4,10 @@ use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{keccak256, Address, Bytes as AlloyBytes, Signature, U256};
 use base64::{engine::general_purpose, Engine as _};
-use bytes::Bytes;
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
-use http::{header::CONTENT_LENGTH, HeaderMap, Response};
 use rand::{thread_rng, Rng};
 use renegade_api::http::external_match::SignedExternalQuote;
-use serde::Serialize;
-use serde_json::json;
-use tracing::warn;
 use uuid::Uuid;
-use warp::reply::Reply;
 
 use crate::error::AuthServerError;
 
@@ -27,16 +21,9 @@ const NONCE_SIZE: usize = 12; // 12 bytes, 96 bits
 /// The size of a UUID in bytes
 const UUID_SIZE: usize = 16;
 
-/// The header name for the SDK version
-const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
-
-/// The default SDK version to use if the header is not set
-const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
-
-/// Construct empty json reply
-pub fn empty_json_reply() -> impl Reply {
-    warp::reply::json(&json!({}))
-}
+// ----------------------
+// | Encryption Helpers |
+// ----------------------
 
 /// AES encrypt a value
 ///
@@ -66,6 +53,10 @@ pub fn aes_decrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerErr
     let plaintext = String::from_utf8(plaintext_bytes).map_err(AuthServerError::decryption)?;
     Ok(plaintext)
 }
+
+// ---------------------------
+// | Gas Sponsorship Helpers |
+// ---------------------------
 
 /// Generate a random nonce for gas sponsorship, signing it along with
 /// the provided refund address and the refund amount
@@ -113,6 +104,10 @@ pub fn sign_message(
     Ok(sig_bytes)
 }
 
+// ----------------
+// | Misc Helpers |
+// ----------------
+
 /// Get the function selector from calldata
 pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
     calldata
@@ -120,19 +115,6 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
         .ok_or(AuthServerError::serde("expected selector"))?
         .try_into()
         .map_err(AuthServerError::serde)
-}
-
-/// Overwrite the body of an HTTP response
-pub fn overwrite_response_body<T: Serialize>(
-    resp: &mut Response<Bytes>,
-    body: T,
-) -> Result<(), AuthServerError> {
-    let body_bytes = Bytes::from(serde_json::to_vec(&body).map_err(AuthServerError::serde)?);
-
-    resp.headers_mut().insert(CONTENT_LENGTH, body_bytes.len().into());
-    *resp.body_mut() = body_bytes;
-
-    Ok(())
 }
 
 /// Generate a UUID for a signed quote
@@ -144,36 +126,9 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
     Uuid::from_bytes(uuid_bytes)
 }
 
-/// Parse the SDK version from the given headers.
-/// If unset or malformed, returns an empty string.
-pub fn get_sdk_version(headers: &HeaderMap) -> String {
-    headers
-        .get(SDK_VERSION_HEADER)
-        .map(|v| v.to_str().unwrap_or_default())
-        .unwrap_or(SDK_VERSION_DEFAULT)
-        .to_string()
-}
-
-/// Log a non-200 response from the relayer for the given request
-pub fn log_unsuccessful_relayer_request(
-    resp: &Response<Bytes>,
-    key_description: &str,
-    path: &str,
-    req_body: &[u8],
-    headers: &HeaderMap,
-) {
-    let status = resp.status();
-    let text = String::from_utf8_lossy(resp.body()).to_string();
-    let req_body = String::from_utf8_lossy(req_body).to_string();
-    let sdk_version = get_sdk_version(headers);
-    warn!(
-        key_description = key_description,
-        path = path,
-        request_body = req_body,
-        sdk_version = sdk_version,
-        "Non-200 response from relayer: {status}: {text}",
-    );
-}
+// ---------
+// | Tests |
+// ---------
 
 #[cfg(test)]
 mod tests {

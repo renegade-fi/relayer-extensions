@@ -13,7 +13,6 @@ use std::{iter, sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
-use crate::helpers::create_darkpool_client;
 use crate::{
     error::AuthServerError,
     telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
@@ -22,6 +21,7 @@ use crate::{
 use aes_gcm::{Aes128Gcm, KeyInit};
 use alloy::hex;
 use alloy::signers::k256::ecdsa::SigningKey;
+use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::Address;
 use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
@@ -50,6 +50,7 @@ use renegade_common::types::{
 };
 use renegade_config::setup_token_remaps;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
+use renegade_darkpool_client::client::DarkpoolClientConfig;
 use renegade_darkpool_client::DarkpoolClient;
 use renegade_system_clock::SystemClock;
 use renegade_util::{
@@ -61,9 +62,10 @@ use tokio::sync::RwLock;
 use tracing::{error, warn};
 use uuid::Uuid;
 
+/// The interval at which we poll filter updates
+const DEFAULT_BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
 /// The duration for which the admin authentication is valid
 const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
-
 /// The timeout for connecting to Redis
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -128,7 +130,6 @@ impl Server {
             args.chain_id,
             args.rpc_url.clone(),
         )
-        .await
         .expect("failed to create darkpool client");
 
         // Set the external match fees & protocol fee
@@ -481,4 +482,21 @@ fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
         hex::decode(&args.gas_sponsor_address).map_err(AuthServerError::setup)?;
 
     Ok(Address::from_slice(&gas_sponsor_address_bytes))
+}
+
+/// Create a darkpool client with the provided configuration
+pub fn create_darkpool_client(
+    darkpool_address: String,
+    chain_id: Chain,
+    rpc_url: String,
+) -> Result<DarkpoolClient, String> {
+    // Create the client
+    DarkpoolClient::new(DarkpoolClientConfig {
+        darkpool_addr: darkpool_address,
+        chain: chain_id,
+        rpc_url,
+        private_key: PrivateKeySigner::random(),
+        block_polling_interval: DEFAULT_BLOCK_POLLING_INTERVAL,
+    })
+    .map_err(|e| format!("Failed to create darkpool client: {e}"))
 }
