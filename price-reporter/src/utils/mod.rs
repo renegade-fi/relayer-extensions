@@ -8,6 +8,7 @@ use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
 use itertools::Itertools;
 use matchit::Router;
+use renegade_common::types::token::USDC_TICKER;
 use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
@@ -319,6 +320,9 @@ pub fn setup_all_token_remaps(
 
 /// Get the default stable token on the given chain
 pub fn default_exchange_stable(exchange: &Exchange, chain: Chain) -> Token {
+    if exchange == &Exchange::Renegade {
+        return Token::from_ticker_on_chain(USDC_TICKER, chain);
+    }
     let stable = _default_exchange_stable(exchange);
     let ticker = stable.get_ticker().unwrap();
     Token::from_ticker_on_chain(ticker.as_str(), chain)
