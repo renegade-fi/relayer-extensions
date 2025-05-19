@@ -218,14 +218,15 @@ impl GlobalPriceStreams {
 
     /// Returns a tuple of (canonicalized pair info, requires quote conversion),
     /// if needed
-    fn normalize_pair_info(&self, pair_info: PairInfo) -> Result<PairInfo, ServerError> {
+    fn normalize_pair_info(&self, pair_info: PairInfo) -> Result<(PairInfo, bool), ServerError> {
         if pair_info.exchange != Exchange::Renegade {
-            return Ok(pair_info);
+            return Ok((pair_info, false));
         }
 
         let base_mint = pair_info.base_token().get_addr();
         let new_pair_info = PairInfo::new_canonical_exchange(&base_mint)?;
-        Ok(new_pair_info)
+        let requires_conversion = pair_info.requires_quote_conversion()?;
+        Ok((new_pair_info, requires_conversion))
     }
 
     /// Fetch a price stream for the given pair info from the global map
@@ -234,8 +235,8 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceStream, ServerError> {
-        let normalized_pair_info = self.normalize_pair_info(pair_info.clone())?;
-        let requires_conversion = normalized_pair_info.requires_quote_conversion()?;
+        let (normalized_pair_info, requires_conversion) =
+            self.normalize_pair_info(pair_info.clone())?;
 
         let price_rx =
             self.get_or_create_price_receiver(normalized_pair_info.clone(), config.clone()).await?;

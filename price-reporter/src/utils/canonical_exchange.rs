@@ -6,7 +6,7 @@
 //! We assume that each token has a single canonical exchange, which is
 //! chain-agnostic.
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -49,7 +49,7 @@ pub fn get_canonical_exchange(mint: &str) -> Result<Exchange, ServerError> {
 }
 
 /// Get all canonical exchanges
-pub fn get_canonical_exchanges() -> Vec<Exchange> {
+pub fn get_canonical_exchanges() -> HashSet<Exchange> {
     let map = read_canonical_exchange_map();
     map.values().copied().collect()
 }
