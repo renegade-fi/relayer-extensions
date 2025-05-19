@@ -2,10 +2,15 @@
 
 use std::time::Duration;
 
+use bytes::Bytes;
+use http::{header::CONTENT_LENGTH, Response as HttpResponse};
 use reqwest::{Client, Response};
 use serde::Serialize;
-
+use serde_json::json;
 use thiserror::Error;
+use warp::reply::Reply;
+
+use crate::error::AuthServerError;
 
 /// An error with the HTTP client
 #[derive(Debug, Error)]
@@ -30,6 +35,10 @@ impl HttpError {
         Self::Parsing(msg.to_string())
     }
 }
+
+// ------------
+// | Requests |
+// ------------
 
 /// Sends a basic GET request
 pub async fn send_get_request(url: &str, timeout_secs: u64) -> Result<Response, HttpError> {
@@ -76,4 +85,26 @@ pub async fn send_post_request<T: Serialize>(
     }
 
     Ok(response)
+}
+
+// ------------------
+// | Response Utils |
+// ------------------
+
+/// Construct empty json reply
+pub fn empty_json_reply() -> impl Reply {
+    warp::reply::json(&json!({}))
+}
+
+/// Overwrite the body of an HTTP response
+pub fn overwrite_response_body<T: Serialize>(
+    resp: &mut HttpResponse<Bytes>,
+    body: T,
+) -> Result<(), AuthServerError> {
+    let body_bytes = Bytes::from(serde_json::to_vec(&body).map_err(AuthServerError::serde)?);
+
+    resp.headers_mut().insert(CONTENT_LENGTH, body_bytes.len().into());
+    *resp.body_mut() = body_bytes;
+
+    Ok(())
 }
