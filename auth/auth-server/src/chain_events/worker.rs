@@ -6,10 +6,10 @@ use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
 use crate::{
+    bundle_store::BundleStore,
     server::{
         gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
     },
-    store::BundleStore,
 };
 
 use super::{

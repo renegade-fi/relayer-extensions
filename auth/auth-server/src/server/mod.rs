@@ -11,9 +11,9 @@ pub(crate) mod rate_limiter;
 
 use std::{iter, sync::Arc, time::Duration};
 
+use crate::bundle_store::BundleStore;
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use crate::helpers::create_darkpool_client;
-use crate::store::BundleStore;
 use crate::{
     error::AuthServerError,
     telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},

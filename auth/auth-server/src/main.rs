@@ -15,12 +15,12 @@
 #![feature(let_chains)]
 #![feature(duration_constructors)]
 
+mod bundle_store;
 mod chain_events;
 pub(crate) mod error;
 mod helpers;
 pub mod http_utils;
 mod server;
-mod store;
 mod telemetry;
 
 use renegade_common::types::chain::Chain;

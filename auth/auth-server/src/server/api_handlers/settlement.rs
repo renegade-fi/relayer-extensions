@@ -5,8 +5,8 @@ use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 
 use super::{get_sdk_version, Server};
+use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
-use crate::store::{helpers::generate_bundle_id, BundleContext};
 use crate::telemetry::helpers::extract_nullifier_from_match_bundle;
 
 impl Server {

@@ -5,7 +5,7 @@ use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
-use crate::{chain_events::listener::OnChainEventListenerExecutor, store::BundleContext};
+use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
     telemetry::{
