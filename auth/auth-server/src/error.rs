@@ -11,51 +11,54 @@ pub enum AuthServerError {
     /// API key inactive
     #[error("API key inactive")]
     ApiKeyInactive,
+    /// Bundle store error
+    #[error("Bundle store error: {0}")]
+    BundleStore(String),
+    /// A miscellaneous error
+    #[error("Error: {0}")]
+    Custom(String),
+    /// Darkpool client error
+    #[error("Darkpool client error: {0}")]
+    DarkpoolClient(String),
     /// Database connection error
     #[error("Database connection error: {0}")]
     DatabaseConnection(String),
-    /// Redis connection error
-    #[error("Redis connection error: {0}")]
-    RedisConnection(String),
-    /// Encryption error
-    #[error("Encryption error: {0}")]
-    Encryption(String),
     /// Decryption error
     #[error("Decryption error: {0}")]
     Decryption(String),
+    /// Encryption error
+    #[error("Encryption error: {0}")]
+    Encryption(String),
+    /// Gas cost sampler error
+    #[error("Gas cost sampler error: {0}")]
+    GasCostSampler(String),
+    /// Gas sponsorship error
+    #[error("Gas sponsorship error: {0}")]
+    GasSponsorship(String),
+    /// Price reporter error
+    #[error("Price reporter error: {0}")]
+    PriceReporter(#[from] PriceReporterClientError),
+    /// An error comparing quotes
+    #[error("Quote comparison error: {0}")]
+    QuoteComparison(String),
+    /// A rate limit error
+    #[error("Rate limited")]
+    RateLimit,
+    /// Redis connection error
+    #[error("Redis connection error: {0}")]
+    RedisConnection(String),
     /// Error serializing or deserializing a stored value
     #[error("Error serializing/deserializing a stored value: {0}")]
     Serde(String),
     /// Error setting up the auth server
     #[error("Error setting up the auth server: {0}")]
     Setup(String),
-    /// Unauthorized
-    #[error("Unauthorized: {0}")]
-    Unauthorized(String),
-    /// Gas sponsorship error
-    #[error("Gas sponsorship error: {0}")]
-    GasSponsorship(String),
     /// An error signing a message
     #[error("Signing error: {0}")]
     Signing(String),
-    /// An error comparing quotes
-    #[error("Quote comparison error: {0}")]
-    QuoteComparison(String),
-    /// A miscellaneous error
-    #[error("Error: {0}")]
-    Custom(String),
-    /// Price reporter error
-    #[error("Price reporter error: {0}")]
-    PriceReporter(#[from] PriceReporterClientError),
-    /// Darkpool client error
-    #[error("Darkpool client error: {0}")]
-    DarkpoolClient(String),
-    /// Gas cost sampler error
-    #[error("Gas cost sampler error: {0}")]
-    GasCostSampler(String),
-    /// Bundle store error
-    #[error("Bundle store error: {0}")]
-    BundleStore(String),
+    /// Unauthorized
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 impl AuthServerError {

@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use http::{Method, StatusCode};
 use renegade_api::http::external_match::AssembleExternalMatchRequest;
-use tracing::{instrument, warn};
+use tracing::instrument;
 use warp::{reject::Rejection, reply::Reply};
 
 use crate::{
@@ -50,7 +50,7 @@ impl Server {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &req_body, &headers);
+            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &headers);
             return Ok(res);
         }
 

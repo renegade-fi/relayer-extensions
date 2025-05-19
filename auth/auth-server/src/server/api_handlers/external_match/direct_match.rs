@@ -2,7 +2,6 @@
 
 use bytes::Bytes;
 use http::{Method, StatusCode};
-use renegade_api::http::external_match::AssembleExternalMatchRequest;
 use tracing::{instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -51,13 +50,7 @@ impl Server {
             record_relayer_request_500(key_description.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(
-                &resp,
-                &key_description,
-                path_str,
-                &req_body,
-                &headers,
-            );
+            log_unsuccessful_relayer_request(&resp, &key_description, path_str, &headers);
             return Ok(resp);
         }
 

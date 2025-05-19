@@ -3,28 +3,27 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-pub(crate) mod key_management;
-pub(crate) mod order_book;
+mod external_match;
+mod key_management;
+mod order_book;
 mod settlement;
 
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMalleableMatchResponse,
-    SponsoredMatchResponse, SponsoredQuoteResponse,
+    SponsoredMatchResponse,
 };
 use bytes::Bytes;
-use http::{HeaderMap, Method, Response, StatusCode};
+use external_match::RequestContext;
+use http::{HeaderMap, Response};
 use rand::Rng;
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
-    ExternalQuoteRequest, ExternalQuoteResponse, MalleableExternalMatchResponse,
+    MalleableExternalMatchResponse,
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_common::types::{token::Token, TimestampedPrice};
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
-use renegade_util::hex::biguint_to_hex_addr;
-use tracing::{error, info, instrument, warn};
-use uuid::Uuid;
-use warp::{reject::Rejection, reply::Reply};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, warn};
 
 use super::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
@@ -33,19 +32,11 @@ use super::gas_sponsorship::refund_calculation::{
 use super::helpers::generate_quote_uuid;
 use super::Server;
 use crate::error::AuthServerError;
-use crate::http_utils::overwrite_response_body;
-use crate::telemetry::helpers::{
-    calculate_implied_price, record_quote_not_found, record_relayer_request_500,
-};
-use crate::telemetry::labels::{
-    BASE_ASSET_METRIC_TAG, GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG,
-};
-use crate::telemetry::QUOTE_FILL_RATIO_IGNORE_THRESHOLD;
+use crate::telemetry::helpers::calculate_implied_price;
+use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
-    helpers::{record_endpoint_metrics, record_external_match_metrics, record_fill_ratio},
-    labels::{
-        EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
-    },
+    helpers::record_external_match_metrics,
+    labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG},
 };
 
 /// The header name for the SDK version
@@ -68,17 +59,14 @@ pub fn log_unsuccessful_relayer_request(
     resp: &Response<Bytes>,
     key_description: &str,
     path: &str,
-    req_body: &[u8],
     headers: &HeaderMap,
 ) {
     let status = resp.status();
     let text = String::from_utf8_lossy(resp.body()).to_string();
-    let req_body = String::from_utf8_lossy(req_body).to_string();
     let sdk_version = get_sdk_version(headers);
     warn!(
         key_description = key_description,
         path = path,
-        request_body = req_body,
         sdk_version = sdk_version,
         "Non-200 response from relayer: {status}: {text}",
     );
@@ -88,331 +76,9 @@ pub fn log_unsuccessful_relayer_request(
 // | Server Impl |
 // ---------------
 
-// TODO(@joeykraut): Move individual handlers to their own files
-
 /// Handle a proxied request
 impl Server {
-    /// Handle an external quote request
-    #[instrument(skip(self, path, headers, body))]
-    pub async fn handle_external_quote_request(
-        &self,
-        path: warp::path::FullPath,
-        headers: warp::hyper::HeaderMap,
-        body: Bytes,
-        query_str: String,
-    ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
-        self.check_quote_rate_limit(key_desc.clone()).await?;
-
-        // If necessary, ensure that the exact output amount requested in the order is
-        // respected by any gas sponsorship applied to the relayer's quote
-        let (external_quote_req, gas_sponsorship_info) = self
-            .maybe_apply_gas_sponsorship_to_quote_request(key_desc.clone(), &body, &query_str)
-            .await?;
-
-        // Send the request to the relayer
-        let req_body = serde_json::to_vec(&external_quote_req).map_err(AuthServerError::serde)?;
-        let mut resp = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
-
-        let status = resp.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_desc.clone(), path_str.to_string());
-        }
-        if status == StatusCode::NO_CONTENT {
-            self.handle_no_quote_found(&key_desc, &external_quote_req);
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &req_body, &headers);
-            return Ok(resp);
-        }
-
-        let sponsored_quote_response =
-            self.maybe_apply_gas_sponsorship_to_quote_response(resp.body(), gas_sponsorship_info)?;
-        overwrite_response_body(&mut resp, sponsored_quote_response.clone())?;
-
-        let server_clone = self.clone();
-        tokio::spawn(async move {
-            // Cache the gas sponsorship info for the quote in Redis if it exists
-            if let Err(e) =
-                server_clone.cache_quote_gas_sponsorship_info(&sponsored_quote_response).await
-            {
-                error!("Error caching quote gas sponsorship info: {e}");
-            }
-
-            // Log the quote response & emit metrics
-            if let Err(e) = server_clone.handle_quote_response(
-                key_desc,
-                &external_quote_req,
-                &headers,
-                &sponsored_quote_response,
-            ) {
-                warn!("Error handling quote: {e}");
-            }
-        });
-
-        Ok(resp)
-    }
-
-    /// Handle an external quote-assembly request
-    #[instrument(skip(self, path, headers, body))]
-    pub async fn handle_external_quote_assembly_request(
-        &self,
-        path: warp::path::FullPath,
-        headers: warp::hyper::HeaderMap,
-        body: Bytes,
-        query_str: String,
-    ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
-
-        // Check the bundle rate limit
-        let mut req: AssembleExternalMatchRequest =
-            serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
-        self.check_bundle_rate_limit(key_desc.clone(), req.allow_shared).await?;
-
-        // Update the request to remove the effects of gas sponsorship, if
-        // necessary
-        let gas_sponsorship_info =
-            self.maybe_update_assembly_request_with_gas_sponsorship(&mut req).await?;
-
-        // Serialize the potentially updated request body
-        let req_body = serde_json::to_vec(&req).map_err(AuthServerError::serde)?;
-
-        // Send the request to the relayer
-        let mut res = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
-
-        let status = res.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_desc.clone(), path_str.to_string());
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &req_body, &headers);
-            return Ok(res);
-        }
-
-        // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_match_resp =
-            self.maybe_apply_gas_sponsorship_to_match_response(res.body(), gas_sponsorship_info)?;
-        overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
-
-        // Record the bundle context in the store
-        let bundle_id = self
-            .write_bundle_context(
-                &sponsored_match_resp,
-                &headers,
-                key_desc.clone(),
-                req.allow_shared,
-            )
-            .await?;
-
-        let server_clone = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = server_clone.handle_quote_assembly_bundle_response(
-                &key_desc,
-                &req,
-                &headers,
-                &sponsored_match_resp,
-                &bundle_id,
-            ) {
-                warn!("Error handling bundle: {e}");
-            };
-        });
-
-        Ok(res)
-    }
-
-    /// Handle an external malleable quote assembly request
-    pub async fn handle_external_malleable_quote_assembly_request(
-        &self,
-        path: warp::path::FullPath,
-        headers: warp::hyper::HeaderMap,
-        body: Bytes,
-        query_str: String,
-    ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
-
-        // Check the bundle rate limit
-        let mut req: AssembleExternalMatchRequest =
-            serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
-        self.check_bundle_rate_limit(key_desc.clone(), req.allow_shared).await?;
-
-        // Update the request to remove the effects of gas sponsorship, if
-        // necessary
-        let gas_sponsorship_info =
-            self.maybe_update_assembly_request_with_gas_sponsorship(&mut req).await?;
-
-        // Serialize the potentially updated request body
-        let req_body = serde_json::to_vec(&req).map_err(AuthServerError::serde)?;
-
-        // Send the request to the relayer
-        let mut res = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
-
-        let status = res.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_desc.clone(), path_str.to_string());
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &req_body, &headers);
-            return Ok(res);
-        }
-
-        // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_match_resp = self.maybe_apply_gas_sponsorship_to_malleable_match_bundle(
-            res.body(),
-            gas_sponsorship_info,
-        )?;
-        overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
-
-        // TODO: record bundle metrics
-        Ok(res)
-    }
-
-    /// Handle an external match request
-    #[instrument(skip(self, path, headers, body))]
-    pub async fn handle_external_match_request(
-        &self,
-        path: warp::path::FullPath,
-        headers: warp::hyper::HeaderMap,
-        body: Bytes,
-        query_str: String,
-    ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_description = self.authorize_request(path_str, &query_str, &headers, &body).await?;
-
-        // Direct matches are always shared
-        self.check_bundle_rate_limit(key_description.clone(), true /* shared */).await?;
-
-        let (external_match_req, gas_sponsorship_info) = self
-            .maybe_apply_gas_sponsorship_to_match_request(
-                key_description.clone(),
-                &body,
-                &query_str,
-            )
-            .await?;
-
-        let req_body = serde_json::to_vec(&external_match_req).map_err(AuthServerError::serde)?;
-
-        // Send the request to the relayer, potentially sponsoring the gas costs
-
-        let mut resp = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
-
-        let status = resp.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_description.clone(), path_str.to_string());
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(
-                &resp,
-                &key_description,
-                path_str,
-                &req_body,
-                &headers,
-            );
-            return Ok(resp);
-        }
-
-        let sponsored_match_resp =
-            self.maybe_apply_gas_sponsorship_to_match_response(resp.body(), gas_sponsorship_info)?;
-
-        overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
-
-        // Record the bundle context in the store
-        let bundle_id = self
-            .write_bundle_context(
-                &sponsored_match_resp,
-                &headers,
-                key_description.clone(),
-                true, // shared
-            )
-            .await?;
-
-        // Watch the bundle for settlement
-        let server_clone = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = server_clone.handle_direct_match_bundle_response(
-                &key_description,
-                &external_match_req,
-                &headers,
-                &sponsored_match_resp,
-                &bundle_id,
-            ) {
-                warn!("Error handling bundle: {e}");
-            };
-        });
-
-        Ok(resp)
-    }
-
     // --- Sponsorship --- //
-
-    /// Potentially apply gas sponsorship to the given quote request,
-    /// ensuring that any exact output amount requested in the order is
-    /// respected.
-    ///
-    /// Returns the quote request, alongside the generated gas sponsorship info,
-    /// if any.
-    async fn maybe_apply_gas_sponsorship_to_quote_request(
-        &self,
-        key_desc: String,
-        req_body: &[u8],
-        query_str: &str,
-    ) -> Result<(ExternalQuoteRequest, Option<GasSponsorshipInfo>), AuthServerError> {
-        // Parse query params
-        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(query_str)
-            .map_err(AuthServerError::serde)?;
-
-        // Parse request body
-        let mut external_quote_req: ExternalQuoteRequest =
-            serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
-
-        let gas_sponsorship_info = self
-            .maybe_apply_gas_sponsorship_to_order(
-                key_desc,
-                &mut external_quote_req.external_order,
-                &query_params,
-            )
-            .await?;
-
-        Ok((external_quote_req, gas_sponsorship_info))
-    }
-
-    /// Potentially apply gas sponsorship to the given
-    /// external quote, returning the resulting `SponsoredQuoteResponse`
-    fn maybe_apply_gas_sponsorship_to_quote_response(
-        &self,
-        resp_body: &[u8],
-        gas_sponsorship_info: Option<GasSponsorshipInfo>,
-    ) -> Result<SponsoredQuoteResponse, AuthServerError> {
-        // Parse response body
-        let external_quote_response: ExternalQuoteResponse =
-            serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
-
-        if gas_sponsorship_info.is_none() {
-            return Ok(SponsoredQuoteResponse {
-                signed_quote: external_quote_response.signed_quote,
-                gas_sponsorship_info: None,
-            });
-        }
-
-        self.construct_sponsored_quote_response(
-            external_quote_response,
-            gas_sponsorship_info.unwrap(),
-        )
-    }
 
     /// Check if the given assembly request pertains to a sponsored quote,
     /// and if so, remove the effects of gas sponsorship from the signed quote,
@@ -470,11 +136,7 @@ impl Server {
             serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
 
         let gas_sponsorship_info = self
-            .maybe_apply_gas_sponsorship_to_order(
-                key_desc,
-                &mut external_match_req.external_order,
-                &query_params,
-            )
+            .maybe_sponsor_order(key_desc, &mut external_match_req.external_order, &query_params)
             .await?;
 
         Ok((external_match_req, gas_sponsorship_info))
@@ -537,14 +199,23 @@ impl Server {
     /// Generate gas sponsorship info for the given order if the query params
     /// call for it, and update the exact output amount requested in the order
     /// if necessary
-    async fn maybe_apply_gas_sponsorship_to_order(
+    async fn maybe_sponsor_order<Req>(
         &self,
-        key_desc: String,
         order: &mut ExternalOrder,
-        query_params: &GasSponsorshipQueryParams,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+        ctx: &RequestContext<Req>,
+    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError>
+    where
+        Req: Serialize + for<'de> Deserialize<'de>,
+    {
+        // Parse query params
+        let query = ctx.query();
+        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(&query)
+            .map_err(AuthServerError::serde)?;
+
+        // Generate gas sponsorship info
+        let user = ctx.user();
         let gas_sponsorship_info =
-            self.maybe_generate_gas_sponsorship_info(key_desc, order, query_params).await?;
+            self.generate_sponsorship_info(&user, order, &query_params).await?;
 
         // Subtract the refund amount from the exact output amount requested in the
         // order, so that the relayer produces a smaller quote which will
@@ -567,44 +238,6 @@ impl Server {
     /// collection
     pub fn should_sample_metrics(&self) -> bool {
         rand::thread_rng().gen_bool(self.metrics_sampling_rate)
-    }
-
-    /// Handle a no quote found response
-    fn handle_no_quote_found(&self, key: &str, req: &ExternalQuoteRequest) {
-        let self_clone = self.clone();
-        let key = key.to_string();
-        let rid = Uuid::new_v4();
-        let req = req.clone();
-
-        // TODO(@joeykraut): Make this cleaner when we go cross-chain
-        tokio::spawn(async move {
-            let order = &req.external_order;
-            let base_mint = biguint_to_hex_addr(&order.base_mint);
-            record_quote_not_found(key.clone(), &base_mint);
-
-            // Record a zero fill ratio
-            let price_f64 = self_clone
-                .price_reporter_client
-                .get_price(&base_mint, self_clone.chain)
-                .await
-                .unwrap();
-            let price = FixedPoint::from_f64_round_down(price_f64);
-            let relayer_fee = FixedPoint::zero();
-            let quote_amt = order.get_quote_amount(price, relayer_fee);
-
-            // We ignore excessively large quotes for telemetry, as they're likely spam
-            if quote_amt >= QUOTE_FILL_RATIO_IGNORE_THRESHOLD {
-                return;
-            }
-
-            let labels = vec![
-                (REQUEST_ID_METRIC_TAG.to_string(), rid.to_string()),
-                (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.clone()),
-                (BASE_ASSET_METRIC_TAG.to_string(), base_mint),
-            ];
-            record_fill_ratio(quote_amt, 0 /* matched_quote_amount */, &labels)
-                .expect("Failed to record fill ratio");
-        });
     }
 
     /// Handle a bundle response from a quote assembly request
@@ -698,90 +331,11 @@ impl Server {
 
         Ok(())
     }
-
-    /// Handle a quote response
-    fn handle_quote_response(
-        &self,
-        key: String,
-        req: &ExternalQuoteRequest,
-        headers: &HeaderMap,
-        resp: &SponsoredQuoteResponse,
-    ) -> Result<(), AuthServerError> {
-        let sdk_version = get_sdk_version(headers);
-
-        // Log the quote parameters
-        log_quote(resp, &key, &sdk_version)?;
-
-        // Only proceed with metrics recording if sampled
-        if !self.should_sample_metrics() {
-            return Ok(());
-        }
-
-        // Get the decimal-corrected price
-        let price: TimestampedPrice = resp.signed_quote.quote.price.clone().into();
-
-        let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
-
-        // Calculate requested and matched quote amounts
-        let requested_quote_amount = req
-            .external_order
-            .get_quote_amount(FixedPoint::from_f64_round_down(price.price), relayer_fee);
-
-        let matched_quote_amount = resp.signed_quote.quote.match_result.quote_amount;
-
-        // Record fill ratio metric
-        let request_id = uuid::Uuid::new_v4();
-        let labels = vec![
-            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
-            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
-        ];
-        record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
-
-        // Record endpoint metrics
-        let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
-        record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
-
-        Ok(())
-    }
 }
 
 // -------------------
 // | Logging helpers |
 // -------------------
-
-/// Log a quote
-fn log_quote(
-    resp: &SponsoredQuoteResponse,
-    key_description: &str,
-    sdk_version: &str,
-) -> Result<(), AuthServerError> {
-    let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = resp;
-    let match_result = signed_quote.match_result();
-    let is_buy = match_result.direction;
-    let recv = signed_quote.receive_amount();
-    let send = signed_quote.send_amount();
-    let is_sponsored = gas_sponsorship_info.is_some();
-    let (refund_amount, refund_native_eth) = gas_sponsorship_info
-        .as_ref()
-        .map(|s| (s.gas_sponsorship_info.refund_amount, s.gas_sponsorship_info.refund_native_eth))
-        .unwrap_or((0, false));
-
-    info!(
-            is_sponsored = is_sponsored,
-            key_description = key_description,
-            sdk_version = sdk_version,
-            "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-            recv.amount,
-            recv.mint,
-            send.amount,
-            send.mint,
-            refund_amount,
-            refund_native_eth
-        );
-
-    Ok(())
-}
 
 /// Log an updated order
 fn log_updated_order(

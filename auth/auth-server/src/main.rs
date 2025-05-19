@@ -246,7 +246,7 @@ async fn main() {
         .and(with_query_string())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_external_quote_request(path, headers, body, query_str).await
+            server.handle_quote_request(path, headers, body, query_str).await
         });
 
     let external_quote_assembly_path = warp::path("v0")
@@ -259,7 +259,7 @@ async fn main() {
         .and(with_query_string())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_external_quote_assembly_request(path, headers, body, query_str).await
+            server.handle_assemble_quote_request(path, headers, body, query_str).await
         });
 
     let external_malleable_assembly_path = warp::path("v0")
@@ -272,9 +272,7 @@ async fn main() {
         .and(with_query_string())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server
-                .handle_external_malleable_quote_assembly_request(path, headers, body, query_str)
-                .await
+            server.handle_assemble_malleable_quote_request(path, headers, body, query_str).await
         });
 
     let atomic_match_path = warp::path("v0")

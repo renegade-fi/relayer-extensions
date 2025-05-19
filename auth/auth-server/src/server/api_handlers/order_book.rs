@@ -31,7 +31,7 @@ impl Server {
             record_relayer_request_500(key_desc.clone(), path_str.to_string());
         }
         if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &[], &headers);
+            log_unsuccessful_relayer_request(&resp, &key_desc, path_str, &headers);
             return Ok(resp);
         }
         Ok(resp)
