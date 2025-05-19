@@ -3,6 +3,7 @@
 //! The server is a dependency injection container for the authentication server
 mod api_auth;
 pub mod gas_estimation;
+pub(crate) mod gas_sponsorship;
 pub(crate) mod handle_external_match;
 mod handle_key_management;
 pub(crate) mod helpers;

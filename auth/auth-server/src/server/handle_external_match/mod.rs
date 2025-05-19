@@ -3,15 +3,13 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
+mod settlement;
+
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMalleableMatchResponse,
     SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 use bytes::Bytes;
-use gas_sponsorship::refund_calculation::{
-    apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
-    requires_exact_output_amount_update,
-};
 use http::{HeaderMap, Method, StatusCode};
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
@@ -25,6 +23,10 @@ use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 use warp::{reject::Rejection, reply::Reply};
 
+use super::gas_sponsorship::refund_calculation::{
+    apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
+    requires_exact_output_amount_update,
+};
 use super::helpers::{
     generate_quote_uuid, get_sdk_version, log_unsuccessful_relayer_request, overwrite_response_body,
 };
@@ -43,10 +45,6 @@ use crate::telemetry::{
         EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
     },
 };
-
-mod gas_sponsorship;
-mod settlement;
-pub use gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall;
 
 // ---------------
 // | Server Impl |
