@@ -19,10 +19,10 @@ use renegade_darkpool_client::{
 };
 use tracing::{error, info};
 
+use crate::bundle_store::{helpers::generate_bundle_id, BundleStore};
 use crate::server::{
     gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
 };
-use crate::store::{helpers::generate_bundle_id, BundleStore};
 
 use super::error::OnChainEventListenerError;
 
