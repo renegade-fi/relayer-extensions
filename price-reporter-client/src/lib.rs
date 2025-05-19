@@ -15,6 +15,7 @@ use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive};
 use error::PriceReporterClientError;
 use price_stream::MultiPriceStream;
 use renegade_common::types::{
+    chain::Chain,
     exchange::Exchange,
     token::{get_all_tokens, Token, STABLECOIN_TICKERS, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
@@ -79,21 +80,28 @@ impl PriceReporterClient {
             .set_port(Some(WS_PORT))
             .map_err(|_| PriceReporterClientError::setup("Error setting websocket port"))?;
 
-        let mints = get_all_tokens()
+        let chain_mints = get_all_tokens()
             .into_iter()
             .filter(|t| !EXCLUDED_TICKERS.contains(&t.get_ticker().unwrap_or_default().as_str()))
-            .map(|t| t.get_addr())
+            .map(|t| (t.get_chain(), t.get_addr()))
             .collect();
 
-        Ok(Self { base_url, multi_price_stream: MultiPriceStream::new(ws_url.to_string(), mints) })
+        Ok(Self {
+            base_url,
+            multi_price_stream: MultiPriceStream::new(ws_url.to_string(), chain_mints),
+        })
     }
 
     /// A convenience method for fetching the current price of ETH in USDC.
     pub async fn get_eth_price(&self) -> Result<f64, PriceReporterClientError> {
         // Under the hood, the price reporter streams native ETH prices for the WETH
-        // token
-        let mint = Token::from_ticker(WETH_TICKER).get_addr();
-        self.get_price(&mint).await
+        // token.
+        // We assume that whatever chain is set as the default chain in the token
+        // mapping has the WETH token - this lets us keep the chain out of the
+        // function signature.
+        let weth_token = Token::from_ticker(WETH_TICKER);
+        let mint = weth_token.get_addr();
+        self.get_price(&mint, weth_token.get_chain()).await
     }
 
     /// Get the nominal price of a token, i.e. whole units of USDC per nominal
@@ -101,12 +109,13 @@ impl PriceReporterClient {
     pub async fn get_nominal_price(
         &self,
         mint: &str,
+        chain: Chain,
     ) -> Result<BigDecimal, PriceReporterClientError> {
-        let price_f64 = self.get_price(mint).await?;
+        let price_f64 = self.get_price(mint, chain).await?;
         let price = BigDecimal::from_f64(price_f64)
             .ok_or(PriceReporterClientError::conversion(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
 
-        let decimals = Token::from_addr(mint)
+        let decimals = Token::from_addr_on_chain(mint, chain)
             .get_decimals()
             .ok_or(PriceReporterClientError::custom(ERR_NO_DECIMALS))?;
 
@@ -119,8 +128,12 @@ impl PriceReporterClient {
     ///
     /// We first try reading the state of the price stream,
     /// and fall back to an HTTP request if the stream is not connected.
-    pub async fn get_price(&self, mint: &str) -> Result<f64, PriceReporterClientError> {
-        let token = Token::from_addr(mint);
+    pub async fn get_price(
+        &self,
+        mint: &str,
+        chain: Chain,
+    ) -> Result<f64, PriceReporterClientError> {
+        let token = Token::from_addr_on_chain(mint, chain);
         if let Some(ticker) = token.get_ticker()
             && STABLECOIN_TICKERS.contains(&ticker.as_str())
         {
@@ -133,12 +146,16 @@ impl PriceReporterClient {
         }
 
         warn!("Price stream is not connected, fetching price via HTTP");
-        self.get_price_http(mint).await
+        self.get_price_http(mint, chain).await
     }
 
     /// Get the price of a token from the price reporter via HTTP
-    pub async fn get_price_http(&self, mint: &str) -> Result<f64, PriceReporterClientError> {
-        let price_topic = construct_price_topic(mint);
+    pub async fn get_price_http(
+        &self,
+        mint: &str,
+        chain: Chain,
+    ) -> Result<f64, PriceReporterClientError> {
+        let price_topic = construct_price_topic(mint, chain);
 
         let url = format!("{}{}/{}", self.base_url, PRICE_ROUTE, price_topic);
         let response = send_get_request(&url, DEFAULT_TIMEOUT_SECS).await?;
@@ -156,9 +173,9 @@ impl PriceReporterClient {
 // ----------------------
 
 /// Construct the price topic for a given token
-pub fn construct_price_topic(mint: &str) -> String {
+pub fn construct_price_topic(mint: &str, chain: Chain) -> String {
     let exchange = Exchange::Binance;
-    let quote_mint = Token::from_ticker(USDT_TICKER).get_addr();
+    let quote_mint = Token::from_ticker_on_chain(USDT_TICKER, chain).get_addr();
     format!("{}-{}-{}", exchange, mint, quote_mint)
 }
 

@@ -5,11 +5,8 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
 use funds_manager_api::quoters::AugmentedExecutionQuote;
-use renegade_common::types::{
-    chain::Chain,
-    hmac::HmacKey,
-    token::{Token, USDC_TICKER},
-};
+use price_reporter_client::PriceReporterClient;
+use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_config::setup_token_remaps;
 
 use crate::{
@@ -19,7 +16,6 @@ use crate::{
     error::FundsManagerError,
     execution_client::ExecutionClient,
     metrics::MetricsRecorder,
-    relayer_client::RelayerClient,
     Indexer,
 };
 
@@ -41,6 +37,8 @@ pub(crate) struct Server {
     pub quote_hmac_key: HmacKey,
     /// The chain clients
     pub chain_clients: HashMap<Chain, ChainClients>,
+    /// The price reporter client
+    pub price_reporter: Arc<PriceReporterClient>,
 }
 
 impl Server {
@@ -63,6 +61,8 @@ impl Server {
             .unwrap()?;
         }
 
+        let price_reporter = Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
+
         let hmac_key = args.get_hmac_key();
         let quote_hmac_key = args.get_quote_hmac_key();
 
@@ -72,7 +72,6 @@ impl Server {
 
         let mut chain_clients = HashMap::new();
         for (chain, config) in chain_configs {
-            let usdc_mint = Token::from_ticker_on_chain(USDC_TICKER, chain).get_addr();
             let clients = config
                 .build_clients(
                     chain,
@@ -80,14 +79,20 @@ impl Server {
                     args.fireblocks_api_secret.clone(),
                     arc_pool.clone(),
                     aws_config.clone(),
-                    &usdc_mint,
+                    price_reporter.clone(),
                 )
                 .await?;
 
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server { hmac_key, quote_hmac_key, chain_clients, environment: args.environment })
+        Ok(Server {
+            hmac_key,
+            quote_hmac_key,
+            chain_clients,
+            environment: args.environment,
+            price_reporter,
+        })
     }
 
     /// Sign a quote using the quote HMAC key and returns the signature as a
@@ -97,17 +102,6 @@ impl Server {
         let sig = self.quote_hmac_key.compute_mac(canonical_string.as_bytes());
         let signature = hex::encode(sig);
         Ok(signature)
-    }
-
-    /// Get the relayer client for the given chain
-    pub fn get_relayer_client(
-        &self,
-        chain: &Chain,
-    ) -> Result<Arc<RelayerClient>, FundsManagerError> {
-        self.chain_clients
-            .get(chain)
-            .map(|clients| clients.relayer_client.clone())
-            .ok_or(FundsManagerError::custom(format!("No relayer client configured for {chain}")))
     }
 
     /// Get the custody client for the given chain

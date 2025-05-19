@@ -7,7 +7,6 @@ use http::HeaderMap;
 use renegade_api::{
     auth::add_expiring_auth_to_headers,
     http::{
-        price_report::{GetPriceReportRequest, GetPriceReportResponse, PRICE_REPORT_ROUTE},
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
         wallet::{
             CreateWalletRequest, CreateWalletResponse, FindWalletRequest, FindWalletResponse,
@@ -20,9 +19,7 @@ use renegade_api::{
 };
 use renegade_common::types::{
     chain::Chain,
-    exchange::PriceReporterState,
     hmac::HmacKey,
-    token::Token,
     wallet::{
         derivation::{derive_blinder_seed, derive_share_seed, derive_wallet_id},
         keychain::KeyChain,
@@ -49,37 +46,14 @@ const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
 pub struct RelayerClient {
     /// The base URL of the relayer
     base_url: String,
-    /// The mind of the USDC token
-    usdc_mint: String,
     /// The chain the relayer is targeting
     pub chain: Chain,
 }
 
 impl RelayerClient {
     /// Create a new relayer client
-    pub fn new(base_url: &str, usdc_mint: &str, chain: Chain) -> Self {
-        Self { base_url: base_url.to_string(), usdc_mint: usdc_mint.to_string(), chain }
-    }
-
-    /// Get the price for a given mint
-    pub async fn get_binance_price(&self, mint: &str) -> Result<Option<f64>, FundsManagerError> {
-        if mint == self.usdc_mint {
-            return Ok(Some(1.0));
-        }
-
-        let body = GetPriceReportRequest {
-            base_token: Token::from_addr_on_chain(mint, self.chain),
-            quote_token: Token::from_addr_on_chain(&self.usdc_mint, self.chain),
-        };
-        let response: GetPriceReportResponse = self.post_relayer(PRICE_REPORT_ROUTE, &body).await?;
-
-        match response.price_report {
-            PriceReporterState::Nominal(report) => Ok(Some(report.price)),
-            state => {
-                warn!("Price report state: {state:?}");
-                Ok(None)
-            },
-        }
+    pub fn new(base_url: &str, chain: Chain) -> Self {
+        Self { base_url: base_url.to_string(), chain }
     }
 
     // ------------------

@@ -13,6 +13,7 @@ use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::wallet::Nullifier;
+use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::{
     arbitrum::abi::Darkpool::NullifierSpent, conversion::u256_to_scalar, DarkpoolClient,
 };
@@ -79,6 +80,8 @@ pub struct OnChainEventListenerExecutor {
     config: OnChainEventListenerConfig,
     /// The bundle store to use for retrieving bundle contexts
     bundle_store: BundleStore,
+    /// The chain for which the executor is configured
+    pub(crate) chain: Chain,
     /// The rate limiter
     pub(crate) rate_limiter: AuthServerRateLimiter,
     /// The price reporter client with WebSocket streaming support
@@ -95,8 +98,9 @@ impl OnChainEventListenerExecutor {
         rate_limiter: AuthServerRateLimiter,
         price_reporter_client: Arc<PriceReporterClient>,
         gas_cost_sampler: Arc<GasCostSampler>,
+        chain: Chain,
     ) -> Self {
-        Self { config, bundle_store, rate_limiter, price_reporter_client, gas_cost_sampler }
+        Self { config, bundle_store, rate_limiter, price_reporter_client, gas_cost_sampler, chain }
     }
 
     /// Shorthand for fetching a reference to the darkpool client

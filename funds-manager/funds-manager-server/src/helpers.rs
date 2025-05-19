@@ -159,7 +159,7 @@ pub fn to_env_agnostic_name(chain: Chain) -> String {
 }
 
 /// Convert an environment-agnostic name to a `Chain` variant
-pub fn from_env_agnostic_name(chain: &str, environment: Environment) -> Chain {
+pub fn from_env_agnostic_name(chain: &str, environment: &Environment) -> Chain {
     let arb_chain = match environment {
         Environment::Mainnet => Chain::ArbitrumOne,
         Environment::Testnet => Chain::ArbitrumSepolia,

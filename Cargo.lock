@@ -3496,7 +3496,7 @@ dependencies = [
  "num-traits",
  "pq-sys",
  "r2d2",
- "uuid 0.8.2",
+ "uuid 1.16.0",
 ]
 
 [[package]]
@@ -4457,6 +4457,7 @@ dependencies = [
  "native-tls",
  "num-bigint",
  "postgres-native-tls",
+ "price-reporter-client",
  "rand 0.8.5",
  "renegade-crypto",
  "reqwest 0.11.27",

@@ -15,6 +15,7 @@ FROM chef AS sources
 WORKDIR /build
 COPY ./Cargo.toml ./Cargo.lock ./
 COPY ./auth ./auth
+COPY ./price-reporter-client ./price-reporter-client
 
 # === Builder === #
 # Pull the sources into their own layer
@@ -40,6 +41,7 @@ RUN cargo chef prepare --recipe-path recipe.json --bin auth-server
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY --from=sources /build/auth /build/auth
+COPY --from=sources /build/price-reporter-client /build/price-reporter-client
 WORKDIR /build
 
 RUN cargo build --release -p auth-server
