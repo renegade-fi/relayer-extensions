@@ -4,9 +4,10 @@
 
 use std::time::SystemTime;
 
-use crate::schema::api_keys;
 use diesel::prelude::*;
 use uuid::Uuid;
+
+use crate::server::db::schema::api_keys;
 
 #[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = api_keys)]

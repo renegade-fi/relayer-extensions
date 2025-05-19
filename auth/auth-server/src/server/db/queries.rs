@@ -4,12 +4,12 @@ use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{
+use crate::{error::AuthServerError, server::Server};
+
+use super::{
     models::{ApiKey, NewApiKey},
     schema::api_keys,
 };
-
-use super::{AuthServerError, Server};
 
 impl Server {
     // --- Getters --- //

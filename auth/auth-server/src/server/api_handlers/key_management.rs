@@ -1,8 +1,8 @@
 //! Handles key management requests
 
-use crate::{
-    models::NewApiKey,
-    server::helpers::{aes_encrypt, empty_json_reply},
+use crate::server::{
+    db::models::NewApiKey,
+    helpers::{aes_encrypt, empty_json_reply},
 };
 use auth_server_api::CreateApiKeyRequest;
 use bytes::Bytes;
