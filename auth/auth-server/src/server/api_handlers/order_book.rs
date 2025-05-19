@@ -4,9 +4,11 @@ use http::{HeaderMap, Method, StatusCode};
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Reply};
 
-use super::helpers::log_unsuccessful_relayer_request;
 use super::Server;
-use crate::telemetry::helpers::record_relayer_request_500;
+use crate::{
+    server::helpers::log_unsuccessful_relayer_request,
+    telemetry::helpers::record_relayer_request_500,
+};
 
 impl Server {
     /// Proxy GET /v0/order_book/depth/:mint to the relayer

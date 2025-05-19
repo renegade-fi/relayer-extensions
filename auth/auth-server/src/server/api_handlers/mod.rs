@@ -3,6 +3,8 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
+pub(crate) mod key_management;
+pub(crate) mod order_book;
 mod settlement;
 
 use auth_server_api::{
