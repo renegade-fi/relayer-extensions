@@ -4,9 +4,7 @@ use auth_server_api::GasSponsorshipInfo;
 use redis::{AsyncCommands, JsonAsyncCommands};
 use uuid::Uuid;
 
-use crate::error::AuthServerError;
-
-use super::Server;
+use crate::{error::AuthServerError, server::Server};
 
 // -------------
 // | Constants |

@@ -19,9 +19,6 @@ mod chain_events;
 pub(crate) mod error;
 mod helpers;
 pub mod http_utils;
-pub(crate) mod models;
-#[allow(missing_docs, clippy::missing_docs_in_private_items)]
-pub(crate) mod schema;
 mod server;
 mod store;
 mod telemetry;

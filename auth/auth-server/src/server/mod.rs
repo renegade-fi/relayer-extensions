@@ -3,12 +3,11 @@
 //! The server is a dependency injection container for the authentication server
 mod api_auth;
 pub(crate) mod api_handlers;
+pub(crate) mod db;
 pub mod gas_estimation;
 pub(crate) mod gas_sponsorship;
 pub(crate) mod helpers;
-mod queries;
 pub(crate) mod rate_limiter;
-mod redis_queries;
 
 use std::{iter, sync::Arc, time::Duration};
 
@@ -17,7 +16,6 @@ use crate::helpers::create_darkpool_client;
 use crate::store::BundleStore;
 use crate::{
     error::AuthServerError,
-    models::ApiKey,
     telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
     ApiError, Cli,
 };
@@ -29,6 +27,7 @@ use base64::{engine::general_purpose, Engine};
 use bb8::{Pool, PooledConnection};
 use bytes::Bytes;
 use cached::{Cached, UnboundCache};
+use db::models::ApiKey;
 use diesel::ConnectionError;
 use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
