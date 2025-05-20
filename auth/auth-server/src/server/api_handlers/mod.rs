@@ -13,23 +13,20 @@ use auth_server_api::{
     SponsoredMatchResponse,
 };
 use bytes::Bytes;
-use external_match::RequestContext;
+use external_match::{RequestContext, ResponseContext};
 use http::{HeaderMap, Response};
 use rand::Rng;
 use renegade_api::http::external_match::{
-    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse, ExternalOrder,
-    MalleableExternalMatchResponse,
+    ExternalMatchRequest, ExternalOrder, MalleableExternalMatchResponse,
 };
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use super::gas_sponsorship::refund_calculation::{
-    apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
-    requires_exact_output_amount_update,
+    apply_gas_sponsorship_to_exact_output_amount, requires_exact_output_amount_update,
 };
-use super::helpers::generate_quote_uuid;
 use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::calculate_implied_price;
@@ -43,6 +40,14 @@ use crate::telemetry::{
 const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
 /// The default SDK version to use if the header is not set
 const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
+
+/// A type alias for the response context for endpoints that return a match
+/// bundle
+///
+/// This type is generic over request type, which allows us to use the same
+/// handlers for endpoints with different request types but the same fundamental
+/// match response type
+type MatchBundleResponseCtx<Req> = ResponseContext<Req, SponsoredMatchResponse>;
 
 /// Parse the SDK version from the given headers.
 /// If unset or malformed, returns an empty string.
@@ -80,44 +85,6 @@ pub fn log_unsuccessful_relayer_request(
 impl Server {
     // --- Sponsorship --- //
 
-    /// Check if the given assembly request pertains to a sponsored quote,
-    /// and if so, remove the effects of gas sponsorship from the signed quote,
-    /// and ensure sponsorship is correctly applied to the updated order, if
-    /// present.
-    ///
-    /// Returns the assembly request, and the gas sponsorship info, if any.
-    async fn maybe_update_assembly_request_with_gas_sponsorship(
-        &self,
-        req: &mut AssembleExternalMatchRequest,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
-        let redis_key = generate_quote_uuid(&req.signed_quote);
-        let gas_sponsorship_info = match self.read_gas_sponsorship_info_from_redis(redis_key).await
-        {
-            Err(e) => {
-                error!("Error reading gas sponsorship info from Redis: {e}");
-                None
-            },
-            Ok(gas_sponsorship_info) => gas_sponsorship_info,
-        };
-
-        if let Some(ref gas_sponsorship_info) = gas_sponsorship_info {
-            // Reconstruct original signed quote
-            if gas_sponsorship_info.requires_match_result_update() {
-                let quote = &mut req.signed_quote.quote;
-                remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info);
-            }
-
-            // Ensure that the exact output amount is respected on the updated order
-            if let Some(ref mut updated_order) = req.updated_order
-                && requires_exact_output_amount_update(updated_order, gas_sponsorship_info)
-            {
-                apply_gas_sponsorship_to_exact_output_amount(updated_order, gas_sponsorship_info);
-            }
-        }
-
-        Ok(gas_sponsorship_info)
-    }
-
     /// Potentially apply gas sponsorship to the given match request, returning
     /// the resulting `ExternalMatchRequest` and the generated gas sponsorship
     /// info, if any.
@@ -140,36 +107,6 @@ impl Server {
             .await?;
 
         Ok((external_match_req, gas_sponsorship_info))
-    }
-
-    /// Potentially apply gas sponsorship to the given
-    /// external match response, returning the resulting
-    /// `SponsoredMatchResponse`
-    fn maybe_apply_gas_sponsorship_to_match_response(
-        &self,
-        resp_body: &[u8],
-        gas_sponsorship_info: Option<GasSponsorshipInfo>,
-    ) -> Result<SponsoredMatchResponse, AuthServerError> {
-        // Parse response body
-        let external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
-
-        if gas_sponsorship_info.is_none() {
-            return Ok(SponsoredMatchResponse {
-                match_bundle: external_match_resp.match_bundle,
-                is_sponsored: false,
-                gas_sponsorship_info: None,
-            });
-        }
-
-        info!("Sponsoring match bundle via gas sponsor");
-
-        let sponsored_match_resp = self.construct_sponsored_match_response(
-            external_match_resp,
-            gas_sponsorship_info.unwrap(),
-        )?;
-
-        Ok(sponsored_match_resp)
     }
 
     /// Apply gas sponsorship to the given malleable match bundle, returning
@@ -240,33 +177,6 @@ impl Server {
         rand::thread_rng().gen_bool(self.metrics_sampling_rate)
     }
 
-    /// Handle a bundle response from a quote assembly request
-    fn handle_quote_assembly_bundle_response(
-        &self,
-        key: &str,
-        req: &AssembleExternalMatchRequest,
-        headers: &HeaderMap,
-        resp: &SponsoredMatchResponse,
-        request_id: &str,
-    ) -> Result<(), AuthServerError> {
-        let original_order = &req.signed_quote.quote.order;
-        let updated_order = req.updated_order.as_ref().unwrap_or(original_order);
-
-        let sdk_version = get_sdk_version(headers);
-        if req.updated_order.is_some() {
-            log_updated_order(key, original_order, updated_order, request_id, &sdk_version);
-        }
-
-        self.handle_bundle_response(
-            key,
-            updated_order,
-            resp,
-            request_id,
-            "assemble-external-match",
-            &sdk_version,
-        )
-    }
-
     /// Handle a bundle response from a direct match request
     fn handle_direct_match_bundle_response(
         &self,
@@ -291,27 +201,26 @@ impl Server {
     ///
     /// This method will await settlement and update metrics, rate limits, etc
     #[allow(clippy::too_many_arguments)]
-    fn handle_bundle_response(
+    fn handle_bundle_response<Req>(
         &self,
-        key: &str,
         order: &ExternalOrder,
-        resp: &SponsoredMatchResponse,
-        request_id: &str,
-        endpoint: &str,
-        sdk_version: &str,
-    ) -> Result<(), AuthServerError> {
+        ctx: &MatchBundleResponseCtx<Req>,
+    ) -> Result<(), AuthServerError>
+    where
+        Req: Serialize + for<'de> Deserialize<'de>,
+    {
         // Log the bundle
-        log_bundle(order, resp, key, request_id, endpoint, sdk_version)?;
+        log_bundle(order, ctx)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
-        let SponsoredMatchResponse { match_bundle, is_sponsored, .. } = resp;
+        let SponsoredMatchResponse { match_bundle, is_sponsored, .. } = ctx.response();
 
         let labels = vec![
-            (KEY_DESCRIPTION_METRIC_TAG.to_string(), key.to_string()),
-            (REQUEST_ID_METRIC_TAG.to_string(), request_id.to_string()),
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.user()),
+            (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
-            (SDK_VERSION_METRIC_TAG.to_string(), sdk_version.to_string()),
+            (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
         ];
 
         // Record quote comparisons before settlement, if enabled
@@ -327,8 +236,7 @@ impl Server {
         }
 
         // Record metrics
-        record_external_match_metrics(order, match_bundle, &labels)?;
-
+        record_external_match_metrics(order, &match_bundle, &labels)?;
         Ok(())
     }
 }
@@ -337,40 +245,19 @@ impl Server {
 // | Logging helpers |
 // -------------------
 
-/// Log an updated order
-fn log_updated_order(
-    key: &str,
-    original_order: &ExternalOrder,
-    updated_order: &ExternalOrder,
-    request_id: &str,
-    sdk_version: &str,
-) {
-    let original_base_amount = original_order.base_amount;
-    let updated_base_amount = updated_order.base_amount;
-    let original_quote_amount = original_order.quote_amount;
-    let updated_quote_amount = updated_order.quote_amount;
-    info!(
-            key_description = key,
-            request_id = request_id,
-            sdk_version = sdk_version,
-            "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
-            original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
-        );
-}
-
 /// Log the bundle parameters
-fn log_bundle(
+fn log_bundle<Req>(
     order: &ExternalOrder,
-    resp: &SponsoredMatchResponse,
-    key_description: &str,
-    request_id: &str,
-    endpoint: &str,
-    sdk_version: &str,
-) -> Result<(), AuthServerError> {
-    let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } = resp;
+    ctx: &MatchBundleResponseCtx<Req>,
+) -> Result<(), AuthServerError>
+where
+    Req: Serialize + for<'de> Deserialize<'de>,
+{
+    let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } =
+        ctx.response();
 
     // Get the decimal-corrected price
-    let price = calculate_implied_price(match_bundle, true /* decimal_correct */)?;
+    let price = calculate_implied_price(&match_bundle, true /* decimal_correct */)?;
     let price_fixed = FixedPoint::from_f64_round_down(price);
 
     let match_result = &match_bundle.match_result;
@@ -396,6 +283,8 @@ fn log_bundle(
         .map(|info| (info.refund_amount, info.refund_native_eth))
         .unwrap_or((0, false));
 
+    let key_description = ctx.user();
+    let request_id = ctx.request_id.to_string();
     info!(
             requested_base_amount = requested_base_amount,
             response_base_amount = response_base_amount,
@@ -406,8 +295,8 @@ fn log_bundle(
             key_description = key_description,
             request_id = request_id,
             is_sponsored = is_sponsored,
-            endpoint = endpoint,
-            sdk_version = sdk_version,
+            endpoint = ctx.path,
+            sdk_version = ctx.sdk_version,
             "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
             is_buy,
             recv.amount,

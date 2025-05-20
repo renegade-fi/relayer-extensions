@@ -1,10 +1,10 @@
 //! Server methods that watch for external match settlement
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse}; // Added GasSponsorshipInfo
-use http::HeaderMap;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
+use serde::{Deserialize, Serialize};
 
-use super::{get_sdk_version, Server};
+use super::{MatchBundleResponseCtx, Server};
 use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::extract_nullifier_from_match_bundle;
@@ -13,31 +13,35 @@ impl Server {
     /// Write the bundle context to the store, handling gas sponsorship if
     /// necessary
     /// Returns the bundle ID
-    pub async fn write_bundle_context(
+    pub async fn write_bundle_context<Req>(
         &self,
-        sponsored_match: &SponsoredMatchResponse,
-        headers: &HeaderMap,
-        key: String,
-        shared: bool,
-    ) -> Result<String, AuthServerError> {
+        shared_bundle: bool,
+        ctx: &MatchBundleResponseCtx<Req>,
+    ) -> Result<String, AuthServerError>
+    where
+        Req: Serialize + for<'de> Deserialize<'de>,
+    {
+        let resp = ctx.response();
         // Extract the nullifier from the original match bundle
-        let nullifier = extract_nullifier_from_match_bundle(&sponsored_match.match_bundle)?;
+        let nullifier = extract_nullifier_from_match_bundle(&resp.match_bundle)?;
 
         // Determine the match result to derive ID, accounting for sponsorship
-        let match_result_for_id = self.get_match_result_for_id(sponsored_match);
+        let match_result_for_id = self.get_match_result_for_id(&resp);
 
         // Generate bundle ID using the potentially adjusted match result
         let bundle_id = generate_bundle_id(&match_result_for_id, &nullifier)?;
 
         // Create bundle context
+        let sponsorship_info = ctx.sponsorship_info();
+        let is_sponsored = sponsorship_info.is_some();
         let bundle_ctx = BundleContext {
-            key_description: key.clone(),
+            key_description: ctx.user(),
             request_id: bundle_id.clone(),
-            sdk_version: get_sdk_version(headers),
-            gas_sponsorship_info: sponsored_match.gas_sponsorship_info.clone(),
-            is_sponsored: sponsored_match.is_sponsored,
+            sdk_version: ctx.sdk_version.clone(),
+            gas_sponsorship_info: sponsorship_info,
+            is_sponsored,
             nullifier,
-            shared,
+            shared: shared_bundle,
         };
 
         // Write to bundle store
