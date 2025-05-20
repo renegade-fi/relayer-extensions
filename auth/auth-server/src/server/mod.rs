@@ -14,7 +14,8 @@ mod setup;
 use std::{sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
-use crate::{telemetry::quote_comparison::handler::QuoteComparisonHandler, ApiError};
+use crate::error::AuthServerError;
+use crate::telemetry::quote_comparison::handler::QuoteComparisonHandler;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::Address;
@@ -90,13 +91,13 @@ impl Server {
         path: &str,
         mut headers: HeaderMap,
         body: Bytes,
-    ) -> Result<Response<Bytes>, ApiError> {
+    ) -> Result<Response<Bytes>, AuthServerError> {
         // Ensure that the content-length header is set correctly
         // so that the relayer can deserialize the proxied request
         headers.insert(CONTENT_LENGTH, body.len().into());
 
         // Admin authenticate the request
-        self.admin_authenticate(path, &mut headers, &body)?;
+        self.admin_authenticate(path, &mut headers, &body);
 
         // Forward the request to the relayer
         let url = format!("{}{}", self.relayer_url, path);
@@ -106,7 +107,7 @@ impl Server {
                 let status = resp.status();
                 let headers = resp.headers().clone();
                 let body = resp.bytes().await.map_err(|e| {
-                    ApiError::internal(format!("Failed to read response body: {e}"))
+                    AuthServerError::Serde(format!("Failed to read response body: {e}"))
                 })?;
 
                 let mut response = warp::http::Response::new(body);
@@ -117,21 +118,15 @@ impl Server {
             },
             Err(e) => {
                 error!("Error proxying request: {}", e);
-                Err(ApiError::internal(e))
+                Err(AuthServerError::custom(e))
             },
         }
     }
 
     /// Admin authenticate a request
-    fn admin_authenticate(
-        &self,
-        path: &str,
-        headers: &mut HeaderMap,
-        body: &[u8],
-    ) -> Result<(), ApiError> {
+    fn admin_authenticate(&self, path: &str, headers: &mut HeaderMap, body: &[u8]) {
         let key = self.relayer_admin_key;
         let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
         add_expiring_auth_to_headers(path, headers, body, &key, expiration);
-        Ok(())
     }
 }
