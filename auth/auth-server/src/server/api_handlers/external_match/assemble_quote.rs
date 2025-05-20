@@ -135,7 +135,7 @@ impl Server {
     /// present.
     ///
     /// Returns the assembly request, and the gas sponsorship info, if any.
-    async fn sponsor_assembly_request(
+    pub(crate) async fn sponsor_assembly_request(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {

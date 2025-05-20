@@ -8,15 +8,12 @@ mod key_management;
 mod order_book;
 mod settlement;
 
-use auth_server_api::{
-    GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMalleableMatchResponse,
-    SponsoredMatchResponse,
-};
+use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse};
 use bytes::Bytes;
 use external_match::{RequestContext, ResponseContext};
 use http::{HeaderMap, Response};
 use rand::Rng;
-use renegade_api::http::external_match::{ExternalOrder, MalleableExternalMatchResponse};
+use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use serde::{Deserialize, Serialize};
@@ -63,31 +60,13 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
 
 /// Handle a proxied request
 impl Server {
-    // --- Sponsorship --- //
-
-    /// Apply gas sponsorship to the given malleable match bundle, returning
-    /// a `SponsoredMalleableMatchResponse  `
-    fn maybe_apply_gas_sponsorship_to_malleable_match_bundle(
-        &self,
-        resp_body: &[u8],
-        gas_sponsorship_info: Option<GasSponsorshipInfo>,
-    ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
-        // Deserialize the response body from the relayer
-        let match_resp: MalleableExternalMatchResponse =
-            serde_json::from_slice(resp_body).map_err(AuthServerError::serde)?;
-        if gas_sponsorship_info.is_none() {
-            return Ok(SponsoredMalleableMatchResponse {
-                match_bundle: match_resp.match_bundle,
-                gas_sponsorship_info: None,
-            });
-        }
-
-        // Construct the sponsored match response
-        let info = gas_sponsorship_info.unwrap();
-        let sponsored_match_resp =
-            self.construct_sponsored_malleable_match_response(match_resp, info)?;
-        Ok(sponsored_match_resp)
+    /// Determines if the current request should be sampled for metrics
+    /// collection
+    pub fn should_sample_metrics(&self) -> bool {
+        rand::thread_rng().gen_bool(self.metrics_sampling_rate)
     }
+
+    // --- Sponsorship --- //
 
     /// Generate gas sponsorship info for the given order if the query params
     /// call for it, and update the exact output amount requested in the order
@@ -126,12 +105,6 @@ impl Server {
     }
 
     // --- Bundle Tracking --- //
-
-    /// Determines if the current request should be sampled for metrics
-    /// collection
-    pub fn should_sample_metrics(&self) -> bool {
-        rand::thread_rng().gen_bool(self.metrics_sampling_rate)
-    }
 
     /// Record and watch a bundle that was forwarded to the client
     ///
