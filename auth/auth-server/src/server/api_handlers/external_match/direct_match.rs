@@ -1,16 +1,53 @@
 //! Direct match endpoint handler
 
+use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
-use http::{Method, StatusCode};
-use tracing::{instrument, warn};
+use http::Response;
+use renegade_api::http::external_match::{ExternalMatchRequest, ExternalMatchResponse};
+use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::{
-    error::AuthServerError,
-    http_utils::overwrite_response_body,
-    server::{api_handlers::log_unsuccessful_relayer_request, Server},
-    telemetry::helpers::record_relayer_request_500,
-};
+use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
+
+use super::{RequestContext, ResponseContext};
+
+// -----------------
+// | Context Types |
+// -----------------
+
+/// The request context for a direct match request
+type DirectMatchRequestCtx = RequestContext<ExternalMatchRequest>;
+/// The response context for a direct match request
+type DirectMatchResponseCtx = ResponseContext<ExternalMatchRequest, ExternalMatchResponse>;
+/// The sponsored response context for a direct match request
+type SponsoredDirectMatchResponseCtx =
+    ResponseContext<ExternalMatchRequest, SponsoredMatchResponse>;
+
+impl SponsoredDirectMatchResponseCtx {
+    /// Create a new sponsored direct match response context from a direct
+    /// match response context and a sponsored match response
+    pub fn from_direct_match_response_ctx(
+        sponsored_resp: SponsoredMatchResponse,
+        ctx: DirectMatchResponseCtx,
+    ) -> Self {
+        Self {
+            path: ctx.path,
+            query_str: ctx.query_str,
+            user: ctx.user,
+            sdk_version: ctx.sdk_version,
+            headers: ctx.headers,
+            request: ctx.request,
+            status: ctx.status,
+            response: Some(sponsored_resp),
+            sponsorship_info: ctx.sponsorship_info,
+            request_id: ctx.request_id,
+        }
+    }
+}
+
+// --------------------
+// | Endpoint Handler |
+// --------------------
 
 impl Server {
     /// Handle an external match request
@@ -22,67 +59,126 @@ impl Server {
         body: Bytes,
         query_str: String,
     ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_description = self.authorize_request(path_str, &query_str, &headers, &body).await?;
+        // 1. Run the pre-request subroutines
+        let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
+        self.direct_match_pre_request(&mut ctx).await?;
 
+        // 2. Proxy the request to the relayer
+        let (raw_resp, ctx) = self.forward_request(ctx).await?;
+
+        // 3. Run the post-request subroutines
+        let res = self.direct_match_post_request(raw_resp, ctx)?;
+        Ok(res)
+    }
+
+    // -------------------------------
+    // | Request Pre/Post Processing |
+    // -------------------------------
+
+    /// Run the pre-request subroutines for the direct match endpoint
+    async fn direct_match_pre_request(
+        &self,
+        ctx: &mut DirectMatchRequestCtx,
+    ) -> Result<(), AuthServerError> {
+        // Check the rate limit
         // Direct matches are always shared
-        self.check_bundle_rate_limit(key_description.clone(), true /* shared */).await?;
+        self.check_bundle_rate_limit(ctx.user(), true /* shared */).await?;
 
-        let (external_match_req, gas_sponsorship_info) = self
-            .maybe_apply_gas_sponsorship_to_match_request(
-                key_description.clone(),
-                &body,
-                &query_str,
-            )
-            .await?;
+        // Apply gas sponsorship to the match request
+        let gas_sponsorship_info = self.sponsor_direct_match_request(ctx).await?;
+        ctx.set_sponsorship_info(gas_sponsorship_info);
+        Ok(())
+    }
 
-        let req_body = serde_json::to_vec(&external_match_req).map_err(AuthServerError::serde)?;
-
-        // Send the request to the relayer, potentially sponsoring the gas costs
-
-        let mut resp = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
-
-        let status = resp.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_description.clone(), path_str.to_string());
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&resp, &key_description, path_str, &headers);
+    /// Run the post-request subroutines for the direct match endpoint
+    fn direct_match_post_request(
+        &self,
+        mut resp: Response<Bytes>,
+        ctx: DirectMatchResponseCtx,
+    ) -> Result<impl Reply, AuthServerError> {
+        // If the relayer returns non-200, return the response directly
+        if !ctx.is_success() {
             return Ok(resp);
         }
 
+        // Apply gas sponsorship to the response
+        let sponsored_resp = self.sponsor_direct_match_response(&ctx)?;
+        overwrite_response_body(&mut resp, sponsored_resp.clone())?;
+
+        // Record metrics
+        let ctx =
+            SponsoredDirectMatchResponseCtx::from_direct_match_response_ctx(sponsored_resp, ctx);
+        self.record_direct_match_metrics(ctx);
+        Ok(resp)
+    }
+
+    // ---------------
+    // | Sponsorship |
+    // ---------------
+
+    /// Apply gas sponsorship to the given match request, returning the
+    /// resulting `ExternalMatchRequest` and the generated gas sponsorship
+    /// info, if any
+    async fn sponsor_direct_match_request(
+        &self,
+        ctx: &mut DirectMatchRequestCtx,
+    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+        let ctx_clone = ctx.clone();
+        let req = ctx.body_mut();
+        let gas_sponsorship_info =
+            self.maybe_sponsor_order(&mut req.external_order, &ctx_clone).await?;
+
+        Ok(gas_sponsorship_info)
+    }
+
+    /// Potentially apply gas sponsorship to the given match response, returning
+    /// the resulting `SponsoredMatchResponse`
+    fn sponsor_direct_match_response(
+        &self,
+        ctx: &DirectMatchResponseCtx,
+    ) -> Result<SponsoredMatchResponse, AuthServerError> {
+        let resp = ctx.response();
+        let gas_sponsorship_info = ctx.sponsorship_info();
+        if gas_sponsorship_info.is_none() {
+            return Ok(SponsoredMatchResponse {
+                match_bundle: resp.match_bundle,
+                is_sponsored: false,
+                gas_sponsorship_info: None,
+            });
+        }
+
+        info!("Sponsoring match bundle via gas sponsor");
+        let sponsorship_info = gas_sponsorship_info.unwrap();
         let sponsored_match_resp =
-            self.maybe_apply_gas_sponsorship_to_match_response(resp.body(), gas_sponsorship_info)?;
+            self.construct_sponsored_match_response(resp, sponsorship_info)?;
 
-        overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
+        Ok(sponsored_match_resp)
+    }
 
-        // Record the bundle context in the store
-        let bundle_id = self
-            .write_bundle_context(
-                &sponsored_match_resp,
-                &headers,
-                key_description.clone(),
-                true, // shared
-            )
-            .await?;
+    // -----------
+    // | Metrics |
+    // -----------
 
-        // Watch the bundle for settlement
+    /// Record metrics for the direct match endpoint
+    fn record_direct_match_metrics(&self, ctx: SponsoredDirectMatchResponseCtx) {
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone.handle_direct_match_bundle_response(
-                &key_description,
-                &external_match_req,
-                &headers,
-                &sponsored_match_resp,
-                &bundle_id,
-            ) {
-                warn!("Error handling bundle: {e}");
-            };
+            if let Err(e) = server_clone.record_direct_match_metrics_helper(&ctx).await {
+                warn!("Error handling direct match metrics: {e}");
+            }
         });
+    }
 
-        Ok(resp)
+    /// A helper function to record metrics for the direct match endpoint
+    async fn record_direct_match_metrics_helper(
+        &self,
+        ctx: &SponsoredDirectMatchResponseCtx,
+    ) -> Result<(), AuthServerError> {
+        // Record the bundle context in the store
+        self.write_bundle_context(true /* shared */, ctx).await?;
+
+        let req = ctx.request();
+        let order = &req.external_order;
+        self.handle_bundle_response(order, ctx)
     }
 }

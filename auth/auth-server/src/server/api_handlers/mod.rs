@@ -16,9 +16,7 @@ use bytes::Bytes;
 use external_match::{RequestContext, ResponseContext};
 use http::{HeaderMap, Response};
 use rand::Rng;
-use renegade_api::http::external_match::{
-    ExternalMatchRequest, ExternalOrder, MalleableExternalMatchResponse,
-};
+use renegade_api::http::external_match::{ExternalOrder, MalleableExternalMatchResponse};
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use serde::{Deserialize, Serialize};
@@ -59,24 +57,6 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
         .to_string()
 }
 
-/// Log a non-200 response from the relayer for the given request
-pub fn log_unsuccessful_relayer_request(
-    resp: &Response<Bytes>,
-    key_description: &str,
-    path: &str,
-    headers: &HeaderMap,
-) {
-    let status = resp.status();
-    let text = String::from_utf8_lossy(resp.body()).to_string();
-    let sdk_version = get_sdk_version(headers);
-    warn!(
-        key_description = key_description,
-        path = path,
-        sdk_version = sdk_version,
-        "Non-200 response from relayer: {status}: {text}",
-    );
-}
-
 // ---------------
 // | Server Impl |
 // ---------------
@@ -84,30 +64,6 @@ pub fn log_unsuccessful_relayer_request(
 /// Handle a proxied request
 impl Server {
     // --- Sponsorship --- //
-
-    /// Potentially apply gas sponsorship to the given match request, returning
-    /// the resulting `ExternalMatchRequest` and the generated gas sponsorship
-    /// info, if any.
-    async fn maybe_apply_gas_sponsorship_to_match_request(
-        &self,
-        key_desc: String,
-        req_body: &[u8],
-        query_str: &str,
-    ) -> Result<(ExternalMatchRequest, Option<GasSponsorshipInfo>), AuthServerError> {
-        // Parse query params
-        let query_params = serde_urlencoded::from_str::<GasSponsorshipQueryParams>(query_str)
-            .map_err(AuthServerError::serde)?;
-
-        // Parse request body
-        let mut external_match_req: ExternalMatchRequest =
-            serde_json::from_slice(req_body).map_err(AuthServerError::serde)?;
-
-        let gas_sponsorship_info = self
-            .maybe_sponsor_order(key_desc, &mut external_match_req.external_order, &query_params)
-            .await?;
-
-        Ok((external_match_req, gas_sponsorship_info))
-    }
 
     /// Apply gas sponsorship to the given malleable match bundle, returning
     /// a `SponsoredMalleableMatchResponse  `
@@ -177,26 +133,6 @@ impl Server {
         rand::thread_rng().gen_bool(self.metrics_sampling_rate)
     }
 
-    /// Handle a bundle response from a direct match request
-    fn handle_direct_match_bundle_response(
-        &self,
-        key: &str,
-        req: &ExternalMatchRequest,
-        headers: &HeaderMap,
-        resp: &SponsoredMatchResponse,
-        request_id: &str,
-    ) -> Result<(), AuthServerError> {
-        let sdk_version = get_sdk_version(headers);
-        self.handle_bundle_response(
-            key,
-            &req.external_order,
-            resp,
-            request_id,
-            "request-external-match",
-            &sdk_version,
-        )
-    }
-
     /// Record and watch a bundle that was forwarded to the client
     ///
     /// This method will await settlement and update metrics, rate limits, etc
@@ -244,6 +180,24 @@ impl Server {
 // -------------------
 // | Logging helpers |
 // -------------------
+
+/// Log a non-200 response from the relayer for the given request
+pub fn log_unsuccessful_relayer_request(
+    resp: &Response<Bytes>,
+    key_description: &str,
+    path: &str,
+    headers: &HeaderMap,
+) {
+    let status = resp.status();
+    let text = String::from_utf8_lossy(resp.body()).to_string();
+    let sdk_version = get_sdk_version(headers);
+    warn!(
+        key_description = key_description,
+        path = path,
+        sdk_version = sdk_version,
+        "Non-200 response from relayer: {status}: {text}",
+    );
+}
 
 /// Log the bundle parameters
 fn log_bundle<Req>(
