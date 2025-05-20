@@ -75,13 +75,13 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // 1. Run the pre-request subroutines
         let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
-        self.pre_request(&mut ctx).await?;
+        self.quote_pre_request(&mut ctx).await?;
 
         // 2. Proxy the request to the relayer
         let (raw_resp, ctx) = self.forward_request(ctx).await?;
 
         // 3. Run the post-request subroutines
-        let resp = self.post_request(raw_resp, ctx)?;
+        let resp = self.quote_post_request(raw_resp, ctx)?;
         Ok(resp)
     }
 
@@ -91,13 +91,12 @@ impl Server {
 
     /// Run endpoint handler subroutines before forwarding the request to the
     /// relayer
-    async fn pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
+    async fn quote_pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
         // Check the rate limit
         self.check_quote_rate_limit(ctx.user()).await?;
 
-        // If necessary, ensure that the exact output amount requested in the order is
-        // respected by any gas sponsorship applied to the relayer's quote
-        let gas_sponsorship_info = self.sponsor_request(ctx).await?;
+        // Apply gas sponsorship to the quote request
+        let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
         ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }
@@ -106,7 +105,7 @@ impl Server {
     /// response
     ///
     /// Returns the auth server's response to the client
-    fn post_request(
+    fn quote_post_request(
         &self,
         mut resp: Response<Bytes>,
         ctx: QuoteResponseCtx,
@@ -126,7 +125,7 @@ impl Server {
 
         // Start a thread to record metrics and return
         let ctx = SponsoredQuoteResponseCtx::from_quote_response_ctx(sponsored_resp, ctx);
-        self.record_metrics(ctx);
+        self.record_quote_metrics(ctx);
         Ok(resp)
     }
 
@@ -139,7 +138,7 @@ impl Server {
     /// respected.
     ///
     /// Returns the gas sponsorship info for the request, if any.
-    async fn sponsor_request(
+    async fn sponsor_quote_request(
         &self,
         ctx: &mut QuoteRequestCtx,
     ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
@@ -175,7 +174,7 @@ impl Server {
     // -----------
 
     /// Run the post-processing metrics subroutines for the quote endpoint
-    fn record_metrics(&self, ctx: SponsoredQuoteResponseCtx) {
+    fn record_quote_metrics(&self, ctx: SponsoredQuoteResponseCtx) {
         let server_clone = self.clone();
         tokio::spawn(async move {
             // Cache the gas sponsorship info for the quote in Redis if it exists
@@ -185,14 +184,14 @@ impl Server {
             }
 
             // Log the quote response & emit metrics
-            if let Err(e) = server_clone.record_metrics_helper(&ctx) {
+            if let Err(e) = server_clone.record_quote_metrics_helper(&ctx) {
                 warn!("Error handling quote metrics: {e}");
             }
         });
     }
 
     /// Handle a quote response
-    fn record_metrics_helper(
+    fn record_quote_metrics_helper(
         &self,
         ctx: &SponsoredQuoteResponseCtx,
     ) -> Result<(), AuthServerError> {

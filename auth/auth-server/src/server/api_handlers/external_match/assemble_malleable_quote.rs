@@ -1,17 +1,31 @@
 //! Assemble malleable quote endpoint handler
 
+use auth_server_api::SponsoredMalleableMatchResponse;
 use bytes::Bytes;
-use http::{Method, StatusCode};
-use renegade_api::http::external_match::AssembleExternalMatchRequest;
+use http::Response;
+use renegade_api::http::external_match::{
+    AssembleExternalMatchRequest, MalleableExternalMatchResponse,
+};
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::{
-    error::AuthServerError,
-    http_utils::overwrite_response_body,
-    server::{api_handlers::log_unsuccessful_relayer_request, Server},
-    telemetry::helpers::record_relayer_request_500,
-};
+use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
+
+use super::{RequestContext, ResponseContext};
+
+// -----------------
+// | Context Types |
+// -----------------
+
+/// The request context for an assemble malleable quote request
+type AssembleMalleableQuoteRequestCtx = RequestContext<AssembleExternalMatchRequest>;
+/// The response context for an assemble malleable quote request
+type AssembleMalleableQuoteResponseCtx =
+    ResponseContext<AssembleExternalMatchRequest, MalleableExternalMatchResponse>;
+
+// --------------------
+// | Endpoint Handler |
+// --------------------
 
 impl Server {
     /// Handle an external malleable quote assembly request
@@ -23,45 +37,81 @@ impl Server {
         body: Bytes,
         query_str: String,
     ) -> Result<impl Reply, Rejection> {
-        // Authorize the request
-        let path_str = path.as_str();
-        let key_desc = self.authorize_request(path_str, &query_str, &headers, &body).await?;
+        // 1. Run the pre-request subroutines
+        let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
+        self.assemble_malleable_quote_pre_request(&mut ctx).await?;
 
-        // Check the bundle rate limit
-        let mut req: AssembleExternalMatchRequest =
-            serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
-        self.check_bundle_rate_limit(key_desc.clone(), req.allow_shared).await?;
+        // 2. Proxy the request to the relayer
+        let (raw_resp, ctx) = self.forward_request(ctx).await?;
 
-        // Update the request to remove the effects of gas sponsorship, if
-        // necessary
-        let gas_sponsorship_info =
-            self.maybe_update_assembly_request_with_gas_sponsorship(&mut req).await?;
+        // 3. Run the post-request subroutines
+        let res = self.assemble_malleable_quote_post_request(raw_resp, &ctx)?;
+        Ok(res)
+    }
 
-        // Serialize the potentially updated request body
-        let req_body = serde_json::to_vec(&req).map_err(AuthServerError::serde)?;
+    // -------------------------------
+    // | Request Pre/Post Processing |
+    // -------------------------------
 
-        // Send the request to the relayer
-        let mut res = self
-            .send_admin_request(Method::POST, path_str, headers.clone(), req_body.clone().into())
-            .await?;
+    /// Run the pre-request subroutines for the assemble malleable quote
+    /// endpoint
+    async fn assemble_malleable_quote_pre_request(
+        &self,
+        ctx: &mut AssembleMalleableQuoteRequestCtx,
+    ) -> Result<(), AuthServerError> {
+        let allow_shared = ctx.body.allow_shared;
+        let key_desc = ctx.user();
+        self.check_bundle_rate_limit(key_desc, allow_shared).await?;
 
-        let status = res.status();
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
-            record_relayer_request_500(key_desc.clone(), path_str.to_string());
-        }
-        if status != StatusCode::OK {
-            log_unsuccessful_relayer_request(&res, &key_desc, path_str, &headers);
-            return Ok(res);
+        // Apply gas sponsorship to the assembly request
+        // The request type is the same between the standard and malleable assembly
+        // endpoints so we can use the same modification method
+        let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
+        ctx.set_sponsorship_info(gas_sponsorship_info);
+        Ok(())
+    }
+
+    /// Run the post-request subroutines for the assemble malleable quote
+    /// endpoint
+    fn assemble_malleable_quote_post_request(
+        &self,
+        mut resp: Response<Bytes>,
+        ctx: &AssembleMalleableQuoteResponseCtx,
+    ) -> Result<impl Reply, AuthServerError> {
+        if !ctx.is_success() {
+            return Ok(resp);
         }
 
         // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_match_resp = self.maybe_apply_gas_sponsorship_to_malleable_match_bundle(
-            res.body(),
-            gas_sponsorship_info,
-        )?;
-        overwrite_response_body(&mut res, sponsored_match_resp.clone())?;
+        let sponsored_match_resp = self.sponsor_malleable_assembly_response(ctx)?;
+        overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
 
         // TODO: record bundle metrics
-        Ok(res)
+        Ok(resp)
+    }
+
+    // ---------------
+    // | Sponsorship |
+    // ---------------
+
+    /// Apply gas sponsorship to the given malleable match bundle, returning
+    /// a `SponsoredMalleableMatchResponse  `
+    fn sponsor_malleable_assembly_response(
+        &self,
+        ctx: &AssembleMalleableQuoteResponseCtx,
+    ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
+        let resp = ctx.response();
+        let sponsorship_info = ctx.sponsorship_info();
+        if sponsorship_info.is_none() {
+            return Ok(SponsoredMalleableMatchResponse {
+                match_bundle: resp.match_bundle,
+                gas_sponsorship_info: None,
+            });
+        }
+
+        // Construct the sponsored match response
+        let info = sponsorship_info.unwrap();
+        let sponsored_match_resp = self.construct_sponsored_malleable_match_response(resp, info)?;
+        Ok(sponsored_match_resp)
     }
 }

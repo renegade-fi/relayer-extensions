@@ -26,7 +26,7 @@ use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
 use tracing::warn;
 use user_rate_limiter::ApiTokenRateLimiter;
 
-use crate::{error::AuthServerError, ApiError};
+use crate::error::AuthServerError;
 
 use super::Server;
 
@@ -55,10 +55,10 @@ impl Server {
         &self,
         key_description: String,
         shared: bool,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), AuthServerError> {
         if !self.rate_limiter.check_bundle_token(key_description.clone(), shared).await {
             warn!("Bundle rate limit exceeded for key: {key_description}");
-            return Err(ApiError::TooManyRequests);
+            return Err(AuthServerError::RateLimit);
         }
         Ok(())
     }
