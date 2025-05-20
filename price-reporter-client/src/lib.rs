@@ -80,16 +80,13 @@ impl PriceReporterClient {
             .set_port(Some(WS_PORT))
             .map_err(|_| PriceReporterClientError::setup("Error setting websocket port"))?;
 
-        let chain_mints = get_all_tokens()
+        let mints = get_all_tokens()
             .into_iter()
             .filter(|t| !EXCLUDED_TICKERS.contains(&t.get_ticker().unwrap_or_default().as_str()))
-            .map(|t| (t.get_chain(), t.get_addr()))
+            .map(|t| t.get_addr())
             .collect();
 
-        Ok(Self {
-            base_url,
-            multi_price_stream: MultiPriceStream::new(ws_url.to_string(), chain_mints),
-        })
+        Ok(Self { base_url, multi_price_stream: MultiPriceStream::new(ws_url.to_string(), mints) })
     }
 
     /// A convenience method for fetching the current price of ETH in USDC.
@@ -146,16 +143,12 @@ impl PriceReporterClient {
         }
 
         warn!("Price stream is not connected, fetching price via HTTP");
-        self.get_price_http(mint, chain).await
+        self.get_price_http(mint).await
     }
 
     /// Get the price of a token from the price reporter via HTTP
-    pub async fn get_price_http(
-        &self,
-        mint: &str,
-        chain: Chain,
-    ) -> Result<f64, PriceReporterClientError> {
-        let price_topic = construct_price_topic(mint, chain);
+    pub async fn get_price_http(&self, mint: &str) -> Result<f64, PriceReporterClientError> {
+        let price_topic = construct_price_topic(mint);
 
         let url = format!("{}{}/{}", self.base_url, PRICE_ROUTE, price_topic);
         let response = send_get_request(&url, DEFAULT_TIMEOUT_SECS).await?;
@@ -173,10 +166,9 @@ impl PriceReporterClient {
 // ----------------------
 
 /// Construct the price topic for a given token
-pub fn construct_price_topic(mint: &str, chain: Chain) -> String {
-    let exchange = Exchange::Binance;
-    let quote_mint = Token::from_ticker_on_chain(USDT_TICKER, chain).get_addr();
-    format!("{}-{}-{}", exchange, mint, quote_mint)
+pub fn construct_price_topic(mint: &str) -> String {
+    let exchange = Exchange::Renegade;
+    format!("{}-{}", exchange, mint)
 }
 
 /// Get the base mint from a price topic
