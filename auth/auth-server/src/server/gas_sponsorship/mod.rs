@@ -40,9 +40,9 @@ const WETH_TICKER: &str = "WETH";
 impl Server {
     /// Generate gas sponsorship info for a given user's order, if permissible
     /// according to the rate limit and query params
-    pub(crate) async fn maybe_generate_gas_sponsorship_info(
+    pub(crate) async fn generate_sponsorship_info(
         &self,
-        key_desc: String,
+        key_desc: &str,
         order: &ExternalOrder,
         query_params: &GasSponsorshipQueryParams,
     ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
@@ -51,22 +51,16 @@ impl Server {
             query_params.get_or_default();
 
         // Check gas sponsorship rate limit
-        let gas_sponsorship_rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await;
-
+        let rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await;
         let expected_quote_amount = self.get_expected_quote_amount(order).await?;
-        let order_too_small_for_sponsorship =
-            expected_quote_amount < self.min_sponsored_order_quote_amount;
+        let order_too_small = expected_quote_amount < self.min_sponsored_order_quote_amount;
 
-        let sponsor_match = !(gas_sponsorship_rate_limited
-            || sponsorship_disabled
-            || order_too_small_for_sponsorship);
-
+        let sponsor_match = !(rate_limited || sponsorship_disabled || order_too_small);
         if !sponsor_match {
             return Ok(None);
         }
 
         let refund_amount = self.compute_refund_amount_for_order(order, refund_native_eth).await?;
-
         GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
             .map(Some)
             .map_err(AuthServerError::gas_sponsorship)

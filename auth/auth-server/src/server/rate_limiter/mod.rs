@@ -26,7 +26,7 @@ use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
 use tracing::warn;
 use user_rate_limiter::ApiTokenRateLimiter;
 
-use crate::ApiError;
+use crate::{error::AuthServerError, ApiError};
 
 use super::Server;
 
@@ -39,10 +39,13 @@ mod user_rate_limiter;
 
 impl Server {
     /// Check the quote rate limiter
-    pub async fn check_quote_rate_limit(&self, key_description: String) -> Result<(), ApiError> {
+    pub async fn check_quote_rate_limit(
+        &self,
+        key_description: String,
+    ) -> Result<(), AuthServerError> {
         if !self.rate_limiter.check_quote_token(key_description.clone()).await {
             warn!("Quote rate limit exceeded for key: {key_description}");
-            return Err(ApiError::TooManyRequests);
+            return Err(AuthServerError::RateLimit);
         }
         Ok(())
     }
@@ -64,10 +67,10 @@ impl Server {
     ///
     /// Returns a boolean indicating whether or not the gas sponsorship rate
     /// limit has been exceeded.
-    pub async fn check_gas_sponsorship_rate_limit(&self, key_description: String) -> bool {
-        if !self.rate_limiter.check_gas_sponsorship(key_description.clone()).await {
+    pub async fn check_gas_sponsorship_rate_limit(&self, key_description: &str) -> bool {
+        if !self.rate_limiter.check_gas_sponsorship(key_description).await {
             warn!(
-                key_description = key_description.as_str(),
+                key_description = key_description,
                 "Gas sponsorship rate limit exceeded for key: {key_description}"
             );
             return false;
@@ -140,7 +143,7 @@ impl AuthServerRateLimiter {
     }
 
     /// Check if the given user has any remaining gas sponsorship budget
-    pub async fn check_gas_sponsorship(&self, user_id: String) -> bool {
+    pub async fn check_gas_sponsorship(&self, user_id: &str) -> bool {
         self.gas_sponsorship_rate_limiter.has_remaining_value(user_id).await
     }
 
