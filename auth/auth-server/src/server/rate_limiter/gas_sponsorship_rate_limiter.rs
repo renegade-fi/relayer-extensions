@@ -58,9 +58,9 @@ impl GasSponsorshipRateLimiter {
     }
 
     /// Check if the given user's bucket has a non-zero remaining value.
-    pub async fn has_remaining_value(&self, user_id: String) -> bool {
+    pub async fn has_remaining_value(&self, user_id: &str) -> bool {
         let mut map = self.buckets.lock().await;
-        let entry = map.entry(user_id).or_insert_with(|| self.new_bucket());
+        let entry = map.entry(user_id.to_string()).or_insert_with(|| self.new_bucket());
         entry.has_remaining_value()
     }
 
