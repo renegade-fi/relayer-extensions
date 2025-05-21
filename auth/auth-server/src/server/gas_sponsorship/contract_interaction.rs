@@ -42,7 +42,8 @@ sol! {
         bytes signature
     ) external payable returns (uint256);
     function sponsorMalleableAtomicMatchSettleWithRefundOptions(
-        uint256 memory base_amount,
+        uint256 quote_amount,
+        uint256 base_amount,
         address receiver,
         bytes memory internal_party_payload,
         bytes memory malleable_match_settle_atomic_statement,
@@ -135,6 +136,7 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
         signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processMalleableAtomicMatchSettleCall {
+            quote_amount,
             base_amount,
             internal_party_match_payload,
             valid_match_settle_statement,
@@ -144,6 +146,7 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
             .map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
+            quote_amount,
             base_amount,
             receiver: Address::ZERO,
             internal_party_payload: internal_party_match_payload,
@@ -169,6 +172,7 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
         signature: Bytes,
     ) -> Result<Self, AuthServerError> {
         let processMalleableAtomicMatchSettleWithReceiverCall {
+            quote_amount,
             base_amount,
             receiver,
             internal_party_match_payload,
@@ -179,6 +183,7 @@ impl sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
             .map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(sponsorMalleableAtomicMatchSettleWithRefundOptionsCall {
+            quote_amount,
             base_amount,
             receiver,
             internal_party_payload: internal_party_match_payload,
