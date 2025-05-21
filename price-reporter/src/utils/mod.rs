@@ -333,7 +333,6 @@ pub fn setup_all_token_remaps(
         },
         // Otherwise, fetch remap from default location
         None => chains.iter().try_for_each(|chain| {
-            tracing::info!("Setting up token remaps for chain: {}", chain);
             set_canonical_exchange_map(None /* remap file */, *chain)?;
             setup_token_remaps(None, *chain).map_err(err_str!(ServerError::TokenRemap))
         }),
