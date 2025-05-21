@@ -19,7 +19,7 @@ use crate::{
     errors::ServerError,
     utils::{
         canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
-        PriceTopic,
+        resolve_tokens_and_chain, PriceTopic,
     },
 };
 
@@ -105,14 +105,15 @@ impl PairInfo {
         }
 
         let base_mint = parts[1];
-        let (base, chain) = get_token_and_chain(base_mint).ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("invalid base token `{}`", base_mint))
-        })?;
-
         let quote_mint = parts[2];
-        let quote = Token::from_addr_on_chain(quote_mint, chain);
+        if let Some((base, quote, _chain)) = resolve_tokens_and_chain(base_mint, quote_mint) {
+            return Self::new_from_tokens(exchange, &base, &quote);
+        }
 
-        Self::new_from_tokens(exchange, &base, &quote)
+        Err(ServerError::InvalidPairInfo(format!(
+            "invalid token pair `{}`-`{}`",
+            base_mint, quote_mint
+        )))
     }
 
     /// Parse a Renegade topic
@@ -126,9 +127,24 @@ impl PairInfo {
         })?;
         // If the topic specifies a quote token, enforce that it is USDC
         if let Some(quote_mint) = parts.get(2) {
-            let quote = Self::enforce_usdc(quote_mint)?;
-            let base = Token::from_addr_on_chain(base_mint, quote.get_chain());
-            return Self::new_from_tokens(Exchange::Renegade, &base, &quote);
+            if let Some((base, quote, _chain)) = resolve_tokens_and_chain(base_mint, quote_mint) {
+                // Ensure quote is USDC
+                let ticker = quote.get_ticker().ok_or_else(|| {
+                    ServerError::InvalidPairInfo(format!("unable to get ticker for {}", quote))
+                })?;
+                if ticker != USDC_TICKER {
+                    return Err(ServerError::InvalidPairInfo(format!(
+                        "expected USDC, got {}",
+                        ticker
+                    )));
+                }
+
+                return Self::new_from_tokens(Exchange::Renegade, &base, &quote);
+            }
+            return Err(ServerError::InvalidPairInfo(format!(
+                "invalid renegade token pair `{}`-`{}`",
+                base_mint, quote_mint
+            )));
         }
 
         Self::new_default_stable(Exchange::Renegade, base_mint)
