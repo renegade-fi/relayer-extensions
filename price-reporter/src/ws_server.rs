@@ -259,7 +259,7 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
-        let conversion_pair = pair_info.get_conversion_pair();
+        let conversion_pair = pair_info.get_conversion_pair()?;
         let conversion_rx = self.get_or_create_price_receiver(conversion_pair, config).await?;
         Ok(conversion_rx)
     }

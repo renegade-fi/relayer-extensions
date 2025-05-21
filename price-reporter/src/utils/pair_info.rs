@@ -44,18 +44,32 @@ impl PairInfo {
         Self { exchange, base, quote, chain: chain.unwrap_or(default_chain()) }
     }
 
+    /// Create a new pair info from two tokens
+    pub fn new_from_tokens(
+        exchange: Exchange,
+        base: &Token,
+        quote: &Token,
+    ) -> Result<Self, ServerError> {
+        assert_eq!(base.get_chain(), quote.get_chain());
+        let base_ticker = base.get_ticker().ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", base))
+        })?;
+        let quote_ticker = quote.get_ticker().ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", quote))
+        })?;
+
+        Ok(Self { exchange, base: base_ticker, quote: quote_ticker, chain: quote.get_chain() })
+    }
+
     /// Create a new pair info with the default stable token of the given
     /// exchange
-    pub fn new_default_stable(exchange: Exchange, base_mint: &str) -> Self {
-        let (base, chain) = get_token_and_chain(base_mint).unwrap();
-        let quote_token = default_exchange_stable(&exchange, chain);
+    pub fn new_default_stable(exchange: Exchange, base_mint: &str) -> Result<Self, ServerError> {
+        let (base, chain) = get_token_and_chain(base_mint).ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("invalid token `{}`", base_mint))
+        })?;
+        let quote = default_exchange_stable(&exchange, chain);
 
-        Self::new(
-            exchange,
-            base.get_ticker().unwrap(),
-            quote_token.get_ticker().unwrap(),
-            Some(chain),
-        )
+        Self::new_from_tokens(exchange, &base, &quote)
     }
 
     /// Derive a new pair info using the canonical exchange and its default
@@ -63,7 +77,7 @@ impl PairInfo {
     pub fn new_canonical_exchange(base_mint: &str) -> Result<Self, ServerError> {
         let canonical_exchange = get_canonical_exchange(base_mint)?;
 
-        Ok(Self::new_default_stable(canonical_exchange, base_mint))
+        Self::new_default_stable(canonical_exchange, base_mint)
     }
 
     /// Get the base token for a given pair info
@@ -85,23 +99,54 @@ impl PairInfo {
         let parts: Vec<&str> = topic.split('-').collect();
         let exchange =
             Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-        let (base, chain) = get_token_and_chain(parts[1]).ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("invalid base token `{}`", parts[1]))
-        })?;
-        let quote = if exchange == Exchange::Renegade {
-            Token::from_ticker_on_chain(USDC_TICKER, chain)
-        } else {
-            Token::from_addr_on_chain(parts[2], chain)
-        };
 
-        let base_ticker = base.get_ticker().ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", base))
-        })?;
-        let quote_ticker = quote.get_ticker().ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", quote))
+        if exchange == Exchange::Renegade {
+            return Self::from_renegade_topic(topic);
+        }
+
+        let base_mint = parts[1];
+        let (base, chain) = get_token_and_chain(base_mint).ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("invalid base token `{}`", base_mint))
         })?;
 
-        Ok(Self::new(exchange, base_ticker, quote_ticker, Some(chain)))
+        let quote_mint = parts[2];
+        let quote = Token::from_addr_on_chain(quote_mint, chain);
+
+        Self::new_from_tokens(exchange, &base, &quote)
+    }
+
+    /// Parse a Renegade topic
+    ///
+    /// Incoming Renegade topics may specify a base token or both base and
+    /// quote tokens.
+    fn from_renegade_topic(topic: &str) -> Result<Self, ServerError> {
+        let parts: Vec<&str> = topic.split('-').collect();
+        let base_mint = parts.get(1).ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("invalid renegade topic `{}`", topic))
+        })?;
+        // If the topic specifies a quote token, enforce that it is USDC
+        if let Some(quote_mint) = parts.get(2) {
+            let quote = Self::enforce_usdc(quote_mint)?;
+            let base = Token::from_addr_on_chain(base_mint, quote.get_chain());
+            return Self::new_from_tokens(Exchange::Renegade, &base, &quote);
+        }
+
+        Self::new_default_stable(Exchange::Renegade, base_mint)
+    }
+
+    /// Enforce that a given mint is USDC and return the Token
+    fn enforce_usdc(mint: &str) -> Result<Token, ServerError> {
+        let (token, _) = get_token_and_chain(mint)
+            .ok_or_else(|| ServerError::InvalidPairInfo(format!("invalid token `{}`", mint)))?;
+        let ticker = token.get_ticker().ok_or_else(|| {
+            ServerError::InvalidPairInfo(format!("unable to get ticker for {}", token))
+        })?;
+
+        if ticker != USDC_TICKER {
+            return Err(ServerError::InvalidPairInfo(format!("expected USDC, got {}", ticker)));
+        }
+
+        Ok(token)
     }
 
     /// Get the topic name for a given pair info as a string
@@ -158,7 +203,7 @@ impl PairInfo {
     ///
     /// This is just the price of USDC against the default stable of the
     /// exchange.
-    pub fn get_conversion_pair(&self) -> PairInfo {
+    pub fn get_conversion_pair(&self) -> Result<PairInfo, ServerError> {
         let usdc = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
         Self::new_default_stable(self.exchange, usdc.get_addr().as_str())
     }

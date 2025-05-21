@@ -140,7 +140,7 @@ fn init_price_stream(
 ) -> Result<(), ServerError> {
     // We assume that the exchange has a market between the base token
     // and its default stable token
-    let pair_info = PairInfo::new_default_stable(exchange, &base_token.get_addr());
+    let pair_info = PairInfo::new_default_stable(exchange, &base_token.get_addr())?;
     let streams = global_price_streams.clone();
     tokio::spawn(async move {
         if let Err(e) = streams.get_or_create_price_stream(pair_info, config.clone()).await {
