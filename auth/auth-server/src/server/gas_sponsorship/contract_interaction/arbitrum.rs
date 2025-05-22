@@ -303,3 +303,30 @@ impl Server {
         Ok(calldata)
     }
 }
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Generate a random nonce for gas sponsorship, signing it along with
+/// the provided refund address and the refund amount
+fn gen_signed_sponsorship_nonce(
+    refund_address: Address,
+    refund_amount: U256,
+    gas_sponsor_auth_key: &SigningKey,
+) -> Result<(U256, AlloyBytes), AuthServerError> {
+    // Generate a random sponsorship nonce
+    let mut nonce_bytes = [0u8; U256::BYTES];
+    thread_rng().fill(&mut nonce_bytes);
+
+    // Construct & sign the message
+    let mut message = Vec::new();
+    message.extend_from_slice(&nonce_bytes);
+    message.extend_from_slice(refund_address.as_ref());
+    message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
+
+    let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
+    let nonce = U256::from_be_bytes(nonce_bytes);
+
+    Ok((nonce, signature))
+}

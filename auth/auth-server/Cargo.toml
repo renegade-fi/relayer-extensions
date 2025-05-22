@@ -3,6 +3,10 @@ name = "auth-server"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+arbitrum = ["renegade-darkpool-client/arbitrum"]
+base = ["renegade-darkpool-client/base", "dep:renegade-solidity-abi"]
+
 [dependencies]
 # === HTTP Server === #
 clap = { version = "4.0", features = ["derive", "env"] }
@@ -34,14 +38,14 @@ rand = "0.8.5"
 
 # === Ethereum Libraries === #
 alloy = { workspace = true, features = ["provider-ws"] }
-alloy-primitives = { workspace = true, features = ["serde", "k256"] }
+alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
 alloy-sol-types = { workspace = true }
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 price-reporter-client = { path = "../../price-reporter-client" }
 contracts-common = { workspace = true }
-renegade-darkpool-client = { workspace = true, features = ["arbitrum"] }
+renegade-darkpool-client = { workspace = true }
 renegade-circuit-types = { workspace = true }
 renegade-common = { workspace = true }
 renegade-constants = { workspace = true }
@@ -49,6 +53,7 @@ renegade-config = { workspace = true }
 renegade-crypto = { workspace = true }
 renegade-util = { workspace = true }
 renegade-api = { workspace = true }
+renegade-solidity-abi = { workspace = true, optional = true }
 renegade-system-clock = { workspace = true }
 
 # === Misc Dependencies === #

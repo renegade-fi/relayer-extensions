@@ -2,10 +2,10 @@
 
 use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
 use alloy::signers::k256::ecdsa::SigningKey;
-use alloy_primitives::{keccak256, Address, Bytes as AlloyBytes, Signature, U256};
+use alloy_primitives::{keccak256, Signature, U256};
 use base64::{engine::general_purpose, Engine as _};
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
 use renegade_api::http::external_match::SignedExternalQuote;
 use uuid::Uuid;
 
@@ -57,29 +57,6 @@ pub fn aes_decrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerErr
 // ---------------------------
 // | Gas Sponsorship Helpers |
 // ---------------------------
-
-/// Generate a random nonce for gas sponsorship, signing it along with
-/// the provided refund address and the refund amount
-pub fn gen_signed_sponsorship_nonce(
-    refund_address: Address,
-    refund_amount: U256,
-    gas_sponsor_auth_key: &SigningKey,
-) -> Result<(U256, AlloyBytes), AuthServerError> {
-    // Generate a random sponsorship nonce
-    let mut nonce_bytes = [0u8; U256::BYTES];
-    thread_rng().fill(&mut nonce_bytes);
-
-    // Construct & sign the message
-    let mut message = Vec::new();
-    message.extend_from_slice(&nonce_bytes);
-    message.extend_from_slice(refund_address.as_ref());
-    message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
-
-    let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
-    let nonce = U256::from_be_bytes(nonce_bytes);
-
-    Ok((nonce, signature))
-}
 
 /// Sign a message using a secp256k1 key, serializing the signature to bytes
 pub fn sign_message(
