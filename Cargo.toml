@@ -37,6 +37,8 @@ renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["metered-channels"] }
 renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-solidity-contracts" }
+
 
 # === Blockchain Dependencies === #
 alloy-sol-types = "1.0.1"
