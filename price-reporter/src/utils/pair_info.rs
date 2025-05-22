@@ -19,7 +19,7 @@ use crate::{
     errors::ServerError,
     utils::{
         canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
-        PriceTopic,
+        resolve_tokens_and_chain, PriceTopic,
     },
 };
 
@@ -99,54 +99,38 @@ impl PairInfo {
         let parts: Vec<&str> = topic.split('-').collect();
         let exchange =
             Exchange::from_str(parts[0]).map_err(err_str!(ServerError::InvalidPairInfo))?;
-
-        if exchange == Exchange::Renegade {
-            return Self::from_renegade_topic(topic);
-        }
-
         let base_mint = parts[1];
-        let (base, chain) = get_token_and_chain(base_mint).ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("invalid base token `{}`", base_mint))
-        })?;
-
+        // Renegade topics may omit the quote: use default stable (USDC) if so
+        if exchange == Exchange::Renegade && parts.len() == 2 {
+            return Self::new_default_stable(exchange, base_mint);
+        }
+        // Otherwise, expect a quote mint
         let quote_mint = parts[2];
-        let quote = Token::from_addr_on_chain(quote_mint, chain);
 
-        Self::new_from_tokens(exchange, &base, &quote)
-    }
-
-    /// Parse a Renegade topic
-    ///
-    /// Incoming Renegade topics may specify a base token or both base and
-    /// quote tokens.
-    fn from_renegade_topic(topic: &str) -> Result<Self, ServerError> {
-        let parts: Vec<&str> = topic.split('-').collect();
-        let base_mint = parts.get(1).ok_or_else(|| {
-            ServerError::InvalidPairInfo(format!("invalid renegade topic `{}`", topic))
-        })?;
-        // If the topic specifies a quote token, enforce that it is USDC
-        if let Some(quote_mint) = parts.get(2) {
-            let quote = Self::enforce_usdc(quote_mint)?;
-            let base = Token::from_addr_on_chain(base_mint, quote.get_chain());
-            return Self::new_from_tokens(Exchange::Renegade, &base, &quote);
+        // Resolve both mints on the same chain
+        if let Some((base, quote, _chain)) = resolve_tokens_and_chain(base_mint, quote_mint) {
+            // For Renegade, enforce that the quote is USDC
+            if exchange == Exchange::Renegade {
+                Self::enforce_usdc(&quote)?;
+            }
+            return Self::new_from_tokens(exchange, &base, &quote);
         }
 
-        Self::new_default_stable(Exchange::Renegade, base_mint)
+        Err(ServerError::InvalidPairInfo(format!(
+            "invalid token pair `{}`-`{}`",
+            base_mint, quote_mint
+        )))
     }
 
-    /// Enforce that a given mint is USDC and return the Token
-    fn enforce_usdc(mint: &str) -> Result<Token, ServerError> {
-        let (token, _) = get_token_and_chain(mint)
-            .ok_or_else(|| ServerError::InvalidPairInfo(format!("invalid token `{}`", mint)))?;
+    /// Ensure the given Token's ticker is USDC
+    fn enforce_usdc(token: &Token) -> Result<(), ServerError> {
         let ticker = token.get_ticker().ok_or_else(|| {
             ServerError::InvalidPairInfo(format!("unable to get ticker for {}", token))
         })?;
-
         if ticker != USDC_TICKER {
             return Err(ServerError::InvalidPairInfo(format!("expected USDC, got {}", ticker)));
         }
-
-        Ok(token)
+        Ok(())
     }
 
     /// Get the topic name for a given pair info as a string

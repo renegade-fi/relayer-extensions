@@ -294,6 +294,27 @@ pub fn get_token_and_chain(addr: &str) -> Option<(Token, Chain)> {
     None
 }
 
+/// Try to find a chain where both base and quote addresses exist, returning the
+/// two Tokens and that Chain.
+pub fn resolve_tokens_and_chain(
+    base_mint: &str,
+    quote_mint: &str,
+) -> Option<(Token, Token, Chain)> {
+    let base_lower = base_mint.to_lowercase();
+    let quote_lower = quote_mint.to_lowercase();
+    let remaps = read_token_remaps();
+    for (chain, token_map) in remaps.iter() {
+        if token_map.get_by_left(&base_lower).is_some()
+            && token_map.get_by_left(&quote_lower).is_some()
+        {
+            let base_token = Token::from_addr_on_chain(&base_lower, *chain);
+            let quote_token = Token::from_addr_on_chain(&quote_lower, *chain);
+            return Some((base_token, quote_token, *chain));
+        }
+    }
+    None
+}
+
 /// Setup token remaps for all given chains
 pub fn setup_all_token_remaps(
     token_remap_path: Option<String>,
