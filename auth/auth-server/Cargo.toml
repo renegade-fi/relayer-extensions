@@ -3,6 +3,10 @@ name = "auth-server"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+arbitrum = ["renegade-darkpool-client/arbitrum"]
+base = ["renegade-darkpool-client/base"]
+
 [dependencies]
 # === HTTP Server === #
 clap = { version = "4.0", features = ["derive", "env"] }
@@ -41,7 +45,7 @@ alloy-sol-types = { workspace = true }
 auth-server-api = { path = "../auth-server-api" }
 price-reporter-client = { path = "../../price-reporter-client" }
 contracts-common = { workspace = true }
-renegade-darkpool-client = { workspace = true, features = ["arbitrum"] }
+renegade-darkpool-client = { workspace = true }
 renegade-circuit-types = { workspace = true }
 renegade-common = { workspace = true }
 renegade-constants = { workspace = true }
