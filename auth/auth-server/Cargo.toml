@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 arbitrum = ["renegade-darkpool-client/arbitrum"]
-base = ["renegade-darkpool-client/base"]
+base = ["renegade-darkpool-client/base", "dep:renegade-solidity-abi"]
 
 [dependencies]
 # === HTTP Server === #
@@ -38,7 +38,7 @@ rand = "0.8.5"
 
 # === Ethereum Libraries === #
 alloy = { workspace = true, features = ["provider-ws"] }
-alloy-primitives = { workspace = true, features = ["serde", "k256"] }
+alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
 alloy-sol-types = { workspace = true }
 
 # === Renegade Dependencies === #
@@ -53,6 +53,7 @@ renegade-config = { workspace = true }
 renegade-crypto = { workspace = true }
 renegade-util = { workspace = true }
 renegade-api = { workspace = true }
+renegade-solidity-abi = { workspace = true, optional = true }
 renegade-system-clock = { workspace = true }
 
 # === Misc Dependencies === #
