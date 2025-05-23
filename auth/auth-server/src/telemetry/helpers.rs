@@ -1,27 +1,17 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use alloy_sol_types::SolCall;
-use contracts_common::types::MatchPayload;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
-use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide, wallet::Nullifier};
+use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 use renegade_constants::{
-    Scalar, EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
-};
-use renegade_darkpool_client::arbitrum::{
-    abi::Darkpool::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
-    helpers::deserialize_calldata,
+    EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::warn;
 
 use crate::{
     error::AuthServerError,
-    server::{
-        gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall,
-        helpers::get_selector,
-    },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
@@ -256,50 +246,6 @@ pub(crate) fn record_quote_not_found(key_description: String, base_mint: &str) {
     ];
 
     metrics::counter!(QUOTE_NOT_FOUND_COUNT, &labels).increment(1);
-}
-
-// --- Settlement Processing --- //
-
-/// Extracts the nullifier from a match bundle's settlement transaction
-///
-/// This function attempts to decode the settlement transaction data in two
-/// ways:
-/// 1. As a standard atomic match settle call
-/// 2. As a match settle with receiver call
-pub fn extract_nullifier_from_match_bundle(
-    match_bundle: &AtomicMatchApiBundle,
-) -> Result<Nullifier, AuthServerError> {
-    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
-    let selector = get_selector(tx_data)?;
-
-    // Retrieve serialized match payload from the transaction data
-    let serialized_match_payload = match selector {
-        processAtomicMatchSettleCall::SELECTOR => {
-            processAtomicMatchSettleCall::abi_decode(tx_data)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        processAtomicMatchSettleWithReceiverCall::SELECTOR => {
-            processAtomicMatchSettleWithReceiverCall::abi_decode(tx_data)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
-            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
-                .map_err(AuthServerError::serde)?
-                .internal_party_match_payload
-        },
-        _ => {
-            return Err(AuthServerError::serde("Invalid selector for settlement tx"));
-        },
-    };
-
-    // Extract nullifier from the payload
-    let match_payload = deserialize_calldata::<MatchPayload>(&serialized_match_payload)
-        .map_err(AuthServerError::serde)?;
-    let nullifier = Scalar::new(match_payload.valid_reblind_statement.original_shares_nullifier);
-
-    Ok(nullifier)
 }
 
 // --- Quote Comparison --- //

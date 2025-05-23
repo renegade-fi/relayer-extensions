@@ -153,3 +153,9 @@ impl From<AuthServerError> for ApiError {
         }
     }
 }
+
+impl From<alloy_sol_types::Error> for AuthServerError {
+    fn from(err: alloy_sol_types::Error) -> Self {
+        Self::custom(err)
+    }
+}

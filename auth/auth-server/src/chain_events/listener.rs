@@ -15,7 +15,7 @@ use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::{
-    arbitrum::abi::Darkpool::NullifierSpent, conversion::u256_to_scalar, DarkpoolClient,
+    conversion::u256_to_scalar, traits::DarkpoolImpl, DarkpoolClient, DarkpoolImplementation,
 };
 use tracing::{error, info};
 
@@ -25,6 +25,9 @@ use crate::server::{
 };
 
 use super::error::OnChainEventListenerError;
+
+/// The nullifier spent event for the darkpool
+type NullifierSpent = <DarkpoolImplementation as DarkpoolImpl>::NullifierSpent;
 
 // ----------
 // | Worker |

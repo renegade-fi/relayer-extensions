@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::{MatchBundleResponseCtx, Server};
 use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::extract_nullifier_from_match_bundle;
+use crate::telemetry::abi_helpers::extract_nullifier_from_match_bundle;
 
 impl Server {
     /// Write the bundle context to the store, handling gas sponsorship if
