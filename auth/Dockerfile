@@ -21,6 +21,9 @@ COPY ./price-reporter-client ./price-reporter-client
 # Pull the sources into their own layer
 FROM chef AS builder
 
+# Add build argument for cargo features
+ARG CARGO_FEATURES
+
 # Disable compiler warnings and enable backtraces for panic debugging
 ENV RUSTFLAGS=-Awarnings
 ENV RUST_BACKTRACE=1
@@ -44,7 +47,7 @@ COPY --from=sources /build/auth /build/auth
 COPY --from=sources /build/price-reporter-client /build/price-reporter-client
 WORKDIR /build
 
-RUN cargo build --release -p auth-server
+RUN cargo build --release -p auth-server --features "$CARGO_FEATURES"
 
 # === Release stage === #
 FROM --platform=arm64 debian:bookworm-slim
