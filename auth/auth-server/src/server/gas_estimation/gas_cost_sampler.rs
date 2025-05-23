@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use alloy::primitives::{Address, U256};
-use alloy::sol;
 use rand::{thread_rng, RngCore};
 use renegade_darkpool_client::client::RenegadeProvider;
 use renegade_system_clock::{SystemClock, SystemClockError};
@@ -12,23 +11,12 @@ use tokio::sync::RwLock;
 
 use crate::error::AuthServerError;
 
-use super::constants::{
-    ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES, ESTIMATED_L2_GAS, GAS_COST_SAMPLING_INTERVAL,
-    NODE_INTERFACE_ADDRESS,
+use super::{
+    constants::{
+        ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES, ESTIMATED_L2_GAS, GAS_COST_SAMPLING_INTERVAL,
+    },
+    gas_oracles::{self, GasPriceEstimation},
 };
-
-// -------
-// | ABI |
-// -------
-
-// The ABI for the `NodeInterface` precompile:
-// https://docs.arbitrum.io/build-decentralized-apps/nodeinterface/overview
-sol! {
-    #[sol(rpc)]
-    contract NodeInterface {
-        function gasEstimateL1Component(address to, bool contractCreation, bytes calldata data) external payable returns (uint64 gasEstimateForL1, uint256 baseFee, uint256 l1BaseFeeEstimate);
-    }
-}
 
 /// A lightweight worker that periodically samples an estimate of the gas cost
 /// for an external match
@@ -89,41 +77,27 @@ impl GasCostSampler {
     /// - `l2_base_fee`: the cost in wei of a single unit of L2 gas.
     /// - `l1_base_fee_estimate*16`: the cost in wei (on the L2) of including a
     ///   single byte of calldata.
-    pub async fn sample_gas_prices(&self) -> Result<(u64, U256, U256), String> {
-        // Get the estimate of the L1 gas costs of the transaction.
-        // As per https://github.com/OffchainLabs/nitro-contracts/blob/main/src/node-interface/NodeInterface.sol#L102-L103,
-        // this doesn't actually simulate the transaction, just estimates L1 portion of
-        // gas costs from the calldata size.
-        let node_interface = NodeInterface::new(NODE_INTERFACE_ADDRESS, self.client.clone());
-
-        // The arguments to the `gasEstimateL1Component` call are largely irrelevant.
-        // Primarily, we're interested in mocking the calldata,
-        // which we do so by constructing `ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES`
-        // random bytes
+    pub async fn sample_gas_prices(&self) -> Result<GasPriceEstimation, String> {
+        // Generate random data of the estimated compressed calldata size
         let mut data = [0_u8; ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES];
         thread_rng().fill_bytes(&mut data);
 
-        let res = node_interface
-            .gasEstimateL1Component(
-                self.gas_sponsor_address,
-                false, // contract_creation
-                data.into(),
-            )
-            .call()
-            .await
-            .map_err(|e| e.to_string())?;
-        let (gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate) =
-            (res.gasEstimateForL1, res.baseFee, res.l1BaseFeeEstimate);
-
-        Ok((gas_estimate_for_l1, l2_base_fee, l1_base_fee_estimate * U256::from(16)))
+        // Use the arbitrum gas oracle to estimate the L1 gas component
+        let estimation = gas_oracles::estimate_l1_gas_component(
+            self.client.clone(),
+            self.gas_sponsor_address,
+            data.to_vec(),
+        )
+        .await?;
+        Ok(estimation)
     }
 
     /// Estimate the gas cost, in wei, of an external match.
     /// This calculation was taken from https://docs.arbitrum.io/build-decentralized-apps/how-to-estimate-gas
     async fn estimate_external_match_gas_cost(&self) -> Result<(), String> {
-        let (gas_estimate_for_l1, l2_base_fee, _) = self.sample_gas_prices().await?;
-        let total_gas = U256::from(ESTIMATED_L2_GAS + gas_estimate_for_l1);
-        let total_cost = total_gas * l2_base_fee;
+        let estimate = self.sample_gas_prices().await?;
+        let total_gas = ESTIMATED_L2_GAS + estimate.gas_estimate_for_l1;
+        let total_cost = total_gas * estimate.l2_base_fee;
 
         let mut latest_estimate = self.latest_estimate.write().await;
         *latest_estimate = total_cost;

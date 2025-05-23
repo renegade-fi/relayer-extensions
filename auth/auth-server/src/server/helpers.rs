@@ -81,6 +81,15 @@ pub fn sign_message(
     Ok(sig_bytes)
 }
 
+// ----------------------
+// | Conversion Helpers |
+// ----------------------
+
+/// Convert a u64 to a U256
+pub const fn u64_to_u256(value: u64) -> U256 {
+    U256::from_limbs([value, 0, 0, 0])
+}
+
 // ----------------
 // | Misc Helpers |
 // ----------------
