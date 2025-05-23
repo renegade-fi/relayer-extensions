@@ -148,7 +148,7 @@ impl OnChainEventListenerExecutor {
             (refund_asset_ticker, refund_amount_whole)
         };
 
-        let (_, l2_base_fee, l1_cost_per_byte) = self
+        let estimate = self
             .gas_cost_sampler
             .sample_gas_prices()
             .await
@@ -162,8 +162,8 @@ impl OnChainEventListenerExecutor {
             (REMAINING_TIME_TAG.to_string(), remaining_time.as_secs().to_string()),
             (REFUND_ASSET_TAG.to_string(), refund_asset_ticker),
             (REFUND_AMOUNT_TAG.to_string(), refund_amount_whole.to_string()),
-            (L2_BASE_FEE_TAG.to_string(), l2_base_fee.to_string()),
-            (L1_COST_PER_BYTE_TAG.to_string(), l1_cost_per_byte.to_string()),
+            (L2_BASE_FEE_TAG.to_string(), estimate.l2_base_fee.to_string()),
+            (L1_COST_PER_BYTE_TAG.to_string(), estimate.l1_data_fee.to_string()),
         ];
 
         metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
