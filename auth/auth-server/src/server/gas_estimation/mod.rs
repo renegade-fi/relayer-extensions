@@ -6,6 +6,7 @@ use crate::server::Server;
 
 pub mod constants;
 pub mod gas_cost_sampler;
+pub mod gas_oracles;
 
 // ---------------
 // | Server Impl |
