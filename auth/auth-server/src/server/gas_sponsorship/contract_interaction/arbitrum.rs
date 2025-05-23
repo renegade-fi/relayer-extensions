@@ -1,7 +1,9 @@
 //! Logic for interacting with the gas sponsor contract
 
+use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{sol, SolCall};
+use rand::Rng;
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
 use renegade_darkpool_client::arbitrum::abi::Darkpool::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
@@ -11,7 +13,7 @@ use renegade_darkpool_client::arbitrum::abi::Darkpool::{
 use crate::{
     error::AuthServerError,
     server::{
-        helpers::{gen_signed_sponsorship_nonce, get_selector},
+        helpers::{get_selector, sign_message},
         Server,
     },
 };
@@ -314,10 +316,11 @@ fn gen_signed_sponsorship_nonce(
     refund_address: Address,
     refund_amount: U256,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(U256, AlloyBytes), AuthServerError> {
+) -> Result<(U256, Bytes), AuthServerError> {
     // Generate a random sponsorship nonce
+    let mut rng = rand::thread_rng();
     let mut nonce_bytes = [0u8; U256::BYTES];
-    thread_rng().fill(&mut nonce_bytes);
+    rng.fill(&mut nonce_bytes);
 
     // Construct & sign the message
     let mut message = Vec::new();
