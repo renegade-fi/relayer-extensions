@@ -4,6 +4,7 @@ members = [
     "auth/auth-server-api",
     "compliance/compliance-server",
     "compliance/compliance-api",
+    "deploy",
     "dealer/renegade-dealer",
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
