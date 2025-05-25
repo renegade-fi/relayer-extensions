@@ -42,3 +42,25 @@ cargo_features = "base"
 [services.base-mainnet-auth-server.deploy]
 environment = "base-mainnet"
 resource = "auth-server"
+
+#####################
+### Funds Manager ###
+#####################
+
+[services.testnet-funds-manager]
+[services.testnet-funds-manager.build]
+dockerfile = "funds-manager/Dockerfile"
+ecr_repo = "funds-manager-testnet"
+
+[services.testnet-funds-manager.deploy]
+environment = "testnet"
+resource = "funds-manager"
+
+[services.mainnet-funds-manager]
+[services.mainnet-funds-manager.build]
+dockerfile = "funds-manager/Dockerfile"
+ecr_repo = "funds-manager-mainnet"
+
+[services.mainnet-funds-manager.deploy]
+environment = "mainnet"
+resource = "funds-manager"
