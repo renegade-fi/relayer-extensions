@@ -44,12 +44,13 @@ use funds_manager_api::quoters::{
     GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
     WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
+use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
 use handlers::{
     create_gas_wallet_handler, create_hot_wallet_handler, execute_swap_handler,
     get_deposit_address_handler, get_execution_quote_handler, get_fee_wallets_handler,
-    get_hot_wallet_balances_handler, index_fees_handler, quoter_withdraw_handler,
-    redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
+    get_hot_wallet_balances_handler, get_vault_balances_handler, index_fees_handler,
+    quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
     register_gas_wallet_handler, report_active_peers_handler, rpc_handler,
     transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
     withdraw_gas_handler, withdraw_to_hyperliquid_handler,
@@ -134,6 +135,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .untuple_one()
         .and(with_server(server.clone()))
         .and_then(withdraw_fee_balance_handler);
+
+    // --- Vaults --- //
+
+    let get_vault_balances = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path(GET_VAULT_BALANCES_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_json_body::<GetVaultBalancesRequest>)
+        .and_then(identity)
+        .and(with_server(server.clone()))
+        .and_then(get_vault_balances_handler);
 
     // --- Quoters --- //
 
@@ -316,6 +328,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
+        .or(get_vault_balances)
         .or(withdraw_custody)
         .or(get_deposit_address)
         .or(get_execution_quote)

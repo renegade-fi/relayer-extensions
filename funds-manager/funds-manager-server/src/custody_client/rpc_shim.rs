@@ -12,7 +12,6 @@ use fireblocks_sdk::{
         TransactionRequest, TransactionStatus, UnsignedMessage,
     },
 };
-use renegade_common::types::chain::Chain;
 use serde_json::Value;
 use tracing::error;
 
@@ -40,14 +39,6 @@ const ETH_ACCOUNTS_METHOD: &str = "eth_accounts";
 /// The method name for the `eth_signTypedData_v4` JSON-RPC method.
 const ETH_SIGN_TYPED_DATA_V4_METHOD: &str = "eth_signTypedData_v4";
 
-/// The Fireblocks asset ID for ETH on Arbitrum One
-const ARB_ONE_ETH_ASSET_ID: &str = "ETH-AETH";
-/// The Fireblocks asset ID for ETH on Arbitrum Sepolia
-const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
-/// The Fireblocks asset ID for ETH on Base mainnet
-const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
-/// The Fireblocks asset ID for ETH on Base Sepolia
-const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
 /// The name of the Fireblocks vault custodying the Hyperliquid keypair
 const HYPERLIQUID_VAULT_NAME: &str = "Hyperliquid";
 /// The EIP-712 domain name for Hyperliquid L1 actions
@@ -61,8 +52,6 @@ const HYPERLIQUID_EXCHANGE_CHAIN_ID: U256 = U256([1337, 0, 0, 0]);
 
 /// The error message emitted when an unsupported RPC method is requested.
 const ERR_UNSUPPORTED_METHOD: &str = "Unsupported RPC method";
-/// The error message emitted when an unsupported chain is configured.
-const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
 /// The error message emitted when the Hyperliquid vault is not found.
 const ERR_HYPERLIQUID_VAULT_NOT_FOUND: &str = "Hyperliquid vault not found";
 /// The error message emitted when no addresses are found for the Hyperliquid
@@ -240,18 +229,6 @@ impl CustodyClient {
         }
 
         Ok(())
-    }
-
-    /// Get the Fireblocks asset ID for the native asset (ETH) of the configured
-    /// chain.
-    fn get_native_eth_asset_id(&self) -> Result<String, FundsManagerError> {
-        match self.chain {
-            Chain::ArbitrumOne => Ok(ARB_ONE_ETH_ASSET_ID.to_string()),
-            Chain::ArbitrumSepolia => Ok(ARB_SEPOLIA_ETH_ASSET_ID.to_string()),
-            Chain::BaseMainnet => Ok(BASE_MAINNET_ETH_ASSET_ID.to_string()),
-            Chain::BaseSepolia => Ok(BASE_SEPOLIA_ETH_ASSET_ID.to_string()),
-            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
-        }
     }
 
     /// Get the Fireblocks vault ID for the Hyperliquid vault.
