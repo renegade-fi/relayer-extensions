@@ -1,7 +1,10 @@
 //! Withdrawal methods for custodied funds
 use std::str::FromStr;
 
-use crate::{error::FundsManagerError, helpers::get_secret};
+use crate::{
+    error::FundsManagerError,
+    helpers::{get_secret, round_up},
+};
 use alloy::signers::local::PrivateKeySigner;
 use fireblocks_sdk::{
     apis::{transactions_api::CreateTransactionParams, Api},
@@ -28,10 +31,8 @@ const MAINNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x2df1c51e09aecf9cacb7bc98cb17
 const TESTNET_HYPERLIQUID_BRIDGE_ADDRESS: &str = "0x08cfc1B6b2dCF36A1480b99353A354AA8AC56f89";
 /// The address of the dummy USDC token used by Hyperliquid's testnet deployment
 const TESTNET_HYPERLIQUID_USDC_ADDRESS: &str = "0x1baAbB04529D43a73232B713C0FE471f7c7334d5";
-/// The amount of extra USDC to transfer to the Hyperliquid account to correct
-/// for potential floating point precision issues.
-/// Concretely, this is equivalent to 1 nominal unit of USDC.
-const HYPERLIQUID_USDC_BUFFER: f64 = 0.000001;
+/// The number of decimals for USDC
+const USDC_DECIMALS: i64 = 6;
 
 /// The error message for when the Hyperliquid bridge is not found in the
 /// set of Fireblocks whitelisted contracts
@@ -158,6 +159,9 @@ impl CustodyClient {
         &self,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
+        // Round up to the nearest USDC_DECIMALS decimal place
+        let rounded_amount = round_up(amount, USDC_DECIMALS)?;
+
         let hyperliquid_vault_id = self.get_hyperliquid_vault_id().await?;
         let hyperliquid_address = self.get_hyperliquid_address(&hyperliquid_vault_id).await?;
 
@@ -171,9 +175,9 @@ impl CustodyClient {
 
         let hl_bal = self.get_erc20_balance(usdc_mint, &hyperliquid_address).await?;
         if hl_bal < amount {
-            // We add a tiny buffer to the amount to transfer to account for
+            // We round up the amount to transfer to account for
             // potential floating point precision issues.
-            let amount_to_transfer = amount - hl_bal + HYPERLIQUID_USDC_BUFFER;
+            let amount_to_transfer = round_up(rounded_amount - hl_bal, USDC_DECIMALS)?;
             let bal = self.get_erc20_balance(usdc_mint, &hot_wallet.address).await?;
             if bal < amount_to_transfer {
                 return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
@@ -192,10 +196,7 @@ impl CustodyClient {
         // Transfer the USDC from the Hyperliquid account to the bridge.
         // This is necessary so that the USDC is credited to the same account on the
         // Hyperliquid L1.
-        // TODO: If we want to avoid an extra transaction for this transfer,
-        // we can have the funds manager submit a `batchedDepositWithPermit` on its
-        // behalf: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2#deposit-with-permit
-        self.bridge_to_hyperliquid(amount, usdc_mint, hyperliquid_vault_id).await
+        self.bridge_to_hyperliquid(rounded_amount, usdc_mint, hyperliquid_vault_id).await
     }
 
     // -----------

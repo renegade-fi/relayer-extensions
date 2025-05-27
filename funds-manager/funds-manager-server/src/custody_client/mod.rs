@@ -52,6 +52,9 @@ const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
 const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
 /// The Fireblocks asset ID for ETH on Base Sepolia
 const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
+/// The number of confirmations Fireblocks requires to consider a contract call
+/// final
+const FB_CONTRACT_CONFIRMATIONS: u64 = 3;
 
 /// The error message emitted when an unsupported chain is configured.
 const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
@@ -347,9 +350,11 @@ impl CustodyClient {
         // Transfer the tokens
         let to_address = Address::from_str(to_address).map_err(FundsManagerError::parse)?;
         let tx = token.transfer(to_address, amount);
-        let pending_tx = tx.send().await.map_err(|e| {
+        let mut pending_tx = tx.send().await.map_err(|e| {
             FundsManagerError::arbitrum(format!("Failed to send transaction: {}", e))
         })?;
+
+        pending_tx.set_required_confirmations(FB_CONTRACT_CONFIRMATIONS);
 
         pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
     }
