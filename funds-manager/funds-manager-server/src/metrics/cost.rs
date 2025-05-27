@@ -217,7 +217,7 @@ impl MetricsRecorder {
         let events = filter
             .query()
             .await
-            .map_err(|_| FundsManagerError::arbitrum("failed to create transfer stream"))?;
+            .map_err(|_| FundsManagerError::on_chain("failed to create transfer stream"))?;
 
         // Find the transfer event that matches our transaction hash
         let transfer_event = events

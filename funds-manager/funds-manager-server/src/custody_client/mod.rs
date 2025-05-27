@@ -281,7 +281,7 @@ impl CustodyClient {
             .arbitrum_provider
             .get_balance(address)
             .await
-            .map_err(FundsManagerError::arbitrum)?;
+            .map_err(FundsManagerError::on_chain)?;
 
         // Convert U256 to f64
         let balance_str = format_units(balance, "ether").map_err(FundsManagerError::parse)?;
@@ -303,9 +303,9 @@ impl CustodyClient {
 
         info!("Transferring {amount} ETH to {to:#x}");
         let tx = TransactionRequest::default().with_to(to).with_value(amount_units);
-        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::arbitrum)?;
+        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::on_chain)?;
 
-        pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
+        pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)
     }
 
     /// Get the erc20 balance of an address
@@ -320,8 +320,8 @@ impl CustodyClient {
         let erc20 = IERC20::new(token_address, self.arbitrum_provider.clone());
 
         // Fetch the balance and correct for the ERC20 decimal precision
-        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::arbitrum)?;
-        let balance = erc20.balanceOf(address).call().await.map_err(FundsManagerError::arbitrum)?;
+        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::on_chain)?;
+        let balance = erc20.balanceOf(address).call().await.map_err(FundsManagerError::on_chain)?;
 
         let bal_str = format_units(balance, decimals).map_err(FundsManagerError::parse)?;
         let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
@@ -343,7 +343,7 @@ impl CustodyClient {
         let token = IERC20::new(token_address, client);
 
         // Convert the amount using the token's decimals
-        let decimals = token.decimals().call().await.map_err(FundsManagerError::arbitrum)?;
+        let decimals = token.decimals().call().await.map_err(FundsManagerError::on_chain)?;
         let amount =
             parse_units(&amount.to_string(), decimals).map_err(FundsManagerError::parse)?.into();
 
@@ -355,7 +355,6 @@ impl CustodyClient {
         })?;
 
         pending_tx.set_required_confirmations(FB_CONTRACT_CONFIRMATIONS);
-
         pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
     }
 }

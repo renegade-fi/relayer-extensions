@@ -172,7 +172,7 @@ impl Indexer {
             .darkpool_client
             .check_nullifier_used(nullifier)
             .await
-            .map_err(err_str!(FundsManagerError::Arbitrum))?
+            .map_err(err_str!(FundsManagerError::on_chain))?
         {
             warn!("nullifier not seen on-chain after redemption, tx: {tx_hash}");
             return Ok(());

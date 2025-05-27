@@ -202,13 +202,13 @@ impl CustodyClient {
         let latest_block = client
             .get_block(BlockId::latest())
             .await
-            .map_err(FundsManagerError::arbitrum)?
-            .ok_or(FundsManagerError::arbitrum("No latest block found".to_string()))?;
+            .map_err(FundsManagerError::on_chain)?
+            .ok_or(FundsManagerError::on_chain("No latest block found".to_string()))?;
 
         let latest_basefee = latest_block
             .header
             .base_fee_per_gas
-            .ok_or(FundsManagerError::arbitrum("No basefee found".to_string()))?
+            .ok_or(FundsManagerError::on_chain("No basefee found".to_string()))?
             as u128;
 
         let tx = TransactionRequest::default()
@@ -217,10 +217,8 @@ impl CustodyClient {
             .with_value(amount_units)
             .with_gas_price(latest_basefee * 2);
 
-        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::arbitrum)?;
-
-        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)?;
-
+        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::on_chain)?;
+        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
         Ok(receipt)
     }
 }

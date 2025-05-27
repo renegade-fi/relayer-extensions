@@ -48,12 +48,12 @@ impl Indexer {
         let events = filter
             .query()
             .await
-            .map_err(|_| FundsManagerError::arbitrum(ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM))?;
+            .map_err(|_| FundsManagerError::on_chain(ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM))?;
 
         let mut most_recent_block = block_number;
         for (event, meta) in events {
             let block =
-                meta.block_number.ok_or(FundsManagerError::arbitrum(ERR_NO_BLOCK_NUMBER))?;
+                meta.block_number.ok_or(FundsManagerError::on_chain(ERR_NO_BLOCK_NUMBER))?;
 
             let note_comm = u256_to_scalar(event.note_commitment);
             self.index_note(note_comm, meta).await?;
@@ -73,7 +73,7 @@ impl Indexer {
         note_comm: NoteCommitment,
         meta: Log,
     ) -> Result<(), FundsManagerError> {
-        let tx_hash = meta.transaction_hash.ok_or(FundsManagerError::arbitrum(ERR_NO_TX_HASH))?;
+        let tx_hash = meta.transaction_hash.ok_or(FundsManagerError::on_chain(ERR_NO_TX_HASH))?;
         let maybe_note = self.get_note_from_tx(tx_hash, note_comm).await?;
         let tx = format!("{:#x}", tx_hash);
         let note = match maybe_note {
@@ -137,8 +137,8 @@ impl Indexer {
             .provider()
             .get_transaction_by_hash(tx_hash)
             .await
-            .map_err(err_str!(FundsManagerError::Arbitrum))?
-            .ok_or_else(|| FundsManagerError::arbitrum(ERR_TX_NOT_FOUND))?;
+            .map_err(err_str!(FundsManagerError::on_chain))?
+            .ok_or_else(|| FundsManagerError::on_chain(ERR_TX_NOT_FOUND))?;
 
         let calldata: Vec<u8> = tx.inner.input().to_vec();
         let selector: [u8; SELECTOR_LEN] = calldata[..SELECTOR_LEN].try_into().unwrap();
@@ -147,7 +147,7 @@ impl Indexer {
                 parse_note_ciphertext_from_settle_offline_fee(&calldata)?
             },
             sel => {
-                return Err(FundsManagerError::arbitrum(format!(
+                return Err(FundsManagerError::on_chain(format!(
                     "invalid selector when parsing note: {sel:?}"
                 )))
             },
@@ -206,12 +206,12 @@ impl Indexer {
 fn parse_note_ciphertext_from_settle_offline_fee(
     calldata: &[u8],
 ) -> Result<ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>, FundsManagerError> {
-    let call = settleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::arbitrum)?;
+    let call = settleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::on_chain)?;
 
     let statement = deserialize_calldata::<ContractValidOfflineFeeSettlementStatement>(
         &call.valid_offline_fee_settlement_statement,
     )
-    .map_err(FundsManagerError::arbitrum)?;
+    .map_err(FundsManagerError::on_chain)?;
 
     let ciphertext = statement.note_ciphertext;
 

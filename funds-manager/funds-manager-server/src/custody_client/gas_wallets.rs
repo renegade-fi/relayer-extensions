@@ -7,7 +7,7 @@ use tracing::info;
 
 use crate::{
     custody_client::DepositWithdrawSource,
-    db::models::GasWalletStatus,
+    db::models::{GasWallet, GasWalletStatus},
     error::FundsManagerError,
     helpers::{create_secrets_manager_entry_with_description, get_secret},
 };
@@ -16,9 +16,9 @@ use super::CustodyClient;
 
 /// The threshold beneath which we skip refilling gas for a wallet
 ///
-/// I.e. if the wallet's balance is within this amount of the desired fill, we
-/// skip refilling
-pub const GAS_REFILL_TOLERANCE: f64 = 0.001; // ETH
+/// I.e. if the wallet's balance is within this percentage of the desired fill,
+/// we skip refilling
+pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.1; // 10%
 /// The amount to top up a newly registered gas wallet
 pub const DEFAULT_TOP_UP_AMOUNT: f64 = 0.01; // ETH
 
@@ -31,22 +31,8 @@ impl CustodyClient {
     pub(crate) async fn refill_gas_wallets(&self, fill_to: f64) -> Result<(), FundsManagerError> {
         // Fetch all gas wallets
         let gas_wallets = self.get_all_gas_wallets().await?;
-
-        // Filter out those that don't need refilling
-        let mut wallets_to_fill: Vec<(String, f64)> = Vec::new(); // (address, fill amount)
-        for wallet in gas_wallets.into_iter() {
-            let bal = self.get_ether_balance(&wallet.address).await?;
-            if bal + GAS_REFILL_TOLERANCE < fill_to {
-                wallets_to_fill.push((wallet.address, fill_to - bal));
-            }
-        }
-
-        if wallets_to_fill.is_empty() {
-            return Ok(());
-        }
-
         // Refill the gas wallets
-        self.refill_gas_for_wallets(wallets_to_fill).await
+        self.refill_gas_for_wallets(gas_wallets, fill_to).await
     }
 
     /// Create a new gas wallet
@@ -139,16 +125,22 @@ impl CustodyClient {
     /// Refill gas for a set of wallets
     async fn refill_gas_for_wallets(
         &self,
-        wallets: Vec<(String, f64)>, // (address, fill amount)
+        wallets: Vec<GasWallet>,
+        fill_to: f64,
     ) -> Result<(), FundsManagerError> {
         // Get the gas hot wallet's private key
         let source = DepositWithdrawSource::Gas.vault_name(self.chain);
         let gas_wallet = self.get_hot_wallet_by_vault(&source).await?;
-        let signer = self.get_hot_wallet_private_key(&gas_wallet.address).await?;
 
         // Check that the gas wallet has enough ETH to cover the refill
-        let total_amount = wallets.iter().map(|(_, amount)| *amount).sum::<f64>();
         let my_balance = self.get_ether_balance(&gas_wallet.address).await?;
+        let mut total_amount = 0.;
+        for wallet in wallets.iter() {
+            let bal = self.get_ether_balance(&wallet.address).await?;
+            let needs = f64::max(fill_to - bal, 0.);
+            total_amount += needs;
+        }
+
         if my_balance < total_amount {
             return Err(FundsManagerError::custom(
                 "gas wallet does not have enough ETH to cover the refill",
@@ -156,10 +148,44 @@ impl CustodyClient {
         }
 
         // Refill the balances
-        for (address, amount) in wallets {
-            self.transfer_ether(&address, amount, signer.clone()).await?;
+        for wallet in wallets.iter() {
+            self.top_up_gas(&wallet.address, total_amount).await?;
+        }
+        Ok(())
+    }
+
+    /// Refill the gas wallet up to a given amount using default tolerance
+    pub(crate) async fn top_up_gas(
+        &self,
+        addr: &str,
+        amount: f64,
+    ) -> Result<(), FundsManagerError> {
+        self.top_up_gas_with_tolerance(addr, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
+    }
+
+    /// Refill gas for a wallet up to a given amount
+    ///
+    /// Allows for a tolerance in refill amount, i.e. if the wallet's current
+    /// balance is within the tolerance of the desired fill, we skip the refill
+    pub(crate) async fn top_up_gas_with_tolerance(
+        &self,
+        addr: &str,
+        amount: f64,
+        tolerance: f64,
+    ) -> Result<(), FundsManagerError> {
+        let bal = self.get_ether_balance(addr).await?;
+        if bal > amount * tolerance {
+            info!("Skipping gas refill for {addr} because balance is within tolerance");
+            return Ok(());
         }
 
-        Ok(())
+        // Get the gas hot wallet's private key
+        let source = DepositWithdrawSource::Gas.vault_name(self.chain);
+        let gas_wallet = self.get_hot_wallet_by_vault(&source).await?;
+        let signer = self.get_hot_wallet_private_key(&gas_wallet.address).await?;
+
+        // Refill the balance
+        let needs = amount - bal;
+        self.transfer_ether(addr, needs, signer).await.map(|_| ())
     }
 }

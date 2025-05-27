@@ -11,7 +11,7 @@ use fireblocks_sdk::{apis::Error as FireblocksApiError, FireblocksError};
 #[derive(Debug, Clone)]
 pub enum FundsManagerError {
     /// An error with the arbitrum client
-    Arbitrum(String),
+    OnChain(String),
     /// An error with a database query
     Db(String),
     /// An error with Fireblocks operations
@@ -37,8 +37,8 @@ pub enum FundsManagerError {
 #[allow(clippy::needless_pass_by_value)]
 impl FundsManagerError {
     /// Create an arbitrum error
-    pub fn arbitrum<T: ToString>(msg: T) -> FundsManagerError {
-        FundsManagerError::Arbitrum(msg.to_string())
+    pub fn on_chain<T: ToString>(msg: T) -> FundsManagerError {
+        FundsManagerError::OnChain(msg.to_string())
     }
 
     /// Create a database error
@@ -90,7 +90,7 @@ impl FundsManagerError {
 impl Display for FundsManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FundsManagerError::Arbitrum(e) => write!(f, "Arbitrum error: {}", e),
+            FundsManagerError::OnChain(e) => write!(f, "On-chain error: {}", e),
             FundsManagerError::Db(e) => write!(f, "Database error: {}", e),
             FundsManagerError::Http(e) => write!(f, "HTTP error: {}", e),
             FundsManagerError::Parse(e) => write!(f, "Parse error: {}", e),

@@ -153,7 +153,7 @@ impl CustodyClient {
 
         let token = IERC20::new(token_address, self.arbitrum_provider.clone());
         let balance =
-            token.balanceOf(wallet_address).call().await.map_err(FundsManagerError::arbitrum)?;
+            token.balanceOf(wallet_address).call().await.map_err(FundsManagerError::on_chain)?;
 
         u256_try_into_u128(balance).map_err(FundsManagerError::parse)
     }
