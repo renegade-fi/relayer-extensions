@@ -28,6 +28,8 @@ pub enum FundsManagerError {
     JsonRpc(String),
     /// An error with the price reporter
     PriceReporter(PriceReporterClientError),
+    /// An error converting between types
+    Conversion(String),
     /// A miscellaneous error
     Custom(String),
 }
@@ -74,6 +76,11 @@ impl FundsManagerError {
         FundsManagerError::JsonRpc(msg.to_string())
     }
 
+    /// Create a conversion error
+    pub fn conversion<T: ToString>(msg: T) -> FundsManagerError {
+        FundsManagerError::Conversion(msg.to_string())
+    }
+
     /// Create a custom error
     pub fn custom<T: ToString>(msg: T) -> FundsManagerError {
         FundsManagerError::Custom(msg.to_string())
@@ -93,6 +100,7 @@ impl Display for FundsManagerError {
             FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
             FundsManagerError::PriceReporter(e) => write!(f, "Price reporter error: {}", e),
+            FundsManagerError::Conversion(e) => write!(f, "Conversion error: {}", e),
         }
     }
 }

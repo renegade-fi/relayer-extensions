@@ -13,6 +13,7 @@ use alloy::{
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
 
@@ -182,4 +183,17 @@ pub fn titlecase(s: &str) -> String {
         .map(|w| w.chars().next().unwrap().to_uppercase().to_string() + &w[1..])
         .collect::<Vec<String>>()
         .join(" ")
+}
+
+/// Round an f64 value up to the given number of decimal places
+pub fn round_up(value: f64, decimals: i64) -> Result<f64, FundsManagerError> {
+    let value_bigdecimal = BigDecimal::from_f64(value).ok_or(FundsManagerError::conversion(
+        format!("Failed to convert {value} to a bigdecimal"),
+    ))?;
+
+    let rounded_value_bigdecimal = value_bigdecimal.with_scale_round(decimals, RoundingMode::Up);
+
+    rounded_value_bigdecimal.to_f64().ok_or(FundsManagerError::conversion(format!(
+        "Failed to convert {rounded_value_bigdecimal} to a f64"
+    )))
 }
