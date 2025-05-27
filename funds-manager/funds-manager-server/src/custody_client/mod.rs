@@ -5,6 +5,7 @@ pub mod gas_wallets;
 mod hot_wallets;
 mod queries;
 pub mod rpc_shim;
+pub mod vaults;
 pub mod withdraw;
 
 use alloy::{
@@ -21,10 +22,9 @@ use aws_config::SdkConfig as AwsConfig;
 use fireblocks_sdk::{
     apis::{
         blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams},
-        vaults_api::GetPagedVaultAccountsParams,
         Api,
     },
-    models::{TransactionResponse, VaultAccount},
+    models::TransactionResponse,
     Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
 };
 use renegade_common::types::chain::Chain;
@@ -40,9 +40,31 @@ use crate::{
 };
 use crate::{error::FundsManagerError, helpers::titlecase};
 
+// -------------
+// | Constants |
+// -------------
+
+/// The Fireblocks asset ID for ETH on Arbitrum One
+const ARB_ONE_ETH_ASSET_ID: &str = "ETH-AETH";
+/// The Fireblocks asset ID for ETH on Arbitrum Sepolia
+const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
+/// The Fireblocks asset ID for ETH on Base mainnet
+const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
+/// The Fireblocks asset ID for ETH on Base Sepolia
+const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
+/// The number of confirmations Fireblocks requires to consider a contract call
+/// final
+const FB_CONTRACT_CONFIRMATIONS: u64 = 3;
+
+/// The error message emitted when an unsupported chain is configured.
+const ERR_UNSUPPORTED_CHAIN: &str = "Unsupported chain";
 /// The error message for when the Arbitrum blockchain is not found
 /// in the Fireblocks `/blockchains` endpoint response
 const ERR_ARB_CHAIN_NOT_FOUND: &str = "Arbitrum blockchain not found";
+
+// ---------
+// | Types |
+// ---------
 
 /// The source of a deposit
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -191,6 +213,18 @@ impl CustodyClient {
         Ok(None)
     }
 
+    /// Get the Fireblocks asset ID for the native asset (ETH) of the configured
+    /// chain.
+    pub(crate) fn get_native_eth_asset_id(&self) -> Result<String, FundsManagerError> {
+        match self.chain {
+            Chain::ArbitrumOne => Ok(ARB_ONE_ETH_ASSET_ID.to_string()),
+            Chain::ArbitrumSepolia => Ok(ARB_SEPOLIA_ETH_ASSET_ID.to_string()),
+            Chain::BaseMainnet => Ok(BASE_MAINNET_ETH_ASSET_ID.to_string()),
+            Chain::BaseSepolia => Ok(BASE_SEPOLIA_ETH_ASSET_ID.to_string()),
+            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
+        }
+    }
+
     /// Get the Fireblocks blockchain ID for the current chain
     async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
         let list_blockchains_params = ListBlockchainsParams::builder()
@@ -212,28 +246,6 @@ impl CustodyClient {
             .find(|b| b.onchain.chain_id == Some(self.chain_id.to_string()))
             .map(|b| b.id)
             .ok_or(FundsManagerError::fireblocks(ERR_ARB_CHAIN_NOT_FOUND))
-    }
-
-    /// Get the vault account for a given asset and source
-    pub(crate) async fn get_vault_account(
-        &self,
-        name: &str,
-    ) -> Result<Option<VaultAccount>, FundsManagerError> {
-        let params = GetPagedVaultAccountsParams::builder()
-            .name_prefix(name.to_string())
-            .limit(100.0)
-            .build();
-
-        let vaults_resp =
-            self.fireblocks_client.sdk.vaults_api().get_paged_vault_accounts(params).await?;
-
-        for vault in vaults_resp.accounts.into_iter() {
-            if vault.name == name {
-                return Ok(Some(vault));
-            }
-        }
-
-        Ok(None)
     }
 
     /// Poll a fireblocks transaction for completion
@@ -338,9 +350,11 @@ impl CustodyClient {
         // Transfer the tokens
         let to_address = Address::from_str(to_address).map_err(FundsManagerError::parse)?;
         let tx = token.transfer(to_address, amount);
-        let pending_tx = tx.send().await.map_err(|e| {
+        let mut pending_tx = tx.send().await.map_err(|e| {
             FundsManagerError::arbitrum(format!("Failed to send transaction: {}", e))
         })?;
+
+        pending_tx.set_required_confirmations(FB_CONTRACT_CONFIRMATIONS);
 
         pending_tx.get_receipt().await.map_err(FundsManagerError::arbitrum)
     }

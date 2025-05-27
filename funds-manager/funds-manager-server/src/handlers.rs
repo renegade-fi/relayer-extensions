@@ -19,8 +19,10 @@ use funds_manager_api::quoters::{
     AugmentedExecutionQuote, DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse,
     GetExecutionQuoteResponse, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
+use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
 use itertools::Itertools;
 use renegade_common::types::chain::Chain;
+use renegade_common::types::token::default_chain;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -98,6 +100,23 @@ pub(crate) async fn withdraw_fee_balance_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     Ok(warp::reply::json(&"Fee withdrawal initiated..."))
+}
+
+// --- Vaults --- //
+
+/// Handler for getting the balances of a vault
+pub(crate) async fn get_vault_balances_handler(
+    req: GetVaultBalancesRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    // The vault balances handler is chain-agnostic, so we use the default chain
+    let chain = default_chain();
+    let custody_client = server.get_custody_client(&chain)?;
+
+    let balances = custody_client.get_vault_token_balances(&req.vault).await?;
+
+    let resp = VaultBalancesResponse { balances };
+    Ok(warp::reply::json(&resp))
 }
 
 // --- Quoters --- //
