@@ -213,7 +213,7 @@ impl ChainConfig {
         };
         let darkpool_client =
             MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
-        let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::arbitrum)?;
+        let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::on_chain)?;
 
         // Build a custody client
         let gas_sponsor_address =
