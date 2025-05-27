@@ -21,6 +21,11 @@ use crate::{
     helpers::{create_secrets_manager_entry_with_description, get_secret, IERC20},
 };
 
+/// The desired gas balance on the quoter hot wallet
+///
+/// Set to roughly $100 worth of ETH at the time of writing
+const DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT: f64 = 0.04; // ETH
+
 impl CustodyClient {
     // ------------
     // | Handlers |
@@ -122,6 +127,8 @@ impl CustodyClient {
     // | Helpers |
     // -----------
 
+    // --- Hot Wallet Metadata --- //
+
     /// The secret name for a hot wallet
     pub(crate) fn hot_wallet_secret_name(address: &str) -> String {
         format!("hot-wallet-{address}")
@@ -156,5 +163,13 @@ impl CustodyClient {
             token.balanceOf(wallet_address).call().await.map_err(FundsManagerError::on_chain)?;
 
         u256_try_into_u128(balance).map_err(FundsManagerError::parse)
+    }
+
+    // --- Quoter Helpers --- //
+
+    /// Top up the gas (ether) balance on the quoter hot wallet
+    pub(crate) async fn top_up_quoter_hot_wallet_gas(&self) -> Result<(), FundsManagerError> {
+        let hot_wallet = self.get_quoter_hot_wallet().await?;
+        self.top_up_gas(&hot_wallet.address, DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT).await
     }
 }

@@ -264,7 +264,7 @@ impl CustodyClient {
             .map_err(FundsManagerError::fireblocks)
     }
 
-    // --- Arbitrum JSON RPC --- //
+    // --- JSON RPC --- //
 
     /// Get an instance of a signer with the http provider attached
     fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
