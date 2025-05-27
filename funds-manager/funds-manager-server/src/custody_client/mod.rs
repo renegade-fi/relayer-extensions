@@ -16,21 +16,22 @@ use alloy::{
 };
 use alloy_primitives::{
     utils::{format_units, parse_units},
-    Address,
+    Address, TxHash,
 };
 use aws_config::SdkConfig as AwsConfig;
 use fireblocks_sdk::{
     apis::{
         blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams},
+        transactions_api::GetTransactionsParams,
         Api,
     },
     models::TransactionResponse,
     Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
 };
 use renegade_common::types::chain::Chain;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{str::FromStr, time::Instant};
 use tracing::{debug, info};
 
 use crate::helpers::{to_env_agnostic_name, IERC20};
@@ -262,6 +263,40 @@ impl CustodyClient {
             })
             .await
             .map_err(FundsManagerError::fireblocks)
+    }
+
+    /// Poll Fireblocks for the indexing of an externally-initiated transaction
+    /// w/ the given hash
+    pub(crate) async fn poll_fireblocks_external_transaction(
+        &self,
+        tx_hash: TxHash,
+    ) -> Result<TransactionResponse, FundsManagerError> {
+        let timeout_instant = Instant::now() + Duration::from_secs(60);
+        let interval = Duration::from_secs(1);
+
+        let tx_hash_str = format!("{:#x}", tx_hash);
+
+        let params = GetTransactionsParams::builder().tx_hash(tx_hash_str).build();
+
+        while Instant::now() < timeout_instant {
+            let txs = self
+                .fireblocks_client
+                .sdk
+                .apis()
+                .transactions_api()
+                .get_transactions(params.clone())
+                .await?;
+
+            if let Some(tx) = txs.first() {
+                return Ok(tx.clone());
+            }
+
+            tokio::time::sleep(interval).await;
+        }
+
+        Err(FundsManagerError::fireblocks(format!(
+            "Timed out waiting for Fireblocks to index transaction {tx_hash}"
+        )))
     }
 
     // --- JSON RPC --- //
