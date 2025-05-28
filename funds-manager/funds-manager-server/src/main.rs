@@ -348,6 +348,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(create_hot_wallet)
         .or(rpc)
         .or(backwards_compatibility_routes)
+        .boxed()
+        .with(warp::trace::request())
         .recover(handle_rejection);
 
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
