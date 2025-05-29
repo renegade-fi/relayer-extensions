@@ -12,7 +12,7 @@ use alloy::{
 use alloy_primitives::utils::parse_ether;
 use alloy_sol_types::SolCall;
 use renegade_common::types::token::Token;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{error::FundsManagerError, helpers::fetch_s3_object};
 
@@ -107,11 +107,14 @@ impl CustodyClient {
 
             if bal < desired_amount * (1.0 - GAS_SPONSOR_REFILL_TOLERANCE) {
                 let amount_to_send = desired_amount - bal;
-                let receipt = self.send_tokens_to_gas_sponsor(&token.addr, amount_to_send).await?;
-                info!(
-                    "Sent {amount_to_send} {ticker} from hot wallet to gas sponsor in tx {:#x}",
-                    receipt.transaction_hash
-                );
+                match self.send_tokens_to_gas_sponsor(&token.addr, amount_to_send).await {
+                    Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
+                        info!("Sent {amount_to_send} {ticker} from hot wallet to gas sponsor in tx {tx:#x}");
+                    },
+                    Err(e) => {
+                        error!("Failed to send {ticker} to gas sponsor, skipping: {e}");
+                    },
+                }
             }
         }
 
