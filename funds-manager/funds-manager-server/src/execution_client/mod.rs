@@ -1,4 +1,4 @@
-//! Client for interacting with execution venues, currently this is the 0x swap
+//! Client for interacting with execution venues, currently this is LiFi
 //! API
 pub mod error;
 pub mod quotes;
@@ -19,14 +19,14 @@ use crate::helpers::build_provider;
 
 use self::error::ExecutionClientError;
 
-/// The 0x api key header
-const API_KEY_HEADER: &str = "0x-api-key";
+/// The LiFi api key header
+const API_KEY_HEADER: &str = "x-lifi-api-key";
 
 /// The client for interacting with the execution venue
 #[derive(Clone)]
 pub struct ExecutionClient {
     /// The API key to use for requests
-    api_key: String,
+    api_key: Option<String>,
     /// The base URL for the execution client
     base_url: String,
     /// The underlying HTTP client
@@ -38,7 +38,7 @@ pub struct ExecutionClient {
 impl ExecutionClient {
     /// Create a new client
     pub fn new(
-        api_key: String,
+        api_key: Option<String>,
         base_url: String,
         rpc_url: &str,
     ) -> Result<Self, ExecutionClientError> {
@@ -69,9 +69,14 @@ impl ExecutionClient {
         params: &[(&str, &str)],
     ) -> Result<T, ExecutionClientError> {
         let url = self.build_url(endpoint, params)?;
-        let response =
-            self.http_client.get(url).header(API_KEY_HEADER, &self.api_key).send().await?;
 
+        // Add an API key if present
+        let mut request = self.http_client.get(url);
+        if let Some(api_key) = &self.api_key {
+            request = request.header(API_KEY_HEADER, api_key.as_str());
+        }
+
+        let response = request.send().await?;
         let status = response.status();
         if status != StatusCode::OK {
             let body = response.text().await?;
