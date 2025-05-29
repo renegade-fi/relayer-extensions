@@ -41,7 +41,9 @@ ethers = "2"
 
 # === Renegade Dependencies === #
 price-reporter-client = { path = "../../price-reporter-client" }
-renegade-darkpool-client = { package = "darkpool-client", workspace = true, features = [ "all-chains" ] }
+renegade-darkpool-client = { package = "darkpool-client", workspace = true, features = [
+    "all-chains",
+] }
 renegade-api = { package = "external-api", workspace = true }
 renegade-common = { package = "common", workspace = true }
 renegade-config = { package = "config", workspace = true }
