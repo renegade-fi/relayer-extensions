@@ -11,7 +11,7 @@ use alloy::{
 };
 use alloy_primitives::utils::parse_ether;
 use alloy_sol_types::SolCall;
-use renegade_common::types::token::Token;
+use renegade_common::types::{chain::Chain, token::Token};
 use tracing::{error, info};
 
 use crate::{error::FundsManagerError, helpers::fetch_s3_object};
@@ -134,11 +134,14 @@ impl CustodyClient {
 
         if bal < desired_eth_amount * (1.0 - GAS_SPONSOR_REFILL_TOLERANCE) {
             let amount_to_send = desired_eth_amount - bal;
-            let receipt = self.send_eth_to_gas_sponsor(amount_to_send).await?;
-            info!(
-                "Sent {amount_to_send} ETH from hot wallet to gas sponsor in tx {:#x}",
-                receipt.transaction_hash
-            );
+            match self.send_eth_to_gas_sponsor(amount_to_send).await {
+                Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
+                    info!("Sent {amount_to_send} ETH from hot wallet to gas sponsor in tx {tx:#x}");
+                },
+                Err(e) => {
+                    error!("Failed to send ETH to gas sponsor, skipping: {e}");
+                },
+            }
         }
 
         Ok(())
@@ -197,9 +200,7 @@ impl CustodyClient {
         signer: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         let client = self.get_signing_provider(signer);
-
-        let calldata = sol::receiveEthCall {}.abi_encode();
-
+        let calldata = self.get_eth_transfer_calldata();
         let amount_units = parse_ether(&amount.to_string()).map_err(FundsManagerError::parse)?;
 
         let latest_block = client
@@ -223,5 +224,18 @@ impl CustodyClient {
         let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::on_chain)?;
         let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
         Ok(receipt)
+    }
+
+    /// Get the ETH transfer calldata for the gas sponsor
+    fn get_eth_transfer_calldata(&self) -> Vec<u8> {
+        match self.chain {
+            Chain::ArbitrumSepolia | Chain::ArbitrumOne => sol::receiveEthCall {}.abi_encode(),
+            // Solidity implementations use the `receive` fallback function to receive ETH
+            // No calldata is needed here
+            Chain::BaseSepolia | Chain::BaseMainnet => Vec::new(),
+            _ => {
+                panic!("transferring eth is not supported on {:?}", self.chain);
+            },
+        }
     }
 }
