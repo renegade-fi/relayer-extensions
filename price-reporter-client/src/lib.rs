@@ -47,9 +47,6 @@ const EXCLUDED_TICKERS: [&str; 3] = [USDT_TICKER, USDC_TICKER, USD_TICKER];
 /// The error message for an invalid topic
 const ERR_INVALID_TOPIC: &str = "Invalid topic format";
 
-/// The error message emitted when a token has no decimals
-const ERR_NO_DECIMALS: &str = "token has no decimals";
-
 /// The error message emitted when converting an f64 price to a `BigDecimal`
 /// fails
 const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDecimal";
@@ -112,9 +109,9 @@ impl PriceReporterClient {
         let price = BigDecimal::from_f64(price_f64)
             .ok_or(PriceReporterClientError::conversion(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
 
-        let decimals = Token::from_addr_on_chain(mint, chain)
-            .get_decimals()
-            .ok_or(PriceReporterClientError::custom(ERR_NO_DECIMALS))?;
+        let decimals = Token::from_addr_on_chain(mint, chain).get_decimals().ok_or_else(|| {
+            PriceReporterClientError::custom(format!("Token {mint} has no decimals"))
+        })?;
 
         let adjustment: BigDecimal = BigInt::from(10).pow(decimals as u32).into();
 
