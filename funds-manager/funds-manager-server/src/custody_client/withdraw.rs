@@ -217,11 +217,11 @@ impl CustodyClient {
 
         // Transfer the USDC to the address used by the Hyperliquid account.
         let tx = self.erc20_transfer(usdc_mint, hyperliquid_addr, amount, hot_wallet).await?;
+        let tx_hash = tx.transaction_hash;
 
-        info!(
-            "Withdrew {amount} USDC from hot wallet to {hyperliquid_addr}. Tx: {:#x}",
-            tx.transaction_hash
-        );
+        self.poll_fireblocks_external_transaction(tx_hash).await?;
+
+        info!("Withdrew {amount} USDC from hot wallet to {hyperliquid_addr}. Tx: {:#x}", tx_hash);
 
         Ok(())
     }
