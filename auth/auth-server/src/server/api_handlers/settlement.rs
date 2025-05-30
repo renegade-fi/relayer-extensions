@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use super::{MatchBundleResponseCtx, Server};
 use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
-use crate::telemetry::abi_helpers::extract_nullifier_from_match_bundle;
+use crate::server::api_handlers::external_match::SponsoredAssembleMalleableQuoteResponseCtx;
+use crate::telemetry::abi_helpers::{
+    extract_nullifier_from_malleable_match_bundle, extract_nullifier_from_match_bundle,
+};
 
 impl Server {
     /// Write the bundle context to the store, handling gas sponsorship if
@@ -50,6 +53,16 @@ impl Server {
         }
 
         Ok(bundle_id)
+    }
+
+    /// Write the bundle context for a malleable match to the store
+    pub async fn write_malleable_bundle_context(
+        &self,
+        ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
+    ) -> Result<String, AuthServerError> {
+        let resp = ctx.response();
+        let nullifier = extract_nullifier_from_malleable_match_bundle(&resp.match_bundle)?;
+        todo!()
     }
 
     /// Determines the appropriate `ApiExternalMatchResult` to use for bundle ID
