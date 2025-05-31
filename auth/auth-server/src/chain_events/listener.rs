@@ -5,7 +5,7 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
-    rpc::types::Filter,
+    rpc::types::{trace::geth::CallFrame, Filter},
     sol_types::SolEvent,
 };
 use alloy_primitives::TxHash;
@@ -19,9 +19,12 @@ use renegade_darkpool_client::{
 };
 use tracing::{error, info};
 
-use crate::bundle_store::{helpers::generate_bundle_id, BundleStore};
-use crate::server::{
-    gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
+use crate::{bundle_store::BundleStore, chain_events::abis::parse_external_match};
+use crate::{
+    chain_events::abis::ExternalMatch,
+    server::{
+        gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
+    },
 };
 
 use super::error::OnChainEventListenerError;
@@ -72,6 +75,7 @@ pub struct OnChainEventListener {
     /// The thread handle of the executor
     pub(super) executor_handle: Option<JoinHandle<OnChainEventListenerError>>,
 }
+
 // ------------
 // | Executor |
 // ------------
@@ -209,12 +213,10 @@ impl OnChainEventListenerExecutor {
         nullifier: Nullifier,
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
-        let matches = self.darkpool_client().find_external_matches_in_tx(tx).await?;
-        for external_match_result in matches {
-            let match_result: ApiExternalMatchResult = external_match_result.into();
-            let bundle_id = generate_bundle_id(&match_result, &nullifier).unwrap();
-            let bundle_ctx = self.bundle_store.read(&bundle_id).await?;
-            if let Some(bundle_ctx) = bundle_ctx {
+        let matches = self.fetch_external_matches_in_tx(tx).await?;
+        for external_match in matches {
+            let bundle_id = external_match.bundle_id(&nullifier)?;
+            if let Some(bundle_ctx) = self.bundle_store.read(&bundle_id).await? {
                 // Increase rate limit
                 self.add_bundle_rate_limit_token(
                     bundle_ctx.key_description.clone(),
@@ -223,13 +225,14 @@ impl OnChainEventListenerExecutor {
                 .await;
 
                 // Record settlement metrics
-                self.record_settlement_metrics(&bundle_ctx, &match_result);
+                let api_match: ApiExternalMatchResult = external_match.match_result().into();
+                self.record_settlement_metrics(&bundle_ctx, &api_match);
 
                 // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
                     self.record_settled_match_sponsorship(
                         &bundle_ctx,
-                        &match_result,
+                        &api_match,
                         gas_sponsorship_info,
                     )
                     .await?;
@@ -239,6 +242,25 @@ impl OnChainEventListenerExecutor {
                 self.bundle_store.cleanup_by_nullifier(&bundle_ctx.nullifier).await?;
             }
         }
+
         Ok(())
+    }
+
+    /// Fetch all external matches in a transaction
+    async fn fetch_external_matches_in_tx(
+        &self,
+        tx: TxHash,
+    ) -> Result<Vec<ExternalMatch>, OnChainEventListenerError> {
+        let darkpool_calls: Vec<CallFrame> =
+            self.darkpool_client().fetch_tx_darkpool_calls(tx).await?;
+
+        let mut matches = Vec::new();
+        for call in darkpool_calls.into_iter() {
+            if let Some(match_result) = parse_external_match(&call.input)? {
+                matches.push(match_result)
+            }
+        }
+
+        Ok(matches)
     }
 }

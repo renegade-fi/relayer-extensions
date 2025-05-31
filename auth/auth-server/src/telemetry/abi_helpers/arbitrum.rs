@@ -5,7 +5,10 @@ use renegade_api::http::external_match::{AtomicMatchApiBundle, MalleableAtomicMa
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_constants::Scalar;
 use renegade_darkpool_client::arbitrum::{
-    abi::Darkpool::{processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall},
+    abi::Darkpool::{
+        processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
+        processMalleableAtomicMatchSettleCall, processMalleableAtomicMatchSettleWithReceiverCall,
+    },
     contract_types::types::MatchPayload,
     helpers::deserialize_calldata,
 };
@@ -13,7 +16,10 @@ use renegade_darkpool_client::arbitrum::{
 use crate::{
     error::AuthServerError,
     server::{
-        gas_sponsorship::contract_interaction::sponsorAtomicMatchSettleWithRefundOptionsCall,
+        gas_sponsorship::contract_interaction::{
+            sponsorAtomicMatchSettleWithRefundOptionsCall,
+            sponsorMalleableAtomicMatchSettleWithRefundOptionsCall,
+        },
         helpers::get_selector,
     },
 };
@@ -52,10 +58,25 @@ pub fn extract_nullifier_from_settlement_tx_calldata(
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
         },
+        processMalleableAtomicMatchSettleCall::SELECTOR => {
+            processMalleableAtomicMatchSettleCall::abi_decode(tx_data)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
+        processMalleableAtomicMatchSettleWithReceiverCall::SELECTOR => {
+            processMalleableAtomicMatchSettleWithReceiverCall::abi_decode(tx_data)
+                .map_err(AuthServerError::serde)?
+                .internal_party_match_payload
+        },
         sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
             sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
                 .map_err(AuthServerError::serde)?
                 .internal_party_match_payload
+        },
+        sponsorMalleableAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
+            sponsorMalleableAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
+                .map_err(AuthServerError::serde)?
+                .internal_party_payload
         },
         _ => {
             return Err(AuthServerError::serde("Invalid selector for settlement tx"));
