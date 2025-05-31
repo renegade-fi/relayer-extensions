@@ -6,7 +6,7 @@ use http::Response;
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, MalleableExternalMatchResponse,
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
 use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
@@ -22,6 +22,32 @@ type AssembleMalleableQuoteRequestCtx = RequestContext<AssembleExternalMatchRequ
 /// The response context for an assemble malleable quote request
 type AssembleMalleableQuoteResponseCtx =
     ResponseContext<AssembleExternalMatchRequest, MalleableExternalMatchResponse>;
+/// The response context for an assemble malleable quote request with gas
+/// sponsorship applied
+pub(crate) type SponsoredAssembleMalleableQuoteResponseCtx =
+    ResponseContext<AssembleExternalMatchRequest, SponsoredMalleableMatchResponse>;
+
+impl SponsoredAssembleMalleableQuoteResponseCtx {
+    /// Create a new response context from an assemble malleable quote response
+    /// context
+    pub fn from_assemble_malleable_quote_response_ctx(
+        sponsored_resp: SponsoredMalleableMatchResponse,
+        ctx: AssembleMalleableQuoteResponseCtx,
+    ) -> Self {
+        Self {
+            path: ctx.path,
+            query_str: ctx.query_str,
+            user: ctx.user,
+            sdk_version: ctx.sdk_version,
+            headers: ctx.headers,
+            request: ctx.request,
+            status: ctx.status,
+            response: Some(sponsored_resp),
+            sponsorship_info: ctx.sponsorship_info,
+            request_id: ctx.request_id,
+        }
+    }
+}
 
 // --------------------
 // | Endpoint Handler |
@@ -86,7 +112,13 @@ impl Server {
         let sponsored_match_resp = self.sponsor_malleable_assembly_response(ctx)?;
         overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
 
-        // TODO: record bundle metrics
+        // Record metrics
+        let ctx =
+            SponsoredAssembleMalleableQuoteResponseCtx::from_assemble_malleable_quote_response_ctx(
+                sponsored_match_resp,
+                ctx.clone(),
+            );
+        self.record_assemble_malleable_metrics(ctx);
         Ok(resp)
     }
 
@@ -113,5 +145,32 @@ impl Server {
         let info = sponsorship_info.unwrap();
         let sponsored_match_resp = self.construct_sponsored_malleable_match_response(resp, info)?;
         Ok(sponsored_match_resp)
+    }
+
+    // -----------
+    // | Metrics |
+    // -----------
+
+    /// Record metrics for the assemble malleable quote endpoint
+    fn record_assemble_malleable_metrics(&self, ctx: SponsoredAssembleMalleableQuoteResponseCtx) {
+        let server_clone = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = server_clone.record_assemble_malleable_metrics_helper(&ctx).await {
+                warn!("Error handling assemble metrics: {e}");
+            }
+        });
+    }
+
+    /// A helper function to record metrics for the assemble malleable quote
+    /// endpoint
+    async fn record_assemble_malleable_metrics_helper(
+        &self,
+        ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
+    ) -> Result<(), AuthServerError> {
+        // Record the bundle context in the store
+        self.write_malleable_bundle_context(ctx).await?;
+
+        // TODO: Record metrics
+        Ok(())
     }
 }

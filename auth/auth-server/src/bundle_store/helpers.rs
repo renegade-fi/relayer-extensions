@@ -1,6 +1,6 @@
 //! Helper methods for the bundle store
 use alloy_primitives::{hex, keccak256};
-use renegade_api::http::external_match::ApiExternalMatchResult;
+use renegade_api::http::external_match::{ApiBoundedMatchResult, ApiExternalMatchResult};
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_constants::Scalar;
 
@@ -33,5 +33,17 @@ pub fn generate_bundle_id(
     let mut bytes = nullifier.to_bytes_be();
     bytes.extend(Scalar::from(quote_amt).to_bytes_be());
     bytes.extend(Scalar::from(base_amt).to_bytes_be());
+    Ok(hex::encode(keccak256::<&[u8]>(&bytes)))
+}
+
+/// Generates a deterministic bundle ID for a malleable match
+///
+/// See the disclaimers in `generate_bundle_id` for more details.
+pub fn generate_malleable_bundle_id(
+    match_result: &ApiBoundedMatchResult,
+    nullifier: &Nullifier,
+) -> Result<String, AuthServerError> {
+    let mut bytes = serde_json::to_vec(match_result).map_err(AuthServerError::serde)?;
+    bytes.extend(nullifier.to_bytes_be());
     Ok(hex::encode(keccak256::<&[u8]>(&bytes)))
 }

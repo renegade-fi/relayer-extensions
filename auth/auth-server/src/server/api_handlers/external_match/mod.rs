@@ -1,5 +1,10 @@
 //! Handlers for external match endpoints
 
+mod assemble_malleable_quote;
+mod assemble_quote;
+mod direct_match;
+mod quote;
+
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
@@ -10,13 +15,9 @@ use crate::{
     error::AuthServerError, server::Server, telemetry::helpers::record_relayer_request_500,
     ApiError,
 };
+pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
 
 use super::{get_sdk_version, log_unsuccessful_relayer_request};
-
-mod assemble_malleable_quote;
-mod assemble_quote;
-mod direct_match;
-mod quote;
 
 // --------------------
 // | Request Contexts |

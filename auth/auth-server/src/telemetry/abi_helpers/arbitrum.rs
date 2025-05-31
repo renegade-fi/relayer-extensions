@@ -1,7 +1,7 @@
 //! Telemetry helpers for Arbitrum specific ABI functionality
 
 use alloy_sol_types::SolCall;
-use renegade_api::http::external_match::AtomicMatchApiBundle;
+use renegade_api::http::external_match::{AtomicMatchApiBundle, MalleableAtomicMatchApiBundle};
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_constants::Scalar;
 use renegade_darkpool_client::arbitrum::{
@@ -18,16 +18,26 @@ use crate::{
     },
 };
 
-/// Extracts the nullifier from a match bundle's settlement transaction
-///
-/// This function attempts to decode the settlement transaction data in two
-/// ways:
-/// 1. As a standard atomic match settle call
-/// 2. As a match settle with receiver call
+/// Extract the nullifier from a match bundle
 pub fn extract_nullifier_from_match_bundle(
     match_bundle: &AtomicMatchApiBundle,
 ) -> Result<Nullifier, AuthServerError> {
     let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nullifier_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extract the nullifier from a malleable match bundle
+pub fn extract_nullifier_from_malleable_match_bundle(
+    match_bundle: &MalleableAtomicMatchApiBundle,
+) -> Result<Nullifier, AuthServerError> {
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nullifier_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extracts the nullifier from a match bundle's settlement transaction
+pub fn extract_nullifier_from_settlement_tx_calldata(
+    tx_data: &[u8],
+) -> Result<Nullifier, AuthServerError> {
     let selector = get_selector(tx_data)?;
 
     // Retrieve serialized match payload from the transaction data
