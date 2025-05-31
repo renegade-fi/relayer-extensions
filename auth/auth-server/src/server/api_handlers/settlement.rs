@@ -5,6 +5,7 @@ use renegade_circuit_types::order::OrderSide;
 use serde::{Deserialize, Serialize};
 
 use super::{MatchBundleResponseCtx, Server};
+use crate::bundle_store::helpers::generate_malleable_bundle_id;
 use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
 use crate::server::api_handlers::external_match::SponsoredAssembleMalleableQuoteResponseCtx;
@@ -60,9 +61,31 @@ impl Server {
         &self,
         ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
     ) -> Result<String, AuthServerError> {
+        let req = ctx.request();
         let resp = ctx.response();
+
+        // Generate bundle ID and context
         let nullifier = extract_nullifier_from_malleable_match_bundle(&resp.match_bundle)?;
-        todo!()
+        let bundle_id = generate_malleable_bundle_id(&resp.match_bundle.match_result, &nullifier)?;
+        let gas_sponsorship_info = ctx.sponsorship_info();
+        let is_sponsored = gas_sponsorship_info.is_some();
+        let shared = req.allow_shared;
+
+        let bundle_ctx = BundleContext {
+            key_description: ctx.user(),
+            request_id: bundle_id.clone(),
+            sdk_version: ctx.sdk_version.clone(),
+            gas_sponsorship_info,
+            is_sponsored,
+            nullifier,
+            shared,
+        };
+
+        if let Err(e) = self.bundle_store.write(bundle_id.clone(), bundle_ctx).await {
+            tracing::error!("bundle context write failed: {}", e);
+        }
+
+        Ok(bundle_id)
     }
 
     /// Determines the appropriate `ApiExternalMatchResult` to use for bundle ID
