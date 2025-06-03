@@ -4,7 +4,7 @@ use auth_server_api::RENEGADE_API_KEY_HEADER;
 use http::HeaderMap;
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::hmac::HmacKey;
-use tracing::info;
+use tracing::{info, instrument};
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
@@ -28,6 +28,7 @@ impl Server {
     ///
     /// Returns the description for the API key, i.e. a human readable name for
     /// the entity that is making the request
+    #[instrument(skip_all)]
     pub(crate) async fn authorize_request(
         &self,
         path: &str,

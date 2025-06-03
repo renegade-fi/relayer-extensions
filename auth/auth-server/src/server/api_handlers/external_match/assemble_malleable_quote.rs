@@ -81,6 +81,7 @@ impl Server {
 
     /// Run the pre-request subroutines for the assemble malleable quote
     /// endpoint
+    #[instrument(skip_all)]
     async fn assemble_malleable_quote_pre_request(
         &self,
         ctx: &mut AssembleMalleableQuoteRequestCtx,
@@ -99,6 +100,7 @@ impl Server {
 
     /// Run the post-request subroutines for the assemble malleable quote
     /// endpoint
+    #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn assemble_malleable_quote_post_request(
         &self,
         mut resp: Response<Bytes>,

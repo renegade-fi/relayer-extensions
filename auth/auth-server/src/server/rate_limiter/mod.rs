@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
-use tracing::warn;
+use tracing::{instrument, warn};
 use user_rate_limiter::ApiTokenRateLimiter;
 
 use crate::error::AuthServerError;
@@ -39,6 +39,7 @@ mod user_rate_limiter;
 
 impl Server {
     /// Check the quote rate limiter
+    #[instrument(skip(self))]
     pub async fn check_quote_rate_limit(
         &self,
         key_description: String,
@@ -51,6 +52,7 @@ impl Server {
     }
 
     /// Check the bundle rate limiter
+    #[instrument(skip(self))]
     pub async fn check_bundle_rate_limit(
         &self,
         key_description: String,
@@ -67,6 +69,7 @@ impl Server {
     ///
     /// Returns a boolean indicating whether or not the gas sponsorship rate
     /// limit has been exceeded.
+    #[instrument(skip(self))]
     pub async fn check_gas_sponsorship_rate_limit(&self, key_description: &str) -> bool {
         if !self.rate_limiter.check_gas_sponsorship(key_description).await {
             warn!(
