@@ -32,7 +32,7 @@ use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, info_span};
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
 
@@ -126,6 +126,9 @@ pub struct Cli {
     /// Whether or not to enable Datadog-formatted logs
     #[arg(long, env = "ENABLE_DATADOG")]
     pub datadog_enabled: bool,
+    /// Whether or not to enable OTLP tracing
+    #[arg(long, env = "ENABLE_OTLP")]
+    pub otlp_enabled: bool,
     /// Whether or not to enable metrics collection
     #[arg(long, env = "ENABLE_METRICS")]
     pub metrics_enabled: bool,
@@ -309,6 +312,8 @@ async fn main() {
         .or(expire_api_key)
         .or(add_api_key)
         .or(order_book_depth)
+        .boxed()
+        .with(with_tracing())
         .recover(handle_rejection);
     warp::serve(routes).bind(listen_addr).await;
 }
@@ -325,6 +330,21 @@ fn with_server(
 fn with_query_string() -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone
 {
     warp::query::raw().or_else(|_| async { Ok((String::new(),)) })
+}
+
+/// Custom tracing filter that creates spans for requests at info level
+/// with the auth_server::request target to work with our RUST_LOG configuration
+fn with_tracing() -> warp::trace::Trace<impl Fn(warp::trace::Info) -> tracing::Span + Clone> {
+    warp::trace(|info| {
+        let span = info_span!(
+            target: "auth_server::request",
+            "handle_request",
+            method = %info.method(),
+            path = %info.path(),
+        );
+
+        span
+    })
 }
 
 /// Handle a rejection from an endpoint handler
