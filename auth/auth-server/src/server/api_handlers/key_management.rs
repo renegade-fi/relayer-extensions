@@ -7,6 +7,7 @@ use crate::{
 use auth_server_api::CreateApiKeyRequest;
 use bytes::Bytes;
 use http::HeaderMap;
+use tracing::instrument;
 use uuid::Uuid;
 use warp::{filters::path::FullPath, reject::Rejection, reply::Reply};
 
@@ -16,6 +17,7 @@ use super::Server;
 
 impl Server {
     /// Add a new API key to the database
+    #[instrument(skip_all)]
     pub async fn add_key(
         &self,
         path: FullPath,
@@ -38,6 +40,7 @@ impl Server {
     }
 
     /// Expire an existing API key
+    #[instrument(skip_all)]
     pub async fn expire_key(
         &self,
         key_id: Uuid,

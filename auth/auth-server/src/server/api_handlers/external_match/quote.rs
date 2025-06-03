@@ -91,6 +91,7 @@ impl Server {
 
     /// Run endpoint handler subroutines before forwarding the request to the
     /// relayer
+    #[instrument(skip_all)]
     async fn quote_pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
         // Check the rate limit
         self.check_quote_rate_limit(ctx.user()).await?;
@@ -105,6 +106,7 @@ impl Server {
     /// response
     ///
     /// Returns the auth server's response to the client
+    #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn quote_post_request(
         &self,
         mut resp: Response<Bytes>,
@@ -138,6 +140,7 @@ impl Server {
     /// respected.
     ///
     /// Returns the gas sponsorship info for the request, if any.
+    #[instrument(skip_all)]
     async fn sponsor_quote_request(
         &self,
         ctx: &mut QuoteRequestCtx,
@@ -153,6 +156,7 @@ impl Server {
 
     /// Apply gas sponsorship to the given external quote response, returning
     /// the resulting `SponsoredQuoteResponse`
+    #[instrument(skip_all)]
     fn sponsor_response(
         &self,
         ctx: &QuoteResponseCtx,

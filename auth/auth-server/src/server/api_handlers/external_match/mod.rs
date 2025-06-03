@@ -9,6 +9,7 @@ use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -179,6 +180,7 @@ impl<
 impl Server {
     /// Build request context for an external match related request, before the
     /// request is proxied to the relayer
+    #[instrument(skip_all)]
     pub async fn preprocess_request<Req>(
         &self,
         path: warp::path::FullPath,
@@ -213,6 +215,7 @@ impl Server {
     ///
     /// Returns the raw response from the relayer as well as the response
     /// context generated from the relayer's response
+    #[instrument(skip_all)]
     pub async fn forward_request<Req, Resp>(
         &self,
         ctx: RequestContext<Req>,

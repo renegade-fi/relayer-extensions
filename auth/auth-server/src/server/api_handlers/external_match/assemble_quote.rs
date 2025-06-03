@@ -87,6 +87,7 @@ impl Server {
     // -------------------------------
 
     /// Run the pre-request subroutines for the assembly quote endpoint
+    #[instrument(skip_all)]
     async fn assembly_pre_request(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
@@ -102,6 +103,7 @@ impl Server {
     }
 
     /// Run the post-request subroutines for the assembly quote endpoint
+    #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn assembly_post_request(
         &self,
         mut resp: Response<Bytes>,
@@ -135,6 +137,7 @@ impl Server {
     /// present.
     ///
     /// Returns the assembly request, and the gas sponsorship info, if any.
+    #[instrument(skip_all)]
     pub(crate) async fn sponsor_assembly_request(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,

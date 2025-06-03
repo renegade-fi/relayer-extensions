@@ -76,6 +76,7 @@ impl Server {
     // -------------------------------
 
     /// Run the pre-request subroutines for the direct match endpoint
+    #[instrument(skip_all)]
     async fn direct_match_pre_request(
         &self,
         ctx: &mut DirectMatchRequestCtx,
@@ -91,6 +92,7 @@ impl Server {
     }
 
     /// Run the post-request subroutines for the direct match endpoint
+    #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn direct_match_post_request(
         &self,
         mut resp: Response<Bytes>,
@@ -119,6 +121,7 @@ impl Server {
     /// Apply gas sponsorship to the given match request, returning the
     /// resulting `ExternalMatchRequest` and the generated gas sponsorship
     /// info, if any
+    #[instrument(skip_all)]
     async fn sponsor_direct_match_request(
         &self,
         ctx: &mut DirectMatchRequestCtx,
