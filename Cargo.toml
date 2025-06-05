@@ -5,6 +5,7 @@ members = [
     "compliance/compliance-server",
     "compliance/compliance-api",
     "deploy",
+    "renegade-solver",
     "dealer/renegade-dealer",
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
@@ -35,7 +36,9 @@ renegade-constants = { package = "constants", git = "https://github.com/renegade
 renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["metered-channels"] }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = [
+    "metered-channels",
+] }
 renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-solidity-contracts" }
