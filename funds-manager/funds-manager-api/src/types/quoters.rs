@@ -33,6 +33,9 @@ pub const GET_EXECUTION_QUOTE_ROUTE: &str = "get-execution-quote";
 pub const EXECUTE_SWAP_ROUTE: &str = "execute-swap";
 /// The route to withdraw USDC to Hyperliquid from the quoter hot wallet
 pub const WITHDRAW_TO_HYPERLIQUID_ROUTE: &str = "withdraw-to-hyperliquid";
+/// The route to swap immediately on the quoter hot wallet,
+/// fetching a quote and executing it without first returning it to the client
+pub const SWAP_IMMEDIATE_ROUTE: &str = "swap-immediate";
 
 // -------------
 // | Api Types |
@@ -255,6 +258,15 @@ pub struct ExecuteSwapRequest {
 /// The response body for executing a swap on the execution venue
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecuteSwapResponse {
+    /// The tx hash of the swap
+    pub tx_hash: String,
+}
+
+/// The response body for executing an immediate swap
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SwapImmediateResponse {
+    /// The quote that was executed
+    pub quote: ExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
 }

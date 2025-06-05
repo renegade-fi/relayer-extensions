@@ -41,8 +41,8 @@ use funds_manager_api::hot_wallets::{
 };
 use funds_manager_api::quoters::{
     ExecuteSwapRequest, WithdrawFundsRequest, WithdrawToHyperliquidRequest, EXECUTE_SWAP_ROUTE,
-    GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, WITHDRAW_CUSTODY_ROUTE,
-    WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, SWAP_IMMEDIATE_ROUTE,
+    WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
@@ -59,13 +59,13 @@ use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_b
 use renegade_common::types::chain::Chain;
 use server::Server;
 
-use renegade_util::telemetry::configure_telemetry;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use tracing::{error, warn};
 use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
+use crate::handlers::swap_immediate_handler;
 
 // -------
 // | Cli |
@@ -79,15 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         warn!("Authentication is disabled. This is not recommended for production use.");
     }
 
-    configure_telemetry(
-        cli.datadog_logging, // datadog_enabled
-        false,               // otlp_enabled
-        cli.metrics_enabled, // metrics_enabled
-        "".to_string(),      // collector_endpoint
-        &cli.statsd_host,    // statsd_host
-        cli.statsd_port,     // statsd_port
-    )
-    .expect("failed to setup telemetry");
+    cli.configure_telemetry()?;
 
     let port = cli.port; // copy `cli.port` to use after moving `cli`
     let server = Server::build_from_cli(cli).await.expect("failed to build server");
@@ -190,6 +182,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .untuple_one()
         .and(with_server(server.clone()))
         .and_then(execute_swap_handler);
+
+    let swap_immediate = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path("quoters"))
+        .and(warp::path(SWAP_IMMEDIATE_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .and(warp::query::<HashMap<String, String>>())
+        .and(with_server(server.clone()))
+        .and_then(
+            |chain: Chain, _body: Bytes, query: HashMap<String, String>, server: Arc<Server>| {
+                swap_immediate_handler(chain, query, server)
+            },
+        );
 
     let withdraw_to_hyperliquid = warp::post()
         .and(warp::path("custody"))
@@ -333,6 +339,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_deposit_address)
         .or(get_execution_quote)
         .or(execute_swap)
+        .or(swap_immediate)
         .or(withdraw_to_hyperliquid)
         .or(withdraw_gas)
         .or(refill_gas)

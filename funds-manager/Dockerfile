@@ -57,4 +57,3 @@ COPY --from=builder /build/target/release/funds-manager /bin/funds-manager
 # Set log filtering
 ENV RUST_LOG="funds_manager=info,fireblocks_sdk=off,warp=warn"
 ENTRYPOINT ["/bin/funds-manager"]
-CMD ["--datadog-logging"]

@@ -6,7 +6,7 @@ use std::str::FromStr;
 use alloy::{
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
-        DynProvider, ProviderBuilder,
+        DynProvider, Provider, ProviderBuilder,
     },
     sol,
 };
@@ -17,7 +17,10 @@ use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use renegade_common::types::chain::Chain;
 use renegade_util::err_str;
 
-use crate::{cli::Environment, error::FundsManagerError};
+use crate::{
+    cli::{Environment, BLOCK_POLLING_INTERVAL},
+    error::FundsManagerError,
+};
 
 // ---------
 // | ERC20 |
@@ -52,6 +55,8 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
         .filler(GasFiller)
         .filler(BlobGasFiller)
         .connect_http(url);
+
+    provider.client().set_poll_interval(BLOCK_POLLING_INTERVAL);
 
     Ok(DynProvider::new(provider))
 }
