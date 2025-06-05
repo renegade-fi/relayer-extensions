@@ -10,6 +10,7 @@ use price_reporter_client::PriceReporterClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_darkpool_client::client::DarkpoolClientConfig;
+use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
@@ -27,7 +28,13 @@ use crate::{
 const CHAIN_CONFIGS_OBJECT_NAME: &str = "chain_configs.json";
 
 /// The block polling interval for the darkpool client
-const BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
+pub const BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
+
+/// The prefix for metrics
+const METRICS_PREFIX: &str = "funds-manager";
+
+/// The default OTLP collector endpoint
+const DEFAULT_OTLP_COLLECTOR_ENDPOINT: &str = "http://localhost:4317";
 
 // ---------
 // | Types |
@@ -103,12 +110,15 @@ pub struct Cli {
 
     // --- Telemetry --- //
 
-    /// Whether to enable datadog formatted logs
-    #[clap(long, default_value = "false")]
-    pub datadog_logging: bool,
+    /// Whether or not Datadog is in use. Controls log format & telemetry export.
+    #[clap(long, env = "ENABLE_DATADOG", default_value = "false")]
+    pub datadog_enabled: bool,
     /// Whether or not to enable metrics collection
     #[clap(long, env = "ENABLE_METRICS")]
     pub metrics_enabled: bool,
+    /// Whether or not to enable OTLP tracing
+    #[clap(long, env = "ENABLE_OTLP")]
+    pub otlp_enabled: bool,
     /// The StatsD recorder host to send metrics to
     #[clap(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
     pub statsd_host: String,
@@ -156,6 +166,23 @@ impl Cli {
         }?;
 
         serde_json::from_str(&json_str).map_err(FundsManagerError::parse)
+    }
+
+    /// Configure telemetry from the command line arguments
+    pub fn configure_telemetry(&self) -> Result<(), FundsManagerError> {
+        let metrics_config =
+            MetricsConfig { metrics_prefix: METRICS_PREFIX.to_string(), ..Default::default() };
+
+        configure_telemetry_with_metrics_config(
+            self.datadog_enabled,                        // datadog_enabled
+            self.otlp_enabled,                           // otlp_enabled
+            self.metrics_enabled,                        // metrics_enabled
+            DEFAULT_OTLP_COLLECTOR_ENDPOINT.to_string(), // collector_endpoint
+            &self.statsd_host,                           // statsd_host
+            self.statsd_port,                            // statsd_port
+            Some(metrics_config),
+        )
+        .map_err(FundsManagerError::custom)
     }
 }
 
