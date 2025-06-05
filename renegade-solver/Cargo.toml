@@ -1,0 +1,30 @@
+[package]
+name = "renegade-solver"
+version = "0.1.0"
+edition = "2021"
+authors = ["Renegade Team <hello@renegade.fi>"]
+description = "An orderflow auction solver which routes through the Renegade darkpool"
+license = "MIT"
+repository = "https://github.com/renegade-fi/renegade-solver"
+homepage = "https://renegade.fi"
+readme = "README.md"
+keywords = ["solver", "renegade", "protocol", "intents", "darkpool"]
+
+[dependencies]
+# === Server === #
+clap = { version = "4.0", features = ["derive", "env"] }
+reqwest = "0.12"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+warp = "0.3"
+
+# === Renegade Dependencies === #
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade", features = [
+    "telemetry",
+] }
+
+# === Misc Dependencies === #
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+url = "2.5.0"

@@ -20,7 +20,8 @@ jobs:
           "funds-manager-api",
           "funds-manager",
           "price-reporter",
-          "price-reporter-client"
+          "price-reporter-client",
+          "renegade-solver",
         ]
     steps:
     - uses: actions/checkout@v3
