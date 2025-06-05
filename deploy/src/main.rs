@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use dialoguer::Select;
+use dialoguer::FuzzySelect;
 
 mod build;
 mod config;
@@ -44,9 +44,9 @@ enum Commands {
     List,
 }
 
-// --------------
-// | Helpers    |
-// --------------
+// -----------
+// | Helpers |
+// -----------
 
 fn prompt_for_service(config: &Config) -> Result<String> {
     let services: Vec<String> = config.list_services().into_iter().cloned().collect();
@@ -54,8 +54,9 @@ fn prompt_for_service(config: &Config) -> Result<String> {
         return Err(anyhow::anyhow!("No services found in config"));
     }
 
-    println!("Available services:");
-    let selection = Select::new().with_prompt("Select a service").items(&services).interact()?;
+    println!("Available services (type to search):");
+    let selection =
+        FuzzySelect::new().with_prompt("Select a service").items(&services).interact()?;
     Ok(services[selection].clone())
 }
 
