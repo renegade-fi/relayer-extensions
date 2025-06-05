@@ -1,48 +1,81 @@
 //! UniswapX API client and handlers
 
-use std::time::Duration;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
-use tracing::{error, info};
-use url::form_urlencoded;
+use tracing::error;
 
-use crate::{error::SolverResult, uniswapx::api_types::OrderEntity};
+use crate::{cli::Cli, error::SolverResult};
 
+mod api_interaction;
 mod api_types;
-use api_types::GetOrdersResponse;
+mod solve;
 
 /// The interval at which to poll for new orders
 const POLLING_INTERVAL: Duration = Duration::from_secs(1);
 
-/// The order status parameter
-const ORDER_STATUS_PARAM: &str = "orderStatus";
-/// The chain ID parameter
-const CHAIN_ID_PARAM: &str = "chainId";
-/// The order type parameter
-const ORDER_TYPE_PARAM: &str = "orderType";
-
-/// Query parameter values
-/// The order status value
-const ORDER_STATUS_OPEN: &str = "open";
-/// The chain ID for base
-const CHAIN_ID_BASE: &str = "8453";
-/// The order type for priority orders
-const ORDER_TYPE_PRIORITY: &str = "Priority";
+/// A shared read-only hashmap of supported tokens
+///
+/// Maps from address to symbol
+type SupportedTokens = Arc<HashMap<String, String>>;
 
 /// The UniswapX API client
 #[derive(Clone)]
 pub struct UniswapXSolver {
     /// The base URL for the UniswapX API
     base_url: String,
+    /// The set of known tokens
+    ///
+    /// Maps from address to symbol
+    supported_tokens: SupportedTokens,
     /// The API client
-    client: ReqwestClient,
+    http_client: ReqwestClient,
+    /// The Renegade client
+    renegade_client: ExternalMatchClient,
 }
 
 impl UniswapXSolver {
+    // ---------
+    // | Setup |
+    // ---------
+
     /// Create a new UniswapX solver
-    pub fn new(base_url: String) -> Self {
-        Self { base_url, client: ReqwestClient::new() }
+    pub async fn new(cli: Cli) -> SolverResult<Self> {
+        let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
+
+        // TODO: Add support for other chains
+        let renegade_client =
+            ExternalMatchClient::new_base_mainnet_client(&renegade_api_key, &renegade_api_secret)?;
+        let supported_tokens = Self::load_supported_tokens(&renegade_client).await?;
+
+        Ok(Self { base_url, http_client: ReqwestClient::new(), renegade_client, supported_tokens })
     }
+
+    /// Load the known tokens from the database
+    async fn load_supported_tokens(client: &ExternalMatchClient) -> SolverResult<SupportedTokens> {
+        let resp = client.get_supported_tokens().await?;
+        let mut map = HashMap::with_capacity(resp.tokens.len());
+        for token in resp.tokens {
+            map.insert(token.address.to_lowercase(), token.symbol);
+        }
+
+        Ok(Arc::new(map))
+    }
+
+    // -----------
+    // | Helpers |
+    // -----------
+
+    /// Check if a token is supported
+    async fn is_token_supported(&self, token: &str) -> bool {
+        let token = token.to_lowercase();
+        self.supported_tokens.contains_key(&token)
+    }
+
+    // ----------------
+    // | Polling Loop |
+    // ----------------
 
     /// Spawn a polling loop for the UniswapX API
     pub fn spawn_polling_loop(&self) {
@@ -69,59 +102,19 @@ impl UniswapXSolver {
 
     /// Poll the UniswapX API for new orders
     async fn poll_orders(&self) -> SolverResult<()> {
-        // For now, just print each order
+        // Fetch open orders from the API
         let orders = self.fetch_open_orders().await?;
-        for order in &orders {
-            let input = &order.input;
-            let first_output = &order.outputs[0];
-            info!(
-                "Found order for {} {} -> {} {}",
-                input.amount, input.token, first_output.amount, first_output.token
-            );
+
+        // Spawn a task to solve each order
+        for order in orders {
+            let self_clone = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = self_clone.solve_order(order).await {
+                    error!("Error solving order: {e}");
+                }
+            });
         }
 
-        // TODO: Process each order
         Ok(())
-    }
-
-    /// Fetch open orders from the UniswapX API
-    async fn fetch_open_orders(&self) -> SolverResult<Vec<OrderEntity>> {
-        let url = self.build_request_url();
-        let response = self.client.get(&url).send().await?;
-
-        // Check if the response is successful
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            error!("API request failed with status: {status}: {error_text}");
-            return Ok(vec![]);
-        }
-
-        // Deserialize the JSON response
-        let response_text = response.text().await?;
-        let orders_response: GetOrdersResponse = serde_json::from_str(&response_text)?;
-        Ok(orders_response.orders)
-    }
-
-    /// Build the request URL for the UniswapX API
-    ///
-    /// See docs [here](https://docs.uniswap.org/contracts/uniswapx/guides/priority/priorityorderreactor#retrieving-and-executing-signed-orders)
-    fn build_request_url(&self) -> String {
-        let query_params = Self::get_default_query_params();
-        let mut query_string = form_urlencoded::Serializer::new(String::new());
-        for (key, value) in query_params {
-            query_string.append_pair(key, value);
-        }
-        let query = query_string.finish();
-        format!("{}/orders?{}", self.base_url, query)
-    }
-
-    /// Get the default query parameters for fetching orders
-    fn get_default_query_params() -> Vec<(&'static str, &'static str)> {
-        vec![
-            (ORDER_STATUS_PARAM, ORDER_STATUS_OPEN),
-            (CHAIN_ID_PARAM, CHAIN_ID_BASE),
-            (ORDER_TYPE_PARAM, ORDER_TYPE_PRIORITY),
-        ]
     }
 }

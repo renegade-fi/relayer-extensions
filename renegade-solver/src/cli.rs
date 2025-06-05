@@ -13,13 +13,19 @@ const DEFAULT_STATSD_HOST: &str = "127.0.0.1";
 const DEFAULT_STATSD_PORT: u16 = 8125;
 
 /// Renegade solver server
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     // --- Application Config --- //
     /// The URL of the UniswapX API
     #[arg(long, env = "UNISWAPX_URL")]
     pub uniswapx_url: String,
+    /// The API key for the Renegade external match API
+    #[arg(long, env = "RENEGADE_API_KEY")]
+    pub renegade_api_key: String,
+    /// The API secret for the Renegade external match API
+    #[arg(long, env = "RENEGADE_API_SECRET")]
+    pub renegade_api_secret: String,
 
     // --- Server --- //
     /// Port to run the server on

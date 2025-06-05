@@ -5,6 +5,7 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(unsafe_code)]
+#![deny(clippy::uninlined_format_args)]
 
 use std::net::SocketAddr;
 
@@ -26,7 +27,8 @@ async fn main() {
     cli.configure_telemetry();
 
     // Create the UniswapX solver and begin its polling loop
-    let uniswapx = UniswapXSolver::new(cli.uniswapx_url);
+    let uniswapx =
+        UniswapXSolver::new(cli.clone()).await.expect("Failed to create UniswapX solver");
     uniswapx.spawn_polling_loop();
 
     // Create the endpoints

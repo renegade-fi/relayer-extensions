@@ -19,6 +19,7 @@ tracing = "0.1"
 warp = "0.3"
 
 # === Renegade Dependencies === #
+renegade-sdk = "0.1.15"
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade", features = [
     "telemetry",
 ] }
