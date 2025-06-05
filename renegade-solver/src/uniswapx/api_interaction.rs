@@ -43,7 +43,15 @@ impl UniswapXSolver {
         // Deserialize the JSON response
         let response_text = response.text().await?;
         let orders_response: GetOrdersResponse = serde_json::from_str(&response_text)?;
-        Ok(orders_response.orders)
+
+        let mut orders = Vec::new();
+        for order in orders_response.orders {
+            if !self.is_order_processed(&order).await {
+                orders.push(order);
+            }
+        }
+
+        Ok(orders)
     }
 
     /// Build the request URL for the UniswapX API
