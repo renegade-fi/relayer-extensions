@@ -18,6 +18,9 @@ tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 warp = "0.3"
 
+# === Ethereum Dependencies === #
+alloy = { version = "1.0", features = ["essentials"] }
+
 # === Renegade Dependencies === #
 renegade-sdk = "0.1.15"
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade", features = [

@@ -1,7 +1,8 @@
 //! UniswapX API client and handlers
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
+use alloy::primitives::Address;
 use lru::LruCache;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
@@ -26,7 +27,7 @@ const ORDER_CACHE_SIZE: usize = 100;
 /// A shared read-only hashmap of supported tokens
 ///
 /// Maps from address to symbol
-type SupportedTokens = Arc<HashMap<String, String>>;
+type SupportedTokens = Arc<HashMap<Address, String>>;
 /// A shared read-only LRU cache of order hashes we've already tried to handle
 type OrderCache = Arc<RwLock<LruCache<String, ()>>>;
 
@@ -81,10 +82,15 @@ impl UniswapXSolver {
 
     /// Load the known tokens from the database
     async fn load_supported_tokens(client: &ExternalMatchClient) -> SolverResult<SupportedTokens> {
+        // Build a map and insert the zero address in place of native ETH
+        let mut map = HashMap::with_capacity(1);
+        map.insert(Address::ZERO, "ETH".to_string());
+
+        // Insert all tokens from the external match API
         let resp = client.get_supported_tokens().await?;
-        let mut map = HashMap::with_capacity(resp.tokens.len());
         for token in resp.tokens {
-            map.insert(token.address.to_lowercase(), token.symbol);
+            let addr = Address::from_str(&token.address).expect("Invalid supported token address");
+            map.insert(addr, token.symbol);
         }
 
         Ok(Arc::new(map))
@@ -96,8 +102,11 @@ impl UniswapXSolver {
 
     /// Check if a token is supported
     async fn is_token_supported(&self, token: &str) -> bool {
-        let token = token.to_lowercase();
-        self.supported_tokens.contains_key(&token)
+        let addr = match Address::from_str(token) {
+            Ok(addr) => addr,
+            Err(_) => return false,
+        };
+        self.supported_tokens.contains_key(&addr)
     }
 
     /// Check if an order has already been processed
