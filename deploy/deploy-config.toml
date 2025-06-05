@@ -64,3 +64,16 @@ ecr_repo = "funds-manager-mainnet"
 [services.mainnet-funds-manager.deploy]
 environment = "mainnet"
 resource = "funds-manager"
+
+#######################
+### Renegade Solver ###
+#######################
+
+[services.base-mainnet-renegade-solver]
+[services.base-mainnet-renegade-solver.build]
+dockerfile = "renegade-solver/Dockerfile"
+ecr_repo = "solver-base-mainnet"
+
+[services.base-mainnet-renegade-solver.deploy]
+environment = "base-mainnet"
+resource = "solver"
