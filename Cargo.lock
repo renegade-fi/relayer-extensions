@@ -8035,6 +8035,7 @@ name = "renegade-solver"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "bimap",
  "clap",
  "lru 0.12.5",
  "renegade-sdk",
