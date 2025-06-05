@@ -1,5 +1,6 @@
 //! Error types for the solver
 
+use renegade_sdk::ExternalMatchClientError;
 use serde_json::json;
 use thiserror::Error;
 use warp::{
@@ -21,6 +22,9 @@ pub enum SolverError {
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Serialization(#[from] serde_json::Error),
+    /// Error from the renegade client
+    #[error("Renegade client error: {0}")]
+    Renegade(#[from] ExternalMatchClientError),
 }
 
 impl Reject for SolverError {}
@@ -33,7 +37,7 @@ impl Reject for SolverError {}
 pub async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection> {
     if let Some(solver_error) = err.find::<SolverError>() {
         let (status_code, message) = match solver_error {
-            SolverError::Http(_) | SolverError::Serialization(_) => {
+            SolverError::Http(_) | SolverError::Serialization(_) | SolverError::Renegade(_) => {
                 let msg = format!("Internal server error: {solver_error}");
                 (StatusCode::INTERNAL_SERVER_ERROR, msg)
             },
