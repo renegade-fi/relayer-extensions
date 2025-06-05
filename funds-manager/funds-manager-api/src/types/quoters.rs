@@ -224,14 +224,14 @@ impl AugmentedExecutionQuote {
     }
 
     /// Returns the notional volume in USDC, taking into account the actual
-    /// transfer amount for sell orders
-    pub fn notional_volume_usdc(&self, transfer_amount: U256) -> Result<f64, String> {
+    /// buy amount for sell orders
+    pub fn notional_volume_usdc(&self, buy_amount_actual: U256) -> Result<f64, String> {
         if self.is_buy() {
             self.get_decimal_corrected_sell_amount()
         } else {
-            let transfer_amount = u256_try_into_u128(transfer_amount)?;
+            let buy_amount = u256_try_into_u128(buy_amount_actual)?;
 
-            Ok(self.get_buy_token().convert_to_decimal(transfer_amount))
+            Ok(self.get_buy_token().convert_to_decimal(buy_amount))
         }
     }
 }
