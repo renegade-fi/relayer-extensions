@@ -6,7 +6,7 @@ use url::form_urlencoded;
 use crate::{
     error::SolverResult,
     uniswapx::{
-        api_types::{GetOrdersResponse, OrderEntity},
+        uniswap_api::types::{GetOrdersResponse, OrderEntity},
         UniswapXSolver,
     },
 };

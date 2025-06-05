@@ -19,12 +19,23 @@ pub enum SolverError {
     /// HTTP error occurred
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+    /// An invalid address was provided
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Serialization(#[from] serde_json::Error),
     /// Error from the renegade client
     #[error("Renegade client error: {0}")]
     Renegade(#[from] ExternalMatchClientError),
+}
+
+impl SolverError {
+    /// Create an invalid address error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn invalid_address<S: ToString>(s: S) -> Self {
+        Self::InvalidAddress(s.to_string())
+    }
 }
 
 impl Reject for SolverError {}
@@ -36,8 +47,9 @@ impl Reject for SolverError {}
 /// Handle rejections and convert SolverError to JSON responses
 pub async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection> {
     if let Some(solver_error) = err.find::<SolverError>() {
+        #[allow(clippy::match_single_binding)]
         let (status_code, message) = match solver_error {
-            SolverError::Http(_) | SolverError::Serialization(_) | SolverError::Renegade(_) => {
+            _ => {
                 let msg = format!("Internal server error: {solver_error}");
                 (StatusCode::INTERNAL_SERVER_ERROR, msg)
             },
