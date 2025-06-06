@@ -1,8 +1,6 @@
 //! Client methods for fetching quotes and prices from the execution venue
 
-use std::collections::HashMap;
-
-use funds_manager_api::quoters::ExecutionQuote;
+use funds_manager_api::quoters::{ExecutionQuote, LiFiQuoteParams};
 use funds_manager_api::venue::LiFiQuote;
 
 use super::{error::ExecutionClientError, ExecutionClient};
@@ -14,12 +12,13 @@ impl ExecutionClient {
     /// Fetch a quote by forwarding raw query parameters
     pub async fn get_quote(
         &self,
-        query_params: HashMap<String, String>,
+        params: LiFiQuoteParams,
     ) -> Result<ExecutionQuote, ExecutionClientError> {
-        let params: Vec<(&str, &str)> =
-            query_params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
+        let query_string = qs_config.serialize_string(&params).unwrap();
+        let url = format!("{}?{}", QUOTE_ENDPOINT, query_string);
 
-        let resp: LiFiQuote = self.send_get_request(QUOTE_ENDPOINT, &params).await?;
+        let resp: LiFiQuote = self.send_get_request(&url).await?;
         Ok(resp.into())
     }
 }

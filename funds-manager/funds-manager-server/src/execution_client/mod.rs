@@ -7,7 +7,8 @@ pub mod swap;
 use std::sync::Arc;
 
 use alloy::{
-    providers::{DynProvider, ProviderBuilder},
+    providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
@@ -48,27 +49,22 @@ impl ExecutionClient {
     }
 
     /// Get a full URL for a given endpoint
-    fn build_url(
-        &self,
-        endpoint: &str,
-        params: &[(&str, &str)],
-    ) -> Result<Url, ExecutionClientError> {
+    fn build_url(&self, endpoint: &str) -> Result<Url, ExecutionClientError> {
         let url = if !endpoint.starts_with('/') {
             format!("{}/{}", self.base_url, endpoint)
         } else {
             format!("{}{}", self.base_url, endpoint)
         };
 
-        Url::parse_with_params(&url, params).map_err(ExecutionClientError::parse)
+        Url::parse(&url).map_err(ExecutionClientError::parse)
     }
 
     /// Send a get request to the execution venue
     async fn send_get_request<T: for<'de> Deserialize<'de>>(
         &self,
         endpoint: &str,
-        params: &[(&str, &str)],
     ) -> Result<T, ExecutionClientError> {
-        let url = self.build_url(endpoint, params)?;
+        let url = self.build_url(endpoint)?;
 
         // Add an API key if present
         let mut request = self.http_client.get(url);
@@ -93,5 +89,17 @@ impl ExecutionClient {
         let provider =
             ProviderBuilder::new().wallet(wallet).connect_provider(self.rpc_provider.clone());
         DynProvider::new(provider)
+    }
+
+    /// Send a transaction, awaiting its receipt
+    async fn send_tx(
+        &self,
+        tx: TransactionRequest,
+        client: &DynProvider,
+    ) -> Result<TransactionReceipt, ExecutionClientError> {
+        let pending_tx =
+            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
+
+        pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)
     }
 }

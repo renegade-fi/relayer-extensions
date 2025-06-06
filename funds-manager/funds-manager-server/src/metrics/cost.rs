@@ -102,10 +102,12 @@ impl MetricsRecorder {
         receipt: &TransactionReceipt,
         quote: &AugmentedExecutionQuote,
     ) -> Result<SwapExecutionData, FundsManagerError> {
-        let mint = quote.get_base_token().get_alloy_address();
+        let base_mint = quote.get_base_token().get_alloy_address();
+        let binance_price = self.get_price(&base_mint, quote.chain).await?;
 
-        let binance_price = self.get_price(&mint, quote.chain).await?;
-        let buy_amount_actual = self.get_buy_amount_actual(receipt, mint, quote.quote.from).await?;
+        let buy_mint = quote.get_buy_token().get_alloy_address();
+        let buy_amount_actual =
+            self.get_buy_amount_actual(receipt, buy_mint, quote.quote.from).await?;
 
         let execution_price =
             quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;

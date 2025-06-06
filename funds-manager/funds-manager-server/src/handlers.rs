@@ -3,8 +3,10 @@
 use crate::cli::Environment;
 use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
-use crate::error::ApiError;
+use crate::error::{ApiError, FundsManagerError};
+use crate::execution_client::swap::LIFI_DIAMOND_ADDRESS;
 use crate::Server;
+use alloy_primitives::Address;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
@@ -17,7 +19,7 @@ use funds_manager_api::hot_wallets::{
 };
 use funds_manager_api::quoters::{
     AugmentedExecutionQuote, DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse,
-    GetExecutionQuoteResponse, SwapImmediateResponse, WithdrawFundsRequest,
+    GetExecutionQuoteResponse, LiFiQuoteParams, SwapImmediateResponse, WithdrawFundsRequest,
     WithdrawToHyperliquidRequest,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
@@ -186,14 +188,14 @@ pub(crate) async fn get_deposit_address_handler(
 pub(crate) async fn get_execution_quote_handler(
     chain: Chain,
     _body: Bytes, // no body
-    query_params: HashMap<String, String>,
+    params: LiFiQuoteParams,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let execution_client = server.get_execution_client(&chain)?;
 
     // Forward the query parameters to the execution client
     let quote = execution_client
-        .get_quote(query_params)
+        .get_quote(params)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
@@ -250,32 +252,47 @@ pub(crate) async fn execute_swap_handler(
 #[instrument(skip_all)]
 pub(crate) async fn swap_immediate_handler(
     chain: Chain,
-    query_params: HashMap<String, String>,
+    params: LiFiQuoteParams,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let execution_client = server.get_execution_client(&chain)?;
     let custody_client = server.get_custody_client(&chain)?;
     let metrics_recorder = server.get_metrics_recorder(&chain)?;
 
-    // Fetch a quote using the provided query parameters
-    let quote = execution_client.get_quote(query_params).await?;
-    let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
-
     // Top up the quoter hot wallet gas before swapping
     custody_client.top_up_quoter_hot_wallet_gas().await?;
 
-    // Execute the swap
     let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
-    let receipt = execution_client.execute_swap(quote.clone(), &wallet).await?;
-    let tx_hash = receipt.transaction_hash;
+
+    // Approve the top-level sell amount
+    let sell_token_amount = params.from_amount;
+    let sell_token_address: Address =
+        params.from_token.parse().map_err(FundsManagerError::parse)?;
+
+    execution_client
+        .approve_erc20_allowance(
+            sell_token_address,
+            LIFI_DIAMOND_ADDRESS,
+            sell_token_amount,
+            &wallet,
+        )
+        .await?;
+
+    // Execute the swap, decaying the size of the swap each time it fails to execute
+    let (augmented_quote, receipt) =
+        execution_client.swap_immediate_decaying(chain, params, wallet).await?;
+
+    let resp = SwapImmediateResponse {
+        quote: augmented_quote.quote.clone(),
+        tx_hash: format!("{:#x}", receipt.transaction_hash),
+    };
 
     // Record swap cost metrics
     tokio::spawn(async move {
         metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
     });
 
-    let resp = SwapImmediateResponse { quote, tx_hash: format!("{:#x}", tx_hash) };
     Ok(warp::reply::json(&resp))
 }
 

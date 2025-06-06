@@ -80,7 +80,7 @@ pub struct ExecutionQuote {
     pub buy_amount_min: U256,
     /// The submitting address
     pub from: Address,
-    /// The 0x swap contract address
+    /// The swap contract address
     pub to: Address,
     /// The calldata for the swap
     pub data: Bytes,
@@ -224,14 +224,14 @@ impl AugmentedExecutionQuote {
     }
 
     /// Returns the notional volume in USDC, taking into account the actual
-    /// transfer amount for sell orders
-    pub fn notional_volume_usdc(&self, transfer_amount: U256) -> Result<f64, String> {
+    /// buy amount for sell orders
+    pub fn notional_volume_usdc(&self, buy_amount_actual: U256) -> Result<f64, String> {
         if self.is_buy() {
             self.get_decimal_corrected_sell_amount()
         } else {
-            let transfer_amount = u256_try_into_u128(transfer_amount)?;
+            let buy_amount = u256_try_into_u128(buy_amount_actual)?;
 
-            Ok(self.get_buy_token().convert_to_decimal(transfer_amount))
+            Ok(self.get_buy_token().convert_to_decimal(buy_amount))
         }
     }
 }
@@ -260,6 +260,68 @@ pub struct ExecuteSwapRequest {
 pub struct ExecuteSwapResponse {
     /// The tx hash of the swap
     pub tx_hash: String,
+}
+
+/// The subset of LiFi quote request query parameters that we support
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiFiQuoteParams {
+    /// The token that should be transferred. Can be the address or the symbol
+    pub from_token: String,
+    /// The token that should be transferred to. Can be the address or the
+    /// symbol
+    pub to_token: String,
+    /// The amount that should be sent including all decimals (e.g. 1000000 for
+    /// 1 USDC (6 decimals))
+    #[serde(with = "u256_string_serialization")]
+    pub from_amount: U256,
+    /// The sending wallet address
+    pub from_address: String,
+    /// The receiving wallet address. If none is provided, the fromAddress will
+    /// be used
+    #[serde(default)]
+    pub to_address: Option<String>,
+    /// The ID of the sending chain
+    pub from_chain: usize,
+    /// The ID of the receiving chain
+    pub to_chain: usize,
+    /// The maximum allowed slippage for the transaction as a decimal value.
+    /// 0.005 represents 0.5%.
+    #[serde(default = "default_slippage")]
+    pub slippage: Option<f64>,
+    /// Timing setting to wait for a certain amount of swap rates. In the format
+    /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
+    /// Please check docs.li.fi for more details.
+    #[serde(default)]
+    pub swap_step_timing_strategies: Option<Vec<String>>,
+    /// Which kind of route should be preferred
+    #[serde(default)]
+    pub order: Option<String>,
+    /// Parameter to skip transaction simulation. The quote will be returned
+    /// faster but the transaction gas limit won't be accurate.
+    #[serde(default)]
+    pub skip_simulation: Option<bool>,
+    /// List of exchanges that are allowed for this transaction
+    #[serde(default = "default_allow_exchanges")]
+    pub allow_exchanges: Option<Vec<String>>,
+    /// List of exchanges that are not allowed for this transaction
+    #[serde(default = "default_deny_exchanges")]
+    pub deny_exchanges: Option<Vec<String>>,
+}
+
+/// The default value for the slippage parameter
+fn default_slippage() -> Option<f64> {
+    Some(0.005)
+}
+
+/// The default value for the allow_exchanges parameter
+fn default_allow_exchanges() -> Option<Vec<String>> {
+    Some(vec!["all".to_string()])
+}
+
+/// The default value for the deny_exchanges parameter
+fn default_deny_exchanges() -> Option<Vec<String>> {
+    Some(vec!["none".to_string()])
 }
 
 /// The response body for executing an immediate swap
