@@ -3,7 +3,13 @@
 //! These types are based on the UniswapX API OpenAPI specification
 //! [here](https://github.com/Uniswap/uniswapx-service/blob/main/swagger.json)
 
+use alloy::{hex, sol_types::SolValue};
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    error::{SolverError, SolverResult},
+    uniswapx::abis::uniswapx::PriorityOrderReactor::PriorityOrder,
+};
 
 /// The response from the orders endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +60,16 @@ pub struct OrderEntity {
     pub created_at: u64,
     /// Routing information
     pub route: Route,
+}
+
+impl OrderEntity {
+    /// Decode the encoded order
+    pub fn decode_priority_order(&self) -> SolverResult<PriorityOrder> {
+        let order_bytes =
+            hex::decode(self.encoded_order.clone()).map_err(SolverError::abi_encoding)?;
+        let order = PriorityOrder::abi_decode(&order_bytes).unwrap();
+        Ok(order)
+    }
 }
 
 /// Order input information
