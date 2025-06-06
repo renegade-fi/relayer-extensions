@@ -1,7 +1,9 @@
 //! UniswapX API client and handlers
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
+use alloy::primitives::Address;
+use bimap::BiMap;
 use lru::LruCache;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
@@ -22,11 +24,15 @@ const POLLING_INTERVAL: Duration = Duration::from_secs(1);
 /// Orders are typically only duplicated for a short window while the auction
 /// commences, so a small cache is sufficient.
 const ORDER_CACHE_SIZE: usize = 100;
+/// The symbol for native ETH
+const NATIVE_ETH_SYMBOL: &str = "ETH";
+/// The symbol for USDC
+const USDC_SYMBOL: &str = "USDC";
 
-/// A shared read-only hashmap of supported tokens
+/// A shared read-only bimap of supported tokens
 ///
-/// Maps from address to symbol
-type SupportedTokens = Arc<HashMap<String, String>>;
+/// Maps bidirectionally between address and symbol
+type SupportedTokens = Arc<BiMap<Address, String>>;
 /// A shared read-only LRU cache of order hashes we've already tried to handle
 type OrderCache = Arc<RwLock<LruCache<String, ()>>>;
 
@@ -81,10 +87,15 @@ impl UniswapXSolver {
 
     /// Load the known tokens from the database
     async fn load_supported_tokens(client: &ExternalMatchClient) -> SolverResult<SupportedTokens> {
+        // Build a bimap and insert the zero address in place of native ETH
+        let mut map = BiMap::with_capacity(1);
+        map.insert(Address::ZERO, NATIVE_ETH_SYMBOL.to_string());
+
+        // Insert all tokens from the external match API
         let resp = client.get_supported_tokens().await?;
-        let mut map = HashMap::with_capacity(resp.tokens.len());
         for token in resp.tokens {
-            map.insert(token.address.to_lowercase(), token.symbol);
+            let addr = Address::from_str(&token.address).expect("Invalid supported token address");
+            map.insert(addr, token.symbol);
         }
 
         Ok(Arc::new(map))
@@ -95,9 +106,13 @@ impl UniswapXSolver {
     // -----------
 
     /// Check if a token is supported
-    async fn is_token_supported(&self, token: &str) -> bool {
-        let token = token.to_lowercase();
-        self.supported_tokens.contains_key(&token)
+    fn is_token_supported(&self, token: Address) -> bool {
+        self.supported_tokens.contains_left(&token)
+    }
+
+    /// Get the address for a token symbol
+    fn get_token_address(&self, symbol: &str) -> Option<Address> {
+        self.supported_tokens.get_by_right(symbol).copied()
     }
 
     /// Check if an order has already been processed
