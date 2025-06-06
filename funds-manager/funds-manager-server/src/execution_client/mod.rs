@@ -7,7 +7,8 @@ pub mod swap;
 use std::sync::Arc;
 
 use alloy::{
-    providers::{DynProvider, ProviderBuilder},
+    providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
@@ -88,5 +89,17 @@ impl ExecutionClient {
         let provider =
             ProviderBuilder::new().wallet(wallet).connect_provider(self.rpc_provider.clone());
         DynProvider::new(provider)
+    }
+
+    /// Send a transaction, awaiting its receipt
+    async fn send_tx(
+        &self,
+        tx: TransactionRequest,
+        client: &DynProvider,
+    ) -> Result<TransactionReceipt, ExecutionClientError> {
+        let pending_tx =
+            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
+
+        pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)
     }
 }

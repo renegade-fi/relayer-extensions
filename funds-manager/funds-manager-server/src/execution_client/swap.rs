@@ -2,6 +2,7 @@
 
 use alloy::{
     eips::BlockId,
+    hex,
     network::TransactionBuilder,
     providers::{DynProvider, Provider},
     rpc::types::{TransactionReceipt, TransactionRequest},
@@ -13,14 +14,20 @@ use funds_manager_api::{
     u256_try_into_u64,
 };
 use renegade_common::types::chain::Chain;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::helpers::IERC20;
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
+/// The factor by which the swap size will be divided when retrying
+const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
+/// The address of the LiFi diamond (same address on Arbitrum One and Base
+/// Mainnet), constantized here to simplify approvals
+pub const LIFI_DIAMOND_ADDRESS: Address =
+    Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
 
 impl ExecutionClient {
     /// Execute a quoted swap
@@ -51,10 +58,7 @@ impl ExecutionClient {
         let tx = self.build_swap_tx(quote, &client).await?;
 
         // Send the transaction
-        let pending_tx =
-            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
-
-        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)?;
+        let receipt = self.send_tx(tx, &client).await?;
 
         if !receipt.status() {
             let error_msg = format!("tx ({:#x}) failed", receipt.transaction_hash);
@@ -97,74 +101,40 @@ impl ExecutionClient {
         Ok(tx)
     }
 
-    /// Attempt to execute a swap, recursively retrying failed swaps with
-    /// half-sized quotes down to a minimum trade size.
-    pub async fn swap_immediate_recursive(
+    /// Attempt to execute a swap, retrying failed swaps with
+    /// decreased quotes down to a minimum trade size.
+    pub async fn swap_immediate_decaying(
         &self,
         chain: Chain,
-        params: LiFiQuoteParams,
+        mut params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
-    ) -> Result<Vec<(AugmentedExecutionQuote, TransactionReceipt)>, ExecutionClientError> {
-        let quote = self.get_quote(params.clone()).await?;
-        let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
+    ) -> Result<(AugmentedExecutionQuote, TransactionReceipt), ExecutionClientError> {
+        loop {
+            let quote = self.get_quote(params.clone()).await?;
+            let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
 
-        let quote_amount =
-            augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
+            let quote_amount =
+                augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
 
-        if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            return Err(ExecutionClientError::custom(format!(
-                "Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
-            )));
+            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+                return Err(ExecutionClientError::custom(format!(
+                    "Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
+                )));
+            }
+
+            let client = self.get_signing_provider(wallet.clone());
+            let tx = self.build_swap_tx(quote, &client).await?;
+            let receipt = self.send_tx(tx, &client).await?;
+
+            if receipt.status() {
+                return Ok((augmented_quote, receipt));
+            }
+
+            warn!("tx ({:#x}) failed, retrying w/ reduced-size quote", receipt.transaction_hash);
+
+            params =
+                LiFiQuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
         }
-
-        let client = self.get_signing_provider(wallet.clone());
-
-        let tx = self.build_swap_tx(quote, &client).await?;
-
-        // Send the transaction
-        let pending_tx =
-            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
-
-        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)?;
-
-        if !receipt.status() {
-            warn!("tx ({:#x}) failed, retrying w/ half-sized quotes", receipt.transaction_hash);
-            return Box::pin(self.swap_half_size_quotes(chain, params, wallet)).await;
-        }
-
-        Ok(vec![(augmented_quote, receipt)])
-    }
-
-    /// Attempt to execute a swap across two half-sized quotes
-    async fn swap_half_size_quotes(
-        &self,
-        chain: Chain,
-        original_params: LiFiQuoteParams,
-        wallet: PrivateKeySigner,
-    ) -> Result<Vec<(AugmentedExecutionQuote, TransactionReceipt)>, ExecutionClientError> {
-        let half_size_params = LiFiQuoteParams {
-            from_amount: original_params.from_amount / U256::from(2),
-            ..original_params
-        };
-
-        let mut results = vec![];
-
-        let first_half_results =
-            self.swap_immediate_recursive(chain, half_size_params.clone(), wallet.clone()).await;
-
-        let second_half_results =
-            self.swap_immediate_recursive(chain, half_size_params, wallet).await;
-
-        match first_half_results {
-            Ok(first_half_results) => results.extend(first_half_results),
-            Err(e) => error!("Failed to execute first half of swap: {e}"),
-        }
-        match second_half_results {
-            Ok(second_half_results) => results.extend(second_half_results),
-            Err(e) => error!("Failed to execute second half of swap: {e}"),
-        }
-
-        Ok(results)
     }
 
     /// Approve an erc20 allowance

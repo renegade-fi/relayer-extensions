@@ -21,7 +21,6 @@ pub mod mux_darkpool_client;
 pub mod relayer_client;
 pub mod server;
 
-use bytes::Bytes;
 use clap::Parser;
 use cli::Cli;
 use custody_client::rpc_shim::JsonRpcRequest;
@@ -190,11 +189,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("quoters"))
         .and(warp::path(SWAP_IMMEDIATE_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .and(with_query_params::<LiFiQuoteParams>())
+        .map(with_chain_and_json_body::<LiFiQuoteParams>)
+        .and_then(identity)
+        .untuple_one()
         .and(with_server(server.clone()))
-        .and_then(|chain: Chain, _body: Bytes, params: LiFiQuoteParams, server: Arc<Server>| {
-            swap_immediate_handler(chain, params, server)
-        });
+        .and_then(swap_immediate_handler);
 
     let withdraw_to_hyperliquid = warp::post()
         .and(warp::path("custody"))

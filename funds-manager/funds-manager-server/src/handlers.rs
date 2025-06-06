@@ -4,6 +4,7 @@ use crate::cli::Environment;
 use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
 use crate::error::{ApiError, FundsManagerError};
+use crate::execution_client::swap::LIFI_DIAMOND_ADDRESS;
 use crate::Server;
 use alloy_primitives::Address;
 use bytes::Bytes;
@@ -18,8 +19,8 @@ use funds_manager_api::hot_wallets::{
 };
 use funds_manager_api::quoters::{
     AugmentedExecutionQuote, DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse,
-    GetExecutionQuoteResponse, LiFiQuoteParams, SwapImmediateResponse, SwapResult,
-    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
+    GetExecutionQuoteResponse, LiFiQuoteParams, SwapImmediateResponse, WithdrawFundsRequest,
+    WithdrawToHyperliquidRequest,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
 use itertools::Itertools;
@@ -265,33 +266,33 @@ pub(crate) async fn swap_immediate_handler(
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
     // Approve the top-level sell amount
+    let sell_token_amount = params.from_amount;
     let sell_token_address: Address =
         params.from_token.parse().map_err(FundsManagerError::parse)?;
-    let spender_address: Address = params.from_address.parse().map_err(FundsManagerError::parse)?;
-    let sell_token_amount = params.from_amount;
+
     execution_client
-        .approve_erc20_allowance(sell_token_address, spender_address, sell_token_amount, &wallet)
+        .approve_erc20_allowance(
+            sell_token_address,
+            LIFI_DIAMOND_ADDRESS,
+            sell_token_amount,
+            &wallet,
+        )
         .await?;
 
-    // Execute the swap recursively
-    let swap_results = execution_client.swap_immediate_recursive(chain, params, wallet).await?;
-    let api_swap_results = swap_results
-        .clone()
-        .into_iter()
-        .map(|(augmented_quote, receipt)| SwapResult {
-            quote: augmented_quote.quote,
-            tx_hash: format!("{:#x}", receipt.transaction_hash),
-        })
-        .collect_vec();
+    // Execute the swap, decaying the size of the swap each time it fails to execute
+    let (augmented_quote, receipt) =
+        execution_client.swap_immediate_decaying(chain, params, wallet).await?;
+
+    let resp = SwapImmediateResponse {
+        quote: augmented_quote.quote.clone(),
+        tx_hash: format!("{:#x}", receipt.transaction_hash),
+    };
 
     // Record swap cost metrics
     tokio::spawn(async move {
-        for (augmented_quote, receipt) in swap_results {
-            metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
-        }
+        metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
     });
 
-    let resp = SwapImmediateResponse { results: api_swap_results };
     Ok(warp::reply::json(&resp))
 }
 
