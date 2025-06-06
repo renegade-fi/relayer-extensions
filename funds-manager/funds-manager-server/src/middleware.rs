@@ -30,10 +30,7 @@ pub(crate) fn with_hmac_auth(server: Arc<Server>) -> impl FilterExtracts<(Bytes,
 fn with_hmac_inputs() -> impl FilterExtracts<(String, Option<String>, Method, HeaderMap, Bytes)> {
     warp::any()
         .and(warp::path::full())
-        .and(
-            warp::query::raw()
-                .or_else(|_| async move { Ok::<(String,), warp::Rejection>(("".to_string(),)) }),
-        )
+        .and(with_query_string())
         .and_then(|path: FullPath, query: String| async move {
             let path_str = if query.is_empty() {
                 path.as_str().to_string()
@@ -46,6 +43,21 @@ fn with_hmac_inputs() -> impl FilterExtracts<(String, Option<String>, Method, He
         .and(warp::method())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
+}
+
+/// Extract the query string from the request, or an empty string if one is not
+/// present
+pub(crate) fn with_query_string() -> impl FilterExtracts<(String,)> {
+    warp::query::raw()
+        .or_else(|_| async move { Ok::<(String,), warp::Rejection>(("".to_string(),)) })
+}
+
+/// Deserialize query parameters from the request
+pub(crate) fn with_query_params<T: DeserializeOwned + Send + 'static>() -> impl FilterExtracts<(T,)>
+{
+    serde_qs::warp::query::<T>(
+        serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed),
+    )
 }
 
 /// Verify the HMAC signature

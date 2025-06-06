@@ -13,6 +13,8 @@ pub enum ExecutionClientError {
     Http(String),
     /// An error parsing a value
     Parse(String),
+    /// A custom error
+    Custom(String),
 }
 
 impl ExecutionClientError {
@@ -33,6 +35,12 @@ impl ExecutionClientError {
     pub fn parse<T: ToString>(e: T) -> Self {
         ExecutionClientError::Parse(e.to_string())
     }
+
+    /// Create a new custom error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn custom<T: ToString>(e: T) -> Self {
+        ExecutionClientError::Custom(e.to_string())
+    }
 }
 
 impl Display for ExecutionClientError {
@@ -41,6 +49,7 @@ impl Display for ExecutionClientError {
             ExecutionClientError::Arbitrum(e) => format!("Arbitrum error: {e}"),
             ExecutionClientError::Http(e) => format!("HTTP error: {e}"),
             ExecutionClientError::Parse(e) => format!("Parse error: {e}"),
+            ExecutionClientError::Custom(e) => format!("Custom error: {e}"),
         };
 
         write!(f, "{}", msg)

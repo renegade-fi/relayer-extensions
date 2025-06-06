@@ -262,13 +262,74 @@ pub struct ExecuteSwapResponse {
     pub tx_hash: String,
 }
 
-/// The response body for executing an immediate swap
+/// Which kind of LiFi route should be preferred when fetching a quote
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum LiFiRouteOrder {
+    /// This sorting criterion prioritizes routes with the shortest estimated
+    /// execution time
+    #[serde(rename = "FASTEST")]
+    Fastest,
+    /// This criterion focuses on minimizing the cost of the transaction,
+    /// whether in token amount or USD amount (USD amount minus gas cost)
+    #[serde(rename = "CHEAPEST")]
+    Cheapest,
+}
+
+/// The subset of LiFi quote request query parameters that we support
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiFiQuoteParams {
+    /// The token that should be transferred. Can be the address or the symbol
+    pub from_token: String,
+    /// The token that should be transferred to. Can be the address or the
+    /// symbol
+    pub to_token: String,
+    /// The amount that should be sent including all decimals (e.g. 1000000 for
+    /// 1 USDC (6 decimals))
+    pub from_amount: U256,
+    /// The sending wallet address
+    pub from_address: String,
+    /// The receiving wallet address. If none is provided, the fromAddress will
+    /// be used
+    pub to_address: Option<String>,
+    /// The ID of the sending chain
+    pub from_chain: usize,
+    /// The ID of the receiving chain
+    pub to_chain: usize,
+    /// The maximum allowed slippage for the transaction as a decimal value.
+    /// 0.005 represents 0.5%.
+    pub slippage: Option<f64>,
+    /// Timing setting to wait for a certain amount of swap rates. In the format
+    /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
+    /// Please check docs.li.fi for more details.
+    pub swap_step_timing_strategies: Option<Vec<String>>,
+    /// Which kind of route should be preferred
+    pub order: Option<LiFiRouteOrder>,
+    /// Parameter to skip transaction simulation. The quote will be returned
+    /// faster but the transaction gas limit won't be accurate.
+    pub skip_simulation: Option<bool>,
+    /// List of exchanges that are allowed for this transaction
+    pub allow_exchanges: Option<Vec<String>>,
+    /// List of exchanges that are not allowed for this transaction
+    pub deny_exchanges: Option<Vec<String>>,
+    /// List of exchanges that should be preferred for this transaction
+    pub prefer_exchanges: Option<Vec<String>>,
+}
+
+/// The result of a swap
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SwapImmediateResponse {
+pub struct SwapResult {
     /// The quote that was executed
     pub quote: ExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
+}
+
+/// The response body for executing an immediate swap
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SwapImmediateResponse {
+    /// The results of the swap
+    pub results: Vec<SwapResult>,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot
