@@ -279,7 +279,7 @@ pub struct LiFiQuoteParams {
     pub from_address: String,
     /// The receiving wallet address. If none is provided, the fromAddress will
     /// be used
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_address: Option<String>,
     /// The ID of the sending chain
     pub from_chain: usize,
@@ -287,41 +287,26 @@ pub struct LiFiQuoteParams {
     pub to_chain: usize,
     /// The maximum allowed slippage for the transaction as a decimal value.
     /// 0.005 represents 0.5%.
-    #[serde(default = "default_slippage")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slippage: Option<f64>,
     /// Timing setting to wait for a certain amount of swap rates. In the format
     /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
     /// Please check docs.li.fi for more details.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swap_step_timing_strategies: Option<Vec<String>>,
     /// Which kind of route should be preferred
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order: Option<String>,
     /// Parameter to skip transaction simulation. The quote will be returned
     /// faster but the transaction gas limit won't be accurate.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_simulation: Option<bool>,
     /// List of exchanges that are allowed for this transaction
-    #[serde(default = "default_allow_exchanges")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_exchanges: Option<Vec<String>>,
     /// List of exchanges that are not allowed for this transaction
-    #[serde(default = "default_deny_exchanges")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deny_exchanges: Option<Vec<String>>,
-}
-
-/// The default value for the slippage parameter
-fn default_slippage() -> Option<f64> {
-    Some(0.005)
-}
-
-/// The default value for the allow_exchanges parameter
-fn default_allow_exchanges() -> Option<Vec<String>> {
-    Some(vec!["all".to_string()])
-}
-
-/// The default value for the deny_exchanges parameter
-fn default_deny_exchanges() -> Option<Vec<String>> {
-    Some(vec!["none".to_string()])
 }
 
 /// The response body for executing an immediate swap
