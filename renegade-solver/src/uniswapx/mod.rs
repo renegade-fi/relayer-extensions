@@ -10,12 +10,9 @@ use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::{
-    cli::Cli,
-    error::{SolverError, SolverResult},
-    uniswapx::uniswap_api::types::OrderEntity,
-};
+use crate::{cli::Cli, error::SolverResult, uniswapx::uniswap_api::types::OrderEntity};
 
+mod abis;
 mod renegade_api;
 mod solve;
 mod uniswap_api;
@@ -48,12 +45,6 @@ type OrderCache = Arc<RwLock<LruCache<String, ()>>>;
 fn new_order_cache() -> OrderCache {
     let cache_size = std::num::NonZeroUsize::new(ORDER_CACHE_SIZE).unwrap();
     Arc::new(RwLock::new(LruCache::new(cache_size)))
-}
-
-/// Parse an address from a string
-fn parse_address(s: &str) -> SolverResult<Address> {
-    let addr = Address::from_str(s).map_err(|_| SolverError::invalid_address(s))?;
-    Ok(addr)
 }
 
 // ----------

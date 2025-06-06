@@ -1,5 +1,6 @@
 //! Error types for the solver
 
+use alloy::primitives::U256;
 use renegade_sdk::ExternalMatchClientError;
 use serde_json::json;
 use thiserror::Error;
@@ -16,12 +17,15 @@ pub type SolverResult<T> = Result<T, SolverError>;
 /// The generic solver error
 #[derive(Error, Debug)]
 pub enum SolverError {
+    /// An error ABI encoding/decoding a value
+    #[error("ABI encoding/decoding error: {0}")]
+    AbiEncoding(String),
     /// HTTP error occurred
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
-    /// An invalid address was provided
-    #[error("Invalid address: {0}")]
-    InvalidAddress(String),
+    /// An invalid u256 was provided
+    #[error("Invalid u256: {0}")]
+    InvalidU256(U256),
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -31,10 +35,10 @@ pub enum SolverError {
 }
 
 impl SolverError {
-    /// Create an invalid address error
+    /// Create an ABI encoding/decoding error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn invalid_address<S: ToString>(s: S) -> Self {
-        Self::InvalidAddress(s.to_string())
+    pub fn abi_encoding<S: ToString>(msg: S) -> Self {
+        Self::AbiEncoding(msg.to_string())
     }
 }
 
