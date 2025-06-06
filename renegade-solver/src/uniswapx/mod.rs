@@ -10,11 +10,15 @@ use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::{cli::Cli, error::SolverResult, uniswapx::api_types::OrderEntity};
+use crate::{
+    cli::Cli,
+    error::{SolverError, SolverResult},
+    uniswapx::uniswap_api::types::OrderEntity,
+};
 
-mod api_interaction;
-mod api_types;
+mod renegade_api;
 mod solve;
+mod uniswap_api;
 
 /// The interval at which to poll for new orders
 const POLLING_INTERVAL: Duration = Duration::from_secs(1);
@@ -36,11 +40,25 @@ type SupportedTokens = Arc<BiMap<Address, String>>;
 /// A shared read-only LRU cache of order hashes we've already tried to handle
 type OrderCache = Arc<RwLock<LruCache<String, ()>>>;
 
+// ------------------
+// | Helper Methods |
+// ------------------
+
 /// Create a new order cache
 fn new_order_cache() -> OrderCache {
     let cache_size = std::num::NonZeroUsize::new(ORDER_CACHE_SIZE).unwrap();
     Arc::new(RwLock::new(LruCache::new(cache_size)))
 }
+
+/// Parse an address from a string
+fn parse_address(s: &str) -> SolverResult<Address> {
+    let addr = Address::from_str(s).map_err(|_| SolverError::invalid_address(s))?;
+    Ok(addr)
+}
+
+// ----------
+// | Solver |
+// ----------
 
 /// The UniswapX API client
 #[derive(Clone)]
@@ -88,7 +106,7 @@ impl UniswapXSolver {
     /// Load the known tokens from the database
     async fn load_supported_tokens(client: &ExternalMatchClient) -> SolverResult<SupportedTokens> {
         // Build a bimap and insert the zero address in place of native ETH
-        let mut map = BiMap::with_capacity(1);
+        let mut map = BiMap::new();
         map.insert(Address::ZERO, NATIVE_ETH_SYMBOL.to_string());
 
         // Insert all tokens from the external match API
@@ -108,6 +126,16 @@ impl UniswapXSolver {
     /// Check if a token is supported
     fn is_token_supported(&self, token: Address) -> bool {
         self.supported_tokens.contains_left(&token)
+    }
+
+    /// Returns whether the given token is USDC
+    pub(crate) fn is_usdc(&self, token: Address) -> bool {
+        token == self.get_usdc_address()
+    }
+
+    /// Get the USDC token address
+    fn get_usdc_address(&self) -> Address {
+        self.get_token_address(USDC_SYMBOL).expect("USDC is not supported")
     }
 
     /// Get the address for a token symbol
