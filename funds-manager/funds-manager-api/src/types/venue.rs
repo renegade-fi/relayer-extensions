@@ -73,6 +73,8 @@ pub struct LiFiQuote {
     estimate: Estimate,
     /// Swap action details
     action: Action,
+    /// Tool (venue) providing the route
+    pub tool: String,
 }
 
 impl From<LiFiQuote> for ExecutionQuote {

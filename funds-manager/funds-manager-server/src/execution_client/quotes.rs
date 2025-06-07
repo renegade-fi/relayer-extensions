@@ -2,6 +2,7 @@
 
 use funds_manager_api::quoters::{ExecutionQuote, LiFiQuoteParams};
 use funds_manager_api::venue::LiFiQuote;
+use tracing::info;
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -19,6 +20,9 @@ impl ExecutionClient {
         let url = format!("{}?{}", QUOTE_ENDPOINT, query_string);
 
         let resp: LiFiQuote = self.send_get_request(&url).await?;
+
+        info!("Got LiFi quote from: {}", resp.tool);
+
         Ok(resp.into())
     }
 }
