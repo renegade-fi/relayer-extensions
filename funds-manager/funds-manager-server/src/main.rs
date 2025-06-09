@@ -48,11 +48,11 @@ use funds_manager_api::PING_ROUTE;
 use handlers::{
     create_gas_wallet_handler, create_hot_wallet_handler, execute_swap_handler,
     get_deposit_address_handler, get_execution_quote_handler, get_fee_wallets_handler,
-    get_hot_wallet_balances_handler, get_vault_balances_handler, index_fees_handler,
-    quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
-    register_gas_wallet_handler, report_active_peers_handler, rpc_handler,
-    transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
-    withdraw_gas_handler, withdraw_to_hyperliquid_handler,
+    get_gas_wallets_handler, get_hot_wallet_balances_handler, get_vault_balances_handler,
+    index_fees_handler, quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler,
+    refill_gas_sponsor_handler, register_gas_wallet_handler, report_active_peers_handler,
+    rpc_handler, transfer_to_vault_handler, withdraw_fee_balance_handler,
+    withdraw_from_vault_handler, withdraw_gas_handler, withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
 use renegade_common::types::chain::Chain;
@@ -272,6 +272,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(refill_gas_sponsor_handler);
 
+    let get_gas_wallets = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path("gas-wallets"))
+        .and(with_hmac_auth(server.clone()))
+        .and(with_server(server.clone()))
+        .and_then(get_gas_wallets_handler);
+
     // --- Hot Wallets --- //
 
     let create_hot_wallet = warp::post()
@@ -343,6 +351,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(refill_gas_sponsor)
         .or(register_gas_wallet)
         .or(add_gas_wallet)
+        .or(get_gas_wallets)
         .or(get_balances)
         .or(withdraw_fee_balance)
         .or(transfer_to_vault)
