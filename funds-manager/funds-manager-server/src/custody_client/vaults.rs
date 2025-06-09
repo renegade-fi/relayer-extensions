@@ -1,5 +1,6 @@
 //! Handlers for managing Fireblocks vaults
 
+use alloy_primitives::Address;
 use fireblocks_sdk::{
     apis::{
         blockchains_assets_beta_api::GetAssetByIdParams, vaults_api::GetPagedVaultAccountsParams,
@@ -57,8 +58,10 @@ impl CustodyClient {
 
     /// Try to construct a `TokenBalance` for a given asset.
     ///
-    /// If the asset does not have an address (e.g. a native asset), this will
-    /// return `None`.
+    /// For native assets, this will return a `TokenBalance` with a zero mint
+    /// address.
+    ///
+    /// If the asset has a zero balance, this will return `None`.
     async fn try_get_token_balance_for_asset(
         &self,
         asset: VaultAsset,
@@ -82,10 +85,14 @@ impl CustodyClient {
         ))?;
 
         // Skip if the asset has no address, e.g. if it's a native asset
-        if asset_onchain_data.address.is_none() {
-            return Ok(None);
-        }
-        let mint = asset_onchain_data.address.unwrap();
+        let mint = if self.get_current_env_native_asset_ids()?.contains(&asset.id.as_str()) {
+            format!("{:#x}", Address::ZERO)
+        } else {
+            asset_onchain_data.address.ok_or(FundsManagerError::fireblocks(format!(
+                "asset {} has no address",
+                &asset.id
+            )))?
+        };
 
         let amount_f64 = total_f64 * 10_f64.powf(asset_onchain_data.decimals as f64);
         let amount: u128 = amount_f64.floor() as u128;

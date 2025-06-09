@@ -53,6 +53,14 @@ const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
 const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
 /// The Fireblocks asset ID for ETH on Base Sepolia
 const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
+
+/// The Fireblocks asset IDs for native assets on testnets
+pub const TESTNET_NATIVE_ASSET_IDS: &[&str] =
+    &[ARB_SEPOLIA_ETH_ASSET_ID, BASE_SEPOLIA_ETH_ASSET_ID];
+
+/// The Fireblocks asset IDs for native assets on mainnets
+pub const MAINNET_NATIVE_ASSET_IDS: &[&str] = &[ARB_ONE_ETH_ASSET_ID, BASE_MAINNET_ETH_ASSET_ID];
+
 /// The number of confirmations Fireblocks requires to consider a contract call
 /// final
 const FB_CONTRACT_CONFIRMATIONS: u64 = 3;
@@ -222,6 +230,15 @@ impl CustodyClient {
             Chain::ArbitrumSepolia => Ok(ARB_SEPOLIA_ETH_ASSET_ID.to_string()),
             Chain::BaseMainnet => Ok(BASE_MAINNET_ETH_ASSET_ID.to_string()),
             Chain::BaseSepolia => Ok(BASE_SEPOLIA_ETH_ASSET_ID.to_string()),
+            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
+        }
+    }
+
+    /// Get the Fireblocks asset IDs for native assets on the current chain
+    pub(crate) fn get_current_env_native_asset_ids(&self) -> Result<&[&str], FundsManagerError> {
+        match self.chain {
+            Chain::ArbitrumOne | Chain::BaseMainnet => Ok(MAINNET_NATIVE_ASSET_IDS),
+            Chain::ArbitrumSepolia | Chain::BaseSepolia => Ok(TESTNET_NATIVE_ASSET_IDS),
             _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }
