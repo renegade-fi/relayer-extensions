@@ -69,3 +69,10 @@ pub struct ReportActivePeersRequest {
     /// The list of active peers
     pub peers: Vec<String>,
 }
+
+/// The response containing gas wallet addresses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GasWalletsResponse {
+    /// The list of gas wallet addresses
+    pub addresses: Vec<String>,
+}

@@ -10,8 +10,8 @@ use alloy_primitives::Address;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
-    CreateGasWalletResponse, RefillGasRequest, RegisterGasWalletRequest, RegisterGasWalletResponse,
-    ReportActivePeersRequest, WithdrawGasRequest,
+    CreateGasWalletResponse, GasWalletsResponse, RefillGasRequest, RegisterGasWalletRequest,
+    RegisterGasWalletResponse, ReportActivePeersRequest, WithdrawGasRequest,
 };
 use funds_manager_api::hot_wallets::{
     CreateHotWalletRequest, CreateHotWalletResponse, HotWalletBalancesResponse,
@@ -425,6 +425,21 @@ pub(crate) async fn refill_gas_sponsor_handler(
     custody_client.refill_gas_sponsor().await?;
 
     let resp = json!({});
+    Ok(warp::reply::json(&resp))
+}
+
+/// Handler for getting all gas wallet addresses
+pub(crate) async fn get_gas_wallets_handler(
+    chain: Chain,
+    _body: Bytes, // no body
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let custody_client = server.get_custody_client(&chain)?;
+    let gas_wallets = custody_client.get_all_gas_wallets().await?;
+
+    let addresses = gas_wallets.into_iter().map(|wallet| wallet.address).collect();
+    let resp = GasWalletsResponse { addresses };
+
     Ok(warp::reply::json(&resp))
 }
 
