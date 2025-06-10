@@ -8,13 +8,12 @@ use super::{log_unsuccessful_relayer_request, Server};
 use crate::telemetry::helpers::record_relayer_request_500;
 
 impl Server {
-    /// Proxy GET /v0/order_book/depth/:mint to the relayer
+    /// Proxy GET requests to /v0/order_book/* endpoints to the relayer
     #[instrument(skip(self, path, headers))]
-    pub async fn handle_order_book_depth_request(
+    pub async fn handle_order_book_request(
         &self,
         path: warp::path::FullPath,
         headers: HeaderMap,
-        mint: String,
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let path_str = path.as_str();
