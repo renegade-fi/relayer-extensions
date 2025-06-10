@@ -16,6 +16,8 @@ pub const REDEEM_FEES_ROUTE: &str = "redeem-fees";
 pub const GET_FEE_WALLETS_ROUTE: &str = "get-fee-wallets";
 /// The route to withdraw a fee balance
 pub const WITHDRAW_FEE_BALANCE_ROUTE: &str = "withdraw-fee-balance";
+/// The route to get the hot wallet address for fee redemption
+pub const GET_FEE_HOT_WALLET_ADDRESS_ROUTE: &str = "get-hot-wallet-address";
 
 // -------------
 // | Api Types |

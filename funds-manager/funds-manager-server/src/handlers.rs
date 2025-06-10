@@ -105,6 +105,21 @@ pub(crate) async fn withdraw_fee_balance_handler(
     Ok(warp::reply::json(&"Fee withdrawal initiated..."))
 }
 
+/// Handler for retrieving the hot wallet address for fee redemption
+pub(crate) async fn get_fee_hot_wallet_address_handler(
+    chain: Chain,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let custody_client = server.get_custody_client(&chain)?;
+    let address = custody_client
+        .get_deposit_address(DepositWithdrawSource::FeeRedemption)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    let resp = DepositAddressResponse { address };
+    Ok(warp::reply::json(&resp))
+}
+
 // --- Vaults --- //
 
 /// Handler for getting the balances of a vault
