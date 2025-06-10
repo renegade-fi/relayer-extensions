@@ -29,7 +29,7 @@ use renegade_common::types::token::default_chain;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{instrument, warn};
+use tracing::{error, instrument, warn};
 use warp::reply::Json;
 
 // --- Constants --- //
@@ -56,12 +56,13 @@ pub(crate) async fn index_fees_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let indexer = server.get_fee_indexer(&chain)?;
-    indexer
-        .index_fees()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::IndexingError(e.to_string())))?;
+    tokio::task::spawn(async move {
+        if let Err(e) = indexer.index_fees().await {
+            error!("Error indexing fees: {e}");
+        }
+    });
 
-    Ok(warp::reply::json(&"Fees indexed successfully"))
+    Ok(warp::reply::json(&"Fee indexing initiated"))
 }
 
 /// Handler for redeeming fees
@@ -70,12 +71,13 @@ pub(crate) async fn redeem_fees_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let indexer = server.get_fee_indexer(&chain)?;
-    indexer
-        .redeem_fees()
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::RedemptionError(e.to_string())))?;
+    tokio::task::spawn(async move {
+        if let Err(e) = indexer.redeem_fees().await {
+            error!("Error redeeming fees: {e}");
+        }
+    });
 
-    Ok(warp::reply::json(&"Fees redeemed successfully"))
+    Ok(warp::reply::json(&"Fee redemption initiated"))
 }
 
 /// Handler for getting fee wallets
@@ -97,12 +99,28 @@ pub(crate) async fn withdraw_fee_balance_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let indexer = server.get_fee_indexer(&chain)?;
-    indexer
-        .withdraw_fee_balance(req.wallet_id, req.mint)
+    tokio::task::spawn(async move {
+        if let Err(e) = indexer.withdraw_fee_balance(req.wallet_id, req.mint).await {
+            error!("Error withdrawing fee balance: {e}");
+        }
+    });
+
+    Ok(warp::reply::json(&"Fee withdrawal initiated"))
+}
+
+/// Handler for retrieving the hot wallet address for fee redemption
+pub(crate) async fn get_fee_hot_wallet_address_handler(
+    chain: Chain,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let custody_client = server.get_custody_client(&chain)?;
+    let address = custody_client
+        .get_deposit_address(DepositWithdrawSource::FeeRedemption)
         .await
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
-    Ok(warp::reply::json(&"Fee withdrawal initiated..."))
+    let resp = DepositAddressResponse { address };
+    Ok(warp::reply::json(&resp))
 }
 
 // --- Vaults --- //
