@@ -30,44 +30,6 @@ pub const LIFI_DIAMOND_ADDRESS: Address =
     Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
 
 impl ExecutionClient {
-    /// Execute a quoted swap
-    pub async fn execute_swap(
-        &self,
-        quote: ExecutionQuote,
-        wallet: &PrivateKeySigner,
-    ) -> Result<TransactionReceipt, ExecutionClientError> {
-        // Execute the swap
-        let receipt = self.execute_swap_tx(quote, wallet).await?;
-        let tx_hash = receipt.transaction_hash;
-        info!("Swap executed at {tx_hash:#x}");
-        Ok(receipt)
-    }
-
-    /// Execute a swap
-    async fn execute_swap_tx(
-        &self,
-        quote: ExecutionQuote,
-        wallet: &PrivateKeySigner,
-    ) -> Result<TransactionReceipt, ExecutionClientError> {
-        let client = self.get_signing_provider(wallet.clone());
-
-        // Set approval for the sell token
-        self.approve_erc20_allowance(quote.sell_token_address, quote.to, quote.sell_amount, wallet)
-            .await?;
-
-        let tx = self.build_swap_tx(quote, &client).await?;
-
-        // Send the transaction
-        let receipt = self.send_tx(tx, &client).await?;
-
-        if !receipt.status() {
-            let error_msg = format!("tx ({:#x}) failed", receipt.transaction_hash);
-            return Err(ExecutionClientError::arbitrum(error_msg));
-        }
-
-        Ok(receipt)
-    }
-
     /// Construct a swap transaction from an execution quote
     async fn build_swap_tx(
         &self,

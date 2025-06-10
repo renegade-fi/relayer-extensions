@@ -62,9 +62,6 @@ pub struct Cli {
     /// The HMAC key to use for authentication
     #[clap(long, conflicts_with = "disable_auth", env = "HMAC_KEY")]
     pub hmac_key: Option<String>,
-    /// The HMAC key to use for signing quotes
-    #[clap(long, env = "QUOTE_HMAC_KEY")]
-    pub quote_hmac_key: String,
     /// Whether to disable authentication
     #[clap(long, conflicts_with = "hmac_key")]
     pub disable_auth: bool,
@@ -145,11 +142,6 @@ impl Cli {
     /// Get the HMAC key
     pub fn get_hmac_key(&self) -> Option<HmacKey> {
         self.hmac_key.as_ref().map(|key| HmacKey::from_hex_string(key).expect("Invalid HMAC key"))
-    }
-
-    /// Get the quote HMAC key
-    pub fn get_quote_hmac_key(&self) -> HmacKey {
-        HmacKey::from_hex_string(&self.quote_hmac_key).expect("Invalid quote HMAC key")
     }
 
     /// Parse the chain configs

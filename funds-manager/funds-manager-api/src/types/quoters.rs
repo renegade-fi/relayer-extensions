@@ -16,7 +16,10 @@ use crate::{serialization::u256_string_serialization, u256_try_into_u128};
 pub const GET_DEPOSIT_ADDRESS_ROUTE: &str = "deposit-address";
 /// The route to withdraw funds from custody
 pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
-/// The route to fetch an execution quote on the quoter hot wallet
+/// The route to withdraw USDC to Hyperliquid from the quoter hot wallet
+pub const WITHDRAW_TO_HYPERLIQUID_ROUTE: &str = "withdraw-to-hyperliquid";
+/// The route to swap immediately on the quoter hot wallet,
+/// fetching a quote and executing it without first returning it to the client
 ///
 /// Expected query parameters (proxied directly to LiFi API):
 /// - fromChain: Source chain ID
@@ -28,13 +31,6 @@ pub const WITHDRAW_CUSTODY_ROUTE: &str = "withdraw";
 /// - fromAmount: Source token amount
 /// - order: Order preference for routing (e.g. 'CHEAPEST')
 /// - slippage: Slippage tolerance as a decimal (e.g. 0.0001 for 0.01%)
-pub const GET_EXECUTION_QUOTE_ROUTE: &str = "get-execution-quote";
-/// The route to execute a swap on the quoter hot wallet
-pub const EXECUTE_SWAP_ROUTE: &str = "execute-swap";
-/// The route to withdraw USDC to Hyperliquid from the quoter hot wallet
-pub const WITHDRAW_TO_HYPERLIQUID_ROUTE: &str = "withdraw-to-hyperliquid";
-/// The route to swap immediately on the quoter hot wallet,
-/// fetching a quote and executing it without first returning it to the client
 pub const SWAP_IMMEDIATE_ROUTE: &str = "swap-immediate";
 
 // -------------
@@ -234,32 +230,6 @@ impl AugmentedExecutionQuote {
             Ok(self.get_buy_token().convert_to_decimal(buy_amount))
         }
     }
-}
-
-/// The request body for fetching a quote from the execution venue
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetExecutionQuoteResponse {
-    /// The quote, directly from the execution venue
-    pub quote: ExecutionQuote,
-    /// The HMAC of the quote
-    pub signature: String,
-}
-
-/// The request body for executing a swap on the execution venue
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ExecuteSwapRequest {
-    /// The quote, implicitly accepted by the caller by its presence in this
-    /// request
-    pub quote: ExecutionQuote,
-    /// The HMAC of the quote
-    pub signature: String,
-}
-
-/// The response body for executing a swap on the execution venue
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ExecuteSwapResponse {
-    /// The tx hash of the swap
-    pub tx_hash: String,
 }
 
 /// The subset of LiFi quote request query parameters that we support
