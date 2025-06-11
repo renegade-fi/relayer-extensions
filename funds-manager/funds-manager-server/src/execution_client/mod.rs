@@ -16,7 +16,7 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use tracing::{error, instrument};
 
-use crate::helpers::{build_provider, send_tx_with_retry};
+use crate::helpers::{build_provider, send_tx_with_retry, ONE_CONFIRMATION};
 
 use self::error::ExecutionClientError;
 
@@ -98,6 +98,8 @@ impl ExecutionClient {
         tx: TransactionRequest,
         client: &DynProvider,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
-        send_tx_with_retry(tx, client).await.map_err(ExecutionClientError::arbitrum)
+        send_tx_with_retry(tx, client, ONE_CONFIRMATION)
+            .await
+            .map_err(ExecutionClientError::arbitrum)
     }
 }

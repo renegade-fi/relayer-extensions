@@ -11,6 +11,7 @@ use alloy::{
     rpc::types::{TransactionReceipt, TransactionRequest},
     sol,
 };
+use alloy_json_rpc::{ErrorPayload, RpcError};
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
@@ -18,19 +19,25 @@ use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use rand::Rng;
 use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use crate::{
     cli::{Environment, BLOCK_POLLING_INTERVAL},
     error::FundsManagerError,
 };
 
+/// An annotated constant used to indicate that only one confirmation is
+/// required for a transaction
+pub(crate) const ONE_CONFIRMATION: u64 = 1;
 /// The maximum number of retries for a transaction
 const TX_MAX_RETRIES: u32 = 5;
 /// The minimum delay between retries
 const TX_MIN_DELAY: Duration = Duration::from_millis(500);
 /// The maximum delay between retries
 const TX_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// The error message indicating that a nonce is too low
+const ERR_NONCE_TOO_LOW: &str = "nonce too low";
 
 // ---------
 // | ERC20 |
@@ -81,27 +88,26 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
 pub async fn send_tx_with_retry(
     tx: TransactionRequest,
     client: &DynProvider,
+    required_confirmations: u64,
 ) -> Result<TransactionReceipt, FundsManagerError> {
     for _ in 0..TX_MAX_RETRIES {
-        // Send the transaction
-        let pending_tx =
-            client.send_transaction(tx.clone()).await.map_err(FundsManagerError::on_chain)?;
+        // Send the transaction and check for nonce specific issues
+        let pending_tx_res = client.send_transaction(tx.clone()).await;
+        if let Err(RpcError::ErrorResp(ErrorPayload { ref message, .. })) = pending_tx_res {
+            // If the tx failed for nonce issues, sleep for a randomized delay
+            if message.contains(ERR_NONCE_TOO_LOW) {
+                let delay = rand::thread_rng().gen_range(TX_MIN_DELAY..TX_MAX_DELAY);
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+        };
 
-        // Check for success
-        let tx_hash = pending_tx.tx_hash().to_string();
-        match pending_tx.get_receipt().await {
-            Ok(receipt) => {
-                backfill_trace_field("tx_hash", tx_hash);
-                return Ok(receipt);
-            },
-            Err(e) => {
-                warn!("tx {tx_hash} failed with error: {e}, retrying...");
-            },
-        }
-
-        // If the tx failed, sleep for a randomized delay
-        let delay = rand::thread_rng().gen_range(TX_MIN_DELAY..TX_MAX_DELAY);
-        tokio::time::sleep(delay).await;
+        // If the handler falls through we wait
+        let mut pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
+        pending_tx.set_required_confirmations(required_confirmations);
+        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+        backfill_trace_field("tx_hash", receipt.transaction_hash.to_string());
+        return Ok(receipt);
     }
 
     Err(FundsManagerError::on_chain("Transaction failed after retries"))
