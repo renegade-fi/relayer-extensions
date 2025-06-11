@@ -2,7 +2,7 @@
 
 use funds_manager_api::quoters::{ExecutionQuote, LiFiQuoteParams};
 use funds_manager_api::venue::LiFiQuote;
-use tracing::info;
+use tracing::{info, instrument};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -11,6 +11,14 @@ const QUOTE_ENDPOINT: &str = "v1/quote";
 
 impl ExecutionClient {
     /// Fetch a quote by forwarding raw query parameters
+    #[instrument(
+        skip(self, params),
+        fields(
+            from_token = %params.from_token,
+            to_token = %params.to_token,
+            from_amount = %params.from_amount
+        )
+    )]
     pub async fn get_quote(
         &self,
         params: LiFiQuoteParams,

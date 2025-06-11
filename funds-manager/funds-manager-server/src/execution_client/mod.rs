@@ -12,9 +12,10 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
+use renegade_util::telemetry::helpers::backfill_trace_field;
 use reqwest::{Client, Url};
 use serde::Deserialize;
-use tracing::error;
+use tracing::{error, instrument};
 
 use crate::helpers::build_provider;
 
@@ -92,6 +93,7 @@ impl ExecutionClient {
     }
 
     /// Send a transaction, awaiting its receipt
+    #[instrument(skip_all)]
     async fn send_tx(
         &self,
         tx: TransactionRequest,
@@ -100,6 +102,7 @@ impl ExecutionClient {
         let pending_tx =
             client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
 
+        backfill_trace_field("tx_hash", pending_tx.tx_hash().to_string());
         pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)
     }
 }
