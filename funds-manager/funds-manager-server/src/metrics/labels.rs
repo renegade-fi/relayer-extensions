@@ -3,6 +3,9 @@
 /// Metric for the net execution cost of the swap in USD
 pub const SWAP_EXECUTION_COST_METRIC_NAME: &str = "swap_execution_cost";
 
+/// Metric for the gas cost of execution in USD
+pub const SWAP_GAS_COST_METRIC_NAME: &str = "swap_gas_cost";
+
 /// Metric for the notional volume of the swap in USD
 pub const SWAP_NOTIONAL_VOLUME_METRIC_NAME: &str = "swap_notional_volume";
 
