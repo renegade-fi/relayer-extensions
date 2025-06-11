@@ -15,6 +15,8 @@ pub const REGISTER_GAS_WALLET_ROUTE: &str = "register-gas-wallet";
 pub const REPORT_ACTIVE_PEERS_ROUTE: &str = "report-active-peers";
 /// The route to refill the gas sponsor contract
 pub const REFILL_GAS_SPONSOR_ROUTE: &str = "refill-gas-sponsor";
+/// The route to get the hot wallet address for gas operations
+pub const GET_GAS_HOT_WALLET_ADDRESS_ROUTE: &str = "get-hot-wallet-address";
 
 // -------------
 // | Api Types |

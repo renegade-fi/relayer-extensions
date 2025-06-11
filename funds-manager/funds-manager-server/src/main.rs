@@ -31,8 +31,8 @@ use funds_manager_api::fees::{
 };
 use funds_manager_api::gas::{
     RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest, WithdrawGasRequest,
-    REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE, REGISTER_GAS_WALLET_ROUTE,
-    REPORT_ACTIVE_PEERS_ROUTE, WITHDRAW_GAS_ROUTE,
+    GET_GAS_HOT_WALLET_ADDRESS_ROUTE, REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE,
+    REGISTER_GAS_WALLET_ROUTE, REPORT_ACTIVE_PEERS_ROUTE, WITHDRAW_GAS_ROUTE,
 };
 use funds_manager_api::hot_wallets::{
     CreateHotWalletRequest, TransferToVaultRequest, WithdrawToHotWalletRequest,
@@ -46,12 +46,13 @@ use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUT
 use funds_manager_api::PING_ROUTE;
 use handlers::{
     create_gas_wallet_handler, create_hot_wallet_handler, get_deposit_address_handler,
-    get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_gas_wallets_handler,
-    get_hot_wallet_balances_handler, get_vault_balances_handler, index_fees_handler,
-    quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
-    register_gas_wallet_handler, report_active_peers_handler, rpc_handler,
-    transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
-    withdraw_gas_handler, withdraw_to_hyperliquid_handler,
+    get_fee_hot_wallet_address_handler, get_fee_wallets_handler,
+    get_gas_hot_wallet_address_handler, get_gas_wallets_handler, get_hot_wallet_balances_handler,
+    get_vault_balances_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
+    refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
+    report_active_peers_handler, rpc_handler, transfer_to_vault_handler,
+    withdraw_fee_balance_handler, withdraw_from_vault_handler, withdraw_gas_handler,
+    withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
 use renegade_common::types::chain::Chain;
@@ -263,6 +264,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(get_gas_wallets_handler);
 
+    let get_gas_hot_wallet_address = warp::get()
+        .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path("gas"))
+        .and(warp::path(GET_GAS_HOT_WALLET_ADDRESS_ROUTE))
+        .and(with_server(server.clone()))
+        .and_then(get_gas_hot_wallet_address_handler);
+
     // --- Hot Wallets --- //
 
     let create_hot_wallet = warp::post()
@@ -333,6 +342,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(register_gas_wallet)
         .or(add_gas_wallet)
         .or(get_gas_wallets)
+        .or(get_gas_hot_wallet_address)
         .or(get_balances)
         .or(withdraw_fee_balance)
         .or(get_fee_hot_wallet_address)
