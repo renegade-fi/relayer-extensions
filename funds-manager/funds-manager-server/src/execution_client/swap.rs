@@ -33,11 +33,24 @@ const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
 pub const LIFI_DIAMOND_ADDRESS: Address =
     Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
 
+// -----------
+// | Helpers |
+// -----------
+
+/// Compute the gas cost of a transaction in WEI
+fn get_gas_cost(receipt: &TransactionReceipt) -> U256 {
+    U256::from(receipt.gas_used) * U256::from(receipt.effective_gas_price)
+}
+
+// --------------------
+// | Execution Client |
+// --------------------
+
 impl ExecutionClient {
     /// Construct a swap transaction from an execution quote
     async fn build_swap_tx(
         &self,
-        quote: ExecutionQuote,
+        quote: &ExecutionQuote,
         client: &DynProvider,
     ) -> Result<TransactionRequest, ExecutionClientError> {
         let latest_block = client
@@ -59,7 +72,7 @@ impl ExecutionClient {
             .with_to(quote.to)
             .with_from(quote.from)
             .with_value(quote.value)
-            .with_input(quote.data)
+            .with_input(quote.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
             .with_max_priority_fee_per_gas(latest_basefee * 2)
             .with_gas_limit(gas_limit);
@@ -69,38 +82,56 @@ impl ExecutionClient {
 
     /// Attempt to execute a swap, retrying failed swaps with
     /// decreased quotes down to a minimum trade size.
+    ///
+    /// Returns the quote, transaction receipt, and cumulative gas cost of all
+    /// attempted swaps
     pub async fn swap_immediate_decaying(
         &self,
         chain: Chain,
         mut params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
-    ) -> Result<(AugmentedExecutionQuote, TransactionReceipt), ExecutionClientError> {
+    ) -> Result<(AugmentedExecutionQuote, TransactionReceipt, U256), ExecutionClientError> {
+        let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let quote = self.get_quote(params.clone()).await?;
-            let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
+            let augmented_quote = self.get_augmented_quote(params.clone(), chain).await?;
 
-            let quote_amount =
-                augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
-
-            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-                return Err(ExecutionClientError::custom(format!(
-                    "Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
-                )));
-            }
-
+            // Submit the swap
             let client = self.get_signing_provider(wallet.clone());
-            let tx = self.build_swap_tx(quote, &client).await?;
+            let tx = self.build_swap_tx(&augmented_quote.quote, &client).await?;
             let receipt = self.send_tx(tx, &client).await?;
+            cumulative_gas_cost += get_gas_cost(&receipt);
 
+            // If the swap succeeds, return
             if receipt.status() {
-                return Ok((augmented_quote, receipt));
+                return Ok((augmented_quote, receipt, cumulative_gas_cost));
             }
 
+            // Otherwise, decrease the swap size and try again
             warn!("tx ({:#x}) failed, retrying w/ reduced-size quote", receipt.transaction_hash);
-
             params =
                 LiFiQuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
         }
+    }
+
+    /// Get an execution quote for a swap
+    #[instrument(skip_all)]
+    pub async fn get_augmented_quote(
+        &self,
+        params: LiFiQuoteParams,
+        chain: Chain,
+    ) -> Result<AugmentedExecutionQuote, ExecutionClientError> {
+        let quote = self.get_quote(params).await?;
+        let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
+
+        let quote_amount =
+            augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
+        if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+            return Err(ExecutionClientError::custom(format!(
+                "Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
+            )));
+        }
+
+        Ok(augmented_quote)
     }
 
     /// Approve an erc20 allowance
