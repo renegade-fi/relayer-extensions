@@ -122,6 +122,21 @@ pub(crate) async fn get_fee_hot_wallet_address_handler(
     Ok(warp::reply::json(&resp))
 }
 
+/// Handler for retrieving the hot wallet address for gas operations
+pub(crate) async fn get_gas_hot_wallet_address_handler(
+    chain: Chain,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let custody_client = server.get_custody_client(&chain)?;
+    let address = custody_client
+        .get_deposit_address(DepositWithdrawSource::Gas)
+        .await
+        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
+
+    let resp = DepositAddressResponse { address };
+    Ok(warp::reply::json(&resp))
+}
+
 // --- Vaults --- //
 
 /// Handler for getting the balances of a vault
