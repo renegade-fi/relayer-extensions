@@ -93,7 +93,7 @@ impl ExecutionClient {
     }
 
     /// Send a transaction, awaiting its receipt
-    #[instrument(skip(self, tx, client))]
+    #[instrument(skip_all)]
     async fn send_tx(
         &self,
         tx: TransactionRequest,

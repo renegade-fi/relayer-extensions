@@ -24,6 +24,10 @@ use super::{error::ExecutionClientError, ExecutionClient};
 const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
+/// The amount to increase an approval by for a swap
+///
+/// We "over-approve" so that we don't need to re-approve on every swap
+const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
 /// The address of the LiFi diamond (same address on Arbitrum One and Base
 /// Mainnet), constantized here to simplify approvals
 pub const LIFI_DIAMOND_ADDRESS: Address =
@@ -124,7 +128,8 @@ impl ExecutionClient {
         }
 
         // Otherwise, approve the allowance
-        let tx = erc20.approve(spender, amount);
+        let approval_amount = amount * APPROVAL_AMPLIFIER;
+        let tx = erc20.approve(spender, approval_amount);
         let pending_tx = tx.send().await.map_err(ExecutionClientError::arbitrum)?;
 
         let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)?;
