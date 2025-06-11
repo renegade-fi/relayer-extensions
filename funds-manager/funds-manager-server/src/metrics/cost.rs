@@ -4,7 +4,8 @@ use alloy::rpc::types::TransactionReceipt;
 use alloy_primitives::{Address, Log, TxHash, U256};
 use alloy_sol_types::SolEvent;
 use funds_manager_api::{quoters::AugmentedExecutionQuote, u256_try_into_u128};
-use renegade_common::types::chain::Chain;
+use renegade_common::types::{chain::Chain, token::Token};
+use renegade_darkpool_client::conversion::u256_to_amount;
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -56,6 +57,8 @@ pub struct SwapExecutionData {
     pub relative_spread: f64,
     /// The execution cost in USDC
     pub execution_cost_usdc: f64,
+    /// The gas cost of execution in USD
+    pub gas_cost_usd: f64,
 
     // Slippage information
     /// The slippage budget (difference between estimated and minimum)
@@ -76,8 +79,9 @@ impl MetricsRecorder {
         &self,
         receipt: &TransactionReceipt,
         quote: &AugmentedExecutionQuote,
+        swap_gas_cost: U256,
     ) {
-        match self.build_swap_cost_data(receipt, quote).await {
+        match self.build_swap_cost_data(receipt, quote, swap_gas_cost).await {
             Ok(cost_data) => {
                 // Record metrics from the cost data
                 self.record_metrics_from_cost_data(receipt, quote, &cost_data);
@@ -102,6 +106,7 @@ impl MetricsRecorder {
         &self,
         receipt: &TransactionReceipt,
         quote: &AugmentedExecutionQuote,
+        swap_gas_cost: U256,
     ) -> Result<SwapExecutionData, FundsManagerError> {
         let base_mint = quote.get_base_token().get_alloy_address();
         let binance_price = self.get_price(&base_mint, quote.chain).await?;
@@ -111,6 +116,7 @@ impl MetricsRecorder {
 
         let execution_price =
             quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;
+        let gas_cost_usd = self.get_wei_cost_usdc(swap_gas_cost).await?;
         let notional_volume_usdc =
             quote.notional_volume_usdc(buy_amount_actual).map_err(FundsManagerError::parse)?;
 
@@ -161,6 +167,7 @@ impl MetricsRecorder {
             notional_volume_usdc,
             relative_spread,
             execution_cost_usdc,
+            gas_cost_usd,
 
             // Slippage information
             slippage_budget,
@@ -228,6 +235,21 @@ impl MetricsRecorder {
         Ok(price)
     }
 
+    /// Get the cost of the given amount of WEI in USD
+    async fn get_wei_cost_usdc(&self, wei: U256) -> Result<f64, FundsManagerError> {
+        // We use the weth price here as a stand in for the eth price seeing as weth
+        // does not trade at a discount to eth. As well, we fetch the price using the
+        // arbitrum one chain for simplicity -- the price will be the same across chains
+        let weth = Token::from_ticker_on_chain("WETH", Chain::ArbitrumOne);
+        let price = self.get_price(&weth.get_alloy_address(), Chain::ArbitrumOne).await?;
+
+        // Convert the wei to weth then to usdc
+        let wei_u128 = u256_to_amount(wei).map_err(FundsManagerError::parse)?;
+        let weth_input = weth.convert_to_decimal(wei_u128);
+        let cost = weth_input * price;
+        Ok(cost)
+    }
+
     /// Log swap cost data in a Datadog-compatible format
     fn log_swap_cost_data(&self, cost_data: &SwapExecutionData, tx_hash: TxHash) {
         info!(
@@ -243,6 +265,7 @@ impl MetricsRecorder {
             transaction_hash = %cost_data.transaction_hash,
             buy_amount_actual = %cost_data.buy_amount_actual,
             execution_price = %cost_data.execution_price,
+            gas_cost_usd = %cost_data.gas_cost_usd,
             notional_volume_usdc = %cost_data.notional_volume_usdc,
             relative_spread = %cost_data.relative_spread,
             execution_cost_usdc = %cost_data.execution_cost_usdc,

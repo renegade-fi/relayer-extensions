@@ -247,7 +247,7 @@ pub(crate) async fn swap_immediate_handler(
         .await?;
 
     // Execute the swap, decaying the size of the swap each time it fails to execute
-    let (augmented_quote, receipt) =
+    let (augmented_quote, receipt, swap_gas_cost) =
         execution_client.swap_immediate_decaying(chain, params, wallet).await?;
 
     let resp = SwapImmediateResponse {
@@ -257,7 +257,7 @@ pub(crate) async fn swap_immediate_handler(
 
     // Record swap cost metrics
     tokio::spawn(async move {
-        metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
+        metrics_recorder.record_swap_cost(&receipt, &augmented_quote, swap_gas_cost).await;
     });
 
     Ok(warp::reply::json(&resp))
