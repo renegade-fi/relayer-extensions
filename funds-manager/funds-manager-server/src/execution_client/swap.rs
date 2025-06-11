@@ -14,7 +14,7 @@ use funds_manager_api::{
     u256_try_into_u64,
 };
 use renegade_common::types::chain::Chain;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::helpers::IERC20;
 
@@ -100,6 +100,7 @@ impl ExecutionClient {
     }
 
     /// Approve an erc20 allowance
+    #[instrument(skip(self, wallet))]
     pub(crate) async fn approve_erc20_allowance(
         &self,
         token_address: Address,
