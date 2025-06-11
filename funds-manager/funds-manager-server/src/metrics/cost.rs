@@ -1,7 +1,8 @@
 //! Defines functionality to compute and record data for swap execution
 
-use alloy::{contract::Event, rpc::types::TransactionReceipt};
-use alloy_primitives::{Address, TxHash, U256};
+use alloy::rpc::types::TransactionReceipt;
+use alloy_primitives::{Address, Log, TxHash, U256};
+use alloy_sol_types::SolEvent;
 use funds_manager_api::{quoters::AugmentedExecutionQuote, u256_try_into_u128};
 use renegade_common::types::chain::Chain;
 use serde::Serialize;
@@ -106,8 +107,7 @@ impl MetricsRecorder {
         let binance_price = self.get_price(&base_mint, quote.chain).await?;
 
         let buy_mint = quote.get_buy_token().get_alloy_address();
-        let buy_amount_actual =
-            self.get_buy_amount_actual(receipt, buy_mint, quote.quote.from).await?;
+        let buy_amount_actual = self.get_buy_amount_actual(receipt, buy_mint, quote.quote.from)?;
 
         let execution_price =
             quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;
@@ -203,31 +203,23 @@ impl MetricsRecorder {
     }
 
     /// Extract the transfer amount from a transaction receipt
-    async fn get_buy_amount_actual(
+    fn get_buy_amount_actual(
         &self,
         receipt: &TransactionReceipt,
         mint: Address,
         recipient: Address,
     ) -> Result<U256, FundsManagerError> {
-        let block_number = receipt.block_number.unwrap_or_default();
-
-        let filter = Event::<_, Transfer>::new_sol(&self.provider, &mint)
-            .from_block(block_number)
-            .to_block(block_number)
-            .topic2(recipient);
-
-        let events = filter
-            .query()
-            .await
-            .map_err(|_| FundsManagerError::on_chain("failed to create transfer stream"))?;
-
-        // Find the transfer event that matches our transaction hash
-        let transfer_event = events
+        let logs: Result<Vec<Log<Transfer>>, FundsManagerError> = receipt
+            .logs()
             .iter()
-            .find(|(_, meta)| meta.transaction_hash == Some(receipt.transaction_hash))
-            .ok_or_else(|| FundsManagerError::custom("No matching transfer event found"))?;
+            .filter(|log| log.address() == mint)
+            .map(|log| Transfer::decode_log(&log.inner).map_err(FundsManagerError::parse))
+            .collect();
 
-        Ok(transfer_event.0.value)
+        logs?
+            .iter()
+            .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
+            .ok_or(FundsManagerError::on_chain("no matching transfer event found"))
     }
 
     /// Get the price for a token

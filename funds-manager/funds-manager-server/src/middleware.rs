@@ -52,14 +52,6 @@ pub(crate) fn with_query_string() -> impl FilterExtracts<(String,)> {
         .or_else(|_| async move { Ok::<(String,), warp::Rejection>(("".to_string(),)) })
 }
 
-/// Deserialize query parameters from the request
-pub(crate) fn with_query_params<T: DeserializeOwned + Send + 'static>() -> impl FilterExtracts<(T,)>
-{
-    serde_qs::warp::query::<T>(
-        serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed),
-    )
-}
-
 /// Verify the HMAC signature
 async fn verify_hmac(
     server: Arc<Server>,

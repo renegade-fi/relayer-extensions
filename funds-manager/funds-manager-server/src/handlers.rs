@@ -18,8 +18,7 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    AugmentedExecutionQuote, DepositAddressResponse, ExecuteSwapRequest, ExecuteSwapResponse,
-    GetExecutionQuoteResponse, LiFiQuoteParams, SwapImmediateResponse, WithdrawFundsRequest,
+    DepositAddressResponse, LiFiQuoteParams, SwapImmediateResponse, WithdrawFundsRequest,
     WithdrawToHyperliquidRequest,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
@@ -198,71 +197,6 @@ pub(crate) async fn get_deposit_address_handler(
         .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
 
     let resp = DepositAddressResponse { address };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handler for getting an execution quote
-#[instrument(skip_all)]
-pub(crate) async fn get_execution_quote_handler(
-    chain: Chain,
-    _body: Bytes, // no body
-    params: LiFiQuoteParams,
-    server: Arc<Server>,
-) -> Result<Json, warp::Rejection> {
-    let execution_client = server.get_execution_client(&chain)?;
-
-    // Forward the query parameters to the execution client
-    let quote = execution_client
-        .get_quote(params)
-        .await
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-
-    let augmented_quote = AugmentedExecutionQuote::new(quote, chain);
-
-    let signature = server.sign_quote(&augmented_quote)?;
-
-    let resp = GetExecutionQuoteResponse { quote: augmented_quote.quote, signature };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handler for executing a swap
-#[instrument(skip_all)]
-pub(crate) async fn execute_swap_handler(
-    chain: Chain,
-    req: ExecuteSwapRequest,
-    server: Arc<Server>,
-) -> Result<Json, warp::Rejection> {
-    let execution_client = server.get_execution_client(&chain)?;
-    let custody_client = server.get_custody_client(&chain)?;
-    let metrics_recorder = server.get_metrics_recorder(&chain)?;
-
-    // Verify the signature
-    let hmac_key = server.quote_hmac_key;
-    let provided = hex::decode(&req.signature)
-        .map_err(|e| warp::reject::custom(ApiError::InternalError(e.to_string())))?;
-
-    let augmented_quote = AugmentedExecutionQuote::new(req.quote.clone(), chain);
-    if !hmac_key.verify_mac(augmented_quote.to_canonical_string().as_bytes(), &provided) {
-        return Err(warp::reject::custom(ApiError::Unauthenticated(
-            "Invalid quote signature".to_string(),
-        )));
-    }
-
-    // Top up the quoter hot wallet gas before swapping
-    custody_client.top_up_quoter_hot_wallet_gas().await?;
-
-    // Execute the swap
-    let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
-    let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
-    let receipt = execution_client.execute_swap(req.quote, &wallet).await?;
-    let tx_hash = receipt.transaction_hash;
-
-    // Record swap cost metrics
-    tokio::spawn(async move {
-        metrics_recorder.record_swap_cost(&receipt, &augmented_quote).await;
-    });
-
-    let resp = ExecuteSwapResponse { tx_hash: format!("{:#x}", tx_hash) };
     Ok(warp::reply::json(&resp))
 }
 

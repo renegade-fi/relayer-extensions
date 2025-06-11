@@ -39,21 +39,19 @@ use funds_manager_api::hot_wallets::{
     TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use funds_manager_api::quoters::{
-    ExecuteSwapRequest, LiFiQuoteParams, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
-    EXECUTE_SWAP_ROUTE, GET_DEPOSIT_ADDRESS_ROUTE, GET_EXECUTION_QUOTE_ROUTE, SWAP_IMMEDIATE_ROUTE,
-    WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    LiFiQuoteParams, WithdrawFundsRequest, WithdrawToHyperliquidRequest, GET_DEPOSIT_ADDRESS_ROUTE,
+    SWAP_IMMEDIATE_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
 use handlers::{
-    create_gas_wallet_handler, create_hot_wallet_handler, execute_swap_handler,
-    get_deposit_address_handler, get_execution_quote_handler, get_fee_hot_wallet_address_handler,
-    get_fee_wallets_handler, get_gas_wallets_handler, get_hot_wallet_balances_handler,
-    get_vault_balances_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
-    refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
-    report_active_peers_handler, rpc_handler, transfer_to_vault_handler,
-    withdraw_fee_balance_handler, withdraw_from_vault_handler, withdraw_gas_handler,
-    withdraw_to_hyperliquid_handler,
+    create_gas_wallet_handler, create_hot_wallet_handler, get_deposit_address_handler,
+    get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_gas_wallets_handler,
+    get_hot_wallet_balances_handler, get_vault_balances_handler, index_fees_handler,
+    quoter_withdraw_handler, redeem_fees_handler, refill_gas_handler, refill_gas_sponsor_handler,
+    register_gas_wallet_handler, report_active_peers_handler, rpc_handler,
+    transfer_to_vault_handler, withdraw_fee_balance_handler, withdraw_from_vault_handler,
+    withdraw_gas_handler, withdraw_to_hyperliquid_handler,
 };
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
 use renegade_common::types::chain::Chain;
@@ -66,7 +64,6 @@ use warp::Filter;
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
 use crate::handlers::swap_immediate_handler;
-use crate::middleware::with_query_params;
 
 // -------
 // | Cli |
@@ -168,28 +165,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path(GET_DEPOSIT_ADDRESS_ROUTE))
         .and(with_server(server.clone()))
         .and_then(get_deposit_address_handler);
-
-    let get_execution_quote = warp::get()
-        .and(warp::path("custody"))
-        .and(warp::path::param::<Chain>())
-        .and(warp::path("quoters"))
-        .and(warp::path(GET_EXECUTION_QUOTE_ROUTE))
-        .and(with_hmac_auth(server.clone()))
-        .and(with_query_params::<LiFiQuoteParams>())
-        .and(with_server(server.clone()))
-        .and_then(get_execution_quote_handler);
-
-    let execute_swap = warp::post()
-        .and(warp::path("custody"))
-        .and(warp::path::param::<Chain>())
-        .and(warp::path("quoters"))
-        .and(warp::path(EXECUTE_SWAP_ROUTE))
-        .and(with_hmac_auth(server.clone()))
-        .map(with_chain_and_json_body::<ExecuteSwapRequest>)
-        .and_then(identity)
-        .untuple_one()
-        .and(with_server(server.clone()))
-        .and_then(execute_swap_handler);
 
     let swap_immediate = warp::post()
         .and(warp::path("custody"))
@@ -349,8 +324,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_vault_balances)
         .or(withdraw_custody)
         .or(get_deposit_address)
-        .or(get_execution_quote)
-        .or(execute_swap)
         .or(swap_immediate)
         .or(withdraw_to_hyperliquid)
         .or(withdraw_gas)

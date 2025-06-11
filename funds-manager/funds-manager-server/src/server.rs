@@ -4,7 +4,6 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
-use funds_manager_api::quoters::AugmentedExecutionQuote;
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_config::setup_token_remaps;
@@ -33,8 +32,6 @@ pub(crate) struct Server {
     pub environment: Environment,
     /// The HMAC key for custody endpoint authentication
     pub hmac_key: Option<HmacKey>,
-    /// The HMAC key for signing quotes
-    pub quote_hmac_key: HmacKey,
     /// The chain clients
     pub chain_clients: HashMap<Chain, ChainClients>,
     /// The price reporter client
@@ -64,7 +61,6 @@ impl Server {
         let price_reporter = Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
 
         let hmac_key = args.get_hmac_key();
-        let quote_hmac_key = args.get_quote_hmac_key();
 
         // Create a database connection pool using bb8
         let db_pool = create_db_pool(&args.db_url).await?;
@@ -86,22 +82,7 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server {
-            hmac_key,
-            quote_hmac_key,
-            chain_clients,
-            environment: args.environment,
-            price_reporter,
-        })
-    }
-
-    /// Sign a quote using the quote HMAC key and returns the signature as a
-    /// hex string
-    pub fn sign_quote(&self, quote: &AugmentedExecutionQuote) -> Result<String, FundsManagerError> {
-        let canonical_string = quote.to_canonical_string();
-        let sig = self.quote_hmac_key.compute_mac(canonical_string.as_bytes());
-        let signature = hex::encode(sig);
-        Ok(signature)
+        Ok(Server { hmac_key, chain_clients, environment: args.environment, price_reporter })
     }
 
     /// Get the custody client for the given chain

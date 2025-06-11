@@ -56,10 +56,11 @@ const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
 
 /// The Fireblocks asset IDs for native assets on testnets
 pub const TESTNET_NATIVE_ASSET_IDS: &[&str] =
-    &[ARB_SEPOLIA_ETH_ASSET_ID, BASE_SEPOLIA_ETH_ASSET_ID];
+    &[ARB_SEPOLIA_ETH_ASSET_ID, BASE_SEPOLIA_ETH_ASSET_ID, "ETH_TEST5"];
 
 /// The Fireblocks asset IDs for native assets on mainnets
-pub const MAINNET_NATIVE_ASSET_IDS: &[&str] = &[ARB_ONE_ETH_ASSET_ID, BASE_MAINNET_ETH_ASSET_ID];
+pub const MAINNET_NATIVE_ASSET_IDS: &[&str] =
+    &[ARB_ONE_ETH_ASSET_ID, BASE_MAINNET_ETH_ASSET_ID, "ETH"];
 
 /// The number of confirmations Fireblocks requires to consider a contract call
 /// final
