@@ -7,17 +7,16 @@ pub mod swap;
 use std::sync::Arc;
 
 use alloy::{
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, ProviderBuilder},
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
-use renegade_util::telemetry::helpers::backfill_trace_field;
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use tracing::{error, instrument};
 
-use crate::helpers::build_provider;
+use crate::helpers::{build_provider, send_tx_with_retry};
 
 use self::error::ExecutionClientError;
 
@@ -99,10 +98,6 @@ impl ExecutionClient {
         tx: TransactionRequest,
         client: &DynProvider,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
-        let pending_tx =
-            client.send_transaction(tx).await.map_err(ExecutionClientError::arbitrum)?;
-
-        backfill_trace_field("tx_hash", pending_tx.tx_hash().to_string());
-        pending_tx.get_receipt().await.map_err(ExecutionClientError::arbitrum)
+        send_tx_with_retry(tx, client).await.map_err(ExecutionClientError::arbitrum)
     }
 }
