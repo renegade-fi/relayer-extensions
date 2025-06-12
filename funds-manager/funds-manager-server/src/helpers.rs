@@ -1,26 +1,43 @@
 //! Helpers for the funds manager server
 #![allow(missing_docs)]
 
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
 use alloy::{
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
         DynProvider, Provider, ProviderBuilder,
     },
+    rpc::types::{TransactionReceipt, TransactionRequest},
     sol,
 };
+use alloy_json_rpc::{ErrorPayload, RpcError};
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
+use rand::Rng;
 use renegade_common::types::chain::Chain;
-use renegade_util::err_str;
+use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
+use tracing::instrument;
 
 use crate::{
     cli::{Environment, BLOCK_POLLING_INTERVAL},
     error::FundsManagerError,
 };
+
+/// An annotated constant used to indicate that only one confirmation is
+/// required for a transaction
+pub(crate) const ONE_CONFIRMATION: u64 = 1;
+/// The maximum number of retries for a transaction
+const TX_MAX_RETRIES: u32 = 5;
+/// The minimum delay between retries
+const TX_MIN_DELAY: Duration = Duration::from_millis(500);
+/// The maximum delay between retries
+const TX_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// The error message indicating that a nonce is too low
+const ERR_NONCE_TOO_LOW: &str = "nonce too low";
 
 // ---------
 // | ERC20 |
@@ -46,6 +63,11 @@ sol! {
 
 /// Build a provider for the given RPC url, using simple nonce management
 /// and other sensible defaults
+///
+/// We do not use the default fillers because we want to use the simple
+/// nonce manager, which fetches the most recent nonce for each tx. We
+/// use different instantiations of the client throughout the codebase,
+/// so the cached nonce manager will get out of sync.
 pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
     let url = url.parse().map_err(FundsManagerError::parse)?;
     let provider = ProviderBuilder::new()
@@ -59,6 +81,36 @@ pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
     provider.client().set_poll_interval(BLOCK_POLLING_INTERVAL);
 
     Ok(DynProvider::new(provider))
+}
+
+/// Send a transaction, retrying on failure
+#[instrument(skip_all)]
+pub async fn send_tx_with_retry(
+    tx: TransactionRequest,
+    client: &DynProvider,
+    required_confirmations: u64,
+) -> Result<TransactionReceipt, FundsManagerError> {
+    for _ in 0..TX_MAX_RETRIES {
+        // Send the transaction and check for nonce specific issues
+        let pending_tx_res = client.send_transaction(tx.clone()).await;
+        if let Err(RpcError::ErrorResp(ErrorPayload { ref message, .. })) = pending_tx_res {
+            // If the tx failed for nonce issues, sleep for a randomized delay
+            if message.contains(ERR_NONCE_TOO_LOW) {
+                let delay = rand::thread_rng().gen_range(TX_MIN_DELAY..TX_MAX_DELAY);
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+        };
+
+        // If the handler falls through we wait
+        let mut pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
+        pending_tx.set_required_confirmations(required_confirmations);
+        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+        backfill_trace_field("tx_hash", receipt.transaction_hash.to_string());
+        return Ok(receipt);
+    }
+
+    Err(FundsManagerError::on_chain("Transaction failed after retries"))
 }
 
 // -----------------------

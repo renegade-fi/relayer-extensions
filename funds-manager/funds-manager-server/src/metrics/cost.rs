@@ -14,8 +14,8 @@ use crate::{
     error::FundsManagerError,
     helpers::IERC20::Transfer,
     metrics::labels::{
-        ASSET_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
-        SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
+        ASSET_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
+        SWAP_NOTIONAL_VOLUME_METRIC_NAME, SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
     },
 };
 
@@ -187,6 +187,7 @@ impl MetricsRecorder {
 
         metrics::gauge!(SWAP_EXECUTION_COST_METRIC_NAME, &labels)
             .set(cost_data.execution_cost_usdc);
+        metrics::gauge!(SWAP_GAS_COST_METRIC_NAME, &labels).set(cost_data.gas_cost_usd);
         metrics::gauge!(SWAP_NOTIONAL_VOLUME_METRIC_NAME, &labels)
             .set(cost_data.notional_volume_usdc);
         metrics::gauge!(SWAP_RELATIVE_SPREAD_METRIC_NAME, &labels).set(cost_data.relative_spread);

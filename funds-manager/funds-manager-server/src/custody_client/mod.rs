@@ -34,7 +34,7 @@ use std::time::Duration;
 use std::{str::FromStr, time::Instant};
 use tracing::{debug, info};
 
-use crate::helpers::{to_env_agnostic_name, IERC20};
+use crate::helpers::{send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION};
 use crate::{
     db::{DbConn, DbPool},
     helpers::build_provider,
@@ -356,9 +356,7 @@ impl CustodyClient {
 
         info!("Transferring {amount} ETH to {to:#x}");
         let tx = TransactionRequest::default().with_to(to).with_value(amount_units);
-        let pending_tx = client.send_transaction(tx).await.map_err(FundsManagerError::on_chain)?;
-
-        pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)
+        send_tx_with_retry(tx, &client, ONE_CONFIRMATION).await
     }
 
     /// Get the erc20 balance of an address
@@ -393,7 +391,7 @@ impl CustodyClient {
         // Setup the provider
         let client = self.get_signing_provider(wallet);
         let token_address = Address::from_str(mint).map_err(FundsManagerError::parse)?;
-        let token = IERC20::new(token_address, client);
+        let token = IERC20::new(token_address, client.clone());
 
         // Convert the amount using the token's decimals
         let decimals = token.decimals().call().await.map_err(FundsManagerError::on_chain)?;
@@ -403,11 +401,6 @@ impl CustodyClient {
         // Transfer the tokens
         let to_address = Address::from_str(to_address).map_err(FundsManagerError::parse)?;
         let tx = token.transfer(to_address, amount);
-        let mut pending_tx = tx.send().await.map_err(|e| {
-            FundsManagerError::on_chain(format!("Failed to send transaction: {}", e))
-        })?;
-
-        pending_tx.set_required_confirmations(FB_CONTRACT_CONFIRMATIONS);
-        pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)
+        send_tx_with_retry(tx.into_transaction_request(), &client, FB_CONTRACT_CONFIRMATIONS).await
     }
 }
