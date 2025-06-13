@@ -6,7 +6,10 @@ use renegade_common::types::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{serialization::u256_string_serialization, u256_try_into_u128};
+use crate::{
+    serialization::{f64_string_serialization, u256_string_serialization},
+    u256_try_into_u128,
+};
 
 // --------------
 // | Api Routes |
@@ -290,6 +293,7 @@ pub struct SwapImmediateResponse {
     ///
     /// This is in whole USD as a floating point value, i.e. $10 will be
     /// represented as 10.0
+    #[serde(with = "f64_string_serialization")]
     pub execution_cost: f64,
 }
 
