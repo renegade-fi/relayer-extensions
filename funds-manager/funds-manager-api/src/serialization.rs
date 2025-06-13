@@ -17,6 +17,22 @@ pub(crate) mod u256_string_serialization {
     }
 }
 
+/// A module for serializing and deserializing f64 as strings
+pub(crate) mod f64_string_serialization {
+    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+
+    /// Serialize an f64 to a string
+    pub fn serialize<S: Serializer>(value: &f64, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&value.to_string())
+    }
+
+    /// Deserialize a string to an f64
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+        let s = String::deserialize(d)?;
+        s.parse::<f64>().map_err(|_| D::Error::custom("Invalid f64 value"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::u256_string_serialization;
