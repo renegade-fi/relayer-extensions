@@ -250,17 +250,21 @@ pub(crate) async fn swap_immediate_handler(
     let (augmented_quote, receipt, swap_gas_cost) =
         execution_client.swap_immediate_decaying(chain, params, wallet).await?;
 
-    let resp = SwapImmediateResponse {
+    // Compute swap costs and respond
+    let execution_cost =
+        match metrics_recorder.record_swap_cost(&receipt, &augmented_quote, swap_gas_cost).await {
+            Ok(data) => data.execution_cost_usdc,
+            Err(e) => {
+                warn!("Failed to record swap cost metrics: {e}");
+                0.0 // Default to 0 USD
+            },
+        };
+
+    Ok(warp::reply::json(&SwapImmediateResponse {
         quote: augmented_quote.quote.clone(),
         tx_hash: format!("{:#x}", receipt.transaction_hash),
-    };
-
-    // Record swap cost metrics
-    tokio::spawn(async move {
-        metrics_recorder.record_swap_cost(&receipt, &augmented_quote, swap_gas_cost).await;
-    });
-
-    Ok(warp::reply::json(&resp))
+        execution_cost,
+    }))
 }
 
 /// Handler for withdrawing USDC to Hyperliquid

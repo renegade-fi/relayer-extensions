@@ -286,6 +286,11 @@ pub struct SwapImmediateResponse {
     pub quote: ExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
+    /// The execution cost in USD
+    ///
+    /// This is in whole USD as a floating point value, i.e. $10 will be
+    /// represented as 10.0
+    pub execution_cost: f64,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot
