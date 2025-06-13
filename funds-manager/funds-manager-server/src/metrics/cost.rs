@@ -80,25 +80,26 @@ impl MetricsRecorder {
         receipt: &TransactionReceipt,
         quote: &AugmentedExecutionQuote,
         swap_gas_cost: U256,
-    ) {
-        match self.build_swap_cost_data(receipt, quote, swap_gas_cost).await {
-            Ok(cost_data) => {
-                // Record metrics from the cost data
-                self.record_metrics_from_cost_data(receipt, quote, &cost_data);
-
-                // Log the cost data
-                self.log_swap_cost_data(&cost_data, receipt.transaction_hash);
-            },
+    ) -> Result<SwapExecutionData, FundsManagerError> {
+        let cost_data = match self.build_swap_cost_data(receipt, quote, swap_gas_cost).await {
+            Ok(cost_data) => cost_data,
             Err(e) => {
-                warn!("Failed to record swap cost for tx {}: {}", receipt.transaction_hash, e);
+                warn!("Failed to build swap cost data: {e}");
+                return Err(e);
             },
-        }
+        };
+
+        // Record metrics from the cost data
+        self.record_metrics_from_cost_data(receipt, quote, &cost_data);
+        self.log_swap_cost_data(&cost_data, receipt.transaction_hash);
+
+        Ok(cost_data)
     }
 }
 
-// --------------------
+// -------------------
 // | Private Methods |
-// --------------------
+// -------------------
 
 impl MetricsRecorder {
     /// Build the unified swap cost data from available information
