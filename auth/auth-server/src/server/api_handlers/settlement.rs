@@ -20,6 +20,7 @@ impl Server {
     pub async fn write_bundle_context<Req>(
         &self,
         shared_bundle: bool,
+        price_timestamp: u64,
         ctx: &MatchBundleResponseCtx<Req>,
     ) -> Result<String, AuthServerError>
     where
@@ -46,6 +47,7 @@ impl Server {
             is_sponsored,
             nullifier,
             shared: shared_bundle,
+            price_timestamp,
         };
 
         // Write to bundle store
@@ -70,6 +72,7 @@ impl Server {
         let gas_sponsorship_info = ctx.sponsorship_info();
         let is_sponsored = gas_sponsorship_info.is_some();
         let shared = req.allow_shared;
+        let price_timestamp = req.signed_quote.quote.price.timestamp;
 
         let bundle_ctx = BundleContext {
             key_description: ctx.user(),
@@ -79,6 +82,7 @@ impl Server {
             is_sponsored,
             nullifier,
             shared,
+            price_timestamp,
         };
 
         if let Err(e) = self.bundle_store.write(bundle_id.clone(), bundle_ctx).await {

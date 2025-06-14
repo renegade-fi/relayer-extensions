@@ -2,6 +2,7 @@
 
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
+use chrono::Utc;
 use http::Response;
 use renegade_api::http::external_match::{ExternalMatchRequest, ExternalMatchResponse};
 use tracing::{info, instrument, warn};
@@ -177,8 +178,11 @@ impl Server {
         &self,
         ctx: &SponsoredDirectMatchResponseCtx,
     ) -> Result<(), AuthServerError> {
+        // Because there is no price timestamp associated with a direct match,
+        // we approximate it with the current time
+        let price_timestamp = Utc::now().timestamp() as u64;
         // Record the bundle context in the store
-        self.write_bundle_context(true /* shared */, ctx).await?;
+        self.write_bundle_context(true /* shared */, price_timestamp, ctx).await?;
 
         let req = ctx.request();
         let order = &req.external_order;

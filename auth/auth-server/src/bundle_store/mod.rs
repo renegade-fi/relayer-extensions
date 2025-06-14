@@ -30,6 +30,8 @@ pub struct BundleContext {
     pub nullifier: Nullifier,
     /// Whether the bundle was shared
     pub shared: bool,
+    /// The timestamp of the price of the match in milliseconds
+    pub price_timestamp: u64,
 }
 
 struct StoreInner {
