@@ -25,13 +25,14 @@ use fireblocks_sdk::{
         transactions_api::GetTransactionsParams,
         Api,
     },
-    models::TransactionResponse,
+    models::{AssetOnchainBeta, TransactionResponse},
     Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
 };
 use renegade_common::types::chain::Chain;
-use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 use std::{str::FromStr, time::Instant};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::helpers::{send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION};
@@ -76,6 +77,14 @@ const ERR_ARB_CHAIN_NOT_FOUND: &str = "Arbitrum blockchain not found";
 // | Types |
 // ---------
 
+/// A synchronized, shared map
+type SharedMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
+
+/// Create a new shared map
+fn new_shared_map<K, V>() -> SharedMap<K, V> {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
 /// The source of a deposit
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DepositWithdrawSource {
@@ -117,12 +126,14 @@ impl DepositWithdrawSource {
 pub struct FireblocksClient {
     /// The Fireblocks API client
     pub sdk: FireblocksSdk,
-    /// The Fireblocks vault ID for the Hyperliquid vault,
-    /// cached here for performance
-    pub hyperliquid_vault_id: Option<String>,
-    /// The address of the Hyperliquid account,
-    /// cached here for performance
-    pub hyperliquid_address: Option<String>,
+    /// A cache of each vault's ID
+    pub vault_ids: SharedMap<String, String>,
+    /// A cache mapping from asset address to its Fireblocks asset ID
+    pub asset_ids: SharedMap<String, String>,
+    /// A cache mapping from (vault name, mint) to the deposit address
+    pub deposit_addresses: SharedMap<(String, String), String>,
+    /// A cache mapping from asset ID to its onchain data
+    pub asset_onchain_data: SharedMap<String, AssetOnchainBeta>,
 }
 
 /// The client interacting with the custody backend
@@ -166,8 +177,10 @@ impl CustodyClient {
 
         let fireblocks_client = Arc::new(FireblocksClient {
             sdk: fireblocks_sdk,
-            hyperliquid_vault_id: None,
-            hyperliquid_address: None,
+            vault_ids: new_shared_map(),
+            asset_ids: new_shared_map(),
+            deposit_addresses: new_shared_map(),
+            asset_onchain_data: new_shared_map(),
         });
 
         let arbitrum_provider = build_provider(&arbitrum_rpc_url)?;
@@ -200,6 +213,10 @@ impl CustodyClient {
         &self,
         address: &str,
     ) -> Result<Option<String>, FundsManagerError> {
+        if let Some(asset_id) = self.fireblocks_client.asset_ids.read().await.get(address) {
+            return Ok(Some(asset_id.clone()));
+        }
+
         let blockchain_id = self.get_current_blockchain_id().await?;
         let list_assets_params =
             ListAssetsParams::builder().blockchain_id(blockchain_id).page_size(1000.0).build();
@@ -215,7 +232,14 @@ impl CustodyClient {
         for asset in arb_assets.data {
             if let Some(contract_address) = asset.onchain.and_then(|o| o.address) {
                 if contract_address.to_lowercase() == address.to_lowercase() {
-                    return Ok(Some(asset.legacy_id));
+                    let asset_id = asset.legacy_id;
+                    self.fireblocks_client
+                        .asset_ids
+                        .write()
+                        .await
+                        .insert(address.to_string(), asset_id.clone());
+
+                    return Ok(Some(asset_id));
                 }
             }
         }
