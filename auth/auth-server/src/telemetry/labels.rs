@@ -29,6 +29,10 @@ pub const EXTERNAL_MATCH_SETTLED_BASE_VOLUME: &str = "external_match_settled_bas
 /// Metric describing the volume of the quote asset in an external match
 pub const EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME: &str = "external_match_settled_quote_volume";
 
+/// Metric describing the time between the price sample time and the time of
+/// settlement
+pub const EXTERNAL_MATCH_PRICE_STALENESS: &str = "external_match_price_staleness";
+
 /// Metric describing the difference in price between our quote and the source
 /// quote, in basis points
 pub const QUOTE_PRICE_DIFF_BPS_METRIC: &str = "quote.price_diff_bps";

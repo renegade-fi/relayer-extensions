@@ -1,10 +1,14 @@
 //! Helpers for executing subroutines in the on-chain event listener
+use alloy::providers::Provider;
+use alloy_primitives::TxHash;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
+use renegade_darkpool_client::DarkpoolClient;
 
+use crate::telemetry::labels::EXTERNAL_MATCH_PRICE_STALENESS;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -167,6 +171,40 @@ impl OnChainEventListenerExecutor {
         ];
 
         metrics::gauge!(GAS_SPONSORSHIP_VALUE, &labels).set(gas_sponsorship_value);
+
+        Ok(())
+    }
+
+    /// Record the time between the canonical exchange midpoint sample time and
+    /// the time of settlement
+    pub async fn record_price_staleness(
+        &self,
+        ctx: &BundleContext,
+        tx: TxHash,
+        darkpool_client: &DarkpoolClient,
+    ) -> Result<(), AuthServerError> {
+        // Get the price sample time
+        let price_timestamp = ctx.price_timestamp;
+
+        // Get the time of settlement
+        let provider = darkpool_client.provider();
+        let receipt =
+            provider.get_transaction_receipt(tx).await.map_err(AuthServerError::darkpool_client)?;
+        let block_number = receipt
+            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?
+            .block_number
+            .ok_or_else(|| AuthServerError::darkpool_client("receipt has no block_number"))?;
+        let block = provider
+            .get_block(block_number.into())
+            .await
+            .map_err(AuthServerError::darkpool_client)?
+            .ok_or_else(|| AuthServerError::darkpool_client("block not found"))?;
+        let settlement_time = block.header.timestamp * 1000; // Convert to milliseconds
+
+        // Calculate and record the time difference
+        let time_diff = settlement_time.saturating_sub(price_timestamp);
+        let labels = self.get_labels(ctx);
+        metrics::gauge!(EXTERNAL_MATCH_PRICE_STALENESS, &labels).set(time_diff as f64);
 
         Ok(())
     }
