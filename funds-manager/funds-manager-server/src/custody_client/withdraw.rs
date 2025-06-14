@@ -163,22 +163,18 @@ impl CustodyClient {
         let rounded_amount = round_up(amount, USDC_DECIMALS)?;
 
         let hyperliquid_vault_id = self.get_hyperliquid_vault_id().await?;
-        let hyperliquid_address = self.get_hyperliquid_address(&hyperliquid_vault_id).await?;
+        let hyperliquid_address = self.get_hyperliquid_address().await?;
 
         let hot_wallet = self.get_quoter_hot_wallet().await?;
 
-        let usdc_mint = match self.chain {
-            Chain::ArbitrumOne => &Token::from_ticker_on_chain(USDC_TICKER, self.chain).addr,
-            Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_USDC_ADDRESS,
-            _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
-        };
+        let usdc_mint = self.get_hyperliquid_usdc_mint()?;
 
-        let hl_bal = self.get_erc20_balance(usdc_mint, &hyperliquid_address).await?;
+        let hl_bal = self.get_erc20_balance(&usdc_mint, &hyperliquid_address).await?;
         if hl_bal < amount {
             // We round up the amount to transfer to account for
             // potential floating point precision issues.
             let amount_to_transfer = round_up(rounded_amount - hl_bal, USDC_DECIMALS)?;
-            let bal = self.get_erc20_balance(usdc_mint, &hot_wallet.address).await?;
+            let bal = self.get_erc20_balance(&usdc_mint, &hot_wallet.address).await?;
             if bal < amount_to_transfer {
                 return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
             }
@@ -188,7 +184,7 @@ impl CustodyClient {
                 amount_to_transfer,
                 &hot_wallet.address,
                 &hyperliquid_address,
-                usdc_mint,
+                &usdc_mint,
             )
             .await?;
         }
@@ -196,7 +192,7 @@ impl CustodyClient {
         // Transfer the USDC from the Hyperliquid account to the bridge.
         // This is necessary so that the USDC is credited to the same account on the
         // Hyperliquid L1.
-        self.bridge_to_hyperliquid(rounded_amount, usdc_mint, hyperliquid_vault_id).await
+        self.bridge_to_hyperliquid(rounded_amount, &usdc_mint, hyperliquid_vault_id).await
     }
 
     // -----------
@@ -327,5 +323,14 @@ impl CustodyClient {
         }
 
         Ok(())
+    }
+
+    /// Get the USDC mint for the Hyperliquid account
+    pub(crate) fn get_hyperliquid_usdc_mint(&self) -> Result<String, FundsManagerError> {
+        match self.chain {
+            Chain::ArbitrumOne => Ok(Token::from_ticker_on_chain(USDC_TICKER, self.chain).addr),
+            Chain::ArbitrumSepolia => Ok(TESTNET_HYPERLIQUID_USDC_ADDRESS.to_string()),
+            _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
+        }
     }
 }

@@ -52,11 +52,6 @@ const HYPERLIQUID_EXCHANGE_CHAIN_ID: U256 = U256([1337, 0, 0, 0]);
 
 /// The error message emitted when an unsupported RPC method is requested.
 const ERR_UNSUPPORTED_METHOD: &str = "Unsupported RPC method";
-/// The error message emitted when the Hyperliquid vault is not found.
-const ERR_HYPERLIQUID_VAULT_NOT_FOUND: &str = "Hyperliquid vault not found";
-/// The error message emitted when no addresses are found for the Hyperliquid
-/// vault.
-const ERR_NO_ADDRESSES: &str = "No addresses found for Hyperliquid vault";
 /// The error message emitted when the signing account is invalid.
 const ERR_INVALID_SIGNING_ACCOUNT: &str = "Invalid signing account";
 /// The error message emitted when the chain ID in an EIP-712 domain is invalid.
@@ -137,8 +132,7 @@ impl CustodyClient {
     /// Currently, we only support RPC requests pertaining to the Hyperliquid
     /// keypair.
     async fn handle_eth_accounts_request(&self) -> FundsManagerRpcResult<Vec<String>> {
-        let hyperliquid_vault_id = self.get_hyperliquid_vault_id().await?;
-        let hyperliquid_address = self.get_hyperliquid_address(&hyperliquid_vault_id).await?;
+        let hyperliquid_address = self.get_hyperliquid_address().await?;
         Ok(vec![hyperliquid_address])
     }
 
@@ -153,7 +147,7 @@ impl CustodyClient {
         let hyperliquid_vault_id = self.get_hyperliquid_vault_id().await?;
 
         // Validate request parameters
-        self.validate_signing_account(&address, &hyperliquid_vault_id).await?;
+        self.validate_signing_account(&address).await?;
         self.validate_typed_data(&typed_data)?;
 
         // Sign the typed data
@@ -190,12 +184,8 @@ impl CustodyClient {
 
     /// Validate the signing account of an `eth_signTypedData_v4` JSON-RPC
     /// request.
-    async fn validate_signing_account(
-        &self,
-        address: &str,
-        hyperliquid_vault_id: &str,
-    ) -> FundsManagerRpcResult<()> {
-        if address != self.get_hyperliquid_address(hyperliquid_vault_id).await?.as_str() {
+    async fn validate_signing_account(&self, address: &str) -> FundsManagerRpcResult<()> {
+        if address != self.get_hyperliquid_address().await?.as_str() {
             return Err(FundsManagerError::json_rpc(ERR_INVALID_SIGNING_ACCOUNT).into());
         }
         Ok(())
@@ -233,39 +223,15 @@ impl CustodyClient {
 
     /// Get the Fireblocks vault ID for the Hyperliquid vault.
     pub(crate) async fn get_hyperliquid_vault_id(&self) -> Result<String, FundsManagerError> {
-        if let Some(vault_id) = self.fireblocks_client.hyperliquid_vault_id.clone() {
-            return Ok(vault_id);
-        }
-
-        let hyperliquid_vault = self
-            .get_vault_account(HYPERLIQUID_VAULT_NAME)
-            .await?
-            .ok_or(FundsManagerError::fireblocks(ERR_HYPERLIQUID_VAULT_NOT_FOUND))?;
-
-        Ok(hyperliquid_vault.id)
+        self.get_vault_id(HYPERLIQUID_VAULT_NAME).await
     }
 
     /// Get the address of the Hyperliquid account.
-    /// This is expected to be the only address managing native ETH in the
+    /// This is expected to be the only address managing USDC in the
     /// Hyperliquid vault.
-    pub(crate) async fn get_hyperliquid_address(
-        &self,
-        hyperliquid_vault_id: &str,
-    ) -> Result<String, FundsManagerError> {
-        if let Some(address) = self.fireblocks_client.hyperliquid_address.clone() {
-            return Ok(address);
-        }
-
-        let asset_id = self.get_native_eth_asset_id()?;
-        let addresses = self
-            .fireblocks_client
-            .sdk
-            .addresses(hyperliquid_vault_id, &asset_id)
-            .await
-            .map_err(FundsManagerError::from)?;
-
-        let addr = addresses.first().ok_or(FundsManagerError::fireblocks(ERR_NO_ADDRESSES))?;
-        Ok(addr.address.clone())
+    pub(crate) async fn get_hyperliquid_address(&self) -> Result<String, FundsManagerError> {
+        let usdc_mint = self.get_hyperliquid_usdc_mint()?;
+        self.get_fireblocks_deposit_address(&usdc_mint, HYPERLIQUID_VAULT_NAME).await
     }
 
     /// Generate a note for a Fireblocks transaction that signs a typed data
