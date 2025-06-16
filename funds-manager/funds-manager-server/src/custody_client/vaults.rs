@@ -6,7 +6,7 @@ use fireblocks_sdk::{
         blockchains_assets_beta_api::GetAssetByIdParams, vaults_api::GetPagedVaultAccountsParams,
         Api,
     },
-    models::{VaultAccount, VaultAsset},
+    models::{AssetOnchainBeta, VaultAccount, VaultAsset},
 };
 use funds_manager_api::hot_wallets::TokenBalance;
 use futures::future::try_join_all;
@@ -16,6 +16,22 @@ use crate::error::FundsManagerError;
 use super::CustodyClient;
 
 impl CustodyClient {
+    /// Get the ID of a vault by name
+    pub(crate) async fn get_vault_id(&self, name: &str) -> Result<String, FundsManagerError> {
+        if let Some(vault_id) = self.fireblocks_client.read_cached_vault_id(name).await {
+            return Ok(vault_id);
+        }
+
+        let vault = self
+            .get_vault_account(name)
+            .await?
+            .ok_or(FundsManagerError::fireblocks(format!("no vault with name '{name}'")))?;
+
+        self.fireblocks_client.cache_vault_id(name.to_string(), vault.id.clone()).await;
+
+        Ok(vault.id)
+    }
+
     /// Get the vault account for a given asset and source
     pub(crate) async fn get_vault_account(
         &self,
@@ -71,18 +87,7 @@ impl CustodyClient {
             return Ok(None);
         }
 
-        let params = GetAssetByIdParams::builder().id(asset.id.clone()).build();
-        let asset_resp = self
-            .fireblocks_client
-            .sdk
-            .apis()
-            .blockchains_assets_beta_api()
-            .get_asset_by_id(params)
-            .await?;
-
-        let asset_onchain_data = asset_resp.onchain.ok_or(FundsManagerError::fireblocks(
-            format!("asset {} has no onchain data", &asset.id),
-        ))?;
+        let asset_onchain_data = self.get_asset_onchain_data(&asset.id).await?;
 
         // Skip if the asset has no address, e.g. if it's a native asset
         let mint = if self.get_current_env_native_asset_ids()?.contains(&asset.id.as_str()) {
@@ -98,5 +103,36 @@ impl CustodyClient {
         let amount: u128 = amount_f64.floor() as u128;
 
         Ok(Some(TokenBalance { mint, amount }))
+    }
+
+    /// Get the onchain data for an asset
+    async fn get_asset_onchain_data(
+        &self,
+        asset_id: &str,
+    ) -> Result<AssetOnchainBeta, FundsManagerError> {
+        if let Some(asset_onchain_data) =
+            self.fireblocks_client.read_cached_asset_onchain_data(asset_id).await
+        {
+            return Ok(asset_onchain_data);
+        }
+
+        let params = GetAssetByIdParams::builder().id(asset_id.to_string()).build();
+        let asset_resp = self
+            .fireblocks_client
+            .sdk
+            .apis()
+            .blockchains_assets_beta_api()
+            .get_asset_by_id(params)
+            .await?;
+
+        let asset_onchain_data = asset_resp.onchain.ok_or(FundsManagerError::fireblocks(
+            format!("asset {} has no onchain data", &asset_id),
+        ))?;
+
+        self.fireblocks_client
+            .cache_asset_onchain_data(asset_id.to_string(), asset_onchain_data.clone())
+            .await;
+
+        Ok(asset_onchain_data)
     }
 }

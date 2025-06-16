@@ -28,6 +28,14 @@ impl CustodyClient {
         mint: &str,
         vault_name: &str,
     ) -> Result<String, FundsManagerError> {
+        if let Some(deposit_address) = self
+            .fireblocks_client
+            .read_cached_deposit_address(vault_name.to_string(), mint.to_string())
+            .await
+        {
+            return Ok(deposit_address);
+        }
+
         // Find a vault account and asset
         let deposit_vault = self.get_vault_account(vault_name).await?.ok_or_else(|| {
             FundsManagerError::fireblocks(format!("no vault for deposit source: {vault_name}"))
@@ -44,6 +52,12 @@ impl CustodyClient {
             FundsManagerError::fireblocks(format!("no addresses for asset: {}", asset_id))
         })?;
 
-        Ok(addr.address.clone())
+        let address = addr.address.clone();
+
+        self.fireblocks_client
+            .cache_deposit_address(vault_name.to_string(), mint.to_string(), address.clone())
+            .await;
+
+        Ok(address)
     }
 }
