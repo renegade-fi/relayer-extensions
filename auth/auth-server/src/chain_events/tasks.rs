@@ -8,7 +8,7 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_darkpool_client::DarkpoolClient;
 
-use crate::telemetry::labels::EXTERNAL_MATCH_PRICE_STALENESS;
+use crate::telemetry::labels::EXTERNAL_MATCH_SETTLEMENT_DELAY;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -177,10 +177,10 @@ impl OnChainEventListenerExecutor {
 
     /// Record the time between the canonical exchange midpoint sample time and
     /// the time of settlement
-    pub async fn record_price_staleness(
+    pub async fn record_settlement_delay(
         &self,
-        ctx: &BundleContext,
         tx: TxHash,
+        ctx: &BundleContext,
         darkpool_client: &DarkpoolClient,
     ) -> Result<(), AuthServerError> {
         // Get the price sample time
@@ -204,7 +204,7 @@ impl OnChainEventListenerExecutor {
         // Calculate and record the time difference
         let time_diff = settlement_time.saturating_sub(price_timestamp);
         let labels = self.get_labels(ctx);
-        metrics::gauge!(EXTERNAL_MATCH_PRICE_STALENESS, &labels).set(time_diff as f64);
+        metrics::gauge!(EXTERNAL_MATCH_SETTLEMENT_DELAY, &labels).set(time_diff as f64);
 
         Ok(())
     }

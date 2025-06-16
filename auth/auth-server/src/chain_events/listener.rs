@@ -241,8 +241,8 @@ impl OnChainEventListenerExecutor {
                 // Cleanup the bundle context
                 self.bundle_store.cleanup_by_nullifier(&bundle_ctx.nullifier).await?;
 
-                // Record price staleness
-                self.record_price_staleness(&bundle_ctx, tx, self.darkpool_client()).await?;
+                // Record settlement delay
+                self.record_settlement_delay(tx, &bundle_ctx, self.darkpool_client()).await?;
             }
         }
 
