@@ -18,8 +18,8 @@ use super::CustodyClient;
 impl CustodyClient {
     /// Get the ID of a vault by name
     pub(crate) async fn get_vault_id(&self, name: &str) -> Result<String, FundsManagerError> {
-        if let Some(vault_id) = self.fireblocks_client.vault_ids.read().await.get(name) {
-            return Ok(vault_id.clone());
+        if let Some(vault_id) = self.fireblocks_client.read_cached_vault_id(name).await {
+            return Ok(vault_id);
         }
 
         let vault = self
@@ -27,7 +27,7 @@ impl CustodyClient {
             .await?
             .ok_or(FundsManagerError::fireblocks(format!("no vault with name '{name}'")))?;
 
-        self.fireblocks_client.vault_ids.write().await.insert(name.to_string(), vault.id.clone());
+        self.fireblocks_client.cache_vault_id(name.to_string(), vault.id.clone()).await;
 
         Ok(vault.id)
     }
@@ -111,9 +111,9 @@ impl CustodyClient {
         asset_id: &str,
     ) -> Result<AssetOnchainBeta, FundsManagerError> {
         if let Some(asset_onchain_data) =
-            self.fireblocks_client.asset_onchain_data.read().await.get(asset_id)
+            self.fireblocks_client.read_cached_asset_onchain_data(asset_id).await
         {
-            return Ok(asset_onchain_data.clone());
+            return Ok(asset_onchain_data);
         }
 
         let params = GetAssetByIdParams::builder().id(asset_id.to_string()).build();
@@ -130,10 +130,8 @@ impl CustodyClient {
         ))?;
 
         self.fireblocks_client
-            .asset_onchain_data
-            .write()
-            .await
-            .insert(asset_id.to_string(), asset_onchain_data.clone());
+            .cache_asset_onchain_data(asset_id.to_string(), asset_onchain_data.clone())
+            .await;
 
         Ok(asset_onchain_data)
     }

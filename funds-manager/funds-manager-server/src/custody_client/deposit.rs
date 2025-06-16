@@ -30,12 +30,10 @@ impl CustodyClient {
     ) -> Result<String, FundsManagerError> {
         if let Some(deposit_address) = self
             .fireblocks_client
-            .deposit_addresses
-            .read()
+            .read_cached_deposit_address(vault_name.to_string(), mint.to_string())
             .await
-            .get(&(vault_name.to_string(), mint.to_string()))
         {
-            return Ok(deposit_address.clone());
+            return Ok(deposit_address);
         }
 
         // Find a vault account and asset
@@ -57,10 +55,8 @@ impl CustodyClient {
         let address = addr.address.clone();
 
         self.fireblocks_client
-            .deposit_addresses
-            .write()
-            .await
-            .insert((vault_name.to_string(), mint.to_string()), address.clone());
+            .cache_deposit_address(vault_name.to_string(), mint.to_string(), address.clone())
+            .await;
 
         Ok(address)
     }

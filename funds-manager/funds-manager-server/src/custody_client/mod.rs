@@ -1,5 +1,6 @@
 //! Manages the custody backend for the funds manager
 pub mod deposit;
+mod fireblocks_client;
 pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;
@@ -25,17 +26,18 @@ use fireblocks_sdk::{
         transactions_api::GetTransactionsParams,
         Api,
     },
-    models::{AssetOnchainBeta, TransactionResponse},
-    Client as FireblocksSdk, ClientBuilder as FireblocksClientBuilder,
+    models::TransactionResponse,
 };
 use renegade_common::types::chain::Chain;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
 use std::{str::FromStr, time::Instant};
-use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use crate::helpers::{send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION};
+use crate::{
+    custody_client::fireblocks_client::FireblocksClient,
+    helpers::{send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION},
+};
 use crate::{
     db::{DbConn, DbPool},
     helpers::build_provider,
@@ -77,14 +79,6 @@ const ERR_ARB_CHAIN_NOT_FOUND: &str = "Arbitrum blockchain not found";
 // | Types |
 // ---------
 
-/// A synchronized, shared map
-type SharedMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
-
-/// Create a new shared map
-fn new_shared_map<K, V>() -> SharedMap<K, V> {
-    Arc::new(RwLock::new(HashMap::new()))
-}
-
 /// The source of a deposit
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DepositWithdrawSource {
@@ -121,21 +115,6 @@ impl DepositWithdrawSource {
     }
 }
 
-/// A client for interacting with the Fireblocks API
-#[derive(Clone)]
-pub struct FireblocksClient {
-    /// The Fireblocks API client
-    pub sdk: FireblocksSdk,
-    /// A cache of each vault's ID
-    pub vault_ids: SharedMap<String, String>,
-    /// A cache mapping from asset address to its Fireblocks asset ID
-    pub asset_ids: SharedMap<String, String>,
-    /// A cache mapping from (vault name, mint) to the deposit address
-    pub deposit_addresses: SharedMap<(String, String), String>,
-    /// A cache mapping from asset ID to its onchain data
-    pub asset_onchain_data: SharedMap<String, AssetOnchainBeta>,
-}
-
 /// The client interacting with the custody backend
 #[derive(Clone)]
 pub struct CustodyClient {
@@ -169,19 +148,8 @@ impl CustodyClient {
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
     ) -> Result<Self, FundsManagerError> {
-        let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        let fireblocks_sdk =
-            FireblocksClientBuilder::new(&fireblocks_api_key, &fireblocks_api_secret)
-                .build()
-                .map_err(FundsManagerError::fireblocks)?;
-
-        let fireblocks_client = Arc::new(FireblocksClient {
-            sdk: fireblocks_sdk,
-            vault_ids: new_shared_map(),
-            asset_ids: new_shared_map(),
-            deposit_addresses: new_shared_map(),
-            asset_onchain_data: new_shared_map(),
-        });
+        let fireblocks_client =
+            Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
 
         let arbitrum_provider = build_provider(&arbitrum_rpc_url)?;
 
@@ -213,8 +181,8 @@ impl CustodyClient {
         &self,
         address: &str,
     ) -> Result<Option<String>, FundsManagerError> {
-        if let Some(asset_id) = self.fireblocks_client.asset_ids.read().await.get(address) {
-            return Ok(Some(asset_id.clone()));
+        if let Some(asset_id) = self.fireblocks_client.read_cached_asset_id(address).await {
+            return Ok(Some(asset_id));
         }
 
         let blockchain_id = self.get_current_blockchain_id().await?;
@@ -233,11 +201,10 @@ impl CustodyClient {
             if let Some(contract_address) = asset.onchain.and_then(|o| o.address) {
                 if contract_address.to_lowercase() == address.to_lowercase() {
                     let asset_id = asset.legacy_id;
+
                     self.fireblocks_client
-                        .asset_ids
-                        .write()
-                        .await
-                        .insert(address.to_string(), asset_id.clone());
+                        .cache_asset_id(address.to_string(), asset_id.clone())
+                        .await;
 
                     return Ok(Some(asset_id));
                 }
