@@ -8,7 +8,7 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 use renegade_darkpool_client::DarkpoolClient;
 
-use crate::telemetry::labels::EXTERNAL_MATCH_SETTLEMENT_DELAY;
+use crate::chain_events::utils::GPv2Settlement;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -16,10 +16,10 @@ use crate::{
         helpers::{extend_labels_with_base_asset, record_volume_with_tags},
         labels::{
             EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-            GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG,
-            L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG, REFUND_ASSET_TAG,
-            REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
-            SETTLEMENT_STATUS_TAG,
+            EXTERNAL_MATCH_SETTLEMENT_DELAY, GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE,
+            KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG,
+            REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG,
+            SDK_VERSION_METRIC_TAG, SETTLED_VIA_COWSWAP_TAG, SETTLEMENT_STATUS_TAG,
         },
     },
 };
@@ -39,12 +39,17 @@ const REFUND_ASSET_TICKER_ERROR_MSG: &str = "failed to get refund asset ticker";
 
 impl OnChainEventListenerExecutor {
     /// Record settlement metrics for a bundle
-    pub fn record_settlement_metrics(
+    pub async fn record_settlement_metrics(
         &self,
+        tx: TxHash,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
-    ) {
-        let labels = self.get_labels(ctx);
+        darkpool_client: &DarkpoolClient,
+    ) -> Result<(), AuthServerError> {
+        let mut labels = self.get_labels(ctx);
+        let is_settled_via_cowswap = self.detect_settled_via_cowswap(tx, darkpool_client).await?;
+        labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
+
         record_volume_with_tags(
             &match_result.base_mint,
             match_result.base_amount,
@@ -59,6 +64,8 @@ impl OnChainEventListenerExecutor {
             EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             &labels,
         );
+
+        Ok(())
     }
 
     /// Increment the token balance for a given API user
@@ -218,5 +225,24 @@ impl OnChainEventListenerExecutor {
             (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
             (SETTLEMENT_STATUS_TAG.to_string(), "true".to_string()),
         ]
+    }
+
+    /// Returns true iff this settlement tx emitted at least one CowSwap `Trade`
+    /// event—i.e. it was filled via a CowSwap batch auction.
+    async fn detect_settled_via_cowswap(
+        &self,
+        tx: TxHash,
+        darkpool_client: &DarkpoolClient,
+    ) -> Result<bool, AuthServerError> {
+        let provider = darkpool_client.provider();
+        let receipt = provider
+            .get_transaction_receipt(tx)
+            .await
+            .map_err(AuthServerError::darkpool_client)?
+            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?;
+
+        // If we can decode any `Trade` log, it came from CowSwap Settlement
+        let is_settled_via_cowswap = receipt.decoded_log::<GPv2Settlement::Trade>().is_some();
+        Ok(is_settled_via_cowswap)
     }
 }

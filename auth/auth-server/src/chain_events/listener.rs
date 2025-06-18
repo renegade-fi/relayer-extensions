@@ -226,7 +226,8 @@ impl OnChainEventListenerExecutor {
 
                 // Record settlement metrics
                 let api_match: ApiExternalMatchResult = external_match.match_result().into();
-                self.record_settlement_metrics(&bundle_ctx, &api_match);
+                self.record_settlement_metrics(tx, &bundle_ctx, &api_match, self.darkpool_client())
+                    .await?;
 
                 // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
