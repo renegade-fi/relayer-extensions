@@ -123,6 +123,11 @@ pub(crate) fn record_volume_with_tags(
     metrics::gauge!(volume_metric_name, labels.as_slice()).set(volume);
 }
 
+// Add a maximum quote volume cap (in whole units of the quote token) beyond which
+// we skip recording volume metrics to avoid skewing aggregates. Currently set to
+// USD $10m, assuming the quote token uses standard decimal conversion.
+const MAX_EXTERNAL_ORDER_QUOTE_VOLUME: f64 = 10_000_000.0;
+
 /// Records metrics for the incoming external match request
 fn record_external_match_request_metrics(
     order: &ExternalOrder,
@@ -139,6 +144,20 @@ fn record_external_match_request_metrics(
     let fixed_point_price = FixedPoint::from_f64_round_down(price);
     let quote_amount = order.get_quote_amount(fixed_point_price, relayer_fee);
     let base_amount = order.get_base_amount(fixed_point_price, relayer_fee);
+
+    // Calculate the decimal quote volume to enforce the cap.
+    let quote_volume_decimal = {
+        let quote_token = Token::from_addr(&quote_mint);
+        quote_token.convert_to_decimal(quote_amount)
+    };
+
+    // If the requested quote volume exceeds our cap, record only the request
+    // count metric and skip the volume metrics to prevent skewed aggregates.
+    if quote_volume_decimal > MAX_EXTERNAL_ORDER_QUOTE_VOLUME {
+        let request_labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
+        record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &request_labels);
+        return Ok(());
+    }
 
     record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
 
