@@ -32,6 +32,11 @@ use super::{
     quote_comparison::QuoteComparison,
 };
 
+/// Maximum quote volume (in decimal whole-unit terms) for which we still record
+/// volume metrics. Requests above this threshold are considered outliers and
+/// only the request count metric is recorded to prevent skewing aggregates.
+const MAX_EXTERNAL_ORDER_QUOTE_VOLUME: f64 = 10_000_000.0;
+
 // --- Asset and Volume Helpers --- //
 
 /// Get the human-readable asset and volume of
@@ -132,6 +137,7 @@ fn record_external_match_request_metrics(
     // Record external order volume
     let base_mint = biguint_to_hex_addr(&order.base_mint);
     let quote_mint = biguint_to_hex_addr(&order.quote_mint);
+    let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
 
     let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
 
@@ -140,11 +146,18 @@ fn record_external_match_request_metrics(
     let quote_amount = order.get_quote_amount(fixed_point_price, relayer_fee);
     let base_amount = order.get_base_amount(fixed_point_price, relayer_fee);
 
-    record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
+    // Calculate the decimal quote volume to enforce the cap.
+    let quote_token = Token::from_addr(&quote_mint);
+    let quote_volume_decimal = quote_token.convert_to_decimal(quote_amount);
+    let should_record_volume = quote_volume_decimal <= MAX_EXTERNAL_ORDER_QUOTE_VOLUME;
 
-    let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
-    record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
+    if should_record_volume {
+        // Record base/quote volumes using the original pattern.
+        record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, &labels);
+        record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
+    }
 
+    // Always record request count metric.
     record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &labels);
 
     Ok(())
