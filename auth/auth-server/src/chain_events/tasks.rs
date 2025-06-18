@@ -44,10 +44,9 @@ impl OnChainEventListenerExecutor {
         tx: TxHash,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
-        darkpool_client: &DarkpoolClient,
     ) -> Result<(), AuthServerError> {
         let mut labels = self.get_labels(ctx);
-        let is_settled_via_cowswap = self.detect_settled_via_cowswap(tx, darkpool_client).await?;
+        let is_settled_via_cowswap = self.detect_cowswap_settlement(tx).await?;
         labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
 
         record_volume_with_tags(
@@ -229,12 +228,8 @@ impl OnChainEventListenerExecutor {
 
     /// Returns true iff this settlement tx emitted at least one CowSwap `Trade`
     /// event—i.e. it was filled via a CowSwap batch auction.
-    async fn detect_settled_via_cowswap(
-        &self,
-        tx: TxHash,
-        darkpool_client: &DarkpoolClient,
-    ) -> Result<bool, AuthServerError> {
-        let provider = darkpool_client.provider();
+    async fn detect_cowswap_settlement(&self, tx: TxHash) -> Result<bool, AuthServerError> {
+        let provider = self.darkpool_client().provider();
         let receipt = provider
             .get_transaction_receipt(tx)
             .await

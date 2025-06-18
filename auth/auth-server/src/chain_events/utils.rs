@@ -2,7 +2,7 @@
 use alloy::sol;
 
 sol! {
-/// The CoW Protocol GPv2Settlement contract
+    /// The CoW Protocol GPv2Settlement contract
     contract GPv2Settlement {
         event Trade(
             address indexed owner,

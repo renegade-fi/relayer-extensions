@@ -114,4 +114,4 @@ pub const L1_COST_PER_BYTE_TAG: &str = "l1_cost_per_byte";
 pub const L2_BASE_FEE_TAG: &str = "l2_base_fee";
 /// Metric tag indicating whether or not the bundle was settled as part of a CoW
 /// Protocol auction
-pub const SETTLED_VIA_COWSWAP_TAG: &str = "is_settled_via_cowswap";
+pub const SETTLED_VIA_COWSWAP_TAG: &str = "settled_via_cowswap";

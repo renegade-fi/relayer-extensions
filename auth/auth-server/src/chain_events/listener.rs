@@ -111,7 +111,7 @@ impl OnChainEventListenerExecutor {
     }
 
     /// Shorthand for fetching a reference to the darkpool client
-    fn darkpool_client(&self) -> &DarkpoolClient {
+    pub(crate) fn darkpool_client(&self) -> &DarkpoolClient {
         &self.config.darkpool_client
     }
 
@@ -226,8 +226,7 @@ impl OnChainEventListenerExecutor {
 
                 // Record settlement metrics
                 let api_match: ApiExternalMatchResult = external_match.match_result().into();
-                self.record_settlement_metrics(tx, &bundle_ctx, &api_match, self.darkpool_client())
-                    .await?;
+                self.record_settlement_metrics(tx, &bundle_ctx, &api_match).await?;
 
                 // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
