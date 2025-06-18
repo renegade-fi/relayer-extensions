@@ -32,6 +32,11 @@ use super::{
     quote_comparison::QuoteComparison,
 };
 
+// Maximum quote volume (in decimal whole-unit terms) for which we still record
+// volume metrics. Requests above this threshold are considered outliers and
+// only the request count metric is recorded to prevent skewing aggregates.
+const MAX_EXTERNAL_ORDER_QUOTE_VOLUME: f64 = 10_000_000.0;
+
 // --- Asset and Volume Helpers --- //
 
 /// Get the human-readable asset and volume of
@@ -123,11 +128,6 @@ pub(crate) fn record_volume_with_tags(
     metrics::gauge!(volume_metric_name, labels.as_slice()).set(volume);
 }
 
-// Add a maximum quote volume cap (in whole units of the quote token) beyond which
-// we skip recording volume metrics to avoid skewing aggregates. Currently set to
-// USD $10m, assuming the quote token uses standard decimal conversion.
-const MAX_EXTERNAL_ORDER_QUOTE_VOLUME: f64 = 10_000_000.0;
-
 /// Records metrics for the incoming external match request
 fn record_external_match_request_metrics(
     order: &ExternalOrder,
@@ -151,20 +151,26 @@ fn record_external_match_request_metrics(
         quote_token.convert_to_decimal(quote_amount)
     };
 
-    // If the requested quote volume exceeds our cap, record only the request
-    // count metric and skip the volume metrics to prevent skewed aggregates.
-    if quote_volume_decimal > MAX_EXTERNAL_ORDER_QUOTE_VOLUME {
-        let request_labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
-        record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &request_labels);
-        return Ok(());
+    let should_record_volume = quote_volume_decimal <= MAX_EXTERNAL_ORDER_QUOTE_VOLUME;
+
+    if should_record_volume {
+        // Record base/quote volumes using the original pattern.
+        record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
     }
 
-    record_volume_with_tags(&base_mint, base_amount, EXTERNAL_ORDER_BASE_VOLUME, labels);
+    let extended_labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
 
-    let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
-    record_volume_with_tags(&quote_mint, quote_amount, EXTERNAL_ORDER_QUOTE_VOLUME, &labels);
+    if should_record_volume {
+        record_volume_with_tags(
+            &quote_mint,
+            quote_amount,
+            EXTERNAL_ORDER_QUOTE_VOLUME,
+            &extended_labels,
+        );
+    }
 
-    record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &labels);
+    // Always record request count metric.
+    record_endpoint_metrics(&base_mint, NUM_EXTERNAL_MATCH_REQUESTS, &extended_labels);
 
     Ok(())
 }
