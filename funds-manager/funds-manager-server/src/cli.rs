@@ -258,7 +258,7 @@ impl ChainConfig {
         .map_err(FundsManagerError::custom)?;
 
         // Build a metrics recorder
-        let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), &self.rpc_url);
+        let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain);
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)

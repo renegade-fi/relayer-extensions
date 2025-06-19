@@ -20,3 +20,6 @@ pub const TRADE_SIDE_FACTOR_TAG: &str = "side";
 
 /// Metric tag for the transaction hash of the swap
 pub const HASH_TAG: &str = "hash";
+
+/// Metric tag for the (environment-agnostic) chain name
+pub const CHAIN_TAG: &str = "chain";
