@@ -21,7 +21,7 @@ use crate::helpers::{create_secrets_manager_entry_with_description, get_secret_p
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
-pub(crate) const MAX_FEES_REDEEMED: usize = 20;
+pub(crate) const MAX_FEES_REDEEMED: usize = 100;
 
 impl Indexer {
     /// Redeem the most valuable open fees
