@@ -12,9 +12,9 @@ use tracing::{info, warn};
 use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
-    helpers::IERC20::Transfer,
+    helpers::{to_env_agnostic_name, IERC20::Transfer},
     metrics::labels::{
-        ASSET_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
+        ASSET_TAG, CHAIN_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
         SWAP_NOTIONAL_VOLUME_METRIC_NAME, SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
     },
 };
@@ -203,11 +203,13 @@ impl MetricsRecorder {
         let mint = format!("{:#x}", quote.get_base_token().get_alloy_address());
         let asset = quote.get_base_token().get_ticker().unwrap_or(mint);
         let side_label = if quote.is_buy() { "buy" } else { "sell" };
+        let chain = to_env_agnostic_name(self.chain);
 
         vec![
             (ASSET_TAG.to_string(), asset),
             (TRADE_SIDE_FACTOR_TAG.to_string(), side_label.to_string()),
             (HASH_TAG.to_string(), format!("{:#x}", receipt.transaction_hash)),
+            (CHAIN_TAG.to_string(), chain),
         ]
     }
 
@@ -218,15 +220,19 @@ impl MetricsRecorder {
         mint: Address,
         recipient: Address,
     ) -> Result<U256, FundsManagerError> {
-        let logs: Result<Vec<Log<Transfer>>, FundsManagerError> = receipt
+        let logs: Vec<Log<Transfer>> = receipt
             .logs()
             .iter()
-            .filter(|log| log.address() == mint)
-            .map(|log| Transfer::decode_log(&log.inner).map_err(FundsManagerError::parse))
+            .filter_map(|log| {
+                if log.address() != mint {
+                    None
+                } else {
+                    Transfer::decode_log(&log.inner).ok()
+                }
+            })
             .collect();
 
-        logs?
-            .iter()
+        logs.iter()
             .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
             .ok_or(FundsManagerError::on_chain("no matching transfer event found"))
     }
@@ -274,6 +280,7 @@ impl MetricsRecorder {
             slippage_budget = %cost_data.slippage_budget,
             received_delta = %cost_data.received_delta,
             slippage_consumption_percent = %cost_data.slippage_consumption_percent,
+            chain = %to_env_agnostic_name(self.chain),
             "Swap recorded for tx {tx_hash:#x}");
     }
 }
