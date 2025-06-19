@@ -28,6 +28,9 @@ use crate::db::models::NewFee;
 use crate::error::FundsManagerError;
 use crate::Indexer;
 
+/// Block chunk size for querying logs
+const BLOCK_CHUNK_SIZE: u64 = 10000;
+
 /// Error message for when a tx is not found
 const ERR_TX_NOT_FOUND: &str = "tx not found";
 /// Error message for when a block number is not found for a given event
@@ -40,17 +43,50 @@ const ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM: &str = "failed to create note pos
 impl Indexer {
     /// Index all fees since the given block
     pub async fn index_fees(&self) -> Result<(), FundsManagerError> {
-        let block_number = self.get_latest_block().await?;
-        info!("indexing fees from block {block_number}");
+        let latest_block = self.get_latest_block().await?;
 
-        let filter = self.darkpool_client.event_filter::<NotePosted>().from_block(block_number);
-
-        let events = filter
-            .query()
+        // Get the current block number
+        let current_block = self
+            .darkpool_client
+            .provider()
+            .get_block_number()
             .await
-            .map_err(|_| FundsManagerError::on_chain(ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM))?;
+            .map_err(FundsManagerError::on_chain)?;
 
-        let mut most_recent_block = block_number;
+        // Process blocks in chunks
+        let mut chunk_start = latest_block;
+        while chunk_start <= current_block {
+            let chunk_end = std::cmp::min(chunk_start + BLOCK_CHUNK_SIZE - 1, current_block);
+
+            // Index fees from the current chunk
+            self.index_fees_from_block_range(chunk_start, chunk_end).await?;
+
+            // Move to next chunk
+            chunk_start = chunk_end + 1;
+        }
+
+        Ok(())
+    }
+
+    /// Index fees from a given block range
+    async fn index_fees_from_block_range(
+        &self,
+        start_block: u64,
+        end_block: u64,
+    ) -> Result<(), FundsManagerError> {
+        info!("indexing fees from blocks {start_block} to {end_block}");
+
+        let filter = self
+            .darkpool_client
+            .event_filter::<NotePosted>()
+            .from_block(start_block)
+            .to_block(end_block);
+
+        let events = filter.query().await.map_err(|e| {
+            FundsManagerError::on_chain(format!("{ERR_FAILED_TO_CREATE_NOTE_POSTED_STREAM}: {e}"))
+        })?;
+
+        let mut most_recent_block = start_block;
         for (event, meta) in events {
             let block =
                 meta.block_number.ok_or(FundsManagerError::on_chain(ERR_NO_BLOCK_NUMBER))?;
