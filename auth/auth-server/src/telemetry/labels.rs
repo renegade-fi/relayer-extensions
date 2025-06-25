@@ -32,6 +32,13 @@ pub const EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME: &str = "external_match_settled_qu
 /// Metric describing the time between the price sample time and the time of
 /// settlement
 pub const EXTERNAL_MATCH_SETTLEMENT_DELAY: &str = "external_match_settlement_delay";
+/// Metric describing the time between the price sample time and the time of
+/// assembly
+pub const EXTERNAL_MATCH_ASSEMBLY_DELAY: &str = "external_match_assembly_delay";
+/// Metric describing the time between the time of assembly and the time of
+/// settlement
+pub const EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY: &str =
+    "external_match_assembly_to_settlement_delay";
 
 /// Metric describing the difference in price between our quote and the source
 /// quote, in basis points

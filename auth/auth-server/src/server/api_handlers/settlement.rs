@@ -21,6 +21,7 @@ impl Server {
         &self,
         shared_bundle: bool,
         price_timestamp: u64,
+        assembled_timestamp: Option<u64>,
         ctx: &MatchBundleResponseCtx<Req>,
     ) -> Result<String, AuthServerError>
     where
@@ -48,6 +49,7 @@ impl Server {
             nullifier,
             shared: shared_bundle,
             price_timestamp,
+            assembled_timestamp,
         };
 
         // Write to bundle store
@@ -61,6 +63,7 @@ impl Server {
     /// Write the bundle context for a malleable match to the store
     pub async fn write_malleable_bundle_context(
         &self,
+        assembled_timestamp: Option<u64>,
         ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
     ) -> Result<String, AuthServerError> {
         let req = ctx.request();
@@ -83,6 +86,7 @@ impl Server {
             nullifier,
             shared,
             price_timestamp,
+            assembled_timestamp,
         };
 
         if let Err(e) = self.bundle_store.write(bundle_id.clone(), bundle_ctx).await {

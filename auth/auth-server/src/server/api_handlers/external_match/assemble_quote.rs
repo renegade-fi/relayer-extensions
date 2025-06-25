@@ -11,6 +11,7 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
+        api_handlers::external_match::get_timestamp_ms,
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
@@ -218,7 +219,8 @@ impl Server {
         // Record the bundle context in the store
         let shared = ctx.request().allow_shared;
         let price_timestamp = ctx.request().signed_quote.quote.price.timestamp;
-        self.write_bundle_context(shared, price_timestamp, ctx).await?;
+        let assembled_timestamp = get_timestamp_ms();
+        self.write_bundle_context(shared, price_timestamp, Some(assembled_timestamp), ctx).await?;
 
         let req = ctx.request();
         if req.updated_order.is_some() {
