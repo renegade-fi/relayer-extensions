@@ -276,12 +276,12 @@ impl OnChainEventListenerExecutor {
     /// Calculate and record the time between two timestamps
     fn record_time_diff(
         &self,
-        t_1: u64,
-        t_2: u64,
+        t1: u64,
+        t2: u64,
         metric_name: &'static str,
         labels: &[(String, String)],
     ) {
-        let delta = t_2.saturating_sub(t_1);
+        let delta = t2.saturating_sub(t1);
         metrics::gauge!(metric_name, labels).set(delta as f64);
     }
 }

@@ -20,11 +20,6 @@ pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponse
 
 use super::{get_sdk_version, log_unsuccessful_relayer_request};
 
-/// Returns the number of milliseconds since the Unix epoch
-pub(crate) fn get_timestamp_ms() -> u64 {
-    (chrono::Utc::now().timestamp() as u64) * 1000
-}
-
 // --------------------
 // | Request Contexts |
 // --------------------

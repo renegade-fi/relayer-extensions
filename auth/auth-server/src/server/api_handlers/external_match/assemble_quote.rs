@@ -4,6 +4,7 @@ use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::Response;
 use renegade_api::http::external_match::{AssembleExternalMatchRequest, ExternalMatchResponse};
+use renegade_util::get_current_time_millis;
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -11,7 +12,6 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
-        api_handlers::external_match::get_timestamp_ms,
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
@@ -219,7 +219,7 @@ impl Server {
         // Record the bundle context in the store
         let shared = ctx.request().allow_shared;
         let price_timestamp = ctx.request().signed_quote.quote.price.timestamp;
-        let assembled_timestamp = get_timestamp_ms();
+        let assembled_timestamp = get_current_time_millis();
         self.write_bundle_context(shared, price_timestamp, Some(assembled_timestamp), ctx).await?;
 
         let req = ctx.request();

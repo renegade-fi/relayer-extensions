@@ -6,14 +6,11 @@ use http::Response;
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, MalleableExternalMatchResponse,
 };
+use renegade_util::get_current_time_millis;
 use tracing::{instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::{
-    error::AuthServerError,
-    http_utils::overwrite_response_body,
-    server::{api_handlers::external_match::get_timestamp_ms, Server},
-};
+use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
 
 use super::{RequestContext, ResponseContext};
 
@@ -174,7 +171,7 @@ impl Server {
         ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
     ) -> Result<(), AuthServerError> {
         // Record the bundle context in the store
-        let assembled_timestamp = get_timestamp_ms();
+        let assembled_timestamp = get_current_time_millis();
         self.write_malleable_bundle_context(Some(assembled_timestamp), ctx).await?;
 
         // TODO: Record metrics
