@@ -15,22 +15,26 @@ use std::{sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
 use crate::error::AuthServerError;
+use crate::http_utils::convert_headers;
 use crate::telemetry::quote_comparison::handler::QuoteComparisonHandler;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::Address;
+use base64::engine::{general_purpose as b64_general_purpose, Engine};
 use bytes::Bytes;
 use caching::ApiKeyCache;
 use db::DbPool;
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
-use http::{HeaderMap, Method, Response};
+use http::{HeaderMap, HeaderValue, Method, Response};
 use price_reporter_client::PriceReporterClient;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
-use renegade_api::auth::add_expiring_auth_to_headers;
+use renegade_api::auth::create_request_signature;
+use renegade_api::{RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME};
 use renegade_common::types::chain::Chain;
 use renegade_common::types::hmac::HmacKey;
+use renegade_util::get_current_time_millis;
 use reqwest::Client;
 use tracing::error;
 
@@ -124,9 +128,22 @@ impl Server {
     }
 
     /// Admin authenticate a request
+    ///
+    /// We copy the inner auth logic here because we need to convert the headers
+    /// to work with the relayer's `http` crate version
     fn admin_authenticate(&self, path: &str, headers: &mut HeaderMap, body: &[u8]) {
         let key = self.relayer_admin_key;
         let expiration = Duration::from_millis(ADMIN_AUTH_DURATION_MS);
-        add_expiring_auth_to_headers(path, headers, body, &key, expiration);
+
+        // Add a timestamp
+        let expiration_ts = get_current_time_millis() + expiration.as_millis() as u64;
+        headers.insert(RENEGADE_SIG_EXPIRATION_HEADER_NAME, expiration_ts.into());
+
+        // Add the signature
+        let converted_headers = convert_headers(headers);
+        let sig = create_request_signature(path, &converted_headers, body, &key);
+        let b64_sig = b64_general_purpose::STANDARD_NO_PAD.encode(sig);
+        let sig_header = HeaderValue::from_str(&b64_sig).expect("b64 encoding should not fail");
+        headers.insert(RENEGADE_AUTH_HEADER_NAME, sig_header);
     }
 }

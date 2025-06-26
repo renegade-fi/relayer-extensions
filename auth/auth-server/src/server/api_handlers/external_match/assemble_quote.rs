@@ -12,6 +12,7 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
+        api_handlers::ticker_from_biguint,
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
@@ -28,7 +29,14 @@ use super::{RequestContext, ResponseContext};
 // -----------------
 
 /// The request context for an assemble quote request
-type AssembleQuoteRequestCtx = RequestContext<AssembleExternalMatchRequest>;
+pub(crate) type AssembleQuoteRequestCtx = RequestContext<AssembleExternalMatchRequest>;
+impl AssembleQuoteRequestCtx {
+    /// Get the ticker from the request
+    pub fn ticker(&self) -> Result<String, AuthServerError> {
+        ticker_from_biguint(&self.body.signed_quote.quote.order.base_mint)
+    }
+}
+
 /// The response context for an assemble quote request
 type AssembleQuoteResponseCtx =
     ResponseContext<AssembleExternalMatchRequest, ExternalMatchResponse>;
@@ -131,6 +139,24 @@ impl Server {
     // -------------------
     // | Gas Sponsorship |
     // -------------------
+
+    /// Route the assembly request to the correct matching pool
+    ///
+    /// If execution costs limits have been exceeded by the bot server, we route
+    /// to the global pool to take pressure off the quoters
+    pub(crate) async fn route_assembly_req(
+        &self,
+        ctx: &AssembleQuoteRequestCtx,
+    ) -> Result<(), AuthServerError> {
+        let ticker = ctx.ticker()?;
+        let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
+        if limit_exceeded {
+            // TODO: Route the order to the global pool
+            warn!("Would route order to global matching pool");
+        }
+
+        Ok(())
+    }
 
     /// Check if the given assembly request pertains to a sponsored quote,
     /// and if so, remove the effects of gas sponsorship from the signed quote,

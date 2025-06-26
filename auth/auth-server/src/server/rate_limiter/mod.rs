@@ -84,6 +84,12 @@ impl Server {
         }
         true
     }
+
+    /// Check the execution cost rate limiter
+    #[instrument(skip(self))]
+    pub async fn check_execution_cost_exceeded(&self, ticker: &str) -> bool {
+        self.rate_limiter.check_execution_cost_exceeded(ticker).await
+    }
 }
 
 // ----------------
@@ -180,16 +186,16 @@ impl AuthServerRateLimiter {
     /// Check if execution costs have been exceeded for the given ticker
     ///
     /// Returns false if the rate limit has been exceeded, otherwise true
-    pub async fn check_execution_cost_rate_limit(
-        &self,
-        ticker: &str,
-    ) -> Result<bool, AuthServerError> {
+    ///
+    /// We make this method infallible for now to prevent bugs here blocking the
+    /// API entirely
+    pub async fn check_execution_cost_exceeded(&self, ticker: &str) -> bool {
         match self.execution_cost_rate_limiter.rate_limit_exceeded(ticker).await {
-            Ok(exceeded) => Ok(!exceeded),
+            Ok(exceeded) => exceeded,
             Err(e) => {
                 // If we fail to check the rate limit, assume it has been exceeded
                 error!("Error checking execution cost rate limit: {e}");
-                Ok(true)
+                true
             },
         }
     }

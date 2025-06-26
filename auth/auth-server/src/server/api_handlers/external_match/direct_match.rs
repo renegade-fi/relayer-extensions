@@ -8,7 +8,11 @@ use renegade_util::get_current_time_millis;
 use tracing::{info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
+use crate::{
+    error::AuthServerError,
+    http_utils::overwrite_response_body,
+    server::{api_handlers::ticker_from_biguint, Server},
+};
 
 use super::{RequestContext, ResponseContext};
 
@@ -18,6 +22,13 @@ use super::{RequestContext, ResponseContext};
 
 /// The request context for a direct match request
 type DirectMatchRequestCtx = RequestContext<ExternalMatchRequest>;
+impl DirectMatchRequestCtx {
+    /// Get the ticker from the request
+    pub fn ticker(&self) -> Result<String, AuthServerError> {
+        ticker_from_biguint(&self.body.external_order.base_mint)
+    }
+}
+
 /// The response context for a direct match request
 type DirectMatchResponseCtx = ResponseContext<ExternalMatchRequest, ExternalMatchResponse>;
 /// The sponsored response context for a direct match request
@@ -85,6 +96,7 @@ impl Server {
         // Check the rate limit
         // Direct matches are always shared
         self.check_bundle_rate_limit(ctx.user(), true /* shared */).await?;
+        self.route_direct_match_req(ctx).await?;
 
         // Apply gas sponsorship to the match request
         let gas_sponsorship_info = self.sponsor_direct_match_request(ctx).await?;
@@ -113,6 +125,28 @@ impl Server {
             SponsoredDirectMatchResponseCtx::from_direct_match_response_ctx(sponsored_resp, ctx);
         self.record_direct_match_metrics(ctx);
         Ok(resp)
+    }
+
+    // -------------------------
+    // | Matching Pool Routing |
+    // -------------------------
+
+    /// Route the direct match request to the correct matching pool
+    ///
+    /// If execution costs limits have been exceeded by the bot server, we route
+    /// to the global pool to take pressure off the quoters
+    async fn route_direct_match_req(
+        &self,
+        ctx: &DirectMatchRequestCtx,
+    ) -> Result<(), AuthServerError> {
+        let ticker = ctx.ticker()?;
+        let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
+        if limit_exceeded {
+            // TODO: Route the order to the global pool
+            warn!("Would route order to global matching pool");
+        }
+
+        Ok(())
     }
 
     // ---------------

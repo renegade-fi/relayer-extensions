@@ -8,7 +8,7 @@ use tracing::{info, instrument};
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
-use crate::{error::AuthServerError, ApiError};
+use crate::{error::AuthServerError, http_utils::convert_headers, ApiError};
 
 use super::{helpers::aes_decrypt, Server};
 
@@ -20,7 +20,8 @@ impl Server {
         headers: &HeaderMap,
         body: &[u8],
     ) -> Result<(), ApiError> {
-        validate_expiring_auth(path.as_str(), headers, body, &self.management_key)
+        let auth_headers = convert_headers(headers);
+        validate_expiring_auth(path.as_str(), &auth_headers, body, &self.management_key)
             .map_err(|_| ApiError::Unauthorized)
     }
 
@@ -66,7 +67,9 @@ impl Server {
         let (api_secret, description) = self.get_api_secret(api_key).await?;
         let key = HmacKey::from_base64_string(&api_secret).map_err(AuthServerError::serde)?;
 
-        validate_expiring_auth(path, headers, body, &key).map_err(AuthServerError::unauthorized)?;
+        let auth_headers = convert_headers(headers);
+        validate_expiring_auth(path, &auth_headers, body, &key)
+            .map_err(AuthServerError::unauthorized)?;
         Ok(description)
     }
 
