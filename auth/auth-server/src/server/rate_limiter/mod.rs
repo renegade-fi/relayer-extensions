@@ -30,6 +30,7 @@ use crate::error::AuthServerError;
 
 use super::Server;
 
+mod execution_cost_rate_limiter;
 mod gas_sponsorship_rate_limiter;
 mod user_rate_limiter;
 
