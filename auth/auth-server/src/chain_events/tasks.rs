@@ -6,7 +6,6 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
-use renegade_darkpool_client::DarkpoolClient;
 
 use crate::chain_events::utils::GPv2Settlement;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
@@ -15,6 +14,7 @@ use crate::{
     telemetry::{
         helpers::{extend_labels_with_base_asset, record_volume_with_tags},
         labels::{
+            EXTERNAL_MATCH_ASSEMBLY_DELAY, EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY,
             EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             EXTERNAL_MATCH_SETTLEMENT_DELAY, GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE,
             KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG,
@@ -183,36 +183,46 @@ impl OnChainEventListenerExecutor {
 
     /// Record the time between the canonical exchange midpoint sample time and
     /// the time of settlement
-    pub async fn record_settlement_delay(
-        &self,
-        tx: TxHash,
-        ctx: &BundleContext,
-        darkpool_client: &DarkpoolClient,
-    ) -> Result<(), AuthServerError> {
+    pub fn record_settlement_delay(&self, settlement_time: u64, ctx: &BundleContext) {
         // Get the price sample time
         let price_timestamp = ctx.price_timestamp;
 
-        // Get the time of settlement
-        let provider = darkpool_client.provider();
-        let receipt =
-            provider.get_transaction_receipt(tx).await.map_err(AuthServerError::darkpool_client)?;
-        let block_number = receipt
-            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?
-            .block_number
-            .ok_or_else(|| AuthServerError::darkpool_client("receipt has no block_number"))?;
-        let block = provider
-            .get_block(block_number.into())
-            .await
-            .map_err(AuthServerError::darkpool_client)?
-            .ok_or_else(|| AuthServerError::darkpool_client("block not found"))?;
-        let settlement_time = block.header.timestamp * 1000; // Convert to milliseconds
-
         // Calculate and record the time difference
-        let time_diff = settlement_time.saturating_sub(price_timestamp);
         let labels = self.get_labels(ctx);
-        metrics::gauge!(EXTERNAL_MATCH_SETTLEMENT_DELAY, &labels).set(time_diff as f64);
+        self.record_time_diff(
+            price_timestamp,
+            settlement_time,
+            EXTERNAL_MATCH_SETTLEMENT_DELAY,
+            &labels,
+        );
+    }
 
-        Ok(())
+    /// Record the time between the canonical exchange midpoint sample time and
+    /// the time of assembly
+    pub fn record_assembly_delay(&self, ctx: &BundleContext) {
+        if let Some(assembled_timestamp) = ctx.assembled_timestamp {
+            let price_timestamp = ctx.price_timestamp;
+            let labels = self.get_labels(ctx);
+            self.record_time_diff(
+                price_timestamp,
+                assembled_timestamp,
+                EXTERNAL_MATCH_ASSEMBLY_DELAY,
+                &labels,
+            );
+        }
+    }
+
+    /// Record the time between the time of assembly and the time of settlement
+    pub fn record_assembly_to_settlement_delay(&self, settlement_time: u64, ctx: &BundleContext) {
+        if let Some(assembled_timestamp) = ctx.assembled_timestamp {
+            let labels = self.get_labels(ctx);
+            self.record_time_diff(
+                assembled_timestamp,
+                settlement_time,
+                EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY,
+                &labels,
+            );
+        }
     }
 
     /// Get the labels for a bundle
@@ -239,5 +249,39 @@ impl OnChainEventListenerExecutor {
         // If we can decode any `Trade` log, it came from CowSwap Settlement
         let is_settled_via_cowswap = receipt.decoded_log::<GPv2Settlement::Trade>().is_some();
         Ok(is_settled_via_cowswap)
+    }
+
+    /// Returns the timestamp of the settlement of a bundle in milliseconds
+    pub(crate) async fn get_settlement_timestamp(
+        &self,
+        tx: TxHash,
+    ) -> Result<u64, AuthServerError> {
+        let provider = self.darkpool_client().provider();
+        let receipt =
+            provider.get_transaction_receipt(tx).await.map_err(AuthServerError::darkpool_client)?;
+        let block_number = receipt
+            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?
+            .block_number
+            .ok_or_else(|| AuthServerError::darkpool_client("receipt has no block_number"))?;
+        let block = provider
+            .get_block(block_number.into())
+            .await
+            .map_err(AuthServerError::darkpool_client)?
+            .ok_or_else(|| AuthServerError::darkpool_client("block not found"))?;
+        let settlement_time = block.header.timestamp * 1000; // Convert to milliseconds
+
+        Ok(settlement_time)
+    }
+
+    /// Calculate and record the time between two timestamps
+    fn record_time_diff(
+        &self,
+        t1: u64,
+        t2: u64,
+        metric_name: &'static str,
+        labels: &[(String, String)],
+    ) {
+        let delta = t2.saturating_sub(t1);
+        metrics::gauge!(metric_name, labels).set(delta as f64);
     }
 }

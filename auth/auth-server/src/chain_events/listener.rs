@@ -213,6 +213,9 @@ impl OnChainEventListenerExecutor {
         nullifier: Nullifier,
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
+        // Get the time of settlement
+        let settlement_time = self.get_settlement_timestamp(tx).await?;
+
         let matches = self.fetch_external_matches_in_tx(tx).await?;
         for external_match in matches {
             let bundle_id = external_match.bundle_id(&nullifier)?;
@@ -241,8 +244,14 @@ impl OnChainEventListenerExecutor {
                 // Cleanup the bundle context
                 self.bundle_store.cleanup_by_nullifier(&bundle_ctx.nullifier).await?;
 
-                // Record settlement delay
-                self.record_settlement_delay(tx, &bundle_ctx, self.darkpool_client()).await?;
+                // Record price sample to assembly delay
+                self.record_assembly_delay(&bundle_ctx);
+
+                // Record assembly to settlement delay
+                self.record_assembly_to_settlement_delay(settlement_time, &bundle_ctx);
+
+                // Record price sample to settlement delay
+                self.record_settlement_delay(settlement_time, &bundle_ctx);
             }
         }
 

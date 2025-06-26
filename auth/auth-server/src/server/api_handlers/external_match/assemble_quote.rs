@@ -4,6 +4,7 @@ use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::Response;
 use renegade_api::http::external_match::{AssembleExternalMatchRequest, ExternalMatchResponse};
+use renegade_util::get_current_time_millis;
 use tracing::{error, info, instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
@@ -218,7 +219,8 @@ impl Server {
         // Record the bundle context in the store
         let shared = ctx.request().allow_shared;
         let price_timestamp = ctx.request().signed_quote.quote.price.timestamp;
-        self.write_bundle_context(shared, price_timestamp, ctx).await?;
+        let assembled_timestamp = get_current_time_millis();
+        self.write_bundle_context(shared, price_timestamp, Some(assembled_timestamp), ctx).await?;
 
         let req = ctx.request();
         if req.updated_order.is_some() {

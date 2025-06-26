@@ -32,6 +32,8 @@ pub struct BundleContext {
     pub shared: bool,
     /// The timestamp of the price of the match in milliseconds
     pub price_timestamp: u64,
+    /// The timestamp of the assembly of the bundle in milliseconds
+    pub assembled_timestamp: Option<u64>,
 }
 
 struct StoreInner {
