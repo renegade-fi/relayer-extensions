@@ -8,6 +8,7 @@ use crate::{error::AuthServerError, server::db::create_redis_client};
 
 /// A rate limiter that measures the bot server's per-asset execution costs and
 /// rate limits external match flow that crosses with quoter orders
+#[derive(Clone)]
 pub struct ExecutionCostRateLimiter {
     /// The Redis connection manager
     redis: RedisConnection,
@@ -21,7 +22,7 @@ impl ExecutionCostRateLimiter {
     }
 
     /// Check if the rate limit has been exceeded for the given ticker
-    pub async fn check_rate_limit(&self, ticker: &str) -> Result<bool, AuthServerError> {
+    pub async fn rate_limit_exceeded(&self, ticker: &str) -> Result<bool, AuthServerError> {
         let key = Self::get_rate_limit_exceeded_key(ticker);
         let result: Option<bool> = self.redis().get(key).await?;
         Ok(result.unwrap_or(false))

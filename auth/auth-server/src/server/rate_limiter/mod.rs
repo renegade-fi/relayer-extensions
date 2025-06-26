@@ -23,10 +23,13 @@
 use std::time::Duration;
 
 use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
-use tracing::{instrument, warn};
+use tracing::{error, instrument, warn};
 use user_rate_limiter::ApiTokenRateLimiter;
 
-use crate::error::AuthServerError;
+use crate::{
+    error::AuthServerError,
+    server::rate_limiter::execution_cost_rate_limiter::ExecutionCostRateLimiter,
+};
 
 use super::Server;
 
@@ -98,22 +101,28 @@ pub struct AuthServerRateLimiter {
     shared_bundle_rate_limiter: ApiTokenRateLimiter,
     /// The gas sponsorship rate limiter
     gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter,
+    /// The execution cost rate limiter
+    execution_cost_rate_limiter: ExecutionCostRateLimiter,
 }
 
 impl AuthServerRateLimiter {
     /// Create a new bundle rate limiter
-    pub fn new(
+    pub async fn new(
         quote_rate_limit: u64,
         bundle_rate_limit: u64,
         shared_bundle_rate_limit: u64,
         max_gas_sponsorship_value: f64,
-    ) -> Self {
-        Self {
+        execution_cost_redis_url: &str,
+    ) -> Result<Self, AuthServerError> {
+        let execution_cost_rate_limiter =
+            ExecutionCostRateLimiter::new(execution_cost_redis_url).await?;
+        Ok(Self {
             quote_rate_limiter: ApiTokenRateLimiter::new(quote_rate_limit),
             bundle_rate_limiter: ApiTokenRateLimiter::new(bundle_rate_limit),
             shared_bundle_rate_limiter: ApiTokenRateLimiter::new(shared_bundle_rate_limit),
             gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter::new(max_gas_sponsorship_value),
-        }
+            execution_cost_rate_limiter,
+        })
     }
 
     /// Consume a quote token from bucket if available
@@ -166,5 +175,22 @@ impl AuthServerRateLimiter {
         user_id: String,
     ) -> (f64, Duration) {
         self.gas_sponsorship_rate_limiter.remaining_value_and_time(user_id).await
+    }
+
+    /// Check if execution costs have been exceeded for the given ticker
+    ///
+    /// Returns false if the rate limit has been exceeded, otherwise true
+    pub async fn check_execution_cost_rate_limit(
+        &self,
+        ticker: &str,
+    ) -> Result<bool, AuthServerError> {
+        match self.execution_cost_rate_limiter.rate_limit_exceeded(ticker).await {
+            Ok(exceeded) => Ok(!exceeded),
+            Err(e) => {
+                // If we fail to check the rate limit, assume it has been exceeded
+                error!("Error checking execution cost rate limit: {e}");
+                Ok(true)
+            },
+        }
     }
 }

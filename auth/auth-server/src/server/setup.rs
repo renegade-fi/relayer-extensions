@@ -59,7 +59,7 @@ impl Server {
 
         // Setup the DB connection pool and the Redis client
         let db_pool = create_db_pool(&args.database_url).await?;
-        let redis_client = create_redis_client(&args.redis_url).await?;
+        let redis_client = create_redis_client(&args.gas_sponsorship_redis_url).await?;
         let (encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key) =
             parse_auth_server_keys(&args)?;
 
@@ -68,7 +68,9 @@ impl Server {
             args.bundle_rate_limit,
             args.shared_bundle_rate_limit,
             args.max_gas_sponsorship_value,
-        );
+            &args.execution_cost_redis_url,
+        )
+        .await?;
 
         let price_reporter_client =
             Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
