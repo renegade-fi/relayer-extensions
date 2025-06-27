@@ -12,7 +12,7 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
-        api_handlers::ticker_from_biguint,
+        api_handlers::{ticker_from_biguint, GLOBAL_MATCHING_POOL},
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
@@ -146,13 +146,13 @@ impl Server {
     /// to the global pool to take pressure off the quoters
     pub(crate) async fn route_assembly_req(
         &self,
-        ctx: &AssembleQuoteRequestCtx,
+        ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
         let ticker = ctx.ticker()?;
         let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
         if limit_exceeded {
-            // TODO: Route the order to the global pool
-            warn!("Would route order to global matching pool");
+            info!("Routing order to global matching pool");
+            ctx.body_mut().matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }
 
         Ok(())

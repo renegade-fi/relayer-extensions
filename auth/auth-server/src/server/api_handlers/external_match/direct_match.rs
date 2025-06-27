@@ -11,7 +11,10 @@ use warp::{reject::Rejection, reply::Reply};
 use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
-    server::{api_handlers::ticker_from_biguint, Server},
+    server::{
+        api_handlers::{ticker_from_biguint, GLOBAL_MATCHING_POOL},
+        Server,
+    },
 };
 
 use super::{RequestContext, ResponseContext};
@@ -137,13 +140,13 @@ impl Server {
     /// to the global pool to take pressure off the quoters
     async fn route_direct_match_req(
         &self,
-        ctx: &DirectMatchRequestCtx,
+        ctx: &mut DirectMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
         let ticker = ctx.ticker()?;
         let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
         if limit_exceeded {
-            // TODO: Route the order to the global pool
-            warn!("Would route order to global matching pool");
+            info!("Routing order to global matching pool");
+            ctx.body_mut().matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }
 
         Ok(())
