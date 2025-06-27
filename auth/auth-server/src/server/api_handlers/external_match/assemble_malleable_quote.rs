@@ -10,16 +10,18 @@ use renegade_util::get_current_time_millis;
 use tracing::{instrument, warn};
 use warp::{reject::Rejection, reply::Reply};
 
-use crate::{error::AuthServerError, http_utils::overwrite_response_body, server::Server};
+use crate::{
+    error::AuthServerError,
+    http_utils::overwrite_response_body,
+    server::{api_handlers::external_match::assemble_quote::AssembleQuoteRequestCtx, Server},
+};
 
-use super::{RequestContext, ResponseContext};
+use super::ResponseContext;
 
 // -----------------
 // | Context Types |
 // -----------------
 
-/// The request context for an assemble malleable quote request
-type AssembleMalleableQuoteRequestCtx = RequestContext<AssembleExternalMatchRequest>;
 /// The response context for an assemble malleable quote request
 type AssembleMalleableQuoteResponseCtx =
     ResponseContext<AssembleExternalMatchRequest, MalleableExternalMatchResponse>;
@@ -85,11 +87,12 @@ impl Server {
     #[instrument(skip_all)]
     async fn assemble_malleable_quote_pre_request(
         &self,
-        ctx: &mut AssembleMalleableQuoteRequestCtx,
+        ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
         let allow_shared = ctx.body.allow_shared;
         let key_desc = ctx.user();
         self.check_bundle_rate_limit(key_desc, allow_shared).await?;
+        self.route_assembly_req(ctx).await?;
 
         // Apply gas sponsorship to the assembly request
         // The request type is the same between the standard and malleable assembly

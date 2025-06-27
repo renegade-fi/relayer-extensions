@@ -5,7 +5,7 @@ use bytes::Bytes;
 use http::{Response, StatusCode};
 use renegade_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_common::types::{token::Token, TimestampedPrice};
+use renegade_common::types::{price::TimestampedPrice, token::Token};
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use renegade_util::hex::biguint_to_hex_addr;
 use tracing::{error, info, instrument, warn};
@@ -14,7 +14,7 @@ use warp::{reject::Rejection, reply::Reply};
 use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
-    server::Server,
+    server::{api_handlers::ticker_from_biguint, Server},
     telemetry::{
         helpers::{record_endpoint_metrics, record_fill_ratio, record_quote_not_found},
         labels::{
@@ -33,6 +33,14 @@ use super::{RequestContext, ResponseContext};
 
 /// The request context for a quote request
 type QuoteRequestCtx = RequestContext<ExternalQuoteRequest>;
+
+impl QuoteRequestCtx {
+    /// Get the ticker for the quote request
+    pub fn ticker(&self) -> Result<String, AuthServerError> {
+        ticker_from_biguint(&self.body.external_order.base_mint)
+    }
+}
+
 /// The response context for a quote request
 type QuoteResponseCtx = ResponseContext<ExternalQuoteRequest, ExternalQuoteResponse>;
 /// The response context for a sponsored quote response
@@ -95,6 +103,7 @@ impl Server {
     async fn quote_pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
         // Check the rate limit
         self.check_quote_rate_limit(ctx.user()).await?;
+        self.route_quote_req(ctx).await?;
 
         // Apply gas sponsorship to the quote request
         let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
@@ -134,6 +143,21 @@ impl Server {
     // -------------------
     // | Gas Sponsorship |
     // -------------------
+
+    /// Route the quote request to the correct matching pool
+    ///
+    /// If execution costs limits have been exceeded by the bot server, we route
+    /// to the global pool to take pressure off the quoters
+    async fn route_quote_req(&self, ctx: &QuoteRequestCtx) -> Result<(), AuthServerError> {
+        let ticker = ctx.ticker()?;
+        let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
+        if limit_exceeded {
+            // TODO: Route the order to the global pool
+            warn!("Would route order to global matching pool");
+        }
+
+        Ok(())
+    }
 
     /// Apply gas sponsorship to the given quote request, if eligible. This
     /// ensures that any exact output amount requested in the order is

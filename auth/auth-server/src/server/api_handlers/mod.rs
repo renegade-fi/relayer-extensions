@@ -12,9 +12,11 @@ use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMa
 use bytes::Bytes;
 use external_match::{RequestContext, ResponseContext};
 use http::{HeaderMap, Response};
+use num_bigint::BigUint;
 use rand::Rng;
 use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
+use renegade_common::types::token::Token;
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -35,6 +37,12 @@ use crate::telemetry::{
 const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
 /// The default SDK version to use if the header is not set
 const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
+/// The name of the matching pool to route to if the execution cost rate limit
+/// is exceeded
+const GLOBAL_MATCHING_POOL: &str = "global";
+
+/// The error message returned when a request provides an invalid token
+const ERR_INVALID_TOKEN: &str = "Invalid token";
 
 /// A type alias for the response context for endpoints that return a match
 /// bundle
@@ -52,6 +60,12 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
         .map(|v| v.to_str().unwrap_or_default())
         .unwrap_or(SDK_VERSION_DEFAULT)
         .to_string()
+}
+
+/// Get a ticker from a `BigUint` encoded mint
+pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
+    let token = Token::from_addr_biguint(mint);
+    token.get_ticker().ok_or(AuthServerError::custom(ERR_INVALID_TOKEN))
 }
 
 // ---------------
