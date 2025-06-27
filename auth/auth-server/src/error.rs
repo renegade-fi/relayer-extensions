@@ -154,6 +154,12 @@ impl From<AuthServerError> for ApiError {
     }
 }
 
+impl From<redis::RedisError> for AuthServerError {
+    fn from(err: redis::RedisError) -> Self {
+        Self::redis(err)
+    }
+}
+
 impl From<alloy_sol_types::Error> for AuthServerError {
     fn from(err: alloy_sol_types::Error) -> Self {
         Self::custom(err)
