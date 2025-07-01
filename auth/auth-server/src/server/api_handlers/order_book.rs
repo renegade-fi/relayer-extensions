@@ -17,7 +17,7 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Authorize the request
         let path_str = path.as_str();
-        let key_desc = self
+        let (key_desc, _key_id) = self
             .authorize_request(path_str, "" /* query_str */, &headers, &[] /* body */)
             .await?;
 

@@ -97,6 +97,8 @@ impl Server {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
         self.whitelist_api_key_query(key_id).await?;
+        self.clear_cached_key(key_id).await;
+
         Ok(empty_json_reply())
     }
 
@@ -115,6 +117,8 @@ impl Server {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
         self.remove_whitelist_entry_query(key_id).await?;
+        self.clear_cached_key(key_id).await;
+
         Ok(empty_json_reply())
     }
 }

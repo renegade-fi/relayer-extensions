@@ -21,6 +21,7 @@ use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
 use renegade_util::hex::biguint_to_hex_addr;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use super::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, requires_exact_output_amount_update,
@@ -73,12 +74,43 @@ pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
 // | Server Impl |
 // ---------------
 
-/// Handle a proxied request
+// General purpose methods useful to handlers defined in this module
 impl Server {
     /// Determines if the current request should be sampled for metrics
     /// collection
     pub fn should_sample_metrics(&self) -> bool {
         rand::thread_rng().gen_bool(self.metrics_sampling_rate)
+    }
+
+    // --- Rate Limiting --- //
+
+    /// Decide whether to route the given request to the global matching pool
+    /// based on the per-asset rate limit and whitelist status of the key
+    ///
+    /// Routing to the global pool is equivalent to rate limiting in this
+    /// context, because it removes the bot server's orders from
+    /// consideration as counterparties, and instead requires that
+    /// counterparties come from the global pool -- i.e. non-bot orders.
+    ///
+    /// An order is routed to the global pool if the bot server has exceeded its
+    /// swap rate limit for the day. The exception is if the key is whitelisted,
+    /// in which case it is never rate limited (routed to the global pool).
+    pub async fn should_route_to_global(
+        &self,
+        key_id: Uuid,
+        ticker: &str,
+    ) -> Result<bool, AuthServerError> {
+        let limit_exceeded = self.check_execution_cost_exceeded(ticker).await;
+        let whitelisted = self.is_rate_limit_whitelisted(key_id).await?;
+        let should_route_to_global = limit_exceeded && !whitelisted;
+        Ok(should_route_to_global)
+    }
+
+    /// Check whether the given key is whitelisted to bypass external match flow
+    /// rate limits
+    pub async fn is_rate_limit_whitelisted(&self, key_id: Uuid) -> Result<bool, AuthServerError> {
+        let key = self.get_api_key_entry(key_id).await?;
+        Ok(key.rate_limit_whitelisted)
     }
 
     // --- Sponsorship --- //

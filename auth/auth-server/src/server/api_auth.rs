@@ -28,7 +28,7 @@ impl Server {
     /// Authorize a request
     ///
     /// Returns the description for the API key, i.e. a human readable name for
-    /// the entity that is making the request
+    /// the entity that is making the request, and the API key id
     #[instrument(skip_all)]
     pub(crate) async fn authorize_request(
         &self,
@@ -36,7 +36,7 @@ impl Server {
         query_str: &str,
         headers: &HeaderMap,
         body: &[u8],
-    ) -> Result<String, ApiError> {
+    ) -> Result<(String, Uuid), ApiError> {
         let auth_path =
             if query_str.is_empty() { path } else { &format!("{}?{}", path, query_str) };
 
@@ -49,7 +49,7 @@ impl Server {
 
         let key_description = self.check_api_key_auth(api_key, auth_path, headers, body).await?;
         info!("Authorized request for entity: {key_description}");
-        Ok(key_description)
+        Ok((key_description, api_key))
     }
 
     /// Check that a request is authorized with a given API key and an HMAC of

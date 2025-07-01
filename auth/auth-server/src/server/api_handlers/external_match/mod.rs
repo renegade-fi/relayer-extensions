@@ -41,6 +41,8 @@ pub struct RequestContext<Req: Serialize + for<'de> Deserialize<'de>> {
     ///
     /// Derived from the API key
     pub user: String,
+    /// The API key id
+    pub key_id: Uuid,
     /// The version of the SDK used to make the request
     pub sdk_version: String,
     /// The headers of the request
@@ -57,6 +59,11 @@ impl<Req: Serialize + for<'de> Deserialize<'de>> RequestContext<Req> {
     /// Get the user description for the request
     pub fn user(&self) -> String {
         self.user.to_string()
+    }
+
+    /// Get the API key id for the request
+    pub fn key_id(&self) -> Uuid {
+        self.key_id
     }
 
     /// Get a reference to the query string
@@ -203,7 +210,7 @@ impl Server {
     {
         // Authorize the request
         let path = path.as_str().to_string();
-        let key_desc = self.authorize_request(&path, &query_str, &headers, &body).await?;
+        let (key_desc, key_id) = self.authorize_request(&path, &query_str, &headers, &body).await?;
         let sdk_version = get_sdk_version(&headers);
 
         // Deserialize the request body, then build the context
@@ -216,6 +223,7 @@ impl Server {
             sdk_version,
             headers,
             user: key_desc,
+            key_id,
             body,
             sponsorship_info: None,
             request_id: Uuid::new_v4(),
