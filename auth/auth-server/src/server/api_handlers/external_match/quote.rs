@@ -3,6 +3,7 @@
 use auth_server_api::{GasSponsorshipInfo, SponsoredQuoteResponse};
 use bytes::Bytes;
 use http::{Response, StatusCode};
+use num_bigint::BigUint;
 use renegade_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::{price::TimestampedPrice, token::Token};
@@ -15,7 +16,9 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
-        api_handlers::{ticker_from_biguint, GLOBAL_MATCHING_POOL},
+        api_handlers::{
+            external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,
+        },
         Server,
     },
     telemetry::{
@@ -41,6 +44,16 @@ impl QuoteRequestCtx {
     /// Get the ticker for the quote request
     pub fn ticker(&self) -> Result<String, AuthServerError> {
         ticker_from_biguint(&self.body.external_order.base_mint)
+    }
+}
+
+impl ExternalMatchRequestType for ExternalQuoteRequest {
+    fn base_mint(&self) -> &BigUint {
+        &self.external_order.base_mint
+    }
+
+    fn quote_mint(&self) -> &BigUint {
+        &self.external_order.quote_mint
     }
 }
 

@@ -6,11 +6,14 @@ use crate::ApiError;
 use price_reporter_client::error::PriceReporterClientError;
 
 /// Custom error type for server errors
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum AuthServerError {
     /// API key inactive
     #[error("API key inactive")]
     ApiKeyInactive,
+    /// A bad request error
+    #[error("Bad request: {0}")]
+    BadRequest(String),
     /// Bundle store error
     #[error("Bundle store error: {0}")]
     BundleStore(String),
@@ -62,6 +65,12 @@ pub enum AuthServerError {
 }
 
 impl AuthServerError {
+    /// Create a new bad request error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn bad_request<T: ToString>(msg: T) -> Self {
+        Self::BadRequest(msg.to_string())
+    }
+
     /// Create a new database connection error
     #[allow(clippy::needless_pass_by_value)]
     pub fn db<T: ToString>(msg: T) -> Self {
@@ -149,6 +158,7 @@ impl From<AuthServerError> for ApiError {
             AuthServerError::ApiKeyInactive | AuthServerError::Unauthorized(_) => {
                 ApiError::Unauthorized
             },
+            AuthServerError::BadRequest(e) => ApiError::BadRequest(e),
             _ => ApiError::InternalError(err.to_string()),
         }
     }

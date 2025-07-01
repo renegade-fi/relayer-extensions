@@ -34,9 +34,14 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info, info_span};
 use uuid::Uuid;
-use warp::{Filter, Rejection, Reply};
+use warp::{
+    reply::{Json, WithStatus},
+    Filter, Rejection,
+};
 
 use server::Server;
+
+use crate::error::AuthServerError;
 
 /// The default internal server error message
 const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
@@ -363,25 +368,35 @@ fn with_tracing() -> warp::trace::Trace<impl Fn(warp::trace::Info) -> tracing::S
 }
 
 /// Handle a rejection from an endpoint handler
-async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
-    if let Some(api_error) = err.find::<ApiError>() {
-        let (code, message) = match api_error {
-            ApiError::InternalError(e) => {
-                error!("Internal server error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
-            },
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
-            ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"),
-            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
-        };
-
-        Ok(json_error(message, code))
+async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection> {
+    let reply = if let Some(api_error) = err.find::<ApiError>() {
+        api_error_to_reply(api_error)
+    } else if let Some(auth_error) = err.find::<AuthServerError>().cloned() {
+        let api_err = ApiError::from(auth_error);
+        api_error_to_reply(&api_err)
     } else if err.is_not_found() {
-        Ok(json_error("Not Found", StatusCode::NOT_FOUND))
+        json_error("Not Found", StatusCode::NOT_FOUND)
     } else {
         error!("unhandled rejection: {:?}", err);
-        Ok(json_error("Internal Server Error", StatusCode::INTERNAL_SERVER_ERROR))
-    }
+        json_error("Internal Server Error", StatusCode::INTERNAL_SERVER_ERROR)
+    };
+
+    Ok(reply)
+}
+
+/// Convert an `ApiError` into a reply
+fn api_error_to_reply(api_error: &ApiError) -> WithStatus<Json> {
+    let (code, message) = match api_error {
+        ApiError::InternalError(e) => {
+            error!("Internal server error: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
+        },
+        ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
+        ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"),
+        ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+    };
+
+    json_error(message, code)
 }
 
 // -----------
@@ -389,7 +404,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 // -----------
 
 /// Return a json error from a string message
-fn json_error(msg: &str, code: StatusCode) -> impl Reply {
+fn json_error(msg: &str, code: StatusCode) -> WithStatus<Json> {
     let json = json!({ "error": msg });
     warp::reply::with_status(warp::reply::json(&json), code)
 }
