@@ -20,7 +20,6 @@ impl Server {
         headers: &HeaderMap,
         body: &[u8],
     ) -> Result<(), ApiError> {
-        return Ok(());
         let auth_headers = convert_headers(headers);
         validate_expiring_auth(path.as_str(), &auth_headers, body, &self.management_key)
             .map_err(|_| ApiError::Unauthorized)

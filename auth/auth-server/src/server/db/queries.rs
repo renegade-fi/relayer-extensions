@@ -11,6 +11,9 @@ use super::{
     schema::api_keys,
 };
 
+/// Error returned when a key is not found in the database
+const ERR_NO_KEY: &str = "API key not found";
+
 impl Server {
     // --- Getters --- //
 
@@ -77,6 +80,38 @@ impl Server {
 
         // Remove the key from the cache
         self.mark_cached_key_expired(key_id).await;
+        Ok(())
+    }
+
+    /// Whitelist an API key for external match flow rate limiting
+    pub async fn whitelist_api_key_query(&self, key_id: Uuid) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        let num_updates = diesel::update(api_keys::table.filter(api_keys::id.eq(key_id)))
+            .set(api_keys::rate_limit_whitelisted.eq(true))
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+
+        // Check that an update was made
+        if num_updates == 0 {
+            return Err(AuthServerError::bad_request(ERR_NO_KEY));
+        }
+        Ok(())
+    }
+
+    /// Remove a whitelist entry for an API key
+    pub async fn remove_whitelist_entry_query(&self, key_id: Uuid) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        let num_updates = diesel::update(api_keys::table.filter(api_keys::id.eq(key_id)))
+            .set(api_keys::rate_limit_whitelisted.eq(false))
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+
+        // Check that an update was made
+        if num_updates == 0 {
+            return Err(AuthServerError::bad_request(ERR_NO_KEY));
+        }
         Ok(())
     }
 }

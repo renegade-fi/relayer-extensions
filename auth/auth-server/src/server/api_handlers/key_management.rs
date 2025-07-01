@@ -7,14 +7,9 @@ use crate::{
 use auth_server_api::CreateApiKeyRequest;
 use bytes::Bytes;
 use http::HeaderMap;
-use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
-use warp::{
-    filters::path::FullPath,
-    reject::Rejection,
-    reply::{Reply, WithStatus},
-};
+use warp::{filters::path::FullPath, reject::Rejection, reply::Reply};
 
 use crate::ApiError;
 
@@ -78,10 +73,8 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
-        let reply = warp::reply::json(&json!({
-            "whitelisted": true,
-        }));
-        Ok(reply)
+        self.whitelist_api_key_query(key_id).await?;
+        Ok(empty_json_reply())
     }
 
     /// Remove a whitelist entry for an API key
@@ -98,9 +91,7 @@ impl Server {
     ) -> Result<impl Reply, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
-        let reply = warp::reply::json(&json!({
-            "whitelisted": false,
-        }));
-        Ok(reply)
+        self.remove_whitelist_entry_query(key_id).await?;
+        Ok(empty_json_reply())
     }
 }

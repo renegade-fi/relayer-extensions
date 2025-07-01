@@ -22,7 +22,6 @@ pub mod http_utils;
 mod server;
 mod telemetry;
 
-use bytes::Bytes;
 use renegade_common::types::chain::Chain;
 use renegade_system_clock::SystemClock;
 
@@ -224,6 +223,7 @@ async fn main() {
 
     // Add an API key
     let add_api_key = warp::path(API_KEYS_PATH)
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -237,6 +237,7 @@ async fn main() {
     let expire_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
         .and(warp::path("deactivate"))
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -250,6 +251,7 @@ async fn main() {
     let whitelist_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
         .and(warp::path("whitelist"))
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -263,6 +265,7 @@ async fn main() {
     let remove_whitelist_entry = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
         .and(warp::path("remove-whitelist"))
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
