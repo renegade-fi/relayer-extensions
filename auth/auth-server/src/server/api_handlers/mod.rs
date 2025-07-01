@@ -18,6 +18,7 @@ use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::token::Token;
 use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_util::hex::biguint_to_hex_addr;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -41,9 +42,6 @@ const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
 /// is exceeded
 const GLOBAL_MATCHING_POOL: &str = "global";
 
-/// The error message returned when a request provides an invalid token
-const ERR_INVALID_TOKEN: &str = "Invalid token";
-
 /// A type alias for the response context for endpoints that return a match
 /// bundle
 ///
@@ -65,7 +63,10 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
 /// Get a ticker from a `BigUint` encoded mint
 pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
     let token = Token::from_addr_biguint(mint);
-    token.get_ticker().ok_or(AuthServerError::custom(ERR_INVALID_TOKEN))
+    token.get_ticker().ok_or_else(|| {
+        let token_addr = biguint_to_hex_addr(mint);
+        AuthServerError::bad_request(format!("Invalid token: {token_addr}"))
+    })
 }
 
 // ---------------

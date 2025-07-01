@@ -8,6 +8,8 @@ mod quote;
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
+use num_bigint::BigUint;
+use renegade_common::types::token::Token;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use uuid::Uuid;
@@ -81,6 +83,14 @@ impl<Req: Serialize + for<'de> Deserialize<'de>> RequestContext<Req> {
     pub fn set_sponsorship_info(&mut self, info: Option<GasSponsorshipInfo>) {
         self.sponsorship_info = info;
     }
+}
+
+/// A trait used to define access patterns on different request types
+pub trait ExternalMatchRequestType: Serialize + for<'de> Deserialize<'de> {
+    /// Get the base token for the request
+    fn base_mint(&self) -> &BigUint;
+    /// Get the quote token for the request
+    fn quote_mint(&self) -> &BigUint;
 }
 
 // --- Response Context --- //
@@ -189,7 +199,7 @@ impl Server {
         query_str: String,
     ) -> Result<RequestContext<Req>, ApiError>
     where
-        Req: Serialize + for<'de> Deserialize<'de>,
+        Req: ExternalMatchRequestType,
     {
         // Authorize the request
         let path = path.as_str().to_string();
@@ -198,6 +208,8 @@ impl Server {
 
         // Deserialize the request body, then build the context
         let body: Req = serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
+        self.validate_request_body(&body)?;
+
         Ok(RequestContext {
             path,
             query_str,
@@ -208,6 +220,29 @@ impl Server {
             sponsorship_info: None,
             request_id: Uuid::new_v4(),
         })
+    }
+
+    /// Validate the request body
+    fn validate_request_body<Req>(&self, body: &Req) -> Result<(), AuthServerError>
+    where
+        Req: ExternalMatchRequestType,
+    {
+        // Check that the base and quote tokens are valid
+        let base = Token::from_addr_biguint(body.base_mint());
+        let quote = Token::from_addr_biguint(body.quote_mint());
+        if !base.is_named() {
+            let base_addr = base.get_addr();
+            return Err(AuthServerError::bad_request(format!("Invalid base token: {base_addr}")));
+        }
+
+        if quote != Token::usdc() {
+            let quote_addr = quote.get_addr();
+            return Err(AuthServerError::bad_request(format!(
+                "Quote token must be USDC, got {quote_addr}"
+            )));
+        }
+
+        Ok(())
     }
 
     /// Forward a request context to the relayer's admin API, returning the

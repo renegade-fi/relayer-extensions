@@ -3,6 +3,7 @@
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::Response;
+use num_bigint::BigUint;
 use renegade_api::http::external_match::{ExternalMatchRequest, ExternalMatchResponse};
 use renegade_util::get_current_time_millis;
 use tracing::{info, instrument, warn};
@@ -12,7 +13,9 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
-        api_handlers::{ticker_from_biguint, GLOBAL_MATCHING_POOL},
+        api_handlers::{
+            external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,
+        },
         Server,
     },
 };
@@ -29,6 +32,16 @@ impl DirectMatchRequestCtx {
     /// Get the ticker from the request
     pub fn ticker(&self) -> Result<String, AuthServerError> {
         ticker_from_biguint(&self.body.external_order.base_mint)
+    }
+}
+
+impl ExternalMatchRequestType for ExternalMatchRequest {
+    fn base_mint(&self) -> &BigUint {
+        &self.external_order.base_mint
+    }
+
+    fn quote_mint(&self) -> &BigUint {
+        &self.external_order.quote_mint
     }
 }
 

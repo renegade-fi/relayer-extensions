@@ -3,6 +3,7 @@
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
 use http::Response;
+use num_bigint::BigUint;
 use renegade_api::http::external_match::{AssembleExternalMatchRequest, ExternalMatchResponse};
 use renegade_util::get_current_time_millis;
 use tracing::{error, info, instrument, warn};
@@ -12,7 +13,9 @@ use crate::{
     error::AuthServerError,
     http_utils::overwrite_response_body,
     server::{
-        api_handlers::{ticker_from_biguint, GLOBAL_MATCHING_POOL},
+        api_handlers::{
+            external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,
+        },
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
@@ -34,6 +37,16 @@ impl AssembleQuoteRequestCtx {
     /// Get the ticker from the request
     pub fn ticker(&self) -> Result<String, AuthServerError> {
         ticker_from_biguint(&self.body.signed_quote.quote.order.base_mint)
+    }
+}
+
+impl ExternalMatchRequestType for AssembleExternalMatchRequest {
+    fn base_mint(&self) -> &BigUint {
+        &self.signed_quote.quote.order.base_mint
+    }
+
+    fn quote_mint(&self) -> &BigUint {
+        &self.signed_quote.quote.order.quote_mint
     }
 }
 
