@@ -166,8 +166,8 @@ impl Server {
     /// to the global pool to take pressure off the quoters
     async fn route_quote_req(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
         let ticker = ctx.ticker()?;
-        let limit_exceeded = self.check_execution_cost_exceeded(&ticker).await;
-        if limit_exceeded {
+        let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
+        if should_route_to_global {
             info!("Routing order to global matching pool");
             ctx.body_mut().matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }

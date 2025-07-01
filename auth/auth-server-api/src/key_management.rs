@@ -1,7 +1,5 @@
 //! Key management API endpoints
 
-use std::time::SystemTime;
-
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -26,7 +26,7 @@ impl Server {
     /// Get the API key entry for a given key
     pub async fn get_api_key_entry(&self, api_key: Uuid) -> Result<ApiKey, AuthServerError> {
         // Check the cache first
-        if let Some(key) = self.get_cached_api_secret(api_key).await {
+        if let Some(key) = self.get_cached_api_key(api_key).await {
             return Ok(key);
         }
 
