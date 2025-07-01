@@ -7,5 +7,6 @@ diesel::table! {
         description -> Varchar,
         created_at -> Timestamp,
         is_active -> Bool,
+        rate_limit_whitelisted -> Bool,
     }
 }

@@ -19,6 +19,7 @@ pub struct ApiKey {
     #[allow(dead_code)]
     pub created_at: SystemTime,
     pub is_active: bool,
+    pub rate_limit_whitelisted: bool,
 }
 
 #[derive(Insertable)]
@@ -44,6 +45,7 @@ impl From<NewApiKey> for ApiKey {
             description: key.description,
             created_at: SystemTime::now(),
             is_active: true,
+            rate_limit_whitelisted: false,
         }
     }
 }
