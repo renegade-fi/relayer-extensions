@@ -55,4 +55,43 @@ impl Server {
         self.expire_key_query(key_id).await?;
         Ok(empty_json_reply())
     }
+
+    /// Whitelist an API key for external match flow rate limiting
+    ///
+    /// A whitelisted key is not subject to the rate limiting based on rebalance
+    /// swap costs reported from the bot server.
+    ///
+    /// Rather, external match requests authorized by the given key will always
+    /// be routed to all matching pools in the relayer.
+    #[instrument(skip_all)]
+    pub async fn whitelist_api_key(
+        &self,
+        key_id: Uuid,
+        path: FullPath,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<impl Reply, Rejection> {
+        // Check management auth on the request
+        self.authorize_management_request(&path, &headers, &body)?;
+        self.whitelist_api_key_query(key_id).await?;
+        Ok(empty_json_reply())
+    }
+
+    /// Remove a whitelist entry for an API key
+    ///
+    /// See the doc comment for `whitelist_api_key` for more information on
+    /// whitelisted keys.
+    #[instrument(skip_all)]
+    pub async fn remove_whitelist_entry(
+        &self,
+        key_id: Uuid,
+        path: FullPath,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<impl Reply, Rejection> {
+        // Check management auth on the request
+        self.authorize_management_request(&path, &headers, &body)?;
+        self.remove_whitelist_entry_query(key_id).await?;
+        Ok(empty_json_reply())
+    }
 }

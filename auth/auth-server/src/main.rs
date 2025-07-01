@@ -223,6 +223,7 @@ async fn main() {
 
     // Add an API key
     let add_api_key = warp::path(API_KEYS_PATH)
+        .and(warp::path::end())
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -236,13 +237,42 @@ async fn main() {
     let expire_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::param::<Uuid>())
         .and(warp::path("deactivate"))
+        .and(warp::path::end())
+        .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
-        .and(warp::post())
         .and(with_server(server.clone()))
         .and_then(|id, path, headers, body, server: Arc<Server>| async move {
             server.expire_key(id, path, headers, body).await
+        });
+
+    // Whitelist an API key
+    let whitelist_api_key = warp::path(API_KEYS_PATH)
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("whitelist"))
+        .and(warp::path::end())
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|id, path, headers, body, server: Arc<Server>| async move {
+            server.whitelist_api_key(id, path, headers, body).await
+        });
+
+    // Remove a whitelist entry for an API key
+    let remove_whitelist_entry = warp::path(API_KEYS_PATH)
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("remove-whitelist"))
+        .and(warp::path::end())
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|id, path, headers, body, server: Arc<Server>| async move {
+            server.remove_whitelist_entry(id, path, headers, body).await
         });
 
     // --- Proxied Routes --- //
@@ -329,6 +359,8 @@ async fn main() {
         .or(external_quote_assembly_path)
         .or(external_malleable_assembly_path)
         .or(expire_api_key)
+        .or(whitelist_api_key)
+        .or(remove_whitelist_entry)
         .or(add_api_key)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
