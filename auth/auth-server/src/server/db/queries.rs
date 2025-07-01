@@ -17,6 +17,12 @@ const ERR_NO_KEY: &str = "API key not found";
 impl Server {
     // --- Getters --- //
 
+    /// Get all API keys from the database
+    pub async fn get_all_api_keys(&self) -> Result<Vec<ApiKey>, AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        api_keys::table.load::<ApiKey>(&mut conn).await.map_err(AuthServerError::db)
+    }
+
     /// Get the API key entry for a given key
     pub async fn get_api_key_entry(&self, api_key: Uuid) -> Result<ApiKey, AuthServerError> {
         // Check the cache first

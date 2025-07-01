@@ -4,7 +4,10 @@ use crate::{
     http_utils::empty_json_reply,
     server::{db::models::NewApiKey, helpers::aes_encrypt},
 };
-use auth_server_api::CreateApiKeyRequest;
+use auth_server_api::{
+    key_management::{AllKeysResponse, ApiKey as UserFacingApiKey},
+    CreateApiKeyRequest,
+};
 use bytes::Bytes;
 use http::HeaderMap;
 use tracing::instrument;
@@ -16,6 +19,26 @@ use crate::ApiError;
 use super::Server;
 
 impl Server {
+    // --- Getters --- //
+
+    /// Get all API keys from the database
+    #[instrument(skip_all)]
+    pub async fn get_all_keys(
+        &self,
+        path: FullPath,
+        headers: HeaderMap,
+    ) -> Result<impl Reply, Rejection> {
+        self.authorize_management_request(&path, &headers, &Bytes::new() /* body */)?;
+        let keys = self.get_all_api_keys().await?;
+
+        // Convert to user-facing API keys, notably this removes the encrypted secret
+        let converted_keys = keys.into_iter().map(UserFacingApiKey::from).collect();
+        let reply_body = AllKeysResponse { keys: converted_keys };
+        Ok(warp::reply::json(&reply_body))
+    }
+
+    // --- Setters --- //
+
     /// Add a new API key to the database
     #[instrument(skip_all)]
     pub async fn add_key(
