@@ -221,6 +221,17 @@ async fn main() {
         .and(warp::get())
         .map(|| warp::reply::with_status("PONG", StatusCode::OK));
 
+    // Get all API keys
+    let get_all_keys = warp::path(API_KEYS_PATH)
+        .and(warp::path::end())
+        .and(warp::get())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, server: Arc<Server>| async move {
+            server.get_all_keys(path, headers).await
+        });
+
     // Add an API key
     let add_api_key = warp::path(API_KEYS_PATH)
         .and(warp::path::end())
@@ -362,6 +373,7 @@ async fn main() {
         .or(whitelist_api_key)
         .or(remove_whitelist_entry)
         .or(add_api_key)
+        .or(get_all_keys)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
         .boxed()

@@ -4,6 +4,7 @@
 
 use std::time::SystemTime;
 
+use auth_server_api::key_management::ApiKey as UserFacingApiKey;
 use diesel::prelude::*;
 use uuid::Uuid;
 
@@ -20,6 +21,19 @@ pub struct ApiKey {
     pub created_at: SystemTime,
     pub is_active: bool,
     pub rate_limit_whitelisted: bool,
+}
+
+impl From<ApiKey> for UserFacingApiKey {
+    fn from(key: ApiKey) -> Self {
+        let created_at = key.created_at.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        Self {
+            id: key.id,
+            description: key.description,
+            is_active: key.is_active,
+            rate_limit_whitelisted: key.rate_limit_whitelisted,
+            created_at: created_at.as_secs(),
+        }
+    }
 }
 
 #[derive(Insertable)]

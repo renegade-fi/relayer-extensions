@@ -6,6 +6,8 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+pub mod key_management;
+
 use alloy_primitives::{ruint::FromUintError, Address, U256};
 use renegade_api::http::external_match::{
     AtomicMatchApiBundle, MalleableAtomicMatchApiBundle, SignedExternalQuote,
