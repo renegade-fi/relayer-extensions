@@ -12,12 +12,12 @@ use std::sync::Arc;
 use chainalysis_api::query_chainalysis;
 use clap::Parser;
 use compliance_api::{ComplianceCheckResponse, ComplianceStatus};
-use db::insert_compliance_entry;
+use db::upsert_compliance_entry;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use error::ComplianceServerError;
 use renegade_util::err_str;
-use renegade_util::telemetry::{setup_system_logger, LevelFilter};
+use renegade_util::telemetry::configure_telemetry;
 use tracing::info;
 use warp::{reply::Json, Filter};
 
@@ -49,7 +49,15 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-    setup_system_logger(LevelFilter::INFO);
+    configure_telemetry(
+        true,           // datadog_enabled
+        false,          // otlp_enabled
+        false,          // metrics_enabled
+        "".to_string(), // collector_endpoint
+        "",             // statsd_host
+        0,              // statsd_port
+    )
+    .unwrap();
     let cli = Cli::parse();
 
     // Create the connection pool
@@ -107,10 +115,10 @@ async fn check_wallet_compliance(
     }
 
     // 2. If not present, check the chainalysis API
-    info!("address not cached in DB, querying Chainalysis");
+    info!("address {wallet_address} not cached in DB, querying Chainalysis");
     let compliance_entry = query_chainalysis(&wallet_address, chainalysis_api_key).await?;
 
     // 3. Cache in the DB
-    insert_compliance_entry(compliance_entry.clone(), &mut conn)?;
+    upsert_compliance_entry(&compliance_entry, &mut conn)?;
     Ok(compliance_entry.compliance_status())
 }
