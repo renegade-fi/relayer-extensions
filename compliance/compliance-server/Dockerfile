@@ -1,3 +1,4 @@
+# === Chef === #
 FROM --platform=arm64 rust:latest AS chef
 
 # Create a build dir and add local dependencies
@@ -9,31 +10,40 @@ RUN cat rust-toolchain | xargs rustup toolchain install
 # Install cargo-chef
 RUN cargo install cargo-chef
 
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json --bin compliance-server
+# === Sources === #
+FROM chef AS sources
+WORKDIR /build
+COPY ./Cargo.toml ./Cargo.lock ./
+COPY ./compliance ./compliance
 
+# === Builder === #
+# Pull the sources into their own layer
 FROM chef AS builder
-COPY --from=planner /build/recipe.json recipe.json
-
-# Install protoc, openssl, and pkg-config
-RUN apt-get update && \
-    apt-get install -y pkg-config && \
-    apt-get install -y libssl-dev && \
-    apt-get install -y libclang-dev
 
 # Disable compiler warnings and enable backtraces for panic debugging
 ENV RUSTFLAGS=-Awarnings
 ENV RUST_BACKTRACE=1
 
+COPY --from=sources /build /build
+WORKDIR /build
+
+# Install protoc, openssl, and pkg-config
+RUN apt-get update && \
+    apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev ca-certificates
+
+# Update Cargo.toml to include only "compliance-server" in workspace members
+RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["compliance/compliance-server"]' Cargo.toml
+RUN cargo chef prepare --recipe-path recipe.json --bin compliance-server
+
 # Build only the dependencies to cache them in this layer
 RUN cargo chef cook --release --recipe-path recipe.json
 
-# Build the compliance server
-COPY . .
+COPY --from=sources /build/compliance /build/compliance
+WORKDIR /build
+
 RUN cargo build --release -p compliance-server
 
-# Release stage
+# === Release stage === #
 FROM --platform=arm64 debian:bookworm-slim
 
 RUN apt-get update && \

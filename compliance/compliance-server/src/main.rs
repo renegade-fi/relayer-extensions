@@ -115,7 +115,7 @@ async fn check_wallet_compliance(
     }
 
     // 2. If not present, check the chainalysis API
-    info!("address not cached in DB, querying Chainalysis");
+    info!("address {wallet_address} not cached in DB, querying Chainalysis");
     let compliance_entry = query_chainalysis(&wallet_address, chainalysis_api_key).await?;
 
     // 3. Cache in the DB
