@@ -77,3 +77,16 @@ ecr_repo = "solver-base-mainnet"
 [services.base-mainnet-renegade-solver.deploy]
 environment = "base-mainnet"
 resource = "solver"
+
+#########################
+### Compliance Server ###
+#########################
+
+[services.mainnet-compliance-server]
+[services.mainnet-compliance-server.build]
+dockerfile = "compliance/compliance-server/Dockerfile"
+ecr_repo = "compliance-mainnet"
+
+[services.mainnet-compliance-server.deploy]
+environment = "mainnet"
+resource = "compliance"
