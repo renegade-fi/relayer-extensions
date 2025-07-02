@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// The default expiration duration for a compliance entry
-const DEFAULT_EXPIRATION_DURATION: Duration = Duration::from_days(365);
+const DEFAULT_EXPIRATION_DURATION: Duration = Duration::from_days(7);
 
 // ----------
 // | Models |
@@ -23,7 +23,7 @@ const DEFAULT_EXPIRATION_DURATION: Duration = Duration::from_days(365);
 
 /// A compliance entry for a wallet
 #[derive(Debug, Clone, Queryable, Insertable)]
-#[table_name = "wallet_compliance"]
+#[diesel(table_name = wallet_compliance)]
 #[allow(missing_docs)]
 pub struct ComplianceEntry {
     pub address: String,
@@ -50,6 +50,11 @@ impl ComplianceEntry {
             ComplianceStatus::NotCompliant { reason: self.reason.clone() }
         }
     }
+
+    /// Check if the entry is expired
+    pub fn is_expired(&self) -> bool {
+        self.expires_at < SystemTime::now()
+    }
 }
 
 // -----------
@@ -66,16 +71,36 @@ pub fn get_compliance_entry(
         .load::<ComplianceEntry>(conn)
         .map_err(err_str!(ComplianceServerError::Db))?;
 
-    Ok(query.first().cloned())
+    // Return the first entry if it is not expired
+    match query.first().cloned() {
+        Some(entry) => {
+            if entry.is_expired() {
+                tracing::info!("Compliance entry expired for {address}, re-screening");
+                Ok(None)
+            } else {
+                Ok(Some(entry))
+            }
+        },
+        None => Ok(None),
+    }
 }
 
-/// Insert a compliance entry into the database
-pub fn insert_compliance_entry(
-    entry: ComplianceEntry,
+/// Upsert a compliance entry into the database
+pub fn upsert_compliance_entry(
+    entry: &ComplianceEntry,
     conn: &mut PgConnection,
 ) -> Result<(), ComplianceServerError> {
     diesel::insert_into(compliance_table)
         .values(entry)
+        .on_conflict(address_col)
+        .do_update()
+        .set((
+            wallet_compliance::is_compliant.eq(&entry.is_compliant),
+            wallet_compliance::risk_level.eq(&entry.risk_level),
+            wallet_compliance::reason.eq(&entry.reason),
+            wallet_compliance::created_at.eq(&entry.created_at),
+            wallet_compliance::expires_at.eq(&entry.expires_at),
+        ))
         .execute(conn)
         .map_err(err_str!(ComplianceServerError::Db))?;
 
