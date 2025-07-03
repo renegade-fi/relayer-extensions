@@ -16,7 +16,6 @@ use uuid::Uuid;
 
 use crate::{
     error::AuthServerError, server::Server, telemetry::helpers::record_relayer_request_500,
-    ApiError,
 };
 pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
 
@@ -204,7 +203,7 @@ impl Server {
         headers: warp::hyper::HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<RequestContext<Req>, ApiError>
+    ) -> Result<RequestContext<Req>, AuthServerError>
     where
         Req: ExternalMatchRequestType,
     {
@@ -214,7 +213,7 @@ impl Server {
         let sdk_version = get_sdk_version(&headers);
 
         // Deserialize the request body, then build the context
-        let body: Req = serde_json::from_slice(&body).map_err(AuthServerError::serde)?;
+        let body: Req = serde_json::from_slice(&body).map_err(AuthServerError::bad_request)?;
         self.validate_request_body(&body)?;
 
         Ok(RequestContext {
