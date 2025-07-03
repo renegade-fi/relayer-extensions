@@ -158,7 +158,8 @@ impl From<AuthServerError> for ApiError {
             AuthServerError::ApiKeyInactive | AuthServerError::Unauthorized(_) => {
                 ApiError::Unauthorized
             },
-            AuthServerError::BadRequest(e) => ApiError::BadRequest(e),
+            AuthServerError::BadRequest(e) | AuthServerError::Serde(e) => ApiError::BadRequest(e),
+            AuthServerError::RateLimit => ApiError::TooManyRequests,
             _ => ApiError::InternalError(err.to_string()),
         }
     }

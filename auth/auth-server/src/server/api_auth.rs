@@ -36,7 +36,7 @@ impl Server {
         query_str: &str,
         headers: &HeaderMap,
         body: &[u8],
-    ) -> Result<(String, Uuid), ApiError> {
+    ) -> Result<(String, Uuid), AuthServerError> {
         let auth_path =
             if query_str.is_empty() { path } else { &format!("{}?{}", path, query_str) };
 
