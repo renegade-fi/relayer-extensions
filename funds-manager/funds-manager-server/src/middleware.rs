@@ -1,6 +1,7 @@
 //! Middleware for the funds manager server
 
 use crate::error::ApiError;
+use crate::helpers::convert_headers;
 use crate::{with_server, Server};
 use bytes::Bytes;
 use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
@@ -67,8 +68,9 @@ async fn verify_hmac(
         None => return Ok((body,)), // Auth is disabled, allow the request
     };
 
+    let auth_headers = convert_headers(&headers);
     // Try v2 auth first
-    if validate_expiring_auth(&path, &headers, &body, hmac_key).is_ok() {
+    if validate_expiring_auth(&path, &auth_headers, &body, hmac_key).is_ok() {
         return Ok((body,));
     }
 

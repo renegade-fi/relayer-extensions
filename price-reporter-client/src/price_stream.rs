@@ -29,7 +29,9 @@ use super::{construct_price_topic, error::PriceReporterClientError, get_base_min
 /// The number of milliseconds to wait in between retrying connections
 pub const CONN_RETRY_DELAY_MS: u64 = 2_000; // 2 seconds
 
-/// The timeout in milliseconds after which the price stream is considered stale
+/// The timeout in milliseconds after which the price stream is considered
+/// stale. "Staleness" here means that the price stream has not updated prices
+/// for *any* assets.
 pub const STALENESS_TIMEOUT_MS: u64 = 60_000; // 1 minute
 
 // ---------
@@ -88,9 +90,7 @@ impl MultiPriceStreamState {
             .or_insert(AtomicF64::new(price))
             .store(price, Ordering::Relaxed);
 
-        if self.exit_on_stale {
-            self.restart_staleness_timer().await;
-        }
+        self.restart_staleness_timer().await;
     }
 
     /// Set the connection status
@@ -100,6 +100,10 @@ impl MultiPriceStreamState {
 
     /// Restart the staleness timer
     async fn restart_staleness_timer(&self) {
+        if !self.exit_on_stale {
+            return;
+        }
+
         // Cancel existing timer if present
         let mut staleness_timer = self.staleness_timer.write().await;
         if let Some(handle) = staleness_timer.take() {
