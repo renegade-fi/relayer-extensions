@@ -163,13 +163,22 @@ impl MultiPriceStream {
         while let Some(res) = ws_read.next().await {
             let msg = res.map_err(PriceReporterClientError::websocket)?;
 
-            // Attempt to parse price messages from the websocket.
-            // Any malformed messages are ignored.
-            if let Message::Text(ref text) = msg
-                && let Ok(price_message) = serde_json::from_str::<PriceMessage>(text)
-            {
-                let mint = get_base_mint_from_topic(&price_message.topic)?;
-                state.update_price(mint, price_message.price).await;
+            match msg {
+                Message::Text(ref text) => {
+                    if let Ok(price_message) = serde_json::from_str::<PriceMessage>(text) {
+                        let mint = get_base_mint_from_topic(&price_message.topic)?;
+                        state.update_price(mint, price_message.price).await;
+                    } else {
+                        warn!("Received invalid price message: {text}");
+                    }
+                },
+                Message::Close(_) => {
+                    warn!("Price reporter websocket closed");
+                    break;
+                },
+                _ => {
+                    warn!("Received unsupported message: {msg:?}");
+                },
             }
         }
 
