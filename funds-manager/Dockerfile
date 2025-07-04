@@ -55,5 +55,5 @@ RUN apt-get update && \
 COPY --from=builder /build/target/release/funds-manager /bin/funds-manager
 
 # Set log filtering
-ENV RUST_LOG="funds_manager=info,fireblocks_sdk=off,warp=warn"
+ENV RUST_LOG="funds_manager=info,fireblocks_sdk=off,warp=warn,price_reporter_client=info"
 ENTRYPOINT ["/bin/funds-manager"]

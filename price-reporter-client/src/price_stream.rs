@@ -16,7 +16,7 @@ use futures_util::{
 };
 use renegade_api::websocket::WebsocketMessage;
 use serde::Deserialize;
-use tokio::{net::TcpStream, sync::RwLock};
+use tokio::{net::TcpStream, sync::RwLock, task::JoinHandle};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{error, info, warn};
 
@@ -28,6 +28,9 @@ use super::{construct_price_topic, error::PriceReporterClientError, get_base_min
 
 /// The number of milliseconds to wait in between retrying connections
 pub const CONN_RETRY_DELAY_MS: u64 = 2_000; // 2 seconds
+
+/// The timeout in milliseconds after which the price stream is considered stale
+pub const STALENESS_TIMEOUT_MS: u64 = 60_000; // 1 minute
 
 // ---------
 // | Types |
@@ -59,12 +62,21 @@ pub struct MultiPriceStreamState {
     pub prices: SyncPricesMap,
     /// Whether the websocket is currently connected
     pub is_connected: AtomicBool,
+    /// Whether to exit the process when the price stream becomes stale
+    pub exit_on_stale: bool,
+    /// The handle to the staleness timer task
+    pub staleness_timer: RwLock<Option<JoinHandle<()>>>,
 }
 
 impl MultiPriceStreamState {
     /// Create a new multi-price stream state
-    pub fn new() -> Self {
-        Self { prices: SyncPricesMap::new(HashMap::new()), is_connected: AtomicBool::new(false) }
+    pub fn new(exit_on_stale: bool) -> Self {
+        Self {
+            prices: SyncPricesMap::new(HashMap::new()),
+            is_connected: AtomicBool::new(false),
+            exit_on_stale,
+            staleness_timer: RwLock::new(None),
+        }
     }
 
     /// Update the price of a token
@@ -75,11 +87,43 @@ impl MultiPriceStreamState {
             .entry(mint)
             .or_insert(AtomicF64::new(price))
             .store(price, Ordering::Relaxed);
+
+        if self.exit_on_stale {
+            self.restart_staleness_timer().await;
+        }
     }
 
     /// Set the connection status
     fn set_connected(&self, connected: bool) {
         self.is_connected.store(connected, Ordering::Relaxed);
+    }
+
+    /// Restart the staleness timer
+    async fn restart_staleness_timer(&self) {
+        // Cancel existing timer if present
+        let mut staleness_timer = self.staleness_timer.write().await;
+        if let Some(handle) = staleness_timer.take() {
+            handle.abort();
+        }
+
+        // Start new timer
+        let new_timer = Self::start_staleness_timer();
+        *staleness_timer = Some(new_timer);
+    }
+
+    /// Start a staleness timer that will exit the process if no price updates
+    /// are received within the staleness timeout
+    fn start_staleness_timer() -> JoinHandle<()> {
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(STALENESS_TIMEOUT_MS)).await;
+
+            error!(
+                "Price stream stale for {} seconds, exiting process",
+                STALENESS_TIMEOUT_MS / 1000
+            );
+
+            std::process::exit(1);
+        })
     }
 }
 
@@ -99,8 +143,8 @@ pub struct MultiPriceStream {
 impl MultiPriceStream {
     /// Create a new multi-price stream, starting the subscription to the price
     /// topics
-    pub fn new(ws_url: String, mints: Vec<String>) -> Self {
-        let inner = Arc::new(MultiPriceStreamState::new());
+    pub fn new(ws_url: String, mints: Vec<String>, exit_on_stale: bool) -> Self {
+        let inner = Arc::new(MultiPriceStreamState::new(exit_on_stale));
         let inner_clone = inner.clone();
 
         tokio::spawn(async move {

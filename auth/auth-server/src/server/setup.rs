@@ -72,8 +72,10 @@ impl Server {
         )
         .await?;
 
-        let price_reporter_client =
-            Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
+        let price_reporter_client = Arc::new(PriceReporterClient::new(
+            args.price_reporter_url.clone(),
+            false, // exit_on_stale
+        )?);
 
         // Setup quote metrics
         let quote_metrics = maybe_setup_quote_metrics(
