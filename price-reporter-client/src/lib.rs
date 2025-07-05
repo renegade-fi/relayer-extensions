@@ -66,8 +66,10 @@ pub struct PriceReporterClient {
 }
 
 impl PriceReporterClient {
-    /// Create a new PriceReporterClient with the given base URL
-    pub fn new(base_url: String) -> Result<Self, PriceReporterClientError> {
+    /// Create a new PriceReporterClient with the given base URL.
+    /// If `exit_on_stale` is true, the process will exit if the price stream
+    /// becomes stale.
+    pub fn new(base_url: String, exit_on_stale: bool) -> Result<Self, PriceReporterClientError> {
         let mut ws_url: Url = base_url.parse().map_err(PriceReporterClientError::parsing)?;
         ws_url
             .set_scheme("wss")
@@ -83,7 +85,10 @@ impl PriceReporterClient {
             .map(|t| t.get_addr())
             .collect();
 
-        Ok(Self { base_url, multi_price_stream: MultiPriceStream::new(ws_url.to_string(), mints) })
+        Ok(Self {
+            base_url,
+            multi_price_stream: MultiPriceStream::new(ws_url.to_string(), mints, exit_on_stale),
+        })
     }
 
     /// A convenience method for fetching the current price of ETH in USDC.

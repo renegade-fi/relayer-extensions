@@ -254,3 +254,29 @@ pub fn round_up(value: f64, decimals: i64) -> Result<f64, FundsManagerError> {
         "Failed to convert {rounded_value_bigdecimal} to a f64"
     )))
 }
+
+/// Convert a `warp::hyper::HeaderMap` (using the old `http` crate version)
+/// into a fresh `http::HeaderMap` that comes from the new 1.x `http` crate.
+///
+/// We avoid the `IntoHeaderName` trait conflict that arises when two
+/// different `http` crate versions are in the dependency graph by copying
+/// header names/values byte‐for‐byte into the new types.
+pub fn convert_headers(headers: &warp::hyper::HeaderMap) -> http1::HeaderMap {
+    let mut converted = http1::HeaderMap::new();
+    for (name, value) in headers.iter() {
+        let name_bytes = name.as_ref();
+        let name = match http1::header::HeaderName::from_bytes(name_bytes) {
+            Ok(n) => n,
+            Err(_) => continue, // Skip invalid names
+        };
+
+        let value_bytes = value.as_ref();
+        let value = match http1::HeaderValue::from_bytes(value_bytes) {
+            Ok(v) => v,
+            Err(_) => continue, // Skip invalid values
+        };
+        converted.append(name, value);
+    }
+
+    converted
+}

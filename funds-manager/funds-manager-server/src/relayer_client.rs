@@ -3,9 +3,10 @@
 use std::time::Duration;
 
 use alloy::signers::local::PrivateKeySigner;
-use http::HeaderMap;
+use base64::engine::{general_purpose as b64_general_purpose, Engine};
+use http::{HeaderMap, HeaderValue};
 use renegade_api::{
-    auth::add_expiring_auth_to_headers,
+    auth::create_request_signature,
     http::{
         task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
         wallet::{
@@ -16,6 +17,7 @@ use renegade_api::{
         },
     },
     types::ApiKeychain,
+    RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
 use renegade_common::types::{
     chain::Chain,
@@ -28,13 +30,13 @@ use renegade_common::types::{
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_biguint;
-use renegade_util::err_str;
+use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::error::FundsManagerError;
+use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The interval at which to poll relayer task status
 const POLL_INTERVAL_MS: u64 = 1000;
@@ -317,4 +319,27 @@ fn reqwest_client() -> Result<Client, FundsManagerError> {
         .user_agent("fee-sweeper")
         .build()
         .map_err(|_| FundsManagerError::custom("Failed to create reqwest client"))
+}
+
+/// Authenticate a relayer request
+///
+/// We copy the inner auth logic here because we need to convert the headers
+/// to work with the relayer's `http` crate version
+fn add_expiring_auth_to_headers(
+    path: &str,
+    headers: &mut HeaderMap,
+    body: &[u8],
+    key: &HmacKey,
+    expiration: Duration,
+) {
+    // Add a timestamp
+    let expiration_ts = get_current_time_millis() + expiration.as_millis() as u64;
+    headers.insert(RENEGADE_SIG_EXPIRATION_HEADER_NAME, expiration_ts.into());
+
+    // Add the signature
+    let converted_headers = convert_headers(headers);
+    let sig = create_request_signature(path, &converted_headers, body, key);
+    let b64_sig = b64_general_purpose::STANDARD_NO_PAD.encode(sig);
+    let sig_header = HeaderValue::from_str(&b64_sig).expect("b64 encoding should not fail");
+    headers.insert(RENEGADE_AUTH_HEADER_NAME, sig_header);
 }

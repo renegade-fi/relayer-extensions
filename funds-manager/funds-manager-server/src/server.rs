@@ -58,7 +58,10 @@ impl Server {
             .unwrap()?;
         }
 
-        let price_reporter = Arc::new(PriceReporterClient::new(args.price_reporter_url.clone())?);
+        let price_reporter = Arc::new(PriceReporterClient::new(
+            args.price_reporter_url.clone(),
+            true, // exit_on_stale
+        )?);
 
         let hmac_key = args.get_hmac_key();
 
