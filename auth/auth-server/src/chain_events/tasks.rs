@@ -8,6 +8,7 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
 use crate::chain_events::utils::GPv2Settlement;
+use crate::telemetry::helpers::extend_labels_with_side;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -56,7 +57,8 @@ impl OnChainEventListenerExecutor {
             &labels,
         );
 
-        let labels = extend_labels_with_base_asset(&match_result.base_mint, labels);
+        labels = extend_labels_with_base_asset(&match_result.base_mint, labels);
+        labels = extend_labels_with_side(&match_result.direction, labels);
         record_volume_with_tags(
             &match_result.quote_mint,
             match_result.quote_amount,
