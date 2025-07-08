@@ -111,6 +111,16 @@ pub(crate) fn extend_labels_with_base_asset(
     labels
 }
 
+/// Extends the given labels with a side tag
+pub(crate) fn extend_labels_with_side(
+    side: &OrderSide,
+    mut labels: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    let side_label = if side == &OrderSide::Sell { "sell" } else { "buy" };
+    labels.insert(0, (SIDE_TAG.to_string(), side_label.to_string()));
+    labels
+}
+
 /// Record a volume metric with the given extra tags
 pub(crate) fn record_volume_with_tags(
     mint: &str,
