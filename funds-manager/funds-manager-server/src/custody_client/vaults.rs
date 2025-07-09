@@ -77,7 +77,8 @@ impl CustodyClient {
     /// For native assets, this will return a `TokenBalance` with a zero mint
     /// address.
     ///
-    /// If the asset has a zero balance, this will return `None`.
+    /// If the asset has a zero balance, or is an unsupported native asset,
+    /// this will return `None`.
     async fn try_get_token_balance_for_asset(
         &self,
         asset: VaultAsset,
@@ -89,14 +90,14 @@ impl CustodyClient {
 
         let asset_onchain_data = self.get_asset_onchain_data(&asset.id).await?;
 
-        // Skip if the asset has no address, e.g. if it's a native asset
+        // We use the zero address to represent native assets
         let mint = if self.get_current_env_native_asset_ids()?.contains(&asset.id.as_str()) {
             format!("{:#x}", Address::ZERO)
+        } else if let Some(address) = asset_onchain_data.address {
+            address
         } else {
-            asset_onchain_data.address.ok_or(FundsManagerError::fireblocks(format!(
-                "asset {} has no address",
-                &asset.id
-            )))?
+            // Skip any unsupported native assets
+            return Ok(None);
         };
 
         let amount_f64 = total_f64 * 10_f64.powf(asset_onchain_data.decimals as f64);
