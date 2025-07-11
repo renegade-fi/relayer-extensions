@@ -138,7 +138,8 @@ impl Server {
 
         // Apply gas sponsorship to the resulting bundle, if necessary
         let sponsored_resp = self.sponsor_match_response(&ctx)?;
-        overwrite_response_body(&mut resp, sponsored_resp.clone())?;
+        let should_stringify = ctx.should_stringify_body();
+        overwrite_response_body(&mut resp, sponsored_resp.clone(), should_stringify)?;
 
         // Record metrics
         let ctx = SponsoredAssembleQuoteResponseCtx::from_assemble_quote_response_ctx(

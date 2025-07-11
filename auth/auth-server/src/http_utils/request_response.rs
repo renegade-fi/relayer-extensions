@@ -12,6 +12,7 @@ use warp::http::Response as HttpResponse;
 use warp::reply::Reply;
 
 use crate::error::AuthServerError;
+use crate::http_utils::stringify_formatter::json_serialize;
 
 /// An error with the HTTP client
 #[derive(Debug, Error)]
@@ -108,8 +109,10 @@ pub fn empty_json_reply() -> impl Reply {
 pub fn overwrite_response_body<T: Serialize>(
     resp: &mut HttpResponse<Bytes>,
     body: T,
+    stringify: bool,
 ) -> Result<(), AuthServerError> {
-    let body_bytes = Bytes::from(serde_json::to_vec(&body).map_err(AuthServerError::serde)?);
+    let serialized = json_serialize(&body, stringify)?;
+    let body_bytes = Bytes::from(serialized);
 
     resp.headers_mut().insert(CONTENT_LENGTH, body_bytes.len().into());
     *resp.body_mut() = body_bytes;

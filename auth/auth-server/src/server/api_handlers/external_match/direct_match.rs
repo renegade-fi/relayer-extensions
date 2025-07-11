@@ -134,7 +134,8 @@ impl Server {
 
         // Apply gas sponsorship to the response
         let sponsored_resp = self.sponsor_direct_match_response(&ctx)?;
-        overwrite_response_body(&mut resp, sponsored_resp.clone())?;
+        let should_stringify = ctx.should_stringify_body();
+        overwrite_response_body(&mut resp, sponsored_resp.clone(), should_stringify)?;
 
         // Record metrics
         let ctx =
