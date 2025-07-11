@@ -5,7 +5,7 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
-use renegade_common::types::{exchange::Exchange, Price};
+use renegade_common::types::{exchange::Exchange, price::Price};
 use renegade_price_reporter::{
     errors::ExchangeConnectionError,
     exchange::{connect_exchange, ExchangeConnection},

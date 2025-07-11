@@ -12,13 +12,19 @@ hyper = { version = "0.14", features = ["http1", "http2", "server", "tcp"] }
 matchit = "0.7"
 
 # === Runtime === #
-tokio = "1"
 async-trait = "0.1"
+futures = "0.3"
 futures-util = "0.3"
+tokio = "1"
 
 # === Serde === #
 serde = "1"
 serde_json = "1"
+
+# === HTTP === #
+jsonwebtoken = "9.3"
+reqwest = { version = "0.12", features = ["json"] }
+url = "2.4"
 
 # === Telemetry === #
 thiserror = { workspace = true }
@@ -26,8 +32,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # === Misc === #
+atomic_float = "0.1"
 derivative = "2.2.0"
 itertools = "0.10"
+lazy_static = "1.4"
 
 # === Renegade === #
 renegade-price-reporter = { package = "price-reporter", workspace = true }

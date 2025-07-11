@@ -8061,15 +8061,20 @@ name = "renegade-price-reporter"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atomic_float 0.1.0",
  "common",
  "config",
  "derivative",
  "external-api",
+ "futures",
  "futures-util",
  "hyper 0.14.32",
  "itertools 0.10.5",
+ "jsonwebtoken 9.3.1",
+ "lazy_static",
  "matchit 0.7.3",
  "price-reporter",
+ "reqwest 0.12.19",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -8079,6 +8084,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.19",
  "tungstenite 0.18.0",
+ "url",
  "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?rev=c8938f1)",
 ]
 
