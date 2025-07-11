@@ -1,7 +1,7 @@
 //! Handles key management requests
 
 use crate::{
-    http_utils::empty_json_reply,
+    http_utils::request_response::empty_json_reply,
     server::{db::models::NewApiKey, helpers::aes_encrypt},
 };
 use auth_server_api::{

@@ -1393,6 +1393,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "external-api",
+ "eyre",
  "futures-util",
  "http 0.2.12",
  "http 1.3.1",
