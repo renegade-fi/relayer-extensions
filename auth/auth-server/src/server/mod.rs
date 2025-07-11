@@ -15,7 +15,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
 use crate::error::AuthServerError;
-use crate::http_utils::convert_headers;
+use crate::http_utils::request_response::convert_headers;
 use crate::telemetry::quote_comparison::handler::QuoteComparisonHandler;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;

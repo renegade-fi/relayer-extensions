@@ -11,7 +11,7 @@ use warp::{reject::Rejection, reply::Reply};
 
 use crate::{
     error::AuthServerError,
-    http_utils::overwrite_response_body,
+    http_utils::request_response::overwrite_response_body,
     server::{
         api_handlers::{
             external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,

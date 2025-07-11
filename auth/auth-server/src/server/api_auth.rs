@@ -8,7 +8,7 @@ use tracing::{info, instrument};
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
-use crate::{error::AuthServerError, http_utils::convert_headers, ApiError};
+use crate::{error::AuthServerError, http_utils::request_response::convert_headers, ApiError};
 
 use super::{helpers::aes_decrypt, Server};
 

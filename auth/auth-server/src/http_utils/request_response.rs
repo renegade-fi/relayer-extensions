@@ -1,13 +1,14 @@
-//! General-purpose HTTP utilities
+//! Request and response utilities
 
 use std::time::Duration;
 
 use bytes::Bytes;
-use http::{header::CONTENT_LENGTH, Response as HttpResponse};
+use http::header::CONTENT_LENGTH;
 use reqwest::{Client, Response};
 use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
+use warp::http::Response as HttpResponse;
 use warp::reply::Reply;
 
 use crate::error::AuthServerError;
@@ -65,25 +66,6 @@ pub fn convert_headers(headers: &warp::hyper::HeaderMap) -> http1::HeaderMap {
 // ------------
 // | Requests |
 // ------------
-
-/// Sends a basic GET request
-pub async fn send_get_request(url: &str, timeout_secs: u64) -> Result<Response, HttpError> {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(timeout_secs))
-        .build()
-        .map_err(HttpError::Network)?;
-
-    let response = client.get(url).send().await.map_err(HttpError::Network)?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let message = response.text().await.map_err(HttpError::parsing)?;
-
-        return Err(HttpError::Api(format!("Status {}: {}", status, message)));
-    }
-
-    Ok(response)
-}
 
 /// Sends a basic POST request
 pub async fn send_post_request<T: Serialize>(
