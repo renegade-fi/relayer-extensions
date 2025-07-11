@@ -13,8 +13,8 @@ use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
     hmac::HmacKey,
+    price::Price,
     token::{default_exchange_stable as _default_exchange_stable, read_token_remaps, Token},
-    Price,
 };
 use renegade_config::setup_token_remaps;
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;

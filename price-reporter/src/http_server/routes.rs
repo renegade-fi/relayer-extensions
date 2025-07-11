@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
 use renegade_api::auth::validate_expiring_auth;
-use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey, Price};
+use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey, price::Price};
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 

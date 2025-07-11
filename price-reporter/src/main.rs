@@ -6,6 +6,7 @@
 #![deny(clippy::missing_docs_in_private_items)]
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
+#![feature(let_chains)]
 
 use std::{collections::HashSet, net::SocketAddr};
 
@@ -25,6 +26,7 @@ use utils::{
 use ws_server::{handle_connection, GlobalPriceStreams};
 
 mod errors;
+mod exchanges;
 mod http_server;
 mod utils;
 mod ws_server;
