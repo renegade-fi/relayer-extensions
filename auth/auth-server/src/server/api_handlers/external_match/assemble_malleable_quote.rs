@@ -116,7 +116,8 @@ impl Server {
 
         // Apply gas sponsorship to the resulting bundle, if necessary
         let sponsored_match_resp = self.sponsor_malleable_assembly_response(ctx)?;
-        overwrite_response_body(&mut resp, sponsored_match_resp.clone())?;
+        let should_stringify = ctx.should_stringify_body();
+        overwrite_response_body(&mut resp, sponsored_match_resp.clone(), should_stringify)?;
 
         // Record metrics
         let ctx =

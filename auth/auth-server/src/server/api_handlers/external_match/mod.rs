@@ -7,7 +7,7 @@ mod quote;
 
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
-use http::{HeaderMap, Method, Response, StatusCode};
+use http::{header::ACCEPT, HeaderMap, Method, Response, StatusCode};
 use num_bigint::BigUint;
 use renegade_common::types::token::Token;
 use serde::{Deserialize, Serialize};
@@ -186,6 +186,16 @@ impl<
     /// Get a reference to the gas sponsorship info
     pub fn sponsorship_info(&self) -> Option<GasSponsorshipInfo> {
         self.sponsorship_info.clone()
+    }
+
+    /// Whether the response body should stringify numeric types
+    ///
+    /// This is encoded in the accept header by setting `number=string`
+    pub fn should_stringify_body(&self) -> bool {
+        self.headers
+            .get(ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.contains("number=string"))
     }
 }
 

@@ -148,7 +148,8 @@ impl Server {
 
         // Otherwise, apply gas sponsorship and post-process the quote
         let sponsored_resp = self.sponsor_response(&ctx)?;
-        overwrite_response_body(&mut resp, sponsored_resp.clone())?;
+        let should_stringify = ctx.should_stringify_body();
+        overwrite_response_body(&mut resp, sponsored_resp.clone(), should_stringify)?;
 
         // Start a thread to record metrics and return
         let ctx = SponsoredQuoteResponseCtx::from_quote_response_ctx(sponsored_resp, ctx);

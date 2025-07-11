@@ -11,14 +11,14 @@ use crate::error::AuthServerError;
 pub(crate) fn json_serialize<T: Serialize>(
     value: &T,
     stringify: bool,
-) -> Result<String, AuthServerError> {
+) -> Result<Vec<u8>, AuthServerError> {
     if stringify {
         let mut buf = Vec::new();
         let mut ser = Serializer::with_formatter(&mut buf, StringifyNumbersFormatter::default());
-        value.serialize(&mut ser).unwrap();
-        String::from_utf8(buf).map_err(AuthServerError::serde)
+        value.serialize(&mut ser).map_err(AuthServerError::serde)?;
+        Ok(buf)
     } else {
-        serde_json::to_string(&value).map_err(AuthServerError::serde)
+        serde_json::to_vec(&value).map_err(AuthServerError::serde)
     }
 }
 
@@ -255,8 +255,8 @@ mod test {
     #[test]
     fn test_json_serialize() -> Result<()> {
         let test_struct = TestStruct::new();
-        let json = json_serialize(&test_struct, false /* stringify */)?;
-        let deser: TestStruct = serde_json::from_str(&json)?;
+        let json_buf = json_serialize(&test_struct, false /* stringify */)?;
+        let deser: TestStruct = serde_json::from_slice(&json_buf)?;
         assert_eq!(test_struct, deser);
         Ok(())
     }
@@ -265,8 +265,8 @@ mod test {
     #[test]
     fn test_stringify_numbers_formatter() -> Result<()> {
         let test_struct = TestStruct::new();
-        let json = json_serialize(&test_struct, true /* stringify */)?;
-        let stringified_deser: StringifiedTestStruct = serde_json::from_str(&json)?;
+        let json_buf = json_serialize(&test_struct, true /* stringify */)?;
+        let stringified_deser: StringifiedTestStruct = serde_json::from_slice(&json_buf)?;
 
         assert_eq!(test_struct.a, stringified_deser.a.parse::<u128>().unwrap());
         assert_eq!(test_struct.b, stringified_deser.b.parse::<u64>().unwrap());
