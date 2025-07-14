@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use http::header::CONTENT_LENGTH;
+use http::header::{ACCEPT, CONTENT_LENGTH};
+use http::HeaderMap;
 use reqwest::{Client, Response};
 use serde::Serialize;
 use serde_json::json;
@@ -67,6 +68,11 @@ pub fn convert_headers(headers: &warp::hyper::HeaderMap) -> http1::HeaderMap {
 // ------------
 // | Requests |
 // ------------
+
+/// Whether or not to stringify numbers in the request/response body
+pub fn should_stringify_numbers(headers: &HeaderMap) -> bool {
+    headers.get(ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("number=string"))
+}
 
 /// Sends a basic POST request
 pub async fn send_post_request<T: Serialize>(

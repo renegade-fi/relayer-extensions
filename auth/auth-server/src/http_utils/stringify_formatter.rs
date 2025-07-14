@@ -14,6 +14,9 @@ use serde_json::{
 
 use crate::error::AuthServerError;
 
+/// Keys to ignore when converting stringified numbers in a deserialization
+const IGNORED_KEYS: [&str; 1] = ["price"];
+
 // --------------
 // | Serializer |
 // --------------
@@ -171,8 +174,8 @@ impl Default for StringifyNumbersFormatter {
 // ----------------
 
 /// Deserialize a value from json, possibly parsing stringified numbers
-fn json_deserialize<'de, T: DeserializeOwned>(
-    buf: &'de [u8],
+pub(crate) fn json_deserialize<T: DeserializeOwned>(
+    buf: &[u8],
     stringify: bool,
 ) -> Result<T, AuthServerError> {
     if stringify {
@@ -202,7 +205,11 @@ fn convert_stringified_numbers(val: &mut Value) -> Result<(), AuthServerError> {
 
         // Recurse into objects and arrays
         Value::Object(map) => {
-            for (_, value) in map.iter_mut() {
+            for (key, value) in map.iter_mut() {
+                if should_ignore_key(key.as_str(), value) {
+                    continue;
+                }
+
                 convert_stringified_numbers(value)?;
             }
         },
@@ -221,6 +228,17 @@ fn convert_stringified_numbers(val: &mut Value) -> Result<(), AuthServerError> {
 /// This can be an integer or floating point value
 fn is_numeric(s: &str) -> bool {
     s.parse::<f64>().is_ok()
+}
+
+/// Whether a key should be ignored when converting stringified numbers in a
+/// deserialization
+fn should_ignore_key(key: &str, value: &Value) -> bool {
+    // Only ignore keys which directly correspond to a possibly stringified number
+    if value.is_object() || value.is_array() {
+        return false;
+    }
+
+    IGNORED_KEYS.contains(&key)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ mod quote;
 
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
-use http::{header::ACCEPT, HeaderMap, Method, Response, StatusCode};
+use http::{HeaderMap, Method, Response, StatusCode};
 use num_bigint::BigUint;
 use renegade_common::types::token::Token;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,12 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    error::AuthServerError, server::Server, telemetry::helpers::record_relayer_request_500,
+    error::AuthServerError,
+    http_utils::{
+        request_response::should_stringify_numbers, stringify_formatter::json_deserialize,
+    },
+    server::Server,
+    telemetry::helpers::record_relayer_request_500,
 };
 pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
 
@@ -192,10 +197,7 @@ impl<
     ///
     /// This is encoded in the accept header by setting `number=string`
     pub fn should_stringify_body(&self) -> bool {
-        self.headers
-            .get(ACCEPT)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.contains("number=string"))
+        should_stringify_numbers(&self.headers)
     }
 }
 
@@ -223,7 +225,8 @@ impl Server {
         let sdk_version = get_sdk_version(&headers);
 
         // Deserialize the request body, then build the context
-        let body: Req = serde_json::from_slice(&body).map_err(AuthServerError::bad_request)?;
+        let should_stringify = should_stringify_numbers(&headers);
+        let body: Req = json_deserialize(&body, should_stringify)?;
         self.validate_request_body(&body)?;
 
         Ok(RequestContext {
