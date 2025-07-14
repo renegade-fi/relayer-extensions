@@ -1,11 +1,25 @@
 //! A formatter which stringifies all numbers in a response
 
-use std::{fmt::Display, io};
+use std::{
+    fmt::Display,
+    io::{self},
+    str::FromStr,
+};
 
-use serde::Serialize;
-use serde_json::ser::{CompactFormatter, Formatter, Serializer};
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::{
+    ser::{CompactFormatter, Formatter, Serializer},
+    Number, Value,
+};
 
 use crate::error::AuthServerError;
+
+/// Keys to ignore when converting stringified numbers in a deserialization
+const IGNORED_KEYS: [&str; 1] = ["price"];
+
+// --------------
+// | Serializer |
+// --------------
 
 /// Serialize a value to json, possibly stringifying all numbers
 pub(crate) fn json_serialize<T: Serialize>(
@@ -155,6 +169,78 @@ impl Default for StringifyNumbersFormatter {
     }
 }
 
+// ----------------
+// | Deserializer |
+// ----------------
+
+/// Deserialize a value from json, possibly parsing stringified numbers
+pub(crate) fn json_deserialize<T: DeserializeOwned>(
+    buf: &[u8],
+    stringify: bool,
+) -> Result<T, AuthServerError> {
+    if stringify {
+        let mut val: Value = serde_json::from_slice(buf).map_err(AuthServerError::serde)?;
+        convert_stringified_numbers(&mut val)?;
+        serde_json::from_value(val).map_err(AuthServerError::serde)
+    } else {
+        serde_json::from_slice(buf).map_err(AuthServerError::serde)
+    }
+}
+
+/// Convert all the stringified numbers in a struct into numbers
+fn convert_stringified_numbers(val: &mut Value) -> Result<(), AuthServerError> {
+    match val {
+        // If we see a string, check if that string represents a number.
+        // If it does, we convert it to a number. Under the hood, `serde_json` uses
+        // a string type to represent arbitrary precision numbers, so we don't actually need
+        // the parsed value, we just need to annotate it as a number, and the deserializer will
+        // handle it correctly.
+        Value::String(s) => {
+            // Try parsing a number
+            if is_numeric(s) {
+                let num = Number::from_str(s).map_err(AuthServerError::serde)?;
+                *val = Value::Number(num);
+            }
+        },
+
+        // Recurse into objects and arrays
+        Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                if should_ignore_key(key.as_str(), value) {
+                    continue;
+                }
+
+                convert_stringified_numbers(value)?;
+            }
+        },
+        Value::Array(arr) => {
+            for value in arr.iter_mut() {
+                convert_stringified_numbers(value)?;
+            }
+        },
+        _ => {},
+    }
+    Ok(())
+}
+
+/// Returns whether the given string represents a number
+///
+/// This can be an integer or floating point value
+fn is_numeric(s: &str) -> bool {
+    s.parse::<f64>().is_ok()
+}
+
+/// Whether a key should be ignored when converting stringified numbers in a
+/// deserialization
+fn should_ignore_key(key: &str, value: &Value) -> bool {
+    // Only ignore keys which directly correspond to a possibly stringified number
+    if value.is_object() || value.is_array() {
+        return false;
+    }
+
+    IGNORED_KEYS.contains(&key)
+}
+
 #[cfg(test)]
 mod test {
     use eyre::Result;
@@ -286,6 +372,26 @@ mod test {
         let gd_parsed_array: [u128; 10] = gd_parsed.try_into().unwrap();
         assert_eq!(test_struct.g.d, gd_parsed_array);
 
+        Ok(())
+    }
+
+    /// Tests deserializing a struct without stringifying the numbers
+    #[test]
+    fn test_json_deserialize() -> Result<()> {
+        let test_struct = TestStruct::new();
+        let json_buf = json_serialize(&test_struct, false /* stringify */)?;
+        let deser: TestStruct = json_deserialize(&json_buf, false /* stringify */)?;
+        assert_eq!(test_struct, deser);
+        Ok(())
+    }
+
+    /// Tests deserializing a struct with stringified numbers
+    #[test]
+    fn test_json_deserialize_stringify() -> Result<()> {
+        let test_struct = TestStruct::new();
+        let json_buf = json_serialize(&test_struct, true /* stringify */)?;
+        let deser: TestStruct = json_deserialize(&json_buf, true /* stringify */)?;
+        assert_eq!(test_struct, deser);
         Ok(())
     }
 }
