@@ -16,4 +16,6 @@ target/
 /.gitattributes
 
 **/*.env*
+# Ignore all JSON files except environment.json
 **/*.json
+!environment.json
