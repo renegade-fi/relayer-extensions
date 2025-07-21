@@ -8,19 +8,22 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
 use crate::chain_events::utils::GPv2Settlement;
-use crate::telemetry::helpers::extend_labels_with_side;
+use crate::telemetry::labels::QUOTER_MATCH_SPREAD_COST;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
     telemetry::{
-        helpers::{extend_labels_with_base_asset, record_volume_with_tags},
+        helpers::{
+            extend_labels_with_base_asset, extend_labels_with_side, record_volume_with_tags,
+        },
         labels::{
-            EXTERNAL_MATCH_ASSEMBLY_DELAY, EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY,
-            EXTERNAL_MATCH_SETTLED_BASE_VOLUME, EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
-            EXTERNAL_MATCH_SETTLEMENT_DELAY, GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE,
-            KEY_DESCRIPTION_METRIC_TAG, L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG,
-            REFUND_ASSET_TAG, REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG,
-            SDK_VERSION_METRIC_TAG, SETTLED_VIA_COWSWAP_TAG, SETTLEMENT_STATUS_TAG,
+            ASSET_METRIC_TAG, EXTERNAL_MATCH_ASSEMBLY_DELAY,
+            EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY, EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
+            EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLEMENT_DELAY,
+            GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG,
+            L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG, REFUND_ASSET_TAG,
+            REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
+            SETTLED_VIA_COWSWAP_TAG, SETTLEMENT_STATUS_TAG, SIDE_TAG,
         },
     },
 };
@@ -65,6 +68,59 @@ impl OnChainEventListenerExecutor {
             EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             &labels,
         );
+
+        Ok(())
+    }
+
+    /// Record the cost due to spread on a quoter match against a sampled
+    /// reference price. A few caveats:
+    /// 1. We don't have to remove the effects of gas sponsorship from the match
+    ///    result, as it is parsed from settlement calldata, where sponsorship
+    ///    is already factored out.
+    /// 2. We use the match base/quote amounts to compute the trade price, as
+    ///    opposed to the send/receive amounts on the bundle. This is so that we
+    ///    don't factor fees into the spread. Since we are the entity collecting
+    ///    the fees, their impact on the trade price does not constitute a cost.
+    /// 3. We sample a reference price w/in this method, meaning it should be
+    ///    called as close to the actual time of settlement as possible.
+    pub async fn record_quoter_match_spread_cost(
+        &self,
+        ctx: &BundleContext,
+        match_result: &ApiExternalMatchResult,
+    ) -> Result<(), AuthServerError> {
+        let reference_price =
+            self.price_reporter_client.get_price(&match_result.base_mint, self.chain).await?;
+
+        let base_token = Token::from_addr_on_chain(&match_result.base_mint, self.chain);
+        let quote_token = Token::from_addr_on_chain(&match_result.quote_mint, self.chain);
+
+        let base_amount_decimal = base_token.convert_to_decimal(match_result.base_amount);
+        let quote_amount_decimal = quote_token.convert_to_decimal(match_result.quote_amount);
+
+        let match_price = quote_amount_decimal / base_amount_decimal;
+
+        let trade_side_factor = match match_result.direction {
+            OrderSide::Buy => 1.0,
+            OrderSide::Sell => -1.0,
+        };
+
+        let relative_spread = trade_side_factor * (match_price - reference_price) / reference_price;
+        let spread_cost = quote_amount_decimal * relative_spread;
+
+        let side_tag_value = match match_result.direction {
+            OrderSide::Buy => "buy",
+            OrderSide::Sell => "sell",
+        };
+        let asset_tag_value = base_token.get_ticker().unwrap_or(base_token.get_addr());
+
+        let labels = vec![
+            (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.clone()),
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.key_description.clone()),
+            (ASSET_METRIC_TAG.to_string(), asset_tag_value),
+            (SIDE_TAG.to_string(), side_tag_value.to_string()),
+        ];
+
+        metrics::gauge!(QUOTER_MATCH_SPREAD_COST, &labels).set(spread_cost);
 
         Ok(())
     }
