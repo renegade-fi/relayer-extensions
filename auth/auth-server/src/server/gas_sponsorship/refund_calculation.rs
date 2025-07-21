@@ -105,25 +105,17 @@ pub fn remove_gas_sponsorship_from_quote(
     quote: &mut ApiExternalQuote,
     gas_sponsorship_info: &GasSponsorshipInfo,
 ) {
-    let (base_amount, quote_amount) = match quote.match_result.direction {
-        OrderSide::Buy => (
-            quote.match_result.base_amount - gas_sponsorship_info.refund_amount,
-            quote.match_result.quote_amount,
-        ),
-        OrderSide::Sell => (
-            quote.match_result.base_amount,
-            quote.match_result.quote_amount - gas_sponsorship_info.refund_amount,
-        ),
-    };
+    remove_gas_sponsorship_from_match_result(
+        &mut quote.match_result,
+        gas_sponsorship_info.refund_amount,
+    );
 
-    let base_amt_f64 = base_amount as f64;
-    let quote_amt_f64 = quote_amount as f64;
+    let base_amt_f64 = quote.match_result.base_amount as f64;
+    let quote_amt_f64 = quote.match_result.quote_amount as f64;
     let price = quote_amt_f64 / base_amt_f64;
 
     quote.price.price = price.to_string();
     quote.receive.amount -= gas_sponsorship_info.refund_amount;
-    quote.match_result.base_amount = base_amount;
-    quote.match_result.quote_amount = quote_amount;
 
     // Subtract the refund amount from the exact output amount requested in the
     // order, to match the order received & signed by the relayer
@@ -183,6 +175,22 @@ pub(crate) fn apply_gas_sponsorship_to_match_result(
     let (base_amount, quote_amount) = match match_result.direction {
         OrderSide::Buy => (match_result.base_amount + refund_amount, match_result.quote_amount),
         OrderSide::Sell => (match_result.base_amount, match_result.quote_amount + refund_amount),
+    };
+
+    match_result.base_amount = base_amount;
+    match_result.quote_amount = quote_amount;
+}
+
+/// Remove the effects of gas sponsorship from a match result.
+/// This method assumes that the refund was in-kind, i.e. that the refund
+/// amount is in terms of the buy-side token.
+pub(crate) fn remove_gas_sponsorship_from_match_result(
+    match_result: &mut ApiExternalMatchResult,
+    refund_amount: u128,
+) {
+    let (base_amount, quote_amount) = match match_result.direction {
+        OrderSide::Buy => (match_result.base_amount - refund_amount, match_result.quote_amount),
+        OrderSide::Sell => (match_result.base_amount, match_result.quote_amount - refund_amount),
     };
 
     match_result.base_amount = base_amount;
