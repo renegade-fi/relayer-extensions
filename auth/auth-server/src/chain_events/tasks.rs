@@ -8,7 +8,7 @@ use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
 use crate::chain_events::utils::GPv2Settlement;
-use crate::telemetry::labels::QUOTER_MATCH_SPREAD_COST;
+use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -72,18 +72,20 @@ impl OnChainEventListenerExecutor {
         Ok(())
     }
 
-    /// Record the cost due to spread on a quoter match against a sampled
-    /// reference price. A few caveats:
+    /// Record the cost experienced by the internal party in an external match
+    /// due to the spread between the match price and the reference price at the
+    /// time of settlement
     /// 1. We don't have to remove the effects of gas sponsorship from the match
     ///    result, as it is parsed from settlement calldata, where sponsorship
     ///    is already factored out.
     /// 2. We use the match base/quote amounts to compute the trade price, as
     ///    opposed to the send/receive amounts on the bundle. This is so that we
-    ///    don't factor fees into the spread. Since we are the entity collecting
-    ///    the fees, their impact on the trade price does not constitute a cost.
+    ///    don't factor fees into the spread. We are interested in the cost
+    ///    purely due to price drift between price sampling for the quote and
+    ///    settlement.
     /// 3. We sample a reference price w/in this method, meaning it should be
     ///    called as close to the actual time of settlement as possible.
-    pub async fn record_quoter_match_spread_cost(
+    pub async fn record_external_match_spread_cost(
         &self,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
@@ -99,7 +101,10 @@ impl OnChainEventListenerExecutor {
 
         let match_price = quote_amount_decimal / base_amount_decimal;
 
-        let trade_side_factor = match match_result.direction {
+        // The internal party takes the *opposite* side of the direction specified in
+        // the `ApiExternalMatchResult`, so we must record spread cost from
+        // their perspective accordingly
+        let trade_side_factor = match match_result.direction.opposite() {
             OrderSide::Buy => 1.0,
             OrderSide::Sell => -1.0,
         };
@@ -120,7 +125,7 @@ impl OnChainEventListenerExecutor {
             (SIDE_TAG.to_string(), side_tag_value.to_string()),
         ];
 
-        metrics::gauge!(QUOTER_MATCH_SPREAD_COST, &labels).set(spread_cost);
+        metrics::gauge!(EXTERNAL_MATCH_SPREAD_COST, &labels).set(spread_cost);
 
         Ok(())
     }

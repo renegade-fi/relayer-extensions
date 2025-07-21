@@ -61,9 +61,10 @@ pub const UNSUCCESSFUL_RELAYER_REQUEST_COUNT: &str = "num_unsuccessful_relayer_r
 /// Metric describing the number of times a quote was not found
 pub const QUOTE_NOT_FOUND_COUNT: &str = "num_quotes_not_found";
 
-/// Metric describing the cost due to spread on a quoter match against the
-/// reference price
-pub const QUOTER_MATCH_SPREAD_COST: &str = "quoter_match_spread_cost";
+/// Metric describing the cost experienced by the internal party
+/// in an external match due to the spread between the match price
+/// and the reference price at the time of settlement
+pub const EXTERNAL_MATCH_SPREAD_COST: &str = "external_match_spread_cost";
 
 // ---------------
 // | METRIC TAGS |
