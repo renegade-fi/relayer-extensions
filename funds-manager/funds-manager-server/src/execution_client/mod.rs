@@ -12,11 +12,13 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use http::StatusCode;
+use price_reporter_client::PriceReporterClient;
+use renegade_common::types::chain::Chain;
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use tracing::{error, instrument};
 
-use crate::helpers::{build_provider, send_tx_with_retry, ONE_CONFIRMATION};
+use crate::helpers::{build_provider, get_erc20_balance, send_tx_with_retry, ONE_CONFIRMATION};
 
 use self::error::ExecutionClientError;
 
@@ -26,6 +28,8 @@ const API_KEY_HEADER: &str = "x-lifi-api-key";
 /// The client for interacting with the execution venue
 #[derive(Clone)]
 pub struct ExecutionClient {
+    /// The chain on which the execution client settles transactions
+    chain: Chain,
     /// The API key to use for requests
     api_key: Option<String>,
     /// The base URL for the execution client
@@ -34,18 +38,29 @@ pub struct ExecutionClient {
     http_client: Arc<Client>,
     /// The RPC provider
     rpc_provider: DynProvider,
+    /// The price reporter client
+    price_reporter: PriceReporterClient,
 }
 
 impl ExecutionClient {
     /// Create a new client
     pub fn new(
+        chain: Chain,
         api_key: Option<String>,
         base_url: String,
         rpc_url: &str,
+        price_reporter: PriceReporterClient,
     ) -> Result<Self, ExecutionClientError> {
         let rpc_provider = build_provider(rpc_url).map_err(ExecutionClientError::parse)?;
 
-        Ok(Self { api_key, base_url, http_client: Arc::new(Client::new()), rpc_provider })
+        Ok(Self {
+            chain,
+            api_key,
+            base_url,
+            http_client: Arc::new(Client::new()),
+            rpc_provider,
+            price_reporter,
+        })
     }
 
     /// Get a full URL for a given endpoint
@@ -100,6 +115,17 @@ impl ExecutionClient {
     ) -> Result<TransactionReceipt, ExecutionClientError> {
         send_tx_with_retry(tx, client, ONE_CONFIRMATION)
             .await
-            .map_err(ExecutionClientError::arbitrum)
+            .map_err(ExecutionClientError::onchain)
+    }
+
+    /// Get the erc20 balance of an address
+    pub(crate) async fn get_erc20_balance(
+        &self,
+        token_address: &str,
+        address: &str,
+    ) -> Result<f64, ExecutionClientError> {
+        get_erc20_balance(token_address, address, self.rpc_provider.clone())
+            .await
+            .map_err(ExecutionClientError::onchain)
     }
 }

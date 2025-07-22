@@ -133,7 +133,7 @@ impl MultiPriceStreamState {
 
 /// A multi-price stream that manages a WebSocket connection to the price
 /// reporter and provides access to the latest prices of the desired tokens
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MultiPriceStream {
     /// The inner state of the multi-price stream, made shareable via an `Arc`
     /// so that it can be updated by the websocket thread

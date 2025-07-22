@@ -3,10 +3,8 @@
 use crate::cli::Environment;
 use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
-use crate::error::{ApiError, FundsManagerError};
-use crate::execution_client::swap::LIFI_DIAMOND_ADDRESS;
+use crate::error::ApiError;
 use crate::Server;
-use alloy_primitives::Address;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
 use funds_manager_api::gas::{
@@ -232,37 +230,21 @@ pub(crate) async fn swap_immediate_handler(
     let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
-    // Approve the top-level sell amount
-    let sell_token_amount = params.from_amount;
-    let sell_token_address: Address =
-        params.from_token.parse().map_err(FundsManagerError::parse)?;
-
-    execution_client
-        .approve_erc20_allowance(
-            sell_token_address,
-            LIFI_DIAMOND_ADDRESS,
-            sell_token_amount,
-            &wallet,
-        )
-        .await?;
-
     // Execute the swap, decaying the size of the swap each time it fails to execute
-    let (augmented_quote, receipt, swap_gas_cost) =
-        execution_client.swap_immediate_decaying(chain, params, wallet).await?;
+    let outcome = execution_client.swap_immediate_decaying(params, wallet).await?;
 
     // Compute swap costs and respond
-    let execution_cost =
-        match metrics_recorder.record_swap_cost(&receipt, &augmented_quote, swap_gas_cost).await {
-            Ok(data) => data.execution_cost_usdc,
-            Err(e) => {
-                warn!("Failed to record swap cost metrics: {e}");
-                0.0 // Default to 0 USD
-            },
-        };
+    let execution_cost = match metrics_recorder.record_swap_cost(&outcome).await {
+        Ok(data) => data.execution_cost_usdc,
+        Err(e) => {
+            warn!("Failed to record swap cost metrics: {e}");
+            0.0 // Default to 0 USD
+        },
+    };
 
     Ok(warp::reply::json(&SwapImmediateResponse {
-        quote: augmented_quote.quote.clone(),
-        tx_hash: format!("{:#x}", receipt.transaction_hash),
+        quote: outcome.augmented_quote.quote.clone(),
+        tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
         execution_cost,
     }))
 }

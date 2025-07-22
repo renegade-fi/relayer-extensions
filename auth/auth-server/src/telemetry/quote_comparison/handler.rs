@@ -1,7 +1,5 @@
 //! Defines the quote comparison handler
 
-use std::sync::Arc;
-
 use alloy::providers::Provider;
 use alloy_primitives::{utils::format_units, U256};
 use futures_util::future::join_all;
@@ -32,7 +30,7 @@ pub struct QuoteComparisonHandler {
     /// The darkpool client
     darkpool_client: DarkpoolClient,
     /// The price reporter client
-    price_reporter_client: Arc<PriceReporterClient>,
+    price_reporter_client: PriceReporterClient,
 }
 
 impl QuoteComparisonHandler {
@@ -40,7 +38,7 @@ impl QuoteComparisonHandler {
     pub fn new(
         sources: Vec<QuoteSource>,
         darkpool_client: DarkpoolClient,
-        price_reporter_client: Arc<PriceReporterClient>,
+        price_reporter_client: PriceReporterClient,
     ) -> Self {
         Self { sources, darkpool_client, price_reporter_client }
     }

@@ -72,10 +72,10 @@ impl Server {
         )
         .await?;
 
-        let price_reporter_client = Arc::new(PriceReporterClient::new(
+        let price_reporter_client = PriceReporterClient::new(
             args.price_reporter_url.clone(),
             false, // exit_on_stale
-        )?);
+        )?;
 
         // Setup quote metrics
         let quote_metrics = maybe_setup_quote_metrics(
@@ -210,7 +210,7 @@ fn parse_auth_server_keys(
 fn maybe_setup_quote_metrics(
     args: &Cli,
     darkpool_client: DarkpoolClient,
-    price_reporter: Arc<PriceReporterClient>,
+    price_reporter: PriceReporterClient,
 ) -> Option<Arc<QuoteComparisonHandler>> {
     if !args.enable_quote_comparison {
         return None;

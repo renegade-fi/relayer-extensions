@@ -57,7 +57,7 @@ const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDec
 
 /// A client for the price reporter that supports both HTTP requests
 /// and websocket streaming for real-time price updates
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PriceReporterClient {
     /// The base URL of the price reporter
     base_url: String,

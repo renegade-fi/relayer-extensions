@@ -12,6 +12,7 @@ use alloy::{
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
+use alloy_primitives::{utils::format_units, Address};
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
@@ -111,6 +112,27 @@ pub async fn send_tx_with_retry(
     }
 
     Err(FundsManagerError::on_chain("Transaction failed after retries"))
+}
+
+/// Get the erc20 balance of an address
+pub async fn get_erc20_balance(
+    token_address: &str,
+    address: &str,
+    provider: DynProvider,
+) -> Result<f64, FundsManagerError> {
+    // Set up the contract instance
+    let token_address = Address::from_str(token_address).map_err(FundsManagerError::parse)?;
+    let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
+    let erc20 = IERC20::new(token_address, provider);
+
+    // Fetch the balance and correct for the ERC20 decimal precision
+    let decimals = erc20.decimals().call().await.map_err(FundsManagerError::on_chain)?;
+    let balance = erc20.balanceOf(address).call().await.map_err(FundsManagerError::on_chain)?;
+
+    let bal_str = format_units(balance, decimals).map_err(FundsManagerError::parse)?;
+    let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
+
+    Ok(bal_f64)
 }
 
 // -----------------------
