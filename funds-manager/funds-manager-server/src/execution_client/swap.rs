@@ -19,7 +19,7 @@ use funds_manager_api::{
 };
 use renegade_common::types::{
     chain::Chain,
-    token::{get_all_tokens, Token, STABLECOIN_TICKERS},
+    token::{get_all_tokens, Token},
 };
 use tracing::{info, instrument, warn};
 
@@ -134,7 +134,7 @@ impl ExecutionClient {
         &self,
         mut params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
-    ) -> Result<SwapOutcome, ExecutionClientError> {
+    ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
         // Approve the top-level sell amount
         let sell_token_amount = params.from_amount;
         let sell_token_address: Address =
@@ -150,7 +150,12 @@ impl ExecutionClient {
 
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let augmented_quote = self.get_augmented_quote(params.clone(), self.chain).await?;
+            let maybe_augmented_quote =
+                self.get_augmented_quote(params.clone(), self.chain).await?;
+            if maybe_augmented_quote.is_none() {
+                return Ok(None);
+            }
+            let augmented_quote = maybe_augmented_quote.unwrap();
 
             // Submit the swap
             let client = self.get_signing_provider(wallet.clone());
@@ -160,7 +165,7 @@ impl ExecutionClient {
 
             // If the swap succeeds, return
             if receipt.status() {
-                return Ok(SwapOutcome { augmented_quote, receipt, cumulative_gas_cost });
+                return Ok(Some(SwapOutcome { augmented_quote, receipt, cumulative_gas_cost }));
             }
 
             // Otherwise, decrease the swap size and try again
@@ -314,10 +319,10 @@ impl ExecutionClient {
     fn swap_candidate_predicate(&self, token: &Token, target_token: &Token) -> bool {
         let token_on_chain = token.get_chain() == self.chain;
         let token_not_target = token.get_addr() != target_token.get_addr();
-        let token_not_stablecoin =
-            !STABLECOIN_TICKERS.contains(&token.get_ticker().unwrap_or_default().as_str());
+        let token_not_stablecoin = !token.is_stablecoin();
+        let token_not_usd_mock = token.get_addr() != Address::ZERO.to_string();
 
-        token_on_chain && token_not_target && token_not_stablecoin
+        token_on_chain && token_not_target && token_not_stablecoin && token_not_usd_mock
     }
 
     /// Try to swap out of a candidate token to cover a target amount of a
@@ -359,7 +364,7 @@ impl ExecutionClient {
         };
 
         let swap_outcome = self.swap_immediate_decaying(swap_params, wallet).await?;
-        Ok(Some(swap_outcome))
+        Ok(swap_outcome)
     }
 
     // ----------------------------
@@ -372,19 +377,19 @@ impl ExecutionClient {
         &self,
         params: LiFiQuoteParams,
         chain: Chain,
-    ) -> Result<AugmentedExecutionQuote, ExecutionClientError> {
+    ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
         let quote = self.get_quote(params).await?;
         let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
 
         let quote_amount =
             augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
+
         if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            return Err(ExecutionClientError::custom(format!(
-                "Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
-            )));
+            warn!("Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            return Ok(None);
         }
 
-        Ok(augmented_quote)
+        Ok(Some(augmented_quote))
     }
 
     /// Approve an erc20 allowance

@@ -4,6 +4,7 @@ use crate::cli::Environment;
 use crate::custody_client::rpc_shim::JsonRpcRequest;
 use crate::custody_client::DepositWithdrawSource;
 use crate::error::ApiError;
+use crate::execution_client::error::ExecutionClientError;
 use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
@@ -231,7 +232,10 @@ pub(crate) async fn swap_immediate_handler(
     let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
 
     // Execute the swap, decaying the size of the swap each time it fails to execute
-    let outcome = execution_client.swap_immediate_decaying(params, wallet).await?;
+    let outcome = execution_client
+        .swap_immediate_decaying(params, wallet)
+        .await?
+        .ok_or(ExecutionClientError::custom("No swap executed".to_string()))?;
 
     // Compute swap costs and respond
     let execution_cost = match metrics_recorder.record_swap_cost(&outcome).await {
