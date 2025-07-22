@@ -12,7 +12,9 @@ use alloy::{
 };
 use alloy_primitives::{Address, U256};
 use funds_manager_api::{
-    quoters::{AugmentedExecutionQuote, ExecutionQuote, LiFiQuoteParams},
+    quoters::{
+        AugmentedExecutionQuote, ExecutionQuote, LiFiQuoteParams, SwapIntoTargetTokenRequest,
+    },
     u256_try_into_u64,
 };
 use renegade_common::types::{
@@ -174,11 +176,12 @@ impl ExecutionClient {
     /// Returns a vector of outcomes for the executed swaps.
     pub async fn try_swap_into_target_token(
         &self,
-        target_amount: f64,
-        params: LiFiQuoteParams,
+        req: SwapIntoTargetTokenRequest,
         wallet: PrivateKeySigner,
     ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
-        let target_token = Token::from_addr_on_chain(&params.to_token, self.chain);
+        let SwapIntoTargetTokenRequest { target_amount, quote_params } = req;
+
+        let target_token = Token::from_addr_on_chain(&quote_params.to_token, self.chain);
 
         // Check that the current token balances doesn't already cover the target amount
         let current_balance =
@@ -200,8 +203,13 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(target_token, amount_to_cover_usdc, params, wallet)
-            .await
+        self.execute_swaps_into_target_token(
+            target_token,
+            amount_to_cover_usdc,
+            quote_params,
+            wallet,
+        )
+        .await
     }
 
     // ---------------------------------

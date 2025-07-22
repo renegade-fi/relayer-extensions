@@ -39,8 +39,9 @@ use funds_manager_api::hot_wallets::{
     TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use funds_manager_api::quoters::{
-    LiFiQuoteParams, WithdrawFundsRequest, WithdrawToHyperliquidRequest, GET_DEPOSIT_ADDRESS_ROUTE,
-    SWAP_IMMEDIATE_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    LiFiQuoteParams, SwapIntoTargetTokenRequest, WithdrawFundsRequest,
+    WithdrawToHyperliquidRequest, GET_DEPOSIT_ADDRESS_ROUTE, SWAP_IMMEDIATE_ROUTE,
+    SWAP_INTO_TARGET_TOKEN_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
@@ -64,7 +65,7 @@ use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
-use crate::handlers::swap_immediate_handler;
+use crate::handlers::{swap_immediate_handler, swap_into_target_token_handler};
 
 // -------
 // | Cli |
@@ -178,6 +179,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .untuple_one()
         .and(with_server(server.clone()))
         .and_then(swap_immediate_handler);
+
+    let swap_into_target_token = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path("quoters"))
+        .and(warp::path(SWAP_INTO_TARGET_TOKEN_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_chain_and_json_body::<SwapIntoTargetTokenRequest>)
+        .and_then(identity)
+        .untuple_one()
+        .and(with_server(server.clone()))
+        .and_then(swap_into_target_token_handler);
 
     let withdraw_to_hyperliquid = warp::post()
         .and(warp::path("custody"))
@@ -334,6 +347,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(withdraw_custody)
         .or(get_deposit_address)
         .or(swap_immediate)
+        .or(swap_into_target_token)
         .or(withdraw_to_hyperliquid)
         .or(withdraw_gas)
         .or(refill_gas)
