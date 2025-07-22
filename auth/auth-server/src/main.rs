@@ -286,6 +286,38 @@ async fn main() {
             server.remove_whitelist_entry(id, path, headers, body).await
         });
 
+    // Get all user fees
+    let get_all_user_fees = warp::path!("v0" / "fees" / "get-per-user-fees")
+        .and(warp::get())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, server: Arc<Server>| async move {
+            server.get_all_user_fees(path, headers).await
+        });
+
+    // Set the default external match fee for an asset
+    let set_asset_default_fee = warp::path!("v0" / "fees" / "set-asset-default-fee")
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.set_asset_default_fee(path, headers, body).await
+        });
+
+    // Set the per-user fee override for an asset
+    let set_user_fee_override = warp::path!("v0" / "fees" / "set-user-fee-override")
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.set_user_fee_override(path, headers, body).await
+        });
+
     // --- Proxied Routes --- //
 
     let external_quote_path = warp::path("v0")
@@ -374,6 +406,9 @@ async fn main() {
         .or(remove_whitelist_entry)
         .or(add_api_key)
         .or(get_all_keys)
+        .or(get_all_user_fees)
+        .or(set_asset_default_fee)
+        .or(set_user_fee_override)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
         .boxed()
@@ -420,6 +455,8 @@ async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection>
         api_error_to_reply(&api_err)
     } else if err.is_not_found() {
         json_error("Not Found", StatusCode::NOT_FOUND)
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
+        json_error("Method Not Allowed", StatusCode::METHOD_NOT_ALLOWED)
     } else {
         error!("unhandled rejection: {:?}", err);
         json_error("Internal Server Error", StatusCode::INTERNAL_SERVER_ERROR)
