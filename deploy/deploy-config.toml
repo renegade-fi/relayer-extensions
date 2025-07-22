@@ -90,3 +90,29 @@ ecr_repo = "compliance-mainnet"
 [services.mainnet-compliance-server.deploy]
 environment = "mainnet"
 resource = "compliance"
+
+######################
+### Price Reporter ### 
+######################
+
+[services.testnet-price-reporter]
+[services.testnet-price-reporter.build]
+dockerfile = "price-reporter/Dockerfile"
+ecr_repo = "price-reporter-testnet"
+region = "ca-central-1"
+
+[services.testnet-price-reporter.deploy]
+environment = "testnet"
+resource = "price-reporter"
+region = "ca-central-1"
+
+[services.mainnet-price-reporter]
+[services.mainnet-price-reporter.build]
+dockerfile = "price-reporter/Dockerfile"
+ecr_repo = "price-reporter-mainnet"
+region = "ca-central-1"
+
+[services.mainnet-price-reporter.deploy]
+environment = "mainnet"
+resource = "price-reporter"
+region = "ca-central-1"
