@@ -10,3 +10,26 @@ diesel::table! {
         rate_limit_whitelisted -> Bool,
     }
 }
+
+diesel::table! {
+    asset_default_fees (asset) {
+        asset -> Varchar,
+        fee -> Float4,
+    }
+}
+
+diesel::table! {
+    user_fees (id, asset) {
+        id -> Uuid,
+        asset -> Varchar,
+        fee -> Float4,
+    }
+}
+
+diesel::joinable!(user_fees -> api_keys (id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    api_keys,
+    asset_default_fees,
+    user_fees,
+);
