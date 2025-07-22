@@ -69,6 +69,13 @@ struct SwapCandidate {
     pub price: f64,
 }
 
+impl SwapCandidate {
+    /// Compute the notional value of the swap candidate
+    pub fn notional_value(&self) -> f64 {
+        self.balance * self.price
+    }
+}
+
 // -----------
 // | Helpers |
 // -----------
@@ -165,42 +172,49 @@ impl ExecutionClient {
     /// first checking if any swaps are necessary.
     ///
     /// Returns a vector of outcomes for the executed swaps.
-    pub async fn try_swap_to_cover(
+    pub async fn try_swap_into_target_token(
         &self,
         target_amount: f64,
         params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
     ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
         let target_token = Token::from_addr_on_chain(&params.to_token, self.chain);
-        let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
 
         // Check that the current token balances doesn't already cover the target amount
         let current_balance =
             self.get_erc20_balance(&target_token.addr, &wallet.address().to_string()).await?;
 
         if current_balance >= target_amount {
+            let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
             info!("Current {ticker} balance ({current_balance}) is greater than target amount ({target_amount}), skipping swaps");
             return Ok(vec![]);
         }
 
         let amount_to_cover = target_amount - current_balance;
+        let price = self.price_reporter.get_price(&target_token.addr, self.chain).await?;
+        let amount_to_cover_usdc = amount_to_cover * price;
 
         // Check that the amount to cover is greater than the minimum swap amount
-        if amount_to_cover < MIN_SWAP_QUOTE_AMOUNT {
-            info!("Amount to cover ({amount_to_cover}) is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT}), skipping swaps");
+        if amount_to_cover_usdc < MIN_SWAP_QUOTE_AMOUNT {
+            info!("Target token value to cover (${amount_to_cover_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), skipping swaps");
             return Ok(vec![]);
         }
 
-        self.execute_swaps_to_cover(target_token, amount_to_cover, params, wallet).await
+        self.execute_swaps_into_target_token(target_token, amount_to_cover_usdc, params, wallet)
+            .await
     }
+
+    // ---------------------------------
+    // | Target Token Swapping Helpers |
+    // ---------------------------------
 
     /// Execute swaps to cover a target amount of a token.
     ///
     /// Returns a vector of outcomes for the executed swaps.
-    async fn execute_swaps_to_cover(
+    async fn execute_swaps_into_target_token(
         &self,
         target_token: Token,
-        amount_to_cover: f64,
+        amount_to_cover_usdc: f64,
         params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
     ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
@@ -213,8 +227,8 @@ impl ExecutionClient {
 
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
-        let mut remaining_amount = amount_to_cover * SWAP_TO_COVER_BUFFER;
-        info!("Need to cover {amount_to_cover} {target_ticker}, purchasing {remaining_amount}");
+        let mut remaining_amount_usdc = amount_to_cover_usdc * SWAP_TO_COVER_BUFFER;
+        info!("Need to cover ${amount_to_cover_usdc} {target_ticker}, purchasing ${remaining_amount_usdc}");
 
         let mut outcomes = vec![];
         for candidate in swap_candidates {
@@ -225,7 +239,7 @@ impl ExecutionClient {
                 .try_swap_candidate(
                     target_token.get_addr(),
                     candidate,
-                    remaining_amount,
+                    remaining_amount_usdc,
                     params.clone(),
                     wallet.clone(),
                 )
@@ -251,7 +265,7 @@ impl ExecutionClient {
 
             info!("Swapped {sell_amount} {ticker} for {quoted_buy_amount} {target_ticker}");
 
-            remaining_amount -= quoted_buy_amount;
+            remaining_amount_usdc -= quoted_buy_amount;
         }
 
         Ok(outcomes)
@@ -267,12 +281,7 @@ impl ExecutionClient {
     ) -> Result<Vec<SwapCandidate>, ExecutionClientError> {
         let candidate_tokens: Vec<Token> = get_all_tokens()
             .into_iter()
-            .filter(|token| {
-                token.get_chain() == self.chain
-                    && !STABLECOIN_TICKERS
-                        .contains(&token.get_ticker().unwrap_or_default().as_str())
-                    && token.get_addr() != target_token.get_addr()
-            })
+            .filter(|token| self.swap_candidate_predicate(token, target_token))
             .collect();
 
         let mut swap_candidates = vec![];
@@ -284,13 +293,23 @@ impl ExecutionClient {
 
         // Sort the tokens by their value, descending
         swap_candidates.sort_by(|a, b| {
-            let value_a = a.balance * a.price;
-            let value_b = b.balance * b.price;
+            let value_a = a.notional_value();
+            let value_b = b.notional_value();
 
             value_b.partial_cmp(&value_a).unwrap_or(Ordering::Equal)
         });
 
         Ok(swap_candidates)
+    }
+
+    /// A predicate for filtering candidate tokens to swap into the target token
+    fn swap_candidate_predicate(&self, token: &Token, target_token: &Token) -> bool {
+        let token_on_chain = token.get_chain() == self.chain;
+        let token_not_target = token.get_addr() != target_token.get_addr();
+        let token_not_stablecoin =
+            !STABLECOIN_TICKERS.contains(&token.get_ticker().unwrap_or_default().as_str());
+
+        token_on_chain && token_not_target && token_not_stablecoin
     }
 
     /// Try to swap out of a candidate token to cover a target amount of a
@@ -302,18 +321,21 @@ impl ExecutionClient {
         &self,
         target_token_addr: String,
         candidate: SwapCandidate,
-        amount_to_cover: f64,
+        amount_to_cover_usdc: f64,
         params: LiFiQuoteParams,
         wallet: PrivateKeySigner,
     ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
+        let balance_value = candidate.notional_value();
         let SwapCandidate { token, balance, price } = candidate;
-        let balance_value = balance * price;
 
         // If the token balance is less than the remaining amount, we swap out of the
         // entire balance. Otherwise, we calculate the necessary amount to
         // swap out of.
-        let swap_amount_decimal =
-            if balance_value <= amount_to_cover { balance } else { amount_to_cover / price };
+        let swap_amount_decimal = if balance_value <= amount_to_cover_usdc {
+            balance
+        } else {
+            amount_to_cover_usdc / price
+        };
 
         let swap_value = swap_amount_decimal * price;
         if swap_value < MIN_SWAP_QUOTE_AMOUNT {
@@ -331,6 +353,10 @@ impl ExecutionClient {
         let swap_outcome = self.swap_immediate_decaying(swap_params, wallet).await?;
         Ok(Some(swap_outcome))
     }
+
+    // ----------------------------
+    // | General Swapping Helpers |
+    // ----------------------------
 
     /// Get an execution quote for a swap
     #[instrument(skip_all)]

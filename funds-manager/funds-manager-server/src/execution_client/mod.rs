@@ -39,7 +39,7 @@ pub struct ExecutionClient {
     /// The RPC provider
     rpc_provider: DynProvider,
     /// The price reporter client
-    price_reporter: Arc<PriceReporterClient>,
+    price_reporter: PriceReporterClient,
 }
 
 impl ExecutionClient {
@@ -49,7 +49,7 @@ impl ExecutionClient {
         api_key: Option<String>,
         base_url: String,
         rpc_url: &str,
-        price_reporter: Arc<PriceReporterClient>,
+        price_reporter: PriceReporterClient,
     ) -> Result<Self, ExecutionClientError> {
         let rpc_provider = build_provider(rpc_url).map_err(ExecutionClientError::parse)?;
 

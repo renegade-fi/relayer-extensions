@@ -92,7 +92,7 @@ pub struct OnChainEventListenerExecutor {
     /// The rate limiter
     pub(crate) rate_limiter: AuthServerRateLimiter,
     /// The price reporter client with WebSocket streaming support
-    pub(crate) price_reporter_client: Arc<PriceReporterClient>,
+    pub(crate) price_reporter_client: PriceReporterClient,
     /// The gas cost sampler
     pub(crate) gas_cost_sampler: Arc<GasCostSampler>,
 }
@@ -103,7 +103,7 @@ impl OnChainEventListenerExecutor {
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
         rate_limiter: AuthServerRateLimiter,
-        price_reporter_client: Arc<PriceReporterClient>,
+        price_reporter_client: PriceReporterClient,
         gas_cost_sampler: Arc<GasCostSampler>,
         chain: Chain,
     ) -> Self {

@@ -27,7 +27,7 @@ pub(crate) struct Indexer {
     /// The chain this indexer targets
     pub chain: Chain,
     /// The price reporter client
-    pub price_reporter: Arc<PriceReporterClient>,
+    pub price_reporter: PriceReporterClient,
     /// A client for interacting with the relayer
     pub relayer_client: RelayerClient,
     /// The darkpool client
@@ -54,7 +54,7 @@ impl Indexer {
         db_pool: Arc<DbPool>,
         relayer_client: RelayerClient,
         custody_client: CustodyClient,
-        price_reporter: Arc<PriceReporterClient>,
+        price_reporter: PriceReporterClient,
     ) -> Self {
         Indexer {
             chain_id,

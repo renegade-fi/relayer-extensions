@@ -73,7 +73,7 @@ pub struct Server {
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
     /// The price reporter client with WebSocket streaming support
-    pub price_reporter_client: Arc<PriceReporterClient>,
+    pub price_reporter_client: PriceReporterClient,
     /// The gas cost sampler
     pub gas_cost_sampler: Arc<GasCostSampler>,
     /// The minimum order quote amount for which gas sponsorship is allowed,

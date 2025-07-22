@@ -216,7 +216,7 @@ impl ChainConfig {
         fireblocks_api_secret: String,
         db_pool: Arc<DbPool>,
         aws_config: SdkConfig,
-        price_reporter: Arc<PriceReporterClient>,
+        price_reporter: PriceReporterClient,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
         let relayer_client = RelayerClient::new(&self.relayer_url, chain);

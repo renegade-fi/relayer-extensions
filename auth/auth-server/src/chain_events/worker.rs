@@ -23,7 +23,7 @@ impl OnChainEventListener {
         config: OnChainEventListenerConfig,
         bundle_store: BundleStore,
         rate_limiter: AuthServerRateLimiter,
-        price_reporter_client: Arc<PriceReporterClient>,
+        price_reporter_client: PriceReporterClient,
         gas_cost_sampler: Arc<GasCostSampler>,
         chain: Chain,
     ) -> Result<Self, OnChainEventListenerError> {
