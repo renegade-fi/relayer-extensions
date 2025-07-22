@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
+    execution_client::swap::SwapOutcome,
     helpers::{to_env_agnostic_name, IERC20::Transfer},
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
@@ -77,11 +78,9 @@ impl MetricsRecorder {
     /// Record the cost metrics for a swap operation
     pub async fn record_swap_cost(
         &self,
-        receipt: &TransactionReceipt,
-        quote: &AugmentedExecutionQuote,
-        swap_gas_cost: U256,
+        swap_outcome: &SwapOutcome,
     ) -> Result<SwapExecutionData, FundsManagerError> {
-        let cost_data = match self.build_swap_cost_data(receipt, quote, swap_gas_cost).await {
+        let cost_data = match self.build_swap_cost_data(swap_outcome).await {
             Ok(cost_data) => cost_data,
             Err(e) => {
                 warn!("Failed to build swap cost data: {e}");
@@ -90,8 +89,12 @@ impl MetricsRecorder {
         };
 
         // Record metrics from the cost data
-        self.record_metrics_from_cost_data(receipt, quote, &cost_data);
-        self.log_swap_cost_data(&cost_data, receipt.transaction_hash);
+        self.record_metrics_from_cost_data(
+            &swap_outcome.receipt,
+            &swap_outcome.augmented_quote,
+            &cost_data,
+        );
+        self.log_swap_cost_data(&cost_data, swap_outcome.receipt.transaction_hash);
 
         Ok(cost_data)
     }
@@ -105,10 +108,11 @@ impl MetricsRecorder {
     /// Build the unified swap cost data from available information
     async fn build_swap_cost_data(
         &self,
-        receipt: &TransactionReceipt,
-        quote: &AugmentedExecutionQuote,
-        swap_gas_cost: U256,
+        swap_outcome: &SwapOutcome,
     ) -> Result<SwapExecutionData, FundsManagerError> {
+        let SwapOutcome { augmented_quote: quote, receipt, cumulative_gas_cost: swap_gas_cost } =
+            swap_outcome;
+
         let base_mint = quote.get_base_token().get_alloy_address();
         let binance_price = self.get_price(&base_mint, quote.chain).await?;
 
@@ -117,7 +121,7 @@ impl MetricsRecorder {
 
         let execution_price =
             quote.get_price(Some(buy_amount_actual)).map_err(FundsManagerError::parse)?;
-        let gas_cost_usd = self.get_wei_cost_usdc(swap_gas_cost).await?;
+        let gas_cost_usd = self.get_wei_cost_usdc(*swap_gas_cost).await?;
         let notional_volume_usdc =
             quote.notional_volume_usdc(buy_amount_actual).map_err(FundsManagerError::parse)?;
 

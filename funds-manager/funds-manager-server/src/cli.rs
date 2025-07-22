@@ -251,9 +251,11 @@ impl ChainConfig {
 
         // Build an execution client
         let execution_client = ExecutionClient::new(
+            chain,
             self.execution_venue_api_key.clone(),
             self.execution_venue_base_url.clone(),
             &self.rpc_url,
+            price_reporter.clone(),
         )
         .map_err(FundsManagerError::custom)?;
 

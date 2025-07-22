@@ -36,7 +36,9 @@ use tracing::{debug, info};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
-    helpers::{send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION},
+    helpers::{
+        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION,
+    },
 };
 use crate::{
     db::{DbConn, DbPool},
@@ -356,19 +358,7 @@ impl CustodyClient {
         token_address: &str,
         address: &str,
     ) -> Result<f64, FundsManagerError> {
-        // Setup the provider
-        let token_address = Address::from_str(token_address).map_err(FundsManagerError::parse)?;
-        let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
-        let erc20 = IERC20::new(token_address, self.arbitrum_provider.clone());
-
-        // Fetch the balance and correct for the ERC20 decimal precision
-        let decimals = erc20.decimals().call().await.map_err(FundsManagerError::on_chain)?;
-        let balance = erc20.balanceOf(address).call().await.map_err(FundsManagerError::on_chain)?;
-
-        let bal_str = format_units(balance, decimals).map_err(FundsManagerError::parse)?;
-        let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
-
-        Ok(bal_f64)
+        get_erc20_balance(token_address, address, self.arbitrum_provider.clone()).await
     }
 
     /// Perform an erc20 transfer
