@@ -2,7 +2,11 @@
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
+use http_body_util::{BodyExt, Full};
+use hyper::{
+    body::{Bytes as BytesBody, Incoming as IncomingBody},
+    HeaderMap, Request, Response, StatusCode,
+};
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey, price::Price};
 use renegade_price_reporter::worker::ExchangeConnectionsConfig;
@@ -10,6 +14,7 @@ use renegade_util::err_str;
 
 use crate::{
     errors::ServerError,
+    http_server::{resp_body, ResponseBody},
     init_default_price_streams,
     utils::{setup_all_token_remaps, PairInfo, UrlParams},
     ws_server::GlobalPriceStreams,
@@ -20,7 +25,11 @@ use crate::{
 #[async_trait]
 pub trait Handler: Send + Sync {
     /// The handler method for the request/response on the handler's route
-    async fn handle(&self, req: Request<Body>, url_params: UrlParams) -> Response<Body>;
+    async fn handle(
+        &self,
+        req: Request<IncomingBody>,
+        url_params: UrlParams,
+    ) -> Response<ResponseBody>;
 }
 
 // ----------------------
@@ -42,8 +51,9 @@ impl HealthCheckHandler {
 
 #[async_trait]
 impl Handler for HealthCheckHandler {
-    async fn handle(&self, _: Request<Body>, _: UrlParams) -> Response<Body> {
-        Response::builder().status(StatusCode::OK).body(Body::from("OK")).unwrap()
+    async fn handle(&self, _: Request<IncomingBody>, _: UrlParams) -> Response<ResponseBody> {
+        let body = Full::new(BytesBody::from("OK"));
+        Response::builder().status(StatusCode::OK).body(body).unwrap()
     }
 }
 
@@ -87,7 +97,11 @@ impl PriceHandler {
 
 #[async_trait]
 impl Handler for PriceHandler {
-    async fn handle(&self, _: Request<Body>, url_params: UrlParams) -> Response<Body> {
+    async fn handle(
+        &self,
+        _: Request<IncomingBody>,
+        url_params: UrlParams,
+    ) -> Response<ResponseBody> {
         let topic = url_params.get("topic").unwrap();
 
         match self.get_price(topic).await {
@@ -95,13 +109,13 @@ impl Handler for PriceHandler {
                 .status(StatusCode::OK)
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Content-Type", "text/plain")
-                .body(Body::from(price.to_string()))
+                .body(resp_body(price.to_string()))
                 .unwrap(),
             Err(e) => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Content-Type", "text/plain")
-                .body(Body::from(e.to_string()))
+                .body(resp_body(e.to_string()))
                 .unwrap(),
         }
     }
@@ -145,15 +159,17 @@ impl RefreshTokenMappingHandler {
     }
 
     /// Authenticate a token mapping refresh request using the admin HMAC key.
-    async fn authenticate_request(&self, req: &mut Request<Body>) -> Result<(), ServerError> {
+    async fn authenticate_request(
+        &self,
+        path: &str,
+        headers: &HeaderMap,
+        body: &[u8],
+    ) -> Result<(), ServerError> {
         if self.admin_key.is_none() {
             return Err(ServerError::NoAdminKey);
         }
 
-        let req_body = to_bytes(req.body_mut()).await.map_err(err_str!(ServerError::Serde))?;
-        let path = req.uri().path();
-        let headers = req.headers();
-        validate_expiring_auth(path, headers, &req_body, &self.admin_key.unwrap())
+        validate_expiring_auth(path, headers, body, &self.admin_key.unwrap())
             .map_err(err_str!(ServerError::Unauthorized))
     }
 
@@ -177,26 +193,34 @@ impl RefreshTokenMappingHandler {
 
 #[async_trait]
 impl Handler for RefreshTokenMappingHandler {
-    async fn handle(&self, mut req: Request<Body>, _: UrlParams) -> Response<Body> {
+    async fn handle(&self, req: Request<IncomingBody>, _: UrlParams) -> Response<ResponseBody> {
         if self.admin_key.is_none() {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from("Admin API disabled".to_string()))
+                .body(resp_body("Admin API disabled"))
                 .unwrap();
         }
 
-        if let Err(e) = self.authenticate_request(&mut req).await {
+        // Destructure the request into its parts
+        let path = req.uri().path().to_string();
+        let headers = req.headers().clone();
+        let req_body = req.into_body().collect().await.unwrap_or_default();
+        let body_bytes = req_body.to_bytes().to_vec();
+        if let Err(e) = self.authenticate_request(&path, &headers, &body_bytes).await {
             return Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
-                .body(Body::from(e.to_string()))
+                .body(resp_body(e.to_string()))
                 .unwrap();
         }
 
         match self.refresh_token_mapping().await {
-            Ok(_) => Response::builder().status(StatusCode::OK).body(Body::empty()).unwrap(),
+            Ok(_) => {
+                let empty_body = Full::new(BytesBody::default());
+                Response::builder().status(StatusCode::OK).body(empty_body).unwrap()
+            },
             Err(e) => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(e.to_string()))
+                .body(resp_body(e.to_string()))
                 .unwrap(),
         }
     }
