@@ -16,8 +16,9 @@ tokio-tungstenite = { version = "0.18", features = ["native-tls"] }
 tungstenite = "0.18"
 url = "2.4"
 
-# === Runtime === #
+# === Runtime + Concurrency === #
 async-trait = "0.1"
+crossbeam-skiplist = "0.1"
 futures = "0.3"
 futures-util = "0.3"
 tokio = "1"
@@ -36,6 +37,7 @@ atomic_float = "0.1"
 derivative = "2.2.0"
 itertools = "0.10"
 lazy_static = "1.4"
+ordered-float = "4.0"
 
 # === Renegade === #
 renegade-api = { package = "external-api", workspace = true }

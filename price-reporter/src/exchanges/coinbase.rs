@@ -1,14 +1,16 @@
 //! Defines handler logic for a Coinbase websocket connection
 
 use std::{
-    collections::HashMap,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use async_trait::async_trait;
+use crossbeam_skiplist::SkipSet;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use jsonwebtoken::{encode, Algorithm, EncodingKey as JwtEncodingKey, Header as JwtHeader};
+use ordered_float::NotNan;
 use renegade_common::types::{exchange::Exchange, price::Price, token::Token};
 use renegade_util::{err_str, get_current_time_seconds};
 use reqwest::{
@@ -92,20 +94,6 @@ pub struct CoinbaseConnection {
     write_stream: Box<dyn Sink<Message, Error = WsError> + Unpin + Send>,
 }
 
-/// The order book data stored locally by the connection
-#[derive(Clone, Debug, Default)]
-pub struct CoinbaseOrderBookData {
-    /// The best bid price, we use a string key to avoid key imprecision in
-    /// websocket updates
-    ///
-    /// Maps to the parsed f64 value
-    bids: HashMap<String, f64>,
-    /// The best offer price
-    ///
-    /// Maps to the parsed f64 value
-    offers: HashMap<String, f64>,
-}
-
 impl Stream for CoinbaseConnection {
     type Item = PriceStreamType;
 
@@ -173,18 +161,17 @@ impl CoinbaseConnection {
 
     /// Parse a midpoint price from a websocket message
     fn midpoint_from_ws_message(
-        order_book: &mut CoinbaseOrderBookData,
+        order_book: &CoinbaseOrderBookData,
         message: Message,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
         // The json body of the message
-        let json_blob = parse_json_from_message(message)?;
-        if json_blob.is_none() {
-            return Ok(None);
-        }
-        let json_blob = json_blob.unwrap();
+        let json = match parse_json_from_message(message)? {
+            Some(json) => json,
+            None => return Ok(None),
+        };
 
         // Extract the list of events and update the order book
-        let update_events = if let Some(coinbase_events) = json_blob[COINBASE_EVENTS].as_array()
+        let update_events = if let Some(coinbase_events) = json[COINBASE_EVENTS].as_array()
             && let Some(update_events) = coinbase_events[0][COINBASE_EVENT_UPDATE].as_array()
         {
             update_events
@@ -193,27 +180,24 @@ impl CoinbaseConnection {
         };
 
         // Make updates to the locally replicated book given the price level updates
-        // let mut locked_book = order_book_data.write().await;
         for coinbase_event in update_events {
-            let price_level: String = parse_json_field(COINBASE_PRICE_LEVEL, coinbase_event)?;
+            let price_level: f64 = parse_json_field(COINBASE_PRICE_LEVEL, coinbase_event)?;
             let new_quantity: f32 = parse_json_field(COINBASE_NEW_QUANTITY, coinbase_event)?;
             let side: String = parse_json_field(COINBASE_SIDE, coinbase_event)?;
 
             match &side[..] {
                 COINBASE_BID => {
                     if new_quantity == 0. {
-                        order_book.bids.remove(&price_level);
+                        order_book.remove_bid(price_level);
                     } else {
-                        let price_level_f64 = price_level.parse::<f64>().unwrap();
-                        order_book.bids.insert(price_level.clone(), price_level_f64);
+                        order_book.add_bid(price_level);
                     }
                 },
                 COINBASE_OFFER => {
                     if new_quantity == 0.0 {
-                        order_book.offers.remove(&price_level);
+                        order_book.remove_offer(price_level);
                     } else {
-                        let price_level_f64 = price_level.parse::<f64>().unwrap();
-                        order_book.offers.insert(price_level.clone(), price_level_f64);
+                        order_book.add_offer(price_level);
                     }
                 },
                 _ => {
@@ -222,17 +206,8 @@ impl CoinbaseConnection {
             }
         }
 
-        // Given the new order book, compute the best bid and offer
-        let best_bid = order_book.bids.values().copied().fold(0.0, f64::max);
-        let best_offer = order_book.offers.values().copied().fold(f64::INFINITY, f64::min);
-
-        // If the best offer is infinite, or the best bid is 0, return None - we don't
-        // yet have enough data
-        if best_offer == f64::INFINITY || best_bid == 0. {
-            return Ok(None);
-        }
-
-        Ok(Some((best_bid + best_offer) / 2.))
+        // Compute the midpoint price
+        Ok(order_book.midpoint())
     }
 }
 
@@ -257,16 +232,14 @@ impl ExchangeConnection for CoinbaseConnection {
             .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
 
         // Map the stream of Coinbase messages to one of midpoint prices
+        let order_book = CoinbaseOrderBookData::new();
         let mapped_stream = read.filter_map(move |message| {
-            let mut order_book = CoinbaseOrderBookData::default();
+            let order_book_clone = order_book.clone();
             async move {
                 match message {
                     // The outer `Result` comes from reading from the ws stream, the inner `Result`
                     // comes from parsing the message
-                    Ok(val) => {
-                        let res = Self::midpoint_from_ws_message(&mut order_book, val);
-                        res.transpose()
-                    },
+                    Ok(val) => Self::midpoint_from_ws_message(&order_book_clone, val).transpose(),
 
                     Err(e) => {
                         error!("Error reading message from Coinbase websocket: {e}");
@@ -321,5 +294,85 @@ impl ExchangeConnection for CoinbaseConnection {
 
         // A successful response will only be sent if the pair is supported
         Ok(response.status().is_success())
+    }
+}
+
+// ------------------
+// | Orderbook Data |
+// ------------------
+
+/// A non-nan f64
+type NonNanF64 = NotNan<f64>;
+/// A shared skip set of price levels
+pub type OrderBookLevels = Arc<SkipSet<NonNanF64>>;
+
+/// The order book data stored locally by the connection
+#[derive(Clone, Default)]
+pub struct CoinbaseOrderBookData {
+    /// The bid price levels, sorted in ascending order
+    bids: OrderBookLevels,
+    /// The offer price levels, sorted in ascending order  
+    offers: OrderBookLevels,
+}
+
+impl CoinbaseOrderBookData {
+    /// Construct a new order book data
+    pub fn new() -> Self {
+        let bids = Arc::new(SkipSet::new());
+        let offers = Arc::new(SkipSet::new());
+        Self { bids, offers }
+    }
+
+    // ------------------------
+    // | Midpoint Calculation |
+    // ------------------------
+
+    /// Get the best bid price from the current order book
+    pub fn best_bid(&self) -> Option<f64> {
+        self.bids.back().map(|e| e.value().into_inner())
+    }
+
+    /// Get the best offer price from the current order book
+    pub fn best_offer(&self) -> Option<f64> {
+        self.offers.front().map(|e| e.value().into_inner())
+    }
+
+    /// Get the midpoint price from the current order book
+    pub fn midpoint(&self) -> Option<f64> {
+        let best_bid = self.best_bid()?;
+        let best_offer = self.best_offer()?;
+        Some((best_bid + best_offer) / 2.)
+    }
+
+    // ----------------------
+    // | Order Book Updates |
+    // ----------------------
+
+    /// Remove a bid at the given price level
+    pub fn remove_bid(&self, price_level: f64) {
+        if let Ok(price_notnan) = NotNan::new(price_level) {
+            self.bids.remove(&price_notnan);
+        }
+    }
+
+    /// Remove an offer at the given price level
+    pub fn remove_offer(&self, price_level: f64) {
+        if let Ok(price_notnan) = NotNan::new(price_level) {
+            self.offers.remove(&price_notnan);
+        }
+    }
+
+    /// Add a bid at the given price level
+    pub fn add_bid(&self, price_level: f64) {
+        if let Ok(price_notnan) = NotNan::new(price_level) {
+            self.bids.insert(price_notnan);
+        }
+    }
+
+    /// Add an offer at the given price level
+    pub fn add_offer(&self, price_level: f64) {
+        if let Ok(price_notnan) = NotNan::new(price_level) {
+            self.offers.insert(price_notnan);
+        }
     }
 }
