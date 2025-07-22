@@ -38,7 +38,6 @@ itertools = "0.10"
 lazy_static = "1.4"
 
 # === Renegade === #
-renegade-price-reporter = { package = "price-reporter", workspace = true }
 renegade-api = { package = "external-api", workspace = true }
 renegade-config = { package = "config", workspace = true }
 renegade-common = { package = "common", workspace = true }

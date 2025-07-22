@@ -17,7 +17,6 @@ use renegade_common::types::{
     token::{default_exchange_stable as _default_exchange_stable, read_token_remaps, Token},
 };
 use renegade_config::setup_token_remaps;
-use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -35,6 +34,7 @@ use tracing_subscriber::{
 };
 use tungstenite::Message;
 
+use crate::exchanges::ExchangeConnectionsConfig;
 use crate::{errors::ServerError, http_server::routes::Handler};
 
 mod canonical_exchange;

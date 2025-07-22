@@ -12,11 +12,11 @@ use renegade_common::types::{
     exchange::Exchange,
     token::{default_chain, Token, USDC_TICKER},
 };
-use renegade_price_reporter::exchange::supports_pair;
 use renegade_util::err_str;
 
 use crate::{
     errors::ServerError,
+    exchanges::util::supports_pair,
     utils::{
         canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
         resolve_tokens_and_chain, PriceTopic,
