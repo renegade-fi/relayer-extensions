@@ -14,6 +14,7 @@ use matchit::Router;
 use renegade_util::err_str;
 use routes::{RefreshTokenMappingHandler, REFRESH_TOKEN_MAPPING_ROUTE};
 use tokio::net::{TcpListener, TcpStream};
+use tracing::error;
 
 use crate::{
     errors::ServerError,
@@ -103,7 +104,11 @@ impl HttpServer {
         loop {
             let (stream, _) = listener.accept().await.map_err(err_str!(ServerError::HttpServer))?;
             let self_clone = self.clone();
-            tokio::spawn(async move { self_clone.handle_stream(stream).await });
+            tokio::spawn(async move {
+                if let Err(e) = self_clone.handle_stream(stream).await {
+                    error!("Error handling stream: {e}");
+                }
+            });
         }
     }
 

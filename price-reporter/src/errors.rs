@@ -2,7 +2,7 @@
 
 use std::io;
 
-use renegade_price_reporter::errors::ExchangeConnectionError;
+use crate::exchanges::error::ExchangeConnectionError;
 
 /// An error that can occur in the price reporter server.
 #[derive(Debug, thiserror::Error)]

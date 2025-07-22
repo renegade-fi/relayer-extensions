@@ -9,11 +9,11 @@ use hyper::{
 };
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey, price::Price};
-use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 
 use crate::{
     errors::ServerError,
+    exchanges::ExchangeConnectionsConfig,
     http_server::{resp_body, ResponseBody},
     init_default_price_streams,
     utils::{setup_all_token_remaps, PairInfo, UrlParams},

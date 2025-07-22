@@ -16,7 +16,6 @@ use renegade_common::types::{
     exchange::Exchange,
     token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
 };
-use renegade_price_reporter::worker::ExchangeConnectionsConfig;
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
@@ -24,6 +23,8 @@ use utils::{
     get_canonical_exchanges, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
 };
 use ws_server::{handle_connection, GlobalPriceStreams};
+
+use crate::exchanges::ExchangeConnectionsConfig;
 
 mod errors;
 mod exchanges;

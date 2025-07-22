@@ -6,11 +6,6 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use futures_util::{SinkExt, StreamExt};
 use renegade_api::websocket::{SubscriptionResponse, WebsocketMessage};
 use renegade_common::types::{exchange::Exchange, price::Price};
-use renegade_price_reporter::{
-    errors::ExchangeConnectionError,
-    exchange::{connect_exchange, ExchangeConnection},
-    worker::ExchangeConnectionsConfig,
-};
 use renegade_util::err_str;
 use tokio::{net::TcpStream, sync::watch::channel, sync::RwLock, time::Instant};
 use tokio_stream::StreamMap;
@@ -20,6 +15,10 @@ use tungstenite::Message;
 
 use crate::{
     errors::ServerError,
+    exchanges::{
+        connect_exchange, connection::ExchangeConnection, error::ExchangeConnectionError,
+        ExchangeConnectionsConfig,
+    },
     utils::{
         get_price_topic_str, get_subscribed_topics, ClosureSender, PairInfo, PriceMessage,
         PriceReceiver, PriceSender, PriceStream, PriceStreamMap, SharedPriceStreams, WsWriteStream,
