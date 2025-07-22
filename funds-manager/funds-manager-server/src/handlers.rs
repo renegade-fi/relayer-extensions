@@ -16,8 +16,8 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    DepositAddressResponse, LiFiQuoteParams, SwapImmediateResponse, WithdrawFundsRequest,
-    WithdrawToHyperliquidRequest,
+    DepositAddressResponse, LiFiQuoteParams, SwapImmediateResponse, SwapIntoTargetTokenRequest,
+    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
 use itertools::Itertools;
@@ -247,6 +247,47 @@ pub(crate) async fn swap_immediate_handler(
         tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
         execution_cost,
     }))
+}
+
+/// Handler for executing a swap to cover a target amount of a given token
+#[instrument(skip_all)]
+pub(crate) async fn swap_into_target_token_handler(
+    chain: Chain,
+    req: SwapIntoTargetTokenRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let execution_client = server.get_execution_client(&chain)?;
+    let custody_client = server.get_custody_client(&chain)?;
+    let metrics_recorder = server.get_metrics_recorder(&chain)?;
+
+    // Top up the quoter hot wallet gas before swapping
+    custody_client.top_up_quoter_hot_wallet_gas().await?;
+
+    let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
+    let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
+
+    // Execute the swap, decaying the size of the swap each time it fails to execute
+    let outcomes = execution_client.try_swap_into_target_token(req, wallet).await?;
+
+    // Compute swap costs and respond
+    let mut responses = vec![];
+    for outcome in outcomes {
+        let execution_cost = match metrics_recorder.record_swap_cost(&outcome).await {
+            Ok(data) => data.execution_cost_usdc,
+            Err(e) => {
+                warn!("Failed to record swap cost metrics: {e}");
+                0.0 // Default to 0 USD
+            },
+        };
+
+        responses.push(SwapImmediateResponse {
+            quote: outcome.augmented_quote.quote.clone(),
+            tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
+            execution_cost,
+        });
+    }
+
+    Ok(warp::reply::json(&responses))
 }
 
 /// Handler for withdrawing USDC to Hyperliquid

@@ -35,6 +35,12 @@ pub const WITHDRAW_TO_HYPERLIQUID_ROUTE: &str = "withdraw-to-hyperliquid";
 /// - order: Order preference for routing (e.g. 'CHEAPEST')
 /// - slippage: Slippage tolerance as a decimal (e.g. 0.0001 for 0.01%)
 pub const SWAP_IMMEDIATE_ROUTE: &str = "swap-immediate";
+/// The route to execute swaps to cover a target amount of a given token.
+///
+/// Expects the same query parameters as SWAP_IMMEDIATE_ROUTE, except for
+/// `fromToken` and `fromAmount`, as this will be calculated by the endpoint
+/// for each swap.
+pub const SWAP_INTO_TARGET_TOKEN_ROUTE: &str = "swap-into-target-token";
 
 // -------------
 // | Api Types |
@@ -295,6 +301,19 @@ pub struct SwapImmediateResponse {
     /// represented as 10.0
     #[serde(with = "f64_string_serialization")]
     pub execution_cost: f64,
+}
+
+/// The request body for executing a swap to cover a target amount of a given
+/// token
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SwapIntoTargetTokenRequest {
+    /// The target amount of the token to cover, in decimal format (i.e., whole
+    /// units)
+    pub target_amount: f64,
+    /// The quote parameters for the swap. The `from_token` and `from_amount`
+    /// fields will be ignored and calculated by the server, but they are still
+    /// required to be set.
+    pub quote_params: LiFiQuoteParams,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot
