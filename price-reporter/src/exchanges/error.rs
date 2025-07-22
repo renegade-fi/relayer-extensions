@@ -1,3 +1,5 @@
+//! The error types used by the ExchangeConnection
+
 use renegade_common::types::{exchange::Exchange, token::Token};
 use thiserror::Error;
 
