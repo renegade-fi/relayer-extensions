@@ -7,8 +7,10 @@ use uuid::Uuid;
 use crate::{error::AuthServerError, server::Server};
 
 use super::{
-    models::{ApiKey, NewApiKey},
-    schema::api_keys,
+    models::{
+        ApiKey, AssetDefaultFee, NewApiKey, NewAssetDefaultFee, NewUserFee, UserAssetFeeQueryResult,
+    },
+    schema::{api_keys, asset_default_fees, user_fees},
 };
 
 /// Error returned when a key is not found in the database
@@ -119,5 +121,99 @@ impl Server {
             return Err(AuthServerError::bad_request(ERR_NO_KEY));
         }
         Ok(())
+    }
+
+    // --- User Fees --- //
+
+    /// Set a user fee override for a given API key and asset
+    pub async fn set_user_fee_query(
+        &self,
+        new_user_fee: NewUserFee,
+    ) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        // Use ON CONFLICT to either insert or update
+        diesel::insert_into(user_fees::table)
+            .values(&new_user_fee)
+            .on_conflict((user_fees::id, user_fees::asset))
+            .do_update()
+            .set(user_fees::fee.eq(new_user_fee.fee))
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+
+        Ok(())
+    }
+
+    // --- Asset Default Fees --- //
+
+    /// Set the default fee for a given asset
+    pub async fn set_asset_default_fee_query(
+        &self,
+        new_default_fee: NewAssetDefaultFee,
+    ) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        // Use ON CONFLICT to either insert or update
+        diesel::insert_into(asset_default_fees::table)
+            .values(&new_default_fee)
+            .on_conflict(asset_default_fees::asset)
+            .do_update()
+            .set(asset_default_fees::fee.eq(new_default_fee.fee))
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+
+        Ok(())
+    }
+
+    /// Get all asset default fees
+    pub async fn get_all_asset_default_fees_query(
+        &self,
+    ) -> Result<Vec<AssetDefaultFee>, AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        asset_default_fees::table
+            .load::<AssetDefaultFee>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)
+    }
+
+    /// Get the cartesian product of active users and assets with fee
+    /// inheritance
+    ///
+    /// This joins active API keys with asset default fees and left joins with
+    /// user overrides. It also includes assets that only have user overrides
+    /// but no default fees.
+    pub async fn get_user_asset_fees_with_defaults(
+        &self,
+    ) -> Result<Vec<UserAssetFeeQueryResult>, AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        // The query to join - includes assets with only user overrides
+        // TODO: Optimize this query e.g. by adding indices on asset if the table grows
+        let query = "
+            SELECT 
+                api_keys.id as user_id,
+                api_keys.description as user_description,
+                assets.asset,
+                COALESCE(user_fees.fee, asset_default_fees.fee) as fee,
+                CASE WHEN user_fees.fee IS NOT NULL THEN true ELSE false END as is_override
+            FROM api_keys
+            CROSS JOIN (
+                SELECT asset FROM asset_default_fees
+                UNION
+                SELECT DISTINCT asset FROM user_fees
+            ) assets
+            LEFT JOIN asset_default_fees ON assets.asset = asset_default_fees.asset
+            LEFT JOIN user_fees ON api_keys.id = user_fees.id AND assets.asset = user_fees.asset
+            WHERE api_keys.is_active = true
+            AND (asset_default_fees.fee IS NOT NULL OR user_fees.fee IS NOT NULL)
+            ORDER BY api_keys.id, assets.asset
+        ";
+
+        diesel::sql_query(query)
+            .load::<UserAssetFeeQueryResult>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)
     }
 }

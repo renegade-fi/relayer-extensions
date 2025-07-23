@@ -4,6 +4,7 @@
 //! it to the relayer with admin authentication
 
 mod external_match;
+mod external_match_fees;
 mod key_management;
 mod order_book;
 mod settlement;
