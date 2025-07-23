@@ -12,7 +12,7 @@ use alloy_primitives::TxHash;
 use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
-use renegade_circuit_types::wallet::Nullifier;
+use renegade_circuit_types::{fees::FeeTake, wallet::Nullifier};
 use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::{
     conversion::u256_to_scalar, traits::DarkpoolImpl, DarkpoolClient, DarkpoolImplementation,
@@ -217,7 +217,7 @@ impl OnChainEventListenerExecutor {
         let settlement_time = self.get_settlement_timestamp(tx).await?;
 
         let matches = self.fetch_external_matches_in_tx(tx).await?;
-        for external_match in matches {
+        for (external_match, internal_fee_take) in matches {
             let bundle_id = external_match.bundle_id(&nullifier)?;
             if let Some(bundle_ctx) = self.bundle_store.read(&bundle_id).await? {
                 // Increase rate limit
@@ -227,10 +227,17 @@ impl OnChainEventListenerExecutor {
                 )
                 .await;
 
-                let api_match: ApiExternalMatchResult = external_match.match_result().into();
+                let match_result = external_match.match_result();
 
                 // Record external match spread cost
-                self.record_external_match_spread_cost(&bundle_ctx, &api_match).await?;
+                self.record_external_match_spread_cost(
+                    &bundle_ctx,
+                    &match_result,
+                    internal_fee_take,
+                )
+                .await?;
+
+                let api_match: ApiExternalMatchResult = match_result.into();
 
                 // Record settlement metrics
                 self.record_settlement_metrics(tx, &bundle_ctx, &api_match).await?;
@@ -266,14 +273,14 @@ impl OnChainEventListenerExecutor {
     async fn fetch_external_matches_in_tx(
         &self,
         tx: TxHash,
-    ) -> Result<Vec<ExternalMatch>, OnChainEventListenerError> {
+    ) -> Result<Vec<(ExternalMatch, FeeTake)>, OnChainEventListenerError> {
         let darkpool_calls: Vec<CallFrame> =
             self.darkpool_client().fetch_tx_darkpool_calls(tx).await?;
 
         let mut matches = Vec::new();
         for call in darkpool_calls.into_iter() {
-            if let Some(match_result) = parse_external_match(&call.input)? {
-                matches.push(match_result)
+            if let Some((match_result, internal_fee_take)) = parse_external_match(&call.input)? {
+                matches.push((match_result, internal_fee_take));
             }
         }
 

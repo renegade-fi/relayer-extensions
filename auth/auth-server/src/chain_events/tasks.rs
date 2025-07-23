@@ -4,7 +4,9 @@ use alloy_primitives::TxHash;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;
+use renegade_circuit_types::fees::FeeTake;
 use renegade_circuit_types::order::OrderSide;
+use renegade_circuit_types::r#match::ExternalMatchResult;
 use renegade_common::types::token::Token;
 
 use crate::chain_events::utils::GPv2Settlement;
@@ -78,45 +80,26 @@ impl OnChainEventListenerExecutor {
     /// 1. We don't have to remove the effects of gas sponsorship from the match
     ///    result, as it is parsed from settlement calldata, where sponsorship
     ///    is already factored out.
-    /// 2. We use the match base/quote amounts to compute the trade price, as
-    ///    opposed to the send/receive amounts on the bundle. This is so that we
-    ///    don't factor fees into the spread. We are interested in the cost
-    ///    purely due to price drift between price sampling for the quote and
-    ///    settlement.
+    /// 2. We use the bundle send/recv amounts to compute the trade price, as
+    ///    opposed to the base/quote amounts on the match. I.e., fees are
+    ///    explicitly factored into the spread cost.
     /// 3. We sample a reference price w/in this method, meaning it should be
     ///    called as close to the actual time of settlement as possible.
     pub async fn record_external_match_spread_cost(
         &self,
         ctx: &BundleContext,
-        match_result: &ApiExternalMatchResult,
+        match_result: &ExternalMatchResult,
+        internal_fee_take: FeeTake,
     ) -> Result<(), AuthServerError> {
-        let reference_price =
-            self.price_reporter_client.get_price(&match_result.base_mint, self.chain).await?;
+        let spread_cost =
+            self.compute_external_match_spread_cost(match_result, internal_fee_take).await?;
 
-        let base_token = Token::from_addr_on_chain(&match_result.base_mint, self.chain);
-        let quote_token = Token::from_addr_on_chain(&match_result.quote_mint, self.chain);
+        let base_token = Token::from_addr_biguint_on_chain(&match_result.base_mint, self.chain);
 
-        let base_amount_decimal = base_token.convert_to_decimal(match_result.base_amount);
-        let quote_amount_decimal = quote_token.convert_to_decimal(match_result.quote_amount);
-
-        let match_price = quote_amount_decimal / base_amount_decimal;
-
-        // The internal party takes the *opposite* side of the direction specified in
-        // the `ApiExternalMatchResult`, so we must record spread cost from
-        // their perspective accordingly
-        let trade_side_factor = match match_result.direction.opposite() {
-            OrderSide::Buy => 1.0,
-            OrderSide::Sell => -1.0,
-        };
-
-        let relative_spread = trade_side_factor * (match_price - reference_price) / reference_price;
-        let spread_cost = quote_amount_decimal * relative_spread;
-
-        let side_tag_value = match match_result.direction {
-            OrderSide::Buy => "buy",
-            OrderSide::Sell => "sell",
-        };
         let asset_tag_value = base_token.get_ticker().unwrap_or(base_token.get_addr());
+
+        // The `side` tag here is from the perspective of the *external* party.
+        let side_tag_value = if match_result.direction { "buy" } else { "sell" };
 
         let labels = vec![
             (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.clone()),
@@ -128,6 +111,53 @@ impl OnChainEventListenerExecutor {
         metrics::gauge!(EXTERNAL_MATCH_SPREAD_COST, &labels).set(spread_cost);
 
         Ok(())
+    }
+
+    /// Computes the external match spread cost given the match result,
+    /// and the internal party's fee take
+    async fn compute_external_match_spread_cost(
+        &self,
+        match_result: &ExternalMatchResult,
+        internal_fee_take: FeeTake,
+    ) -> Result<f64, AuthServerError> {
+        let base_token = Token::from_addr_biguint_on_chain(&match_result.base_mint, self.chain);
+        let quote_token = Token::from_addr_biguint_on_chain(&match_result.quote_mint, self.chain);
+
+        // Sample reference price as early as possible
+        let reference_price =
+            self.price_reporter_client.get_price(&base_token.get_addr(), self.chain).await?;
+
+        // Account for the internal party's fees in the send/recv amounts
+        let (_, mut internal_recv_amt) = match_result.external_party_send();
+        let (_, internal_send_amt) = match_result.external_party_receive();
+        internal_recv_amt -= internal_fee_take.total();
+
+        // Compute an effective price in terms of quote per base
+        let (effective_base_amount, effective_quote_amount) = if match_result.direction {
+            // If direction is true, internal party sells the base
+            (internal_send_amt, internal_recv_amt)
+        } else {
+            (internal_recv_amt, internal_send_amt)
+        };
+
+        let effective_base_amount_decimal = base_token.convert_to_decimal(effective_base_amount);
+        let effective_quote_amount_decimal = quote_token.convert_to_decimal(effective_quote_amount);
+
+        let effective_match_price = effective_quote_amount_decimal / effective_base_amount_decimal;
+
+        // Compute spread between the effective match price and the reference price.
+        // Positive spread => match price higher than reference price
+        let relative_spread = (effective_match_price - reference_price) / reference_price;
+
+        let spread_cost = if match_result.direction {
+            // Internal party sells => negative spread implies a cost
+            -1.0 * effective_quote_amount_decimal * relative_spread
+        } else {
+            // Internal party buys => positive spread implies a cost
+            effective_quote_amount_decimal * relative_spread
+        };
+
+        Ok(spread_cost)
     }
 
     /// Increment the token balance for a given API user

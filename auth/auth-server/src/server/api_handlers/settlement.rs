@@ -1,7 +1,6 @@
 //! Server methods that watch for external match settlement
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse}; // Added GasSponsorshipInfo
 use renegade_api::http::external_match::ApiExternalMatchResult;
-use renegade_circuit_types::order::OrderSide;
 use serde::{Deserialize, Serialize};
 
 use super::{MatchBundleResponseCtx, Server};
@@ -9,6 +8,7 @@ use crate::bundle_store::helpers::generate_malleable_bundle_id;
 use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
 use crate::error::AuthServerError;
 use crate::server::api_handlers::external_match::SponsoredAssembleMalleableQuoteResponseCtx;
+use crate::server::gas_sponsorship::refund_calculation::remove_gas_sponsorship_from_match_result;
 use crate::telemetry::abi_helpers::{
     extract_nullifier_from_malleable_match_bundle, extract_nullifier_from_match_bundle,
 };
@@ -115,7 +115,7 @@ impl Server {
     }
 
     /// Returns a new match result with gas sponsorship amount subtracted from
-    /// the appropriate side, if the refund is not native ETH.
+    /// the appropriate side, if necessary
     fn apply_gas_sponsorship_adjustment(
         &self,
         original_result: &ApiExternalMatchResult,
@@ -123,20 +123,11 @@ impl Server {
     ) -> ApiExternalMatchResult {
         let mut result = original_result.clone();
 
-        // If the refund is in native ETH, no adjustment needed for the match result
-        // amounts
-        if gas_sponsorship_info.refund_native_eth {
+        if !gas_sponsorship_info.requires_match_result_update() {
             return result;
         }
 
-        match result.direction {
-            OrderSide::Buy => {
-                result.base_amount -= gas_sponsorship_info.refund_amount;
-            },
-            OrderSide::Sell => {
-                result.quote_amount -= gas_sponsorship_info.refund_amount;
-            },
-        }
+        remove_gas_sponsorship_from_match_result(&mut result, gas_sponsorship_info.refund_amount);
         result
     }
 }
