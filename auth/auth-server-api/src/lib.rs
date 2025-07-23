@@ -6,6 +6,7 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 
+pub mod fee_management;
 pub mod key_management;
 
 use alloy_primitives::{ruint::FromUintError, Address, U256};
