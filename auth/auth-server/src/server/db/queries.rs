@@ -145,6 +145,28 @@ impl Server {
         Ok(())
     }
 
+    /// Remove a user fee override for a given API key and asset
+    pub async fn remove_user_fee_query(
+        &self,
+        user_id: Uuid,
+        asset: String,
+    ) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        let num_deleted = diesel::delete(
+            user_fees::table.filter(user_fees::id.eq(user_id)).filter(user_fees::asset.eq(asset)),
+        )
+        .execute(&mut conn)
+        .await
+        .map_err(AuthServerError::db)?;
+
+        if num_deleted == 0 {
+            return Err(AuthServerError::bad_request("User fee override not found"));
+        }
+
+        Ok(())
+    }
+
     // --- Asset Default Fees --- //
 
     /// Set the default fee for a given asset
@@ -176,6 +198,26 @@ impl Server {
             .load::<AssetDefaultFee>(&mut conn)
             .await
             .map_err(AuthServerError::db)
+    }
+
+    /// Remove the default fee for a given asset
+    pub async fn remove_asset_default_fee_query(
+        &self,
+        asset: String,
+    ) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        let num_deleted =
+            diesel::delete(asset_default_fees::table.filter(asset_default_fees::asset.eq(asset)))
+                .execute(&mut conn)
+                .await
+                .map_err(AuthServerError::db)?;
+
+        if num_deleted == 0 {
+            return Err(AuthServerError::bad_request("Asset default fee not found"));
+        }
+
+        Ok(())
     }
 
     /// Get the cartesian product of active users and assets with fee

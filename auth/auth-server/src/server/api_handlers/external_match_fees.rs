@@ -6,8 +6,8 @@ use tracing::instrument;
 use warp::{filters::path::FullPath, reject::Rejection, reply::Reply};
 
 use auth_server_api::fee_management::{
-    AssetDefaultFeeEntry, GetAllFeesResponse, SetAssetDefaultFeeRequest, SetUserFeeRequest,
-    UserAssetFeeEntry,
+    AssetDefaultFeeEntry, GetAllFeesResponse, RemoveAssetDefaultFeeRequest, RemoveUserFeeRequest,
+    SetAssetDefaultFeeRequest, SetUserFeeRequest, UserAssetFeeEntry,
 };
 
 use crate::{
@@ -62,6 +62,26 @@ impl Server {
         // Create the new default fee entry and upsert it in the database
         let new_default_fee = NewAssetDefaultFee::new(req.asset, req.fee);
         self.set_asset_default_fee_query(new_default_fee).await?;
+
+        Ok(empty_json_reply())
+    }
+
+    /// Remove the default fee for a given asset
+    #[instrument(skip_all)]
+    pub async fn remove_asset_default_fee(
+        &self,
+        path: FullPath,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<impl Reply, Rejection> {
+        // Check management auth on the request
+        self.authorize_management_request(&path, &headers, &body)?;
+
+        // Parse the request body and remove the default fee
+        let req: RemoveAssetDefaultFeeRequest =
+            serde_json::from_slice(&body).map_err(ApiError::bad_request)?;
+
+        self.remove_asset_default_fee_query(req.asset).await?;
         Ok(empty_json_reply())
     }
 
@@ -83,6 +103,26 @@ impl Server {
         // Create the new user fee entry, upsert it in the database
         let new_user_fee = NewUserFee::new(req.user_id, req.asset, req.fee);
         self.set_user_fee_query(new_user_fee).await?;
+
+        Ok(empty_json_reply())
+    }
+
+    /// Remove the per-user fee override for a given asset
+    #[instrument(skip_all)]
+    pub async fn remove_user_fee_override(
+        &self,
+        path: FullPath,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<impl Reply, Rejection> {
+        // Check management auth on the request
+        self.authorize_management_request(&path, &headers, &body)?;
+
+        // Parse the request body and remove the user fee override
+        let req: RemoveUserFeeRequest =
+            serde_json::from_slice(&body).map_err(ApiError::bad_request)?;
+
+        self.remove_user_fee_query(req.user_id, req.asset).await?;
         Ok(empty_json_reply())
     }
 }

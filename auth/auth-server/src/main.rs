@@ -318,6 +318,28 @@ async fn main() {
             server.set_user_fee_override(path, headers, body).await
         });
 
+    // Remove the default external match fee for an asset
+    let remove_asset_default_fee = warp::path!("v0" / "fees" / "remove-asset-default-fee")
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.remove_asset_default_fee(path, headers, body).await
+        });
+
+    // Remove the per-user fee override for an asset
+    let remove_user_fee_override = warp::path!("v0" / "fees" / "remove-user-fee-override")
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.remove_user_fee_override(path, headers, body).await
+        });
+
     // --- Proxied Routes --- //
 
     let external_quote_path = warp::path("v0")
@@ -409,6 +431,8 @@ async fn main() {
         .or(get_all_user_fees)
         .or(set_asset_default_fee)
         .or(set_user_fee_override)
+        .or(remove_asset_default_fee)
+        .or(remove_user_fee_override)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
         .boxed()
