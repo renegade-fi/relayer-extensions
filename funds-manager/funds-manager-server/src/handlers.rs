@@ -8,7 +8,7 @@ use crate::execution_client::error::ExecutionClientError;
 use crate::Server;
 use bytes::Bytes;
 use funds_manager_api::fees::{
-    FeeWalletsResponse, UnredeemedFeeTotalsResponse, WithdrawFeeBalanceRequest,
+    FeeWalletsResponse, UnredeemedFeeTotal, UnredeemedFeeTotalsResponse, WithdrawFeeBalanceRequest,
 };
 use funds_manager_api::gas::{
     CreateGasWalletResponse, GasWalletsResponse, RefillGasRequest, RegisterGasWalletRequest,
@@ -130,7 +130,8 @@ pub(crate) async fn get_unredeemed_fee_totals_handler(
 ) -> Result<Json, warp::Rejection> {
     let indexer = server.get_fee_indexer(&chain)?;
     let totals_vec = indexer.get_unredeemed_fee_totals().await?;
-    let totals = HashMap::from_iter(totals_vec.into_iter());
+    let totals =
+        totals_vec.into_iter().map(|(mint, amount)| UnredeemedFeeTotal { mint, amount }).collect();
 
     Ok(warp::reply::json(&UnredeemedFeeTotalsResponse { totals }))
 }

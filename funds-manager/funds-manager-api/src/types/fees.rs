@@ -1,7 +1,5 @@
 //! API types for managing and redeeming fees
 
-use std::collections::HashMap;
-
 use renegade_api::types::ApiWallet;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -43,9 +41,18 @@ pub struct WithdrawFeeBalanceRequest {
     pub mint: String,
 }
 
+/// A single unredeemed fee total
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UnredeemedFeeTotal {
+    /// The mint of the fee asset
+    pub mint: String,
+    /// The nominal amount of the fee
+    pub amount: u128,
+}
+
 /// The response containing the unredeemed fee totals
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UnredeemedFeeTotalsResponse {
-    /// The unredeemed fee totals, mapping from mint to nominal amount
-    pub totals: HashMap<String, u128>,
+    /// The unredeemed fee totals
+    pub totals: Vec<UnredeemedFeeTotal>,
 }
