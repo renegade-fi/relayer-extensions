@@ -8,7 +8,8 @@ use crate::{error::AuthServerError, server::Server};
 
 use super::{
     models::{
-        ApiKey, AssetDefaultFee, NewApiKey, NewAssetDefaultFee, NewUserFee, UserAssetFeeQueryResult,
+        ApiKey, AssetDefaultFee, FeeResult, NewApiKey, NewAssetDefaultFee, NewUserFee,
+        UserAssetFeeQueryResult,
     },
     schema::{api_keys, asset_default_fees, user_fees},
 };
@@ -128,6 +129,43 @@ impl Server {
     // -----------------------
 
     // --- Per-User Fees --- //
+
+    /// Get the per-asset fee for a given user
+    ///
+    /// If no override is set, this method returns the asset default fee. If
+    /// that value is not set the method returns zero
+    pub async fn get_user_fee(&self, user_id: Uuid, asset: String) -> Result<f64, AuthServerError> {
+        // Check the cache first
+        if let Some(fee) = self.cache.get_user_fee(user_id, asset.clone()) {
+            return Ok(fee);
+        }
+
+        // Otherwise query the db; first for a user-specific fee, then for an
+        // asset-specific fee, and finally return zero if no fee is found
+        let mut conn = self.get_db_conn().await?;
+        let query = "
+            SELECT COALESCE(
+                (SELECT fee FROM user_fees WHERE id = $1 AND asset = $2),
+                (SELECT fee FROM asset_default_fees WHERE asset = $2),
+                0.0::float4
+            ) as fee
+        ";
+
+        let fee_res: FeeResult = diesel::sql_query(query)
+            .bind::<diesel::sql_types::Uuid, _>(user_id)
+            .bind::<diesel::sql_types::Text, _>(&asset)
+            .load::<FeeResult>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?
+            .pop()
+            .ok_or(AuthServerError::db("User fee not found"))?;
+        drop(conn); // Drop the connection to release the mutable borrow on `self`
+
+        // Cache the fee and return
+        let fee = fee_res.fee as f64;
+        self.cache.cache_user_fee(user_id, asset, fee);
+        Ok(fee)
+    }
 
     /// Set a user fee override for a given API key and asset
     pub async fn set_user_fee_query(

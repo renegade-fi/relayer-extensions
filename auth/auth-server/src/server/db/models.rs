@@ -137,3 +137,10 @@ impl From<UserAssetFeeQueryResult> for UserAssetFeeEntry {
         }
     }
 }
+
+/// Result of a fee query with fallback logic
+#[derive(diesel::QueryableByName)]
+pub struct FeeResult {
+    #[diesel(sql_type = diesel::sql_types::Float)]
+    pub fee: f32,
+}
