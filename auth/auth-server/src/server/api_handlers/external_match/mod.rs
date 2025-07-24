@@ -19,7 +19,7 @@ use crate::{
     http_utils::{
         request_response::should_stringify_numbers, stringify_formatter::json_deserialize,
     },
-    server::Server,
+    server::{Server, api_handlers::ticker_from_biguint},
     telemetry::helpers::record_relayer_request_500,
 };
 pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
@@ -100,11 +100,24 @@ impl<Req: Serialize + for<'de> Deserialize<'de>> RequestContext<Req> {
 }
 
 /// A trait used to define access patterns on different request types
+#[allow(unused)]
 pub trait ExternalMatchRequestType: Serialize + for<'de> Deserialize<'de> {
     /// Get the base token for the request
     fn base_mint(&self) -> &BigUint;
+    /// Get the base ticker for the request
+    fn base_ticker(&self) -> Result<String, AuthServerError> {
+        ticker_from_biguint(self.base_mint())
+    }
+
     /// Get the quote token for the request
     fn quote_mint(&self) -> &BigUint;
+    /// Get the quote ticker for the request
+    fn quote_ticker(&self) -> Result<String, AuthServerError> {
+        ticker_from_biguint(self.quote_mint())
+    }
+
+    /// Set the fee for the request
+    fn set_fee(&mut self, fee: f64);
 }
 
 // --- Response Context --- //
@@ -209,6 +222,22 @@ impl<
 // ---------------------------
 
 impl Server {
+    /// Set the fee for an external match request
+    pub async fn set_relayer_fee<Req>(
+        &self,
+        ctx: &mut RequestContext<Req>,
+    ) -> Result<(), AuthServerError>
+    where
+        Req: ExternalMatchRequestType,
+    {
+        let user_id = ctx.key_id();
+        let ticker = ctx.body.base_ticker()?;
+        let user_fee = self.get_user_fee(user_id, ticker).await?;
+        ctx.body_mut().set_fee(user_fee);
+
+        Ok(())
+    }
+
     /// Build request context for an external match related request, before the
     /// request is proxied to the relayer
     #[instrument(skip_all)]
@@ -232,7 +261,7 @@ impl Server {
         let body: Req = json_deserialize(&body, should_stringify)?;
         self.validate_request_body(&body)?;
 
-        Ok(RequestContext {
+        let mut ctx = RequestContext {
             path,
             query_str,
             sdk_version,
@@ -242,7 +271,11 @@ impl Server {
             body,
             sponsorship_info: None,
             request_id: Uuid::new_v4(),
-        })
+        };
+
+        // Set the relayer fee
+        self.set_relayer_fee(&mut ctx).await?;
+        Ok(ctx)
     }
 
     /// Validate the request body

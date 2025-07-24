@@ -20,7 +20,6 @@ use crate::{
         api_handlers::{
             GLOBAL_MATCHING_POOL,
             external_match::{BytesResponse, ExternalMatchRequestType},
-            ticker_from_biguint,
         },
     },
     telemetry::{
@@ -42,13 +41,6 @@ use super::{RequestContext, ResponseContext};
 /// The request context for a quote request
 type QuoteRequestCtx = RequestContext<ExternalQuoteRequest>;
 
-impl QuoteRequestCtx {
-    /// Get the ticker for the quote request
-    pub fn ticker(&self) -> Result<String, AuthServerError> {
-        ticker_from_biguint(&self.body.external_order.base_mint)
-    }
-}
-
 impl ExternalMatchRequestType for ExternalQuoteRequest {
     fn base_mint(&self) -> &BigUint {
         &self.external_order.base_mint
@@ -56,6 +48,10 @@ impl ExternalMatchRequestType for ExternalQuoteRequest {
 
     fn quote_mint(&self) -> &BigUint {
         &self.external_order.quote_mint
+    }
+
+    fn set_fee(&mut self, fee: f64) {
+        self.relayer_fee_rate = fee;
     }
 }
 
@@ -168,7 +164,7 @@ impl Server {
     /// If execution costs limits have been exceeded by the bot server, we route
     /// to the global pool to take pressure off the quoters
     async fn route_quote_req(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
-        let ticker = ctx.ticker()?;
+        let ticker = ctx.body.base_ticker()?;
         let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
         if should_route_to_global {
             info!("Routing order to global matching pool");
