@@ -27,7 +27,8 @@ use custody_client::rpc_shim::JsonRpcRequest;
 use fee_indexer::Indexer;
 use funds_manager_api::fees::{
     WithdrawFeeBalanceRequest, GET_FEE_HOT_WALLET_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE,
-    INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE, WITHDRAW_FEE_BALANCE_ROUTE,
+    GET_UNREDEEMED_FEE_TOTALS_ROUTE, INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE,
+    WITHDRAW_FEE_BALANCE_ROUTE,
 };
 use funds_manager_api::gas::{
     RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest, WithdrawGasRequest,
@@ -65,7 +66,9 @@ use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
-use crate::handlers::{swap_immediate_handler, swap_into_target_token_handler};
+use crate::handlers::{
+    get_unredeemed_fee_totals_handler, swap_immediate_handler, swap_into_target_token_handler,
+};
 
 // -------
 // | Cli |
@@ -134,6 +137,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path(GET_FEE_HOT_WALLET_ADDRESS_ROUTE))
         .and(with_server(server.clone()))
         .and_then(get_fee_hot_wallet_address_handler);
+
+    let get_unredeemed_fee_totals = warp::get()
+        .and(warp::path("fees"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path(GET_UNREDEEMED_FEE_TOTALS_ROUTE))
+        .and(with_server(server.clone()))
+        .and_then(get_unredeemed_fee_totals_handler);
 
     // --- Vaults --- //
 
@@ -360,6 +370,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .or(get_balances)
         .or(withdraw_fee_balance)
         .or(get_fee_hot_wallet_address)
+        .or(get_unredeemed_fee_totals)
         .or(transfer_to_vault)
         .or(transfer_to_hot_wallet)
         .or(get_hot_wallet_balances)

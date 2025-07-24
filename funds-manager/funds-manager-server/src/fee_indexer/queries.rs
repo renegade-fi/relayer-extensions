@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::deserialize::Queryable;
 use diesel::deserialize::QueryableByName;
+use diesel::dsl::sum;
 use diesel::result::Error as DieselError;
 use diesel::sql_function;
 use diesel::sql_query;
@@ -14,6 +15,7 @@ use diesel::ExpressionMethods;
 use diesel::PgArrayExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use renegade_circuit_types::Amount;
 use renegade_common::types::wallet::WalletIdentifier;
 use renegade_constants::MAX_BALANCES;
 use tracing::warn;
@@ -145,6 +147,33 @@ impl Indexer {
             .map_err(|_| FundsManagerError::db("failed to query unredeemed fees"))?;
 
         Ok(mints)
+    }
+
+    /// Get the total amount of unredeemed fees for each mint
+    pub(crate) async fn get_unredeemed_fee_totals(
+        &self,
+    ) -> Result<Vec<(String, Amount)>, FundsManagerError> {
+        let mut conn = self.get_conn().await?;
+
+        let totals = fees::table
+            .filter(fees::redeemed.eq(false))
+            .filter(fees::chain.eq(to_env_agnostic_name(self.chain)))
+            .group_by(fees::mint)
+            .select((fees::mint, sum(fees::amount)))
+            .load::<(String, Option<BigDecimal>)>(&mut conn)
+            .await
+            .map_err(|e| {
+                FundsManagerError::db(format!("failed to query unredeemed fee totals: {e}"))
+            })?;
+
+        let non_null_totals = totals
+            .into_iter()
+            .filter_map(|(mint, maybe_total)| {
+                maybe_total.and_then(|total| total.to_u128()).map(|total_u128| (mint, total_u128))
+            })
+            .collect();
+
+        Ok(non_null_totals)
     }
 
     /// Mark a fee as redeemed
