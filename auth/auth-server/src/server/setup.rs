@@ -1,41 +1,40 @@
 //! Helpers for setting up the server
 
+use super::Server;
 use super::db::{create_db_pool, create_redis_client};
 use super::gas_estimation::gas_cost_sampler::GasCostSampler;
 use super::rate_limiter::AuthServerRateLimiter;
-use super::Server;
 
 use std::{iter, sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
+use crate::server::caching::ServerCache;
 use crate::telemetry::configure_telemtry_from_args;
 use crate::{
+    Cli,
     error::AuthServerError,
     telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
-    Cli,
 };
 use aes_gcm::{Aes128Gcm, KeyInit};
 use alloy::hex;
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::Address;
-use base64::{engine::general_purpose, Engine};
-use cached::UnboundCache;
+use base64::{Engine, engine::general_purpose};
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 use renegade_common::types::{
     hmac::HmacKey,
-    token::{get_all_tokens, Token},
+    token::{Token, get_all_tokens},
 };
 use renegade_config::setup_token_remaps;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
-use renegade_darkpool_client::client::DarkpoolClientConfig;
 use renegade_darkpool_client::DarkpoolClient;
+use renegade_darkpool_client::client::DarkpoolClientConfig;
 use renegade_system_clock::SystemClock;
-use renegade_util::on_chain::{set_external_match_fee, PROTOCOL_FEE};
+use renegade_util::on_chain::{PROTOCOL_FEE, set_external_match_fee};
 use reqwest::Client;
-use tokio::sync::RwLock;
 
 /// The interval at which we poll filter updates
 const DEFAULT_BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
@@ -122,7 +121,7 @@ impl Server {
             relayer_admin_key,
             management_key,
             encryption_key,
-            api_key_cache: Arc::new(RwLock::new(UnboundCache::new())),
+            cache: ServerCache::new(),
             client: Client::new(),
             rate_limiter,
             quote_metrics,

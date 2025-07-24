@@ -28,7 +28,7 @@ impl Server {
     /// Get the API key entry for a given key
     pub async fn get_api_key_entry(&self, api_key: Uuid) -> Result<ApiKey, AuthServerError> {
         // Check the cache first
-        if let Some(key) = self.get_cached_api_key(api_key).await {
+        if let Some(key) = self.cache.get_api_key(api_key) {
             return Ok(key);
         }
 
@@ -49,7 +49,7 @@ impl Server {
         };
 
         // Cache the key and return
-        self.cache_api_key(key.clone()).await;
+        self.cache.cache_api_key(key.clone());
         if !key.is_active {
             return Err(AuthServerError::ApiKeyInactive);
         }
@@ -71,7 +71,7 @@ impl Server {
         drop(conn); // Drop the connection to release the mutable borrow on `self`
 
         // Cache the key
-        self.cache_api_key(new_key.into()).await;
+        self.cache.cache_api_key(new_key.into());
         Ok(())
     }
 
@@ -87,7 +87,7 @@ impl Server {
         drop(conn); // Drop the connection to release the mutable borrow on `self`
 
         // Remove the key from the cache
-        self.mark_cached_key_expired(key_id).await;
+        self.cache.mark_key_expired(key_id);
         Ok(())
     }
 
@@ -123,7 +123,11 @@ impl Server {
         Ok(())
     }
 
-    // --- User Fees --- //
+    // -----------------------
+    // | External Match Fees |
+    // -----------------------
+
+    // --- Per-User Fees --- //
 
     /// Set a user fee override for a given API key and asset
     pub async fn set_user_fee_query(
@@ -142,6 +146,8 @@ impl Server {
             .await
             .map_err(AuthServerError::db)?;
 
+        // Cache the user fee
+        self.cache.cache_user_fee(new_user_fee.id, new_user_fee.asset, new_user_fee.fee as f64);
         Ok(())
     }
 
@@ -151,8 +157,11 @@ impl Server {
         user_id: Uuid,
         asset: String,
     ) -> Result<(), AuthServerError> {
-        let mut conn = self.get_db_conn().await?;
+        // Clear the cache entry
+        self.cache.clear_user_fee(user_id, asset.clone());
 
+        // Clear the database entry
+        let mut conn = self.get_db_conn().await?;
         let num_deleted = diesel::delete(
             user_fees::table.filter(user_fees::id.eq(user_id)).filter(user_fees::asset.eq(asset)),
         )
@@ -162,59 +171,6 @@ impl Server {
 
         if num_deleted == 0 {
             return Err(AuthServerError::bad_request("User fee override not found"));
-        }
-
-        Ok(())
-    }
-
-    // --- Asset Default Fees --- //
-
-    /// Set the default fee for a given asset
-    pub async fn set_asset_default_fee_query(
-        &self,
-        new_default_fee: NewAssetDefaultFee,
-    ) -> Result<(), AuthServerError> {
-        let mut conn = self.get_db_conn().await?;
-
-        // Use ON CONFLICT to either insert or update
-        diesel::insert_into(asset_default_fees::table)
-            .values(&new_default_fee)
-            .on_conflict(asset_default_fees::asset)
-            .do_update()
-            .set(asset_default_fees::fee.eq(new_default_fee.fee))
-            .execute(&mut conn)
-            .await
-            .map_err(AuthServerError::db)?;
-
-        Ok(())
-    }
-
-    /// Get all asset default fees
-    pub async fn get_all_asset_default_fees_query(
-        &self,
-    ) -> Result<Vec<AssetDefaultFee>, AuthServerError> {
-        let mut conn = self.get_db_conn().await?;
-        asset_default_fees::table
-            .load::<AssetDefaultFee>(&mut conn)
-            .await
-            .map_err(AuthServerError::db)
-    }
-
-    /// Remove the default fee for a given asset
-    pub async fn remove_asset_default_fee_query(
-        &self,
-        asset: String,
-    ) -> Result<(), AuthServerError> {
-        let mut conn = self.get_db_conn().await?;
-
-        let num_deleted =
-            diesel::delete(asset_default_fees::table.filter(asset_default_fees::asset.eq(asset)))
-                .execute(&mut conn)
-                .await
-                .map_err(AuthServerError::db)?;
-
-        if num_deleted == 0 {
-            return Err(AuthServerError::bad_request("Asset default fee not found"));
         }
 
         Ok(())
@@ -257,5 +213,63 @@ impl Server {
             .load::<UserAssetFeeQueryResult>(&mut conn)
             .await
             .map_err(AuthServerError::db)
+    }
+
+    // --- Per-Asset Fees --- //
+
+    /// Set the default fee for a given asset
+    pub async fn set_asset_default_fee_query(
+        &self,
+        new_default_fee: NewAssetDefaultFee,
+    ) -> Result<(), AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+
+        // Use ON CONFLICT to either insert or update
+        diesel::insert_into(asset_default_fees::table)
+            .values(&new_default_fee)
+            .on_conflict(asset_default_fees::asset)
+            .do_update()
+            .set(asset_default_fees::fee.eq(new_default_fee.fee))
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+
+        // Clear the cache entries for the asset
+        self.cache.clear_asset_entries(&new_default_fee.asset);
+        Ok(())
+    }
+
+    /// Get all asset default fees
+    pub async fn get_all_asset_default_fees_query(
+        &self,
+    ) -> Result<Vec<AssetDefaultFee>, AuthServerError> {
+        let mut conn = self.get_db_conn().await?;
+        asset_default_fees::table
+            .load::<AssetDefaultFee>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)
+    }
+
+    /// Remove the default fee for a given asset
+    pub async fn remove_asset_default_fee_query(
+        &self,
+        asset: String,
+    ) -> Result<(), AuthServerError> {
+        // Clear the cache entries for the asset
+        self.cache.clear_asset_entries(&asset);
+
+        // Remove the database entry
+        let mut conn = self.get_db_conn().await?;
+        let num_deleted =
+            diesel::delete(asset_default_fees::table.filter(asset_default_fees::asset.eq(asset)))
+                .execute(&mut conn)
+                .await
+                .map_err(AuthServerError::db)?;
+
+        if num_deleted == 0 {
+            return Err(AuthServerError::bad_request("Asset default fee not found"));
+        }
+
+        Ok(())
     }
 }

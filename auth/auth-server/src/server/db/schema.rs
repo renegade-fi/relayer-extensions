@@ -28,4 +28,8 @@ diesel::table! {
 
 diesel::joinable!(user_fees -> api_keys (id));
 
-diesel::allow_tables_to_appear_in_same_query!(api_keys, asset_default_fees, user_fees,);
+diesel::allow_tables_to_appear_in_same_query!(
+    api_keys,
+    asset_default_fees,
+    user_fees,
+);
