@@ -2,7 +2,7 @@
 //! server's execution costs have been exceeded
 
 use chrono::Utc;
-use redis::{aio::ConnectionManager as RedisConnection, AsyncCommands};
+use redis::{AsyncCommands, aio::ConnectionManager as RedisConnection};
 
 use crate::{error::AuthServerError, server::db::create_redis_client};
 

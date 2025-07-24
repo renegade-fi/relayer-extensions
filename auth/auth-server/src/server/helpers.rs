@@ -1,9 +1,9 @@
 //! Helper methods for the auth server
 
-use aes_gcm::{aead::Aead, AeadCore, Aes128Gcm};
+use aes_gcm::{AeadCore, Aes128Gcm, aead::Aead};
 use alloy::signers::k256::ecdsa::SigningKey;
-use alloy_primitives::{keccak256, Signature, U256};
-use base64::{engine::general_purpose, Engine as _};
+use alloy_primitives::{Signature, U256, keccak256};
+use base64::{Engine as _, engine::general_purpose};
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use rand::thread_rng;
 use renegade_api::http::external_match::SignedExternalQuote;
