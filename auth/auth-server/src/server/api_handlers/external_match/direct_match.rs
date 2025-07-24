@@ -44,6 +44,10 @@ impl ExternalMatchRequestType for ExternalMatchRequest {
     fn quote_mint(&self) -> &BigUint {
         &self.external_order.quote_mint
     }
+
+    fn set_fee(&mut self, fee: f64) {
+        self.relayer_fee_rate = fee;
+    }
 }
 
 /// The response context for a direct match request

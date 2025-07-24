@@ -49,6 +49,10 @@ impl ExternalMatchRequestType for AssembleExternalMatchRequest {
     fn quote_mint(&self) -> &BigUint {
         &self.signed_quote.quote.order.quote_mint
     }
+
+    fn set_fee(&mut self, fee: f64) {
+        self.relayer_fee_rate = fee;
+    }
 }
 
 /// The response context for an assemble quote request
