@@ -3,14 +3,14 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use http::header::{ACCEPT, CONTENT_LENGTH};
 use http::HeaderMap;
+use http::header::{ACCEPT, CONTENT_LENGTH};
 use reqwest::{Client, Response};
 use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 use warp::http::Response as HttpResponse;
-use warp::reply::Reply;
+use warp::reply::Json;
 
 use crate::error::AuthServerError;
 use crate::http_utils::stringify_formatter::json_serialize;
@@ -107,7 +107,7 @@ pub async fn send_post_request<T: Serialize>(
 // ------------------
 
 /// Construct empty json reply
-pub fn empty_json_reply() -> impl Reply {
+pub fn empty_json_reply() -> Json {
     warp::reply::json(&json!({}))
 }
 

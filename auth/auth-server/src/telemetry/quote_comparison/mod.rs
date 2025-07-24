@@ -30,7 +30,7 @@ pub struct QuoteComparison<'a> {
     pub usdc_per_gas: f64,
 }
 
-impl<'a> QuoteComparison<'a> {
+impl QuoteComparison<'_> {
     /// Calculate the price difference in basis points (bps).
     /// Positive bps indicates a better quote for the given side:
     /// - Sell: our price > source price

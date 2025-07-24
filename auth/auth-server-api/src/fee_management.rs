@@ -27,6 +27,22 @@ pub struct SetUserFeeRequest {
     pub fee: f32,
 }
 
+/// A request to remove a user-specific fee override
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveUserFeeRequest {
+    /// The user's API key ID
+    pub user_id: Uuid,
+    /// The asset identifier
+    pub asset: String,
+}
+
+/// A request to remove the default fee for an asset
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveAssetDefaultFeeRequest {
+    /// The asset identifier
+    pub asset: String,
+}
+
 /// Response containing all fee configurations
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetAllFeesResponse {

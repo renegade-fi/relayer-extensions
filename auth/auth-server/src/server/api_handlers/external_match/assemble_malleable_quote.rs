@@ -2,18 +2,20 @@
 
 use auth_server_api::SponsoredMalleableMatchResponse;
 use bytes::Bytes;
-use http::Response;
 use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, MalleableExternalMatchResponse,
 };
 use renegade_util::get_current_time_millis;
 use tracing::{instrument, warn};
-use warp::{reject::Rejection, reply::Reply};
+use warp::reject::Rejection;
 
 use crate::{
     error::AuthServerError,
     http_utils::request_response::overwrite_response_body,
-    server::{api_handlers::external_match::assemble_quote::AssembleQuoteRequestCtx, Server},
+    server::{
+        Server,
+        api_handlers::external_match::{BytesResponse, assemble_quote::AssembleQuoteRequestCtx},
+    },
 };
 
 use super::ResponseContext;
@@ -65,7 +67,7 @@ impl Server {
         headers: warp::hyper::HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<BytesResponse, Rejection> {
         // 1. Run the pre-request subroutines
         let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
         self.assemble_malleable_quote_pre_request(&mut ctx).await?;
@@ -107,9 +109,9 @@ impl Server {
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn assemble_malleable_quote_post_request(
         &self,
-        mut resp: Response<Bytes>,
+        mut resp: BytesResponse,
         ctx: &AssembleMalleableQuoteResponseCtx,
-    ) -> Result<impl Reply, AuthServerError> {
+    ) -> Result<BytesResponse, AuthServerError> {
         if !ctx.is_success() {
             return Ok(resp);
         }

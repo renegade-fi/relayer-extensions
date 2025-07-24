@@ -2,26 +2,27 @@
 
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
-use http::Response;
 use num_bigint::BigUint;
 use renegade_api::http::external_match::{AssembleExternalMatchRequest, ExternalMatchResponse};
 use renegade_util::get_current_time_millis;
 use tracing::{error, info, instrument, warn};
-use warp::{reject::Rejection, reply::Reply};
+use warp::reject::Rejection;
 
 use crate::{
     error::AuthServerError,
     http_utils::request_response::overwrite_response_body,
     server::{
+        Server,
         api_handlers::{
-            external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,
+            GLOBAL_MATCHING_POOL,
+            external_match::{BytesResponse, ExternalMatchRequestType},
+            ticker_from_biguint,
         },
         gas_sponsorship::refund_calculation::{
             apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,
             requires_exact_output_amount_update,
         },
         helpers::generate_quote_uuid,
-        Server,
     },
 };
 
@@ -91,7 +92,7 @@ impl Server {
         headers: warp::hyper::HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<BytesResponse, Rejection> {
         // 1. Run the pre-request subroutines
         let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
         self.assembly_pre_request(&mut ctx).await?;
@@ -128,9 +129,9 @@ impl Server {
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn assembly_post_request(
         &self,
-        mut resp: Response<Bytes>,
+        mut resp: BytesResponse,
         ctx: AssembleQuoteResponseCtx,
-    ) -> Result<impl Reply, AuthServerError> {
+    ) -> Result<BytesResponse, AuthServerError> {
         // If the relayer returns non-200, return the response directly
         if !ctx.is_success() {
             return Ok(resp);
@@ -295,6 +296,9 @@ fn log_updated_order(ctx: &SponsoredAssembleQuoteResponseCtx) {
         request_id = request_id,
         sdk_version = sdk_version,
         "Quote updated(original_base_amount: {}, updated_base_amount: {}, original_quote_amount: {}, updated_quote_amount: {})",
-        original_base_amount, updated_base_amount, original_quote_amount, updated_quote_amount
+        original_base_amount,
+        updated_base_amount,
+        original_quote_amount,
+        updated_quote_amount
     );
 }

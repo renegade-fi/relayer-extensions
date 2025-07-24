@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 
 renegade-api = { package = "external-api", workspace = true }
-renegade-common = { package = "common", workspace = true, default-features = false, features = ["hmac"] }
+renegade-common = { package = "common", workspace = true, default-features = false, features = [
+    "hmac",
+] }
 
 alloy-primitives = { version = "1.0.0", features = ["serde"] }
 http = "0.2.12"

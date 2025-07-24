@@ -18,16 +18,16 @@ use rand::Rng;
 use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::token::Token;
-use renegade_constants::EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
 use renegade_util::hex::biguint_to_hex_addr;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use super::Server;
 use super::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, requires_exact_output_amount_update,
 };
-use super::Server;
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::calculate_implied_price;
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
@@ -240,7 +240,7 @@ where
     let recv = &match_bundle.receive;
     let send = &match_bundle.send;
 
-    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+    let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
 
     // Get the base fill ratio
     let requested_base_amount = order.get_base_amount(price_fixed, relayer_fee);
@@ -261,26 +261,26 @@ where
     let key_description = ctx.user();
     let request_id = ctx.request_id.to_string();
     info!(
-            requested_base_amount = requested_base_amount,
-            response_base_amount = response_base_amount,
-            requested_quote_amount = requested_quote_amount,
-            response_quote_amount = response_quote_amount,
-            base_fill_ratio = base_fill_ratio,
-            quote_fill_ratio = quote_fill_ratio,
-            key_description = key_description,
-            request_id = request_id,
-            is_sponsored = is_sponsored,
-            endpoint = ctx.path,
-            sdk_version = ctx.sdk_version,
-            "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-            is_buy,
-            recv.amount,
-            recv.mint,
-            send.amount,
-            send.mint,
-            refund_amount,
-            refund_native_eth
-        );
+        requested_base_amount = requested_base_amount,
+        response_base_amount = response_base_amount,
+        requested_quote_amount = requested_quote_amount,
+        response_quote_amount = response_quote_amount,
+        base_fill_ratio = base_fill_ratio,
+        quote_fill_ratio = quote_fill_ratio,
+        key_description = key_description,
+        request_id = request_id,
+        is_sponsored = is_sponsored,
+        endpoint = ctx.path,
+        sdk_version = ctx.sdk_version,
+        "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
+        is_buy,
+        recv.amount,
+        recv.mint,
+        send.amount,
+        send.mint,
+        refund_amount,
+        refund_native_eth
+    );
 
     Ok(())
 }

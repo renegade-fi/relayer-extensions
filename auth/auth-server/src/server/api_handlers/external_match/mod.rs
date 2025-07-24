@@ -26,6 +26,9 @@ pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponse
 
 use super::{get_sdk_version, log_unsuccessful_relayer_request};
 
+/// A bytes body response type
+pub type BytesResponse = Response<Bytes>;
+
 // --------------------
 // | Request Contexts |
 // --------------------
@@ -137,9 +140,9 @@ pub struct ResponseContext<
 }
 
 impl<
-        Req: Serialize + for<'de> Deserialize<'de>,
-        Resp: Serialize + for<'de> Deserialize<'de> + Clone,
-    > ResponseContext<Req, Resp>
+    Req: Serialize + for<'de> Deserialize<'de>,
+    Resp: Serialize + for<'de> Deserialize<'de> + Clone,
+> ResponseContext<Req, Resp>
 {
     /// Create a response context from a response and request context
     pub fn from_response(

@@ -5,7 +5,7 @@ use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 use renegade_constants::{
-    EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
+    DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::warn;
@@ -149,7 +149,7 @@ fn record_external_match_request_metrics(
     let quote_mint = biguint_to_hex_addr(&order.quote_mint);
     let labels = extend_labels_with_base_asset(&base_mint, labels.to_vec());
 
-    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+    let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
 
     // Calculate amount in quote using fixed point arithmetic
     let fixed_point_price = FixedPoint::from_f64_round_down(price);
@@ -228,7 +228,7 @@ pub(crate) fn record_external_match_metrics(
         warn!("Error recording request metrics: {e}");
     }
 
-    let relayer_fee = FixedPoint::from_f64_round_down(EXTERNAL_MATCH_RELAYER_FEE);
+    let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
 
     // Record fill ratio metric
     let requested_quote_amount =

@@ -2,21 +2,22 @@
 
 use auth_server_api::{GasSponsorshipInfo, SponsoredMatchResponse};
 use bytes::Bytes;
-use http::Response;
 use num_bigint::BigUint;
 use renegade_api::http::external_match::{ExternalMatchRequest, ExternalMatchResponse};
 use renegade_util::get_current_time_millis;
 use tracing::{info, instrument, warn};
-use warp::{reject::Rejection, reply::Reply};
+use warp::reject::Rejection;
 
 use crate::{
     error::AuthServerError,
     http_utils::request_response::overwrite_response_body,
     server::{
-        api_handlers::{
-            external_match::ExternalMatchRequestType, ticker_from_biguint, GLOBAL_MATCHING_POOL,
-        },
         Server,
+        api_handlers::{
+            GLOBAL_MATCHING_POOL,
+            external_match::{BytesResponse, ExternalMatchRequestType},
+            ticker_from_biguint,
+        },
     },
 };
 
@@ -86,7 +87,7 @@ impl Server {
         headers: warp::hyper::HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<BytesResponse, Rejection> {
         // 1. Run the pre-request subroutines
         let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
         self.direct_match_pre_request(&mut ctx).await?;
@@ -124,9 +125,9 @@ impl Server {
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
     fn direct_match_post_request(
         &self,
-        mut resp: Response<Bytes>,
+        mut resp: BytesResponse,
         ctx: DirectMatchResponseCtx,
-    ) -> Result<impl Reply, AuthServerError> {
+    ) -> Result<BytesResponse, AuthServerError> {
         // If the relayer returns non-200, return the response directly
         if !ctx.is_success() {
             return Ok(resp);

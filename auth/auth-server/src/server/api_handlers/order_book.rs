@@ -2,9 +2,10 @@
 use bytes::Bytes;
 use http::{HeaderMap, Method, StatusCode};
 use tracing::instrument;
-use warp::{reject::Rejection, reply::Reply};
+use warp::reject::Rejection;
 
-use super::{log_unsuccessful_relayer_request, Server};
+use super::{Server, log_unsuccessful_relayer_request};
+use crate::server::api_handlers::external_match::BytesResponse;
 use crate::telemetry::helpers::record_relayer_request_500;
 
 impl Server {
@@ -14,7 +15,7 @@ impl Server {
         &self,
         path: warp::path::FullPath,
         headers: HeaderMap,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<BytesResponse, Rejection> {
         // Authorize the request
         let path_str = path.as_str();
         let (key_desc, _key_id) = self

@@ -8,9 +8,9 @@ use tracing::{info, instrument};
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
-use crate::{error::AuthServerError, http_utils::request_response::convert_headers, ApiError};
+use crate::{ApiError, error::AuthServerError, http_utils::request_response::convert_headers};
 
-use super::{helpers::aes_decrypt, Server};
+use super::{Server, helpers::aes_decrypt};
 
 impl Server {
     /// Authorize a management request

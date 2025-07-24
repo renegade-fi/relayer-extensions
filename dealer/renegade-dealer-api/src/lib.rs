@@ -6,7 +6,6 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![feature(inherent_associated_types)]
 
 use k256::PublicKey;

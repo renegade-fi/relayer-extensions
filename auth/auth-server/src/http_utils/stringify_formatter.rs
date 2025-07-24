@@ -6,10 +6,10 @@ use std::{
     str::FromStr,
 };
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{
-    ser::{CompactFormatter, Formatter, Serializer},
     Number, Value,
+    ser::{CompactFormatter, Formatter, Serializer},
 };
 
 use crate::error::AuthServerError;
@@ -322,13 +322,18 @@ mod test {
         fn new() -> Self {
             let mut rng = rand::thread_rng();
             Self {
-                a: rng.gen(),
-                b: rng.gen(),
-                c: rng.gen(),
-                d: rng.gen(),
+                a: rng.r#gen(),
+                b: rng.r#gen(),
+                c: rng.r#gen(),
+                d: rng.r#gen(),
                 e: "test".to_string(),
-                f: (0..10).map(|_| rng.gen()).collect(),
-                g: EmbeddedStruct { a: rng.gen(), b: rng.gen(), c: rng.gen(), d: [rng.gen(); 10] },
+                f: (0..10).map(|_| rng.r#gen()).collect(),
+                g: EmbeddedStruct {
+                    a: rng.r#gen(),
+                    b: rng.r#gen(),
+                    c: rng.r#gen(),
+                    d: [rng.r#gen(); 10],
+                },
             }
         }
     }

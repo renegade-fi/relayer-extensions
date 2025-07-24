@@ -8,7 +8,6 @@ use crate::server::helpers::u64_to_u256;
 
 /// A pessimistic overestimate of the gas cost of L2 execution for an external
 /// match, rounded up to the nearest 100k.
-
 /// The estimated L2 gas cost of submitting an external match settlement
 pub const ESTIMATED_L2_GAS_U64: u64 = 3_600_000; // 3.6m
 
@@ -21,7 +20,6 @@ pub const ESTIMATED_L2_GAS: U256 = u64_to_u256(ESTIMATED_L2_GAS_U64);
 /// accounting for an expected compression ratio.
 /// Concretely, our calldata is ~8kb, and we expect a compression ratio
 /// of ~75%. Both of these values were obtained empirically.
-
 // In the future, we can consider sampling calldata from a recent external match
 pub const ESTIMATED_COMPRESSED_CALLDATA_SIZE_BYTES: usize = 6_000;
 

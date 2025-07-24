@@ -5,14 +5,14 @@ use crate::{
     server::{db::models::NewApiKey, helpers::aes_encrypt},
 };
 use auth_server_api::{
-    key_management::{AllKeysResponse, ApiKey as UserFacingApiKey},
     CreateApiKeyRequest,
+    key_management::{AllKeysResponse, ApiKey as UserFacingApiKey},
 };
 use bytes::Bytes;
 use http::HeaderMap;
 use tracing::instrument;
 use uuid::Uuid;
-use warp::{filters::path::FullPath, reject::Rejection, reply::Reply};
+use warp::{filters::path::FullPath, reject::Rejection, reply::Json};
 
 use crate::ApiError;
 
@@ -27,7 +27,7 @@ impl Server {
         &self,
         path: FullPath,
         headers: HeaderMap,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<Json, Rejection> {
         self.authorize_management_request(&path, &headers, &Bytes::new() /* body */)?;
         let keys = self.get_all_api_keys().await?;
 
@@ -46,7 +46,7 @@ impl Server {
         path: FullPath,
         headers: HeaderMap,
         body: Bytes,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<Json, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
 
@@ -70,7 +70,7 @@ impl Server {
         path: FullPath,
         headers: HeaderMap,
         body: Bytes,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<Json, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
 
@@ -93,7 +93,7 @@ impl Server {
         path: FullPath,
         headers: HeaderMap,
         body: Bytes,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<Json, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
         self.whitelist_api_key_query(key_id).await?;
@@ -113,7 +113,7 @@ impl Server {
         path: FullPath,
         headers: HeaderMap,
         body: Bytes,
-    ) -> Result<impl Reply, Rejection> {
+    ) -> Result<Json, Rejection> {
         // Check management auth on the request
         self.authorize_management_request(&path, &headers, &body)?;
         self.remove_whitelist_entry_query(key_id).await?;
