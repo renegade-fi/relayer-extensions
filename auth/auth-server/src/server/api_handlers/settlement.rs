@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{MatchBundleResponseCtx, Server};
 use crate::bundle_store::helpers::generate_malleable_bundle_id;
-use crate::bundle_store::{helpers::generate_bundle_id, BundleContext};
+use crate::bundle_store::{BundleContext, helpers::generate_bundle_id};
 use crate::error::AuthServerError;
 use crate::server::api_handlers::external_match::SponsoredAssembleMalleableQuoteResponseCtx;
 use crate::telemetry::abi_helpers::{

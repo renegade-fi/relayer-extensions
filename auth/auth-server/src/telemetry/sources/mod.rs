@@ -3,7 +3,7 @@
 pub mod odos;
 
 use renegade_api::http::external_match::AtomicMatchApiBundle;
-use renegade_circuit_types::{order::OrderSide, Amount};
+use renegade_circuit_types::{Amount, order::OrderSide};
 use renegade_common::types::token::Token;
 
 use crate::{error::AuthServerError, server::gas_estimation::constants::ESTIMATED_L2_GAS_U64};

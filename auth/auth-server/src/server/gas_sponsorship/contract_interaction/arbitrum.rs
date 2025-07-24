@@ -2,7 +2,7 @@
 
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_sol_types::{sol, SolCall};
+use alloy_sol_types::{SolCall, sol};
 use rand::Rng;
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
 use renegade_darkpool_client::arbitrum::abi::Darkpool::{
@@ -13,8 +13,8 @@ use renegade_darkpool_client::arbitrum::abi::Darkpool::{
 use crate::{
     error::AuthServerError,
     server::{
-        helpers::{get_selector, sign_message},
         Server,
+        helpers::{get_selector, sign_message},
     },
 };
 

@@ -13,8 +13,8 @@ use renegade_solidity_abi::IDarkpool::{
 use crate::{
     error::AuthServerError,
     server::{
-        helpers::{get_selector, sign_message},
         Server,
+        helpers::{get_selector, sign_message},
     },
 };
 

@@ -1,7 +1,7 @@
 //! Defines the quote comparison handler
 
 use alloy::providers::Provider;
-use alloy_primitives::{utils::format_units, U256};
+use alloy_primitives::{U256, utils::format_units};
 use futures_util::future::join_all;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::AtomicMatchApiBundle;

@@ -16,13 +16,13 @@ use std::{sync::Arc, time::Duration};
 use crate::bundle_store::BundleStore;
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::convert_headers;
+use crate::server::caching::ServerCache;
 use crate::telemetry::quote_comparison::handler::QuoteComparisonHandler;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::Address;
-use base64::engine::{general_purpose as b64_general_purpose, Engine};
+use base64::engine::{Engine, general_purpose as b64_general_purpose};
 use bytes::Bytes;
-use caching::ApiKeyCache;
 use db::DbPool;
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
@@ -58,8 +58,8 @@ pub struct Server {
     pub management_key: HmacKey,
     /// The encryption key for storing API secrets
     pub encryption_key: Aes128Gcm,
-    /// The api key cache
-    pub api_key_cache: ApiKeyCache,
+    /// The server's data cache
+    pub cache: ServerCache,
     /// The HTTP client
     pub client: Client,
     /// The rate limiter
