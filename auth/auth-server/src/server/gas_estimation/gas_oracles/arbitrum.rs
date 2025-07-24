@@ -2,7 +2,7 @@
 
 use alloy::primitives::{Address, U256};
 use alloy::sol;
-use alloy_primitives::{hex, FixedBytes};
+use alloy_primitives::{FixedBytes, hex};
 use renegade_darkpool_client::client::RenegadeProvider;
 
 use crate::server::helpers::u64_to_u256;

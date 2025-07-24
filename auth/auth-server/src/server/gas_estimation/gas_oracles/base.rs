@@ -1,10 +1,10 @@
 //! Base specific gas oracle contract methods
 
+use GasOracle::GasOracleInstance;
 use alloy::primitives::{Address, U256};
 use alloy::{hex, sol};
 use alloy_primitives::FixedBytes;
 use renegade_darkpool_client::client::RenegadeProvider;
-use GasOracle::GasOracleInstance;
 
 use super::GasPriceEstimation;
 

@@ -5,7 +5,7 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
-    rpc::types::{trace::geth::CallFrame, Filter},
+    rpc::types::{Filter, trace::geth::CallFrame},
     sol_types::SolEvent,
 };
 use alloy_primitives::TxHash;
@@ -15,7 +15,7 @@ use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::wallet::Nullifier;
 use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::{
-    conversion::u256_to_scalar, traits::DarkpoolImpl, DarkpoolClient, DarkpoolImplementation,
+    DarkpoolClient, DarkpoolImplementation, conversion::u256_to_scalar, traits::DarkpoolImpl,
 };
 use tracing::{error, info};
 

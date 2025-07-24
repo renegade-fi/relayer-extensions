@@ -1,9 +1,9 @@
 //! ABI helpers for the chain events listener
 use renegade_api::http::external_match::{ApiBoundedMatchResult, ApiExternalMatchResult};
 use renegade_circuit_types::{
+    Amount,
     r#match::{BoundedMatchResult, ExternalMatchResult},
     wallet::Nullifier,
-    Amount,
 };
 
 use crate::{

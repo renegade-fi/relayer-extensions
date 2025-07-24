@@ -2,7 +2,7 @@
 
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
-use crate::{error::AuthServerError, Cli};
+use crate::{Cli, error::AuthServerError};
 pub mod abi_helpers;
 pub mod helpers;
 pub mod labels;

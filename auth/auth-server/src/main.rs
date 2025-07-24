@@ -35,8 +35,8 @@ use thiserror::Error;
 use tracing::{error, info, info_span};
 use uuid::Uuid;
 use warp::{
-    reply::{Json, WithStatus},
     Filter, Rejection,
+    reply::{Json, WithStatus},
 };
 
 use server::Server;

@@ -1,6 +1,6 @@
 //! A client for the Odos API
 
-use crate::http_utils::request_response::{send_post_request, HttpError};
+use crate::http_utils::request_response::{HttpError, send_post_request};
 
 use super::types::{OdosQuoteRequest, OdosQuoteResponse};
 
