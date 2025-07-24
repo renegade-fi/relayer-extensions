@@ -7,7 +7,9 @@ use crate::error::ApiError;
 use crate::execution_client::error::ExecutionClientError;
 use crate::Server;
 use bytes::Bytes;
-use funds_manager_api::fees::{FeeWalletsResponse, WithdrawFeeBalanceRequest};
+use funds_manager_api::fees::{
+    FeeWalletsResponse, UnredeemedFeeTotalsResponse, WithdrawFeeBalanceRequest,
+};
 use funds_manager_api::gas::{
     CreateGasWalletResponse, GasWalletsResponse, RefillGasRequest, RegisterGasWalletRequest,
     RegisterGasWalletResponse, ReportActivePeersRequest, WithdrawGasRequest,
@@ -119,6 +121,18 @@ pub(crate) async fn get_fee_hot_wallet_address_handler(
 
     let resp = DepositAddressResponse { address };
     Ok(warp::reply::json(&resp))
+}
+
+/// Handler for querying the total amount of unredeemed fees for each mint
+pub(crate) async fn get_unredeemed_fee_totals_handler(
+    chain: Chain,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let indexer = server.get_fee_indexer(&chain)?;
+    let totals_vec = indexer.get_unredeemed_fee_totals().await?;
+    let totals = HashMap::from_iter(totals_vec.into_iter());
+
+    Ok(warp::reply::json(&UnredeemedFeeTotalsResponse { totals }))
 }
 
 /// Handler for retrieving the hot wallet address for gas operations
