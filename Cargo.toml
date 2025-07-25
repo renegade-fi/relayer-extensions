@@ -45,6 +45,7 @@ renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi
 
 
 # === Blockchain Dependencies === #
+alloy-contract = "1.0.1"
 alloy-sol-types = "1.0.1"
 alloy-dyn-abi = "1.0.1"
 alloy-json-rpc = "1.0.1"

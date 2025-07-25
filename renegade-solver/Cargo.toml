@@ -18,12 +18,18 @@ tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 warp = "0.3"
 
-# === Ethereum Dependencies === #
-alloy = { version = "1.0", features = ["essentials"] }
+# === Ethereum Libraries === #
+alloy = { workspace = true, features = ["essentials"] }
+alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
+alloy-sol-types = { workspace = true }
+alloy-contract = { workspace = true }
 
 # === Renegade Dependencies === #
+renegade-common = { workspace = true }
+renegade-constants = { workspace = true }
+renegade-solidity-abi = { workspace = true }
 renegade-sdk = "0.1.15"
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade", features = [
+renegade-util = { workspace = true, features = [
     "telemetry",
 ] }
 

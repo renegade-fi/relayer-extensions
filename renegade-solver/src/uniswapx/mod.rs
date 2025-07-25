@@ -13,6 +13,7 @@ use tracing::error;
 use crate::{cli::Cli, error::SolverResult, uniswapx::uniswap_api::types::OrderEntity};
 
 mod abis;
+pub mod executor_client;
 mod renegade_api;
 mod solve;
 mod uniswap_api;
