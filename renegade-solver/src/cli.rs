@@ -27,6 +27,17 @@ pub struct Cli {
     #[arg(long, env = "RENEGADE_API_SECRET")]
     pub renegade_api_secret: String,
 
+    // --- Executor Config --- //
+    /// The address of the executor contract
+    #[arg(long, env = "EXECUTOR_ADDRESS")]
+    pub contract_address: String,
+    /// The RPC URL for blockchain interaction
+    #[arg(long, env = "RPC_URL")]
+    pub rpc_url: String,
+    /// The private key for signing transactions
+    #[arg(long, env = "PRIVATE_KEY")]
+    pub private_key: String,
+
     // --- Server --- //
     /// Port to run the server on
     #[arg(short, long, default_value_t = 3000)]

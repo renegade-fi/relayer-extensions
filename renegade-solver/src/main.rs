@@ -14,7 +14,11 @@ use serde_json::json;
 use tracing::{info, info_span};
 use warp::Filter;
 
-use crate::{cli::Cli, error::handle_rejection, uniswapx::UniswapXSolver};
+use crate::{
+    cli::Cli,
+    error::handle_rejection,
+    uniswapx::{executor_client::ExecutorClient, UniswapXSolver},
+};
 
 mod cli;
 mod error;
@@ -26,9 +30,13 @@ async fn main() {
     let cli = Cli::parse();
     cli.configure_telemetry();
 
+    // Construct a darkpool executor client that will be used to submit txs
+    let executor_client = ExecutorClient::new(&cli).expect("Failed to create executor client");
+
     // Create the UniswapX solver and begin its polling loop
-    let uniswapx =
-        UniswapXSolver::new(cli.clone()).await.expect("Failed to create UniswapX solver");
+    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client)
+        .await
+        .expect("Failed to create UniswapX solver");
     uniswapx.spawn_polling_loop();
 
     // Create the endpoints
