@@ -7,6 +7,7 @@ use alloy::primitives::Address;
 use bimap::BiMap;
 use executor_client::ExecutorClient;
 use lru::LruCache;
+use price_reporter_client::PriceReporterClient;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;
@@ -68,6 +69,8 @@ pub struct UniswapXSolver {
     renegade_client: ExternalMatchClient,
     /// The executor client for submitting solutions
     executor_client: Arc<ExecutorClient>,
+    /// The price reporter client for price data
+    price_reporter_client: PriceReporterClient,
     /// LRU cache of order hashes we've already tried to handle
     ///
     /// An order is placed in the cache even if processing the order fails, this
@@ -81,7 +84,11 @@ impl UniswapXSolver {
     // ---------
 
     /// Create a new UniswapX solver
-    pub async fn new(cli: Cli, executor_client: ExecutorClient) -> SolverResult<Self> {
+    pub async fn new(
+        cli: Cli,
+        executor_client: ExecutorClient,
+        price_reporter_client: PriceReporterClient,
+    ) -> SolverResult<Self> {
         let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
 
         // TODO: Add support for other chains
@@ -94,6 +101,7 @@ impl UniswapXSolver {
             http_client: ReqwestClient::new(),
             renegade_client,
             executor_client: Arc::new(executor_client),
+            price_reporter_client,
             supported_tokens,
             order_cache: new_order_cache(),
         })

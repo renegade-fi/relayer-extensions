@@ -20,6 +20,9 @@ pub struct Cli {
     /// The URL of the UniswapX API
     #[arg(long, env = "UNISWAPX_URL")]
     pub uniswapx_url: String,
+    /// The URL of the price reporter service
+    #[arg(long, env = "PRICE_REPORTER_URL")]
+    pub price_reporter_url: String,
     /// The API key for the Renegade external match API
     #[arg(long, env = "RENEGADE_API_KEY")]
     pub renegade_api_key: String,
