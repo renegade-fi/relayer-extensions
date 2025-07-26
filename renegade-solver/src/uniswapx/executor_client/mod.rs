@@ -14,6 +14,7 @@ use renegade_solidity_abi::IDarkpool::IDarkpoolInstance as ExecutorInstance;
 use std::{str::FromStr, time::Duration};
 mod contract_interaction;
 pub mod errors;
+use crate::cli::Cli;
 use renegade_util::err_str;
 
 // -------------
@@ -100,6 +101,24 @@ impl ExecutorClient {
     /// Get a reference to the underlying provider
     pub fn provider(&self) -> &ExecutorProvider {
         self.contract.provider()
+    }
+
+    /// Creates a new ExecutorClient from CLI configuration
+    pub fn new(cli: &Cli) -> Result<Self, ExecutorConfigError> {
+        // Parse the private key
+        let private_key = PrivateKeySigner::from_str(&cli.private_key)
+            .map_err(err_str!(ExecutorConfigError::AddressParsing))?;
+
+        // Create the configuration
+        let config =
+            ExecutorConfig::new(cli.contract_address.clone(), cli.rpc_url.clone(), private_key);
+
+        // Create provider and contract instance
+        let provider = config.get_provider()?;
+        let contract_address = config.get_contract_address()?;
+        let contract = ExecutorInstance::new(contract_address, provider);
+
+        Ok(Self { contract })
     }
 }
 
