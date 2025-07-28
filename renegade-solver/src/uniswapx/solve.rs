@@ -35,9 +35,9 @@ impl UniswapXSolver {
         );
 
         // Compute priority fee
-        let priority_order_price = self.get_priority_order_price(&order).await?;
+        let priority_order_price = order.get_price()?;
         let renegade_price = self.get_renegade_price(&order).await?;
-        let is_sell = self.is_usdc(order.outputs[0].token);
+        let is_sell = order.is_sell();
         let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
         info!("Priority fee (wei): {}", priority_fee);
 
