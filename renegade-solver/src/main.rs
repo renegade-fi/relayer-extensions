@@ -11,13 +11,14 @@ use std::net::SocketAddr;
 
 use clap::Parser;
 use price_reporter_client::PriceReporterClient;
+use renegade_config::setup_token_remaps;
 use serde_json::json;
 use tracing::{info, info_span};
 use warp::Filter;
 
 use crate::{
     cli::Cli,
-    error::handle_rejection,
+    error::{handle_rejection, SolverError},
     uniswapx::{executor_client::ExecutorClient, UniswapXSolver},
 };
 
@@ -30,6 +31,7 @@ mod uniswapx;
 async fn main() {
     let cli = Cli::parse();
     cli.configure_telemetry();
+    setup_token_mapping(&cli).await.expect("Failed to setup token mapping");
 
     // Construct a darkpool executor client that will be used to submit txs
     let executor_client = ExecutorClient::new(&cli).expect("Failed to create executor client");
@@ -65,6 +67,18 @@ fn ping_handler() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejec
 // -----------
 // | Helpers |
 // -----------
+
+/// Setup the token mapping
+async fn setup_token_mapping(cli: &Cli) -> Result<(), SolverError> {
+    let chain_id = cli.chain_id;
+    tokio::task::spawn_blocking(move || {
+        setup_token_remaps(None /* token remap file */, chain_id)
+    })
+    .await
+    .unwrap()
+    .expect("Failed to setup token mapping");
+    Ok(())
+}
 
 /// Custom tracing filter that creates spans for requests at info level
 /// with the renegade_solver::request target to work with our RUST_LOG

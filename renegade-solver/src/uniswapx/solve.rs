@@ -7,6 +7,7 @@ use crate::{
     error::SolverResult,
     uniswapx::{
         abis::{conversion::u256_to_u128, uniswapx::PriorityOrderReactor::PriorityOrder},
+        priority_fee::compute_priority_fee,
         uniswap_api::types::OrderEntity,
         UniswapXSolver,
     },
@@ -32,6 +33,13 @@ impl UniswapXSolver {
             "Found serviceable order for {} {} -> {} {}",
             input.amount, input.token, first_output.amount, first_output.token
         );
+
+        // Compute priority fee
+        let priority_order_price = self.get_priority_order_price(&order).await?;
+        let renegade_price = self.get_renegade_price(&order).await?;
+        let is_sell = self.is_usdc(order.outputs[0].token);
+        let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
+        info!("Priority fee (wei): {}", priority_fee);
 
         // Find a solution for the order
         let in_token = order.input.token;

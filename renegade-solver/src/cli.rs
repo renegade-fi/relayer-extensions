@@ -1,6 +1,7 @@
 //! The CLI for the renegade solver
 
 use clap::Parser;
+use renegade_common::types::chain::Chain;
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
 /// The default metrics prefix
@@ -29,6 +30,9 @@ pub struct Cli {
     /// The API secret for the Renegade external match API
     #[arg(long, env = "RENEGADE_API_SECRET")]
     pub renegade_api_secret: String,
+    /// The chain the solver is running on
+    #[arg(long, env = "CHAIN_ID", default_value = "base-mainnet")]
+    pub chain_id: Chain,
 
     // --- Executor Config --- //
     /// The address of the executor contract

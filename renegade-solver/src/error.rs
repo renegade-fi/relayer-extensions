@@ -1,6 +1,7 @@
 //! Error types for the solver
 
 use alloy::primitives::U256;
+use price_reporter_client::error::PriceReporterClientError;
 use renegade_sdk::ExternalMatchClientError;
 use serde_json::json;
 use thiserror::Error;
@@ -32,6 +33,9 @@ pub enum SolverError {
     /// Error from the renegade client
     #[error("Renegade client error: {0}")]
     Renegade(#[from] ExternalMatchClientError),
+    /// Error from the price reporter client
+    #[error("Price reporter client error: {0}")]
+    PriceReporter(#[from] PriceReporterClientError),
 }
 
 impl SolverError {

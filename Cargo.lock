@@ -7490,6 +7490,7 @@ dependencies = [
  "bimap",
  "clap",
  "common",
+ "config",
  "constants",
  "lru 0.12.5",
  "price-reporter-client",
