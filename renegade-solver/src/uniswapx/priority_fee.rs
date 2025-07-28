@@ -82,3 +82,29 @@ impl UniswapXSolver {
         Ok(price)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_priority_fee_calculation_docs_example() {
+        // Example from UniswapX docs:
+        // Alice sells 1 ETH for minimum 1000 USDC
+        // Fair market rate: 1100 USDC per ETH
+        // Filler offers 1090 USDC (10% margin from 100 USDC profit)
+        // Expected: 900 bps improvement = 900,000 mps = 900,000 wei
+
+        let priority_order_price = 1000.0; // minimum 1000 USDC
+        let renegade_price = 1090.0; // filler's offered price
+        let is_sell = true; // selling ETH for USDC
+
+        let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
+
+        // Expected calculation:
+        // improvement = (1090 - 1000) / 1000 = 0.09 = 9%
+        // bps = 0.09 * 10,000 = 900 bps
+        // mps = 900 * 1000 = 900,000 mps
+        assert_eq!(priority_fee, U256::from(900_000u128));
+    }
+}
