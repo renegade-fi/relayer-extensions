@@ -95,9 +95,9 @@ impl PriorityInput {
     /// Returns the input scaled by 1 - (priority_fee ×
     /// priority_fee_scaling_rate)
     ///
-    /// This implements favorable scaling where higher priority fees result in
-    /// lower required input amounts. The scaling is bounded by 0 and the
-    /// original input amount.
+    /// This implements scaling favoring the swapper where higher priority fees
+    /// result in lower required input amounts. The scaling is bounded by 0
+    /// and the original input amount.
     pub fn scale(&self, priority_fee: U256) -> FixedPointResult<U256> {
         let priority_fee_scaling_rate = self.mpsPerPriorityFeeWei;
 
@@ -127,9 +127,9 @@ impl PriorityOutput {
     /// Returns the output scaled by 1 + (priority_fee ×
     /// priority_fee_scaling_rate)
     ///
-    /// This implements favorable scaling where higher priority fees result in
-    /// higher output amounts. The scaling is bounded by the original output
-    /// amount and above.
+    /// This implements scaling favoring the swapper where higher priority fees
+    /// result in higher output amounts. The scaling is bounded by the
+    /// original output amount and above.
     pub fn scale(&self, priority_fee: U256) -> FixedPointResult<U256> {
         let priority_fee_scaling_rate = self.mpsPerPriorityFeeWei;
 

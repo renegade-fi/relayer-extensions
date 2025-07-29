@@ -34,7 +34,7 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
     let abs_diff = (renegade_price - priority_order_price).abs();
     let improvement_percent = abs_diff / priority_order_price;
 
-    // Convert to milli-bps using the centralized constant
+    // Convert to milli-bps
     let priority_fee_mps = improvement_percent * (MPS as f64);
 
     U256::from(priority_fee_mps as u128)
