@@ -41,6 +41,12 @@ impl UniswapXSolver {
         let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
         info!("Priority fee (wei): {}", priority_fee);
 
+        // Scale the order
+        let scaled_input = order.input.scale(priority_fee)?;
+        let scaled_output = order.outputs[0].scale(priority_fee)?;
+        info!("Input scaled from {} to {}", input.amount, scaled_input);
+        info!("Output scaled from {} to {}", first_output.amount, scaled_output);
+
         // Find a solution for the order
         let in_token = order.input.token;
         let out_token = order.outputs[0].token;
