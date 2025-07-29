@@ -1,10 +1,12 @@
 //! Code for solving order routes
 
 use alloy::primitives::Address;
+use alloy_primitives::U256;
+use renegade_sdk::types::ExternalOrder;
 use tracing::info;
 
 use crate::{
-    error::SolverResult,
+    error::{SolverError, SolverResult},
     uniswapx::{
         abis::{conversion::u256_to_u128, uniswapx::PriorityOrderReactor::PriorityOrder},
         priority_fee::compute_priority_fee,
@@ -48,10 +50,8 @@ impl UniswapXSolver {
         info!("Output scaled from {} to {}", first_output.amount, scaled_output);
 
         // Find a solution for the order
-        let in_token = order.input.token;
-        let out_token = order.outputs[0].token;
-        let amount = u256_to_u128(order.input.amount)?;
-        let renegade_bundle = self.solve_renegade_leg(in_token, out_token, amount).await?;
+        let external_order = self.build_scaled_order(&order, priority_fee)?;
+        let renegade_bundle = self.solve_renegade_leg(external_order).await?;
         if let Some(bundle) = renegade_bundle {
             info!("Found renegade solution with receive amount: {}", bundle.receive.amount);
         } else {
@@ -59,6 +59,27 @@ impl UniswapXSolver {
         }
 
         Ok(())
+    }
+
+    /// Build an ExternalOrder from a PriorityOrder with scaled input and output
+    /// amounts
+    fn build_scaled_order(
+        &self,
+        order: &PriorityOrder,
+        priority_fee: U256,
+    ) -> SolverResult<ExternalOrder> {
+        let scaled_input = order.input.scale(priority_fee)?;
+        let scaled_output = order.outputs[0].scale(priority_fee)?;
+
+        // Assert only one of {scaled_input, scaled_output} was scaled
+        if scaled_input != order.input.amount && scaled_output != order.outputs[0].amount {
+            return Err(SolverError::InputOutputScaling);
+        }
+
+        let input_u128 = u256_to_u128(scaled_input)?;
+        let order = self.build_order(order.input.token, order.outputs[0].token, input_u128)?;
+
+        Ok(order)
     }
 
     /// A temporary (more restrictive) set of order filters while we keep the
