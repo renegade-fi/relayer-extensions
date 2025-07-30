@@ -103,6 +103,44 @@ pub struct ExecutionQuote {
     pub gas_limit: U256,
 }
 
+impl ExecutionQuote {
+    /// Whether the quote is a sell order in Renegade terms
+    pub fn is_sell(&self) -> bool {
+        let usdc = Token::usdc();
+        self.buy_token_address == usdc.get_alloy_address()
+    }
+
+    /// Get the base token address
+    pub fn base_addr(&self) -> Address {
+        if self.is_sell() {
+            self.sell_token_address
+        } else {
+            self.buy_token_address
+        }
+    }
+
+    /// Get the base amount
+    pub fn base_amount(&self) -> u128 {
+        let amt_u256 = if self.is_sell() { self.sell_amount } else { self.buy_amount };
+        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
+    }
+
+    /// Get the quote token address
+    pub fn quote_addr(&self) -> Address {
+        if self.is_sell() {
+            self.buy_token_address
+        } else {
+            self.sell_token_address
+        }
+    }
+
+    /// Get the quote amount
+    pub fn quote_amount(&self) -> u128 {
+        let amt_u256 = if self.is_sell() { self.buy_amount } else { self.sell_amount };
+        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
+    }
+}
+
 /// An execution quote, augmented with additional contextual data
 #[derive(Clone, Debug)]
 pub struct AugmentedExecutionQuote {
@@ -268,6 +306,9 @@ pub struct LiFiQuoteParams {
     /// 0.005 represents 0.5%.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slippage: Option<f64>,
+    /// The maximum price impact for the transaction
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_price_impact: Option<f64>,
     /// Timing setting to wait for a certain amount of swap rates. In the format
     /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
     /// Please check docs.li.fi for more details.

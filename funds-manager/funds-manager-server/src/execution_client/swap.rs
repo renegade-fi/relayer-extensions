@@ -35,6 +35,8 @@ use super::{error::ExecutionClientError, ExecutionClient};
 const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
+/// The maximum price deviation from the Renegade price that is allowed
+const MAX_PRICE_DEVIATION: f64 = 0.01; // 1%
 /// The amount to increase an approval by for a swap
 ///
 /// We "over-approve" so that we don't need to re-approve on every swap
@@ -380,6 +382,7 @@ impl ExecutionClient {
     ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
         let quote = self.get_quote(params).await?;
         let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
+        self.validate_quote(&augmented_quote).await?;
 
         let quote_amount =
             augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
@@ -390,6 +393,37 @@ impl ExecutionClient {
         }
 
         Ok(Some(augmented_quote))
+    }
+
+    /// Validate a quote against the Renegade price
+    async fn validate_quote(
+        &self,
+        augmented_quote: &AugmentedExecutionQuote,
+    ) -> Result<(), ExecutionClientError> {
+        // Get the renegade price for the pair
+        let base_addr = augmented_quote.quote.base_addr();
+        let renegade_price =
+            self.price_reporter.get_price(&base_addr.to_string(), augmented_quote.chain).await?;
+
+        // Get the price of the quote
+        let quote_amount = augmented_quote.quote.quote_amount() as f64;
+        let base_amount = augmented_quote.quote.base_amount() as f64;
+        let quote_price = quote_amount / base_amount;
+
+        // Check that the price is within the max price impact
+        let deviation = if augmented_quote.quote.is_sell() {
+            (renegade_price - quote_price) / renegade_price
+        } else {
+            (quote_price - renegade_price) / renegade_price
+        };
+
+        if deviation > MAX_PRICE_DEVIATION {
+            return Err(ExecutionClientError::quote_validation(format!(
+                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
+            )));
+        }
+
+        Ok(())
     }
 
     /// Approve an erc20 allowance
