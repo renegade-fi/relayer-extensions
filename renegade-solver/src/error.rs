@@ -12,6 +12,8 @@ use warp::{
     Rejection,
 };
 
+use crate::uniswapx::fixed_point::error::FixedPointMathError;
+
 /// Type alias for Results using SolverError
 pub type SolverResult<T> = Result<T, SolverError>;
 
@@ -36,6 +38,12 @@ pub enum SolverError {
     /// Error from the price reporter client
     #[error("Price reporter client error: {0}")]
     PriceReporter(#[from] PriceReporterClientError),
+    /// Fixed point math error
+    #[error("Fixed point math error: {0}")]
+    FixedPoint(#[from] FixedPointMathError),
+    /// An order's input and outputs both scale with priority fee
+    #[error("Input and outputs both scale with priority fee")]
+    InputOutputScaling,
 }
 
 impl SolverError {

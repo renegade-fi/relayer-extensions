@@ -16,12 +16,9 @@ impl UniswapXSolver {
     /// Renegade API. Validation for this should be done in the caller.
     pub(crate) async fn solve_renegade_leg(
         &self,
-        input_token: Address,
-        output_token: Address,
-        input_amount: u128,
+        order: ExternalOrder,
     ) -> SolverResult<Option<AtomicMatchApiBundle>> {
         let opt = Self::get_external_match_options();
-        let order = self.build_order(input_token, output_token, input_amount)?;
         let maybe_bundle =
             self.renegade_client.request_external_match_with_options(order, opt).await?;
 
@@ -41,7 +38,7 @@ impl UniswapXSolver {
     }
 
     /// Build an order for the given token pair
-    fn build_order(
+    pub(crate) fn build_order(
         &self,
         input_token: Address,
         output_token: Address,

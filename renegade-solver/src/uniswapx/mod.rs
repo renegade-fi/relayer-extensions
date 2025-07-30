@@ -16,6 +16,7 @@ use tracing::error;
 
 mod abis;
 pub mod executor_client;
+pub mod fixed_point;
 mod priority_fee;
 mod renegade_api;
 mod solve;

@@ -11,15 +11,11 @@ use alloy_primitives::U256;
 
 use crate::{
     error::SolverResult,
-    uniswapx::{abis::uniswapx::PriorityOrderReactor::PriorityOrder, UniswapXSolver},
+    uniswapx::{
+        abis::{priority_order::MPS, uniswapx::PriorityOrderReactor::PriorityOrder},
+        UniswapXSolver,
+    },
 };
-
-/// Multiplier to convert units to basis points (1 basis point = 0.01%)
-const BPS_PER_UNIT: f64 = 10_000.0;
-/// Multiplier to convert basis points to milli-bps (1 milli-bps = 0.00001%)
-const MPS_PER_BPS: f64 = 1000.0;
-/// Multiplier to convert units to milli-bps (1 milli-bps = 0.00001%)
-const MPS_PER_UNIT: f64 = BPS_PER_UNIT * MPS_PER_BPS;
 
 /// Compute the priority fee in wei
 pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_sell: bool) -> U256 {
@@ -39,7 +35,7 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
     let improvement_percent = abs_diff / priority_order_price;
 
     // Convert to milli-bps
-    let priority_fee_mps = improvement_percent * MPS_PER_UNIT;
+    let priority_fee_mps = improvement_percent * (MPS as f64);
 
     U256::from(priority_fee_mps as u128)
 }
@@ -71,12 +67,12 @@ mod tests {
         let renegade_price = 1090.0; // filler's offered price
         let is_sell = true; // selling ETH for USDC
 
-        let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
+        let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
 
         // Expected calculation:
         // improvement = (1090 - 1000) / 1000 = 0.09 = 9%
         // bps = 0.09 * 10,000 = 900 bps
         // mps = 900 * 1000 = 900,000 mps
-        assert_eq!(priority_fee, U256::from(900_000u128));
+        assert_eq!(priority_fee_wei, U256::from(900_000u128));
     }
 }
