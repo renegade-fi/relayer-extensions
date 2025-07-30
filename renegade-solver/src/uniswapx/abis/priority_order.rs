@@ -21,22 +21,22 @@ impl PriorityOrder {
     /// Determines if this is a sell order (output token is USDC)
     pub fn is_sell(&self) -> bool {
         let usdc_address = Token::usdc().get_alloy_address();
-        self.outputs[0].token == usdc_address
+        self.output_token().get_alloy_address() == usdc_address
     }
 
     /// Returns the quote token address (always USDC)
     pub fn quote_token(&self) -> Token {
         if self.is_sell() {
-            Token::from_addr(&self.outputs[0].token.to_string())
+            self.output_token()
         } else {
             Token::from_addr(&self.input.token.to_string())
         }
     }
 
-    /// Returns the quote amount (USDC amount)
+    /// Returns the unscaled quote amount (USDC amount)
     pub fn quote_amount(&self) -> U256 {
         if self.is_sell() {
-            self.outputs[0].amount
+            self.total_output_amount()
         } else {
             self.input.amount
         }
@@ -54,16 +54,16 @@ impl PriorityOrder {
         if self.is_sell() {
             Token::from_addr(&self.input.token.to_string())
         } else {
-            Token::from_addr(&self.outputs[0].token.to_string())
+            self.output_token()
         }
     }
 
-    /// Returns the base amount (non-USDC token amount)
+    /// Returns the unscaled base amount (non-USDC token amount)
     pub fn base_amount(&self) -> U256 {
         if self.is_sell() {
             self.input.amount
         } else {
-            self.outputs[0].amount
+            self.total_output_amount()
         }
     }
 
@@ -82,6 +82,25 @@ impl PriorityOrder {
         let base_decimal_corrected_amt = self.base_amt_decimal_corrected()?;
         let price = quote_decimal_corrected_amt / base_decimal_corrected_amt;
         Ok(price)
+    }
+
+    /// Returns aggregate unscaled output amount
+    ///
+    /// Assumes all outputs have the same token
+    pub fn total_output_amount(&self) -> U256 {
+        self.outputs.iter().map(|o| o.amount).sum()
+    }
+
+    /// Returns the aggregate scaled output amounts
+    pub fn total_scaled_output_amount(&self, priority_fee_wei: U256) -> FixedPointResult {
+        self.outputs.iter().map(|o| o.scale(priority_fee_wei)).sum()
+    }
+
+    /// Returns the output token address
+    ///
+    /// Assumes all outputs have the same token
+    pub fn output_token(&self) -> Token {
+        Token::from_addr(&self.outputs[0].token.to_string())
     }
 }
 
