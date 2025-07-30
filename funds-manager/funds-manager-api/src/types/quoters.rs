@@ -268,6 +268,9 @@ pub struct LiFiQuoteParams {
     /// 0.005 represents 0.5%.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slippage: Option<f64>,
+    /// The maximum price impact for the transaction
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_price_impact: Option<f64>,
     /// Timing setting to wait for a certain amount of swap rates. In the format
     /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
     /// Please check docs.li.fi for more details.
