@@ -40,12 +40,6 @@ impl UniswapXSolver {
             order.outputs[0].mpsPerPriorityFeeWei
         );
 
-        info!(
-            "Order first output: {}, total_output_amount: {}",
-            order.outputs[0].amount,
-            order.total_output_amount()
-        );
-
         // Compute priority fee
         let priority_order_price = order.get_price()?;
         let renegade_price = self.get_renegade_price(&order).await?;
@@ -90,21 +84,21 @@ impl UniswapXSolver {
     fn build_scaled_order(
         &self,
         order: &PriorityOrder,
-        priority_fee: U256,
+        priority_fee_wei: U256,
     ) -> SolverResult<ExternalOrder> {
-        let scaled_input = order.input.scale(priority_fee)?;
-        let scaled_output = order.total_scaled_output_amount(priority_fee)?;
+        let scaled_input = order.input.scale(priority_fee_wei)?;
+        let scaled_output = order.total_scaled_output_amount(priority_fee_wei)?;
 
         // Assert only one of {scaled_input, scaled_output} was scaled
         if scaled_input != order.input.amount && scaled_output != order.total_output_amount() {
             return Err(SolverError::InputOutputScaling);
         }
 
-        let input_u128 = u256_to_u128(scaled_input)?;
+        let scaled_output_u128 = u256_to_u128(scaled_output)?;
         let order = self.build_order(
             order.input.token,
             order.output_token().get_alloy_address(),
-            input_u128,
+            scaled_output_u128,
         )?;
 
         Ok(order)

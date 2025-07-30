@@ -42,15 +42,15 @@ impl UniswapXSolver {
         &self,
         input_token: Address,
         output_token: Address,
-        input_amount: u128,
+        output_amount: u128,
     ) -> SolverResult<ExternalOrder> {
         let is_buy_side = self.is_usdc(input_token);
         if is_buy_side {
             // Base is output token, quote is input token
-            self.build_buy_order(output_token, input_token, input_amount)
+            self.build_buy_order(output_token, input_token, output_amount)
         } else {
             // Base is input token, quote is output token
-            self.build_sell_order(input_token, output_token, input_amount)
+            self.build_sell_order(input_token, output_token, output_amount)
         }
     }
 
@@ -59,12 +59,12 @@ impl UniswapXSolver {
         &self,
         base: Address,
         quote: Address,
-        in_amount: u128,
+        output_amount: u128,
     ) -> SolverResult<ExternalOrder> {
         let order = ExternalOrderBuilder::new()
             .base_mint(&base.to_string())
             .quote_mint(&quote.to_string())
-            .quote_amount(in_amount)
+            .exact_base_output(output_amount)
             .side(OrderSide::Buy)
             .build()?;
         Ok(order)
@@ -75,12 +75,12 @@ impl UniswapXSolver {
         &self,
         base: Address,
         quote: Address,
-        in_amount: u128,
+        output_amount: u128,
     ) -> SolverResult<ExternalOrder> {
         let order = ExternalOrderBuilder::new()
             .base_mint(&base.to_string())
             .quote_mint(&quote.to_string())
-            .base_amount(in_amount)
+            .exact_quote_output(output_amount)
             .side(OrderSide::Sell)
             .build()?;
         Ok(order)
