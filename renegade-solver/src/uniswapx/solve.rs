@@ -30,15 +30,20 @@ impl UniswapXSolver {
 
         // Print order details if it's serviceable
         let input = &order.input;
-        let first_output = &order.outputs[0];
         info!(
             "Found serviceable order for {} {}, mps_in: {} -> {} {}, mps_out: {}",
             input.amount,
             input.token,
             input.mpsPerPriorityFeeWei,
-            first_output.amount,
-            first_output.token,
-            first_output.mpsPerPriorityFeeWei
+            order.total_output_amount(),
+            order.output_token().get_alloy_address(),
+            order.outputs[0].mpsPerPriorityFeeWei
+        );
+
+        info!(
+            "Order first output: {}, total_output_amount: {}",
+            order.outputs[0].amount,
+            order.total_output_amount()
         );
 
         // Compute priority fee
@@ -49,7 +54,7 @@ impl UniswapXSolver {
 
         // Scale the order
         let scaled_input = order.input.scale(priority_fee_wei)?;
-        let scaled_output = order.outputs[0].scale(priority_fee_wei)?;
+        let scaled_output = order.total_scaled_output_amount(priority_fee_wei)?;
         info!(
             "Input scaled from {} to {}, amount scaled by {:.2}x",
             input.amount,
@@ -58,9 +63,9 @@ impl UniswapXSolver {
         );
         info!(
             "Output scaled from {} to {}, amount scaled by {:.2}x",
-            first_output.amount,
+            order.total_output_amount(),
             scaled_output,
-            u256_to_u128(scaled_output)? as f64 / u256_to_u128(first_output.amount)? as f64
+            u256_to_u128(scaled_output)? as f64 / u256_to_u128(order.total_output_amount())? as f64
         );
 
         // Find a solution for the order
@@ -69,8 +74,7 @@ impl UniswapXSolver {
         if let Some(bundle) = renegade_bundle {
             info!("Found renegade solution with output amount: {}", bundle.receive.amount);
             // Negative delta means the renegade bundle is smaller than the order
-            let signed_delta =
-                bundle.receive.amount as i128 - u256_to_u128(first_output.amount)? as i128;
+            let signed_delta = bundle.receive.amount as i128 - u256_to_u128(scaled_output)? as i128;
             if signed_delta < 0 {
                 info!("Renegade bundle is smaller than the order by {}", signed_delta);
             }
@@ -89,15 +93,19 @@ impl UniswapXSolver {
         priority_fee: U256,
     ) -> SolverResult<ExternalOrder> {
         let scaled_input = order.input.scale(priority_fee)?;
-        let scaled_output = order.outputs[0].scale(priority_fee)?;
+        let scaled_output = order.total_scaled_output_amount(priority_fee)?;
 
         // Assert only one of {scaled_input, scaled_output} was scaled
-        if scaled_input != order.input.amount && scaled_output != order.outputs[0].amount {
+        if scaled_input != order.input.amount && scaled_output != order.total_output_amount() {
             return Err(SolverError::InputOutputScaling);
         }
 
         let input_u128 = u256_to_u128(scaled_input)?;
-        let order = self.build_order(order.input.token, order.outputs[0].token, input_u128)?;
+        let order = self.build_order(
+            order.input.token,
+            order.output_token().get_alloy_address(),
+            input_u128,
+        )?;
 
         Ok(order)
     }
@@ -107,15 +115,20 @@ impl UniswapXSolver {
     ///
     /// TODO: Loosen and remove this method's checks in follow-ups
     fn temporary_order_filter(&self, order: &PriorityOrder) -> SolverResult<bool> {
-        // For now we only support single-leg routes
-        if order.outputs.len() != 1 {
-            return Ok(false);
+        // For now, we only support orders with 1 output token
+        if !order.outputs.is_empty() {
+            let first_output_token = order.outputs[0].token;
+            for output in order.outputs.iter() {
+                if output.token != first_output_token {
+                    return Ok(false);
+                }
+            }
         }
 
         // For now, we only support trades that can be entirely filled by Renegade
         // This is a pair of supported tokens in which one is USDC
         let input_token = order.input.token;
-        let output_token = order.outputs[0].token;
+        let output_token = order.output_token().get_alloy_address();
         let is_input_usdc = self.is_usdc(input_token);
         let is_output_usdc = self.is_usdc(output_token);
         let input_supported = self.is_token_supported(input_token);
