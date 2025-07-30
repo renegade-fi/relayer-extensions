@@ -37,7 +37,16 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
     // Convert to milli-bps
     let priority_fee_mps = improvement_percent * (MPS as f64);
 
-    U256::from(priority_fee_mps as u128)
+    let priority_fee_wei = U256::from(priority_fee_mps as u128);
+    tracing::info!(
+        "Renegade price: {} | UniswapX price: {} | Improvement: {} bps | Priority fee: {} wei",
+        renegade_price,
+        priority_order_price,
+        improvement_percent * 10000.0,
+        priority_fee_mps
+    );
+
+    priority_fee_wei
 }
 
 impl UniswapXSolver {

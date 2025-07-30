@@ -32,8 +32,13 @@ impl UniswapXSolver {
         let input = &order.input;
         let first_output = &order.outputs[0];
         info!(
-            "Found serviceable order for {} {} -> {} {}",
-            input.amount, input.token, first_output.amount, first_output.token
+            "Found serviceable order for {} {}, mps_in: {} -> {} {}, mps_out: {}",
+            input.amount,
+            input.token,
+            input.mpsPerPriorityFeeWei,
+            first_output.amount,
+            first_output.token,
+            first_output.mpsPerPriorityFeeWei
         );
 
         // Compute priority fee
@@ -41,19 +46,32 @@ impl UniswapXSolver {
         let renegade_price = self.get_renegade_price(&order).await?;
         let is_sell = order.is_sell();
         let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
-        info!("Priority fee (wei): {}", priority_fee_wei);
 
         // Scale the order
         let scaled_input = order.input.scale(priority_fee_wei)?;
         let scaled_output = order.outputs[0].scale(priority_fee_wei)?;
-        info!("Input scaled from {} to {}", input.amount, scaled_input);
-        info!("Output scaled from {} to {}", first_output.amount, scaled_output);
+        info!(
+            "Input scaled from {} to {}, amount scaled by {:.2}x",
+            input.amount,
+            scaled_input,
+            u256_to_u128(scaled_input)? as f64 / u256_to_u128(input.amount)? as f64
+        );
+        info!(
+            "Output scaled from {} to {}, amount scaled by {:.2}x",
+            first_output.amount,
+            scaled_output,
+            u256_to_u128(scaled_output)? as f64 / u256_to_u128(first_output.amount)? as f64
+        );
 
         // Find a solution for the order
-        let external_order = self.build_scaled_order(&order, priority_fee)?;
+        let external_order = self.build_scaled_order(&order, priority_fee_wei)?;
         let renegade_bundle = self.solve_renegade_leg(external_order).await?;
         if let Some(bundle) = renegade_bundle {
-            info!("Found renegade solution with receive amount: {}", bundle.receive.amount);
+            let delta = bundle.receive.amount as i128 - u256_to_u128(first_output.amount)? as i128;
+            info!(
+                "Found renegade solution with output amount: {} (delta: {})",
+                bundle.receive.amount, delta
+            );
         } else {
             info!("No renegade solution found");
         }

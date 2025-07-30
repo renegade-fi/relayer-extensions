@@ -18,10 +18,10 @@ use crate::{
 };
 
 impl PriorityOrder {
-    /// Determines if this is a buy order (input token is USDC)
+    /// Determines if this is a sell order (output token is USDC)
     pub fn is_sell(&self) -> bool {
         let usdc_address = Token::usdc().get_alloy_address();
-        self.input.token == usdc_address
+        self.outputs[0].token == usdc_address
     }
 
     /// Returns the quote token address (always USDC)
