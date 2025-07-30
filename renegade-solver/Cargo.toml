@@ -26,6 +26,7 @@ alloy-contract = { workspace = true }
 
 # === Renegade Dependencies === #
 renegade-common = { workspace = true }
+renegade-config = { workspace = true }
 renegade-constants = { workspace = true }
 renegade-solidity-abi = { workspace = true }
 renegade-sdk = "0.1.15"

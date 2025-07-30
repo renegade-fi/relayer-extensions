@@ -8,6 +8,7 @@ use bimap::BiMap;
 use executor_client::ExecutorClient;
 use lru::LruCache;
 use price_reporter_client::PriceReporterClient;
+use renegade_common::types::chain::Chain;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;
@@ -15,6 +16,8 @@ use tracing::error;
 
 mod abis;
 pub mod executor_client;
+pub mod fixed_point;
+mod priority_fee;
 mod renegade_api;
 mod solve;
 mod uniswap_api;
@@ -75,6 +78,8 @@ pub struct UniswapXSolver {
     /// An order is placed in the cache even if processing the order fails, this
     /// cache is for deduplicating requests rather than tracking order status.
     order_cache: OrderCache,
+    /// The chain the solver is running on
+    chain_id: Chain,
 }
 
 impl UniswapXSolver {
@@ -88,7 +93,8 @@ impl UniswapXSolver {
         executor_client: ExecutorClient,
         price_reporter_client: PriceReporterClient,
     ) -> SolverResult<Self> {
-        let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
+        let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, chain_id, .. } =
+            cli;
 
         // TODO: Add support for other chains
         let renegade_client =
@@ -103,6 +109,7 @@ impl UniswapXSolver {
             price_reporter_client,
             supported_tokens,
             order_cache: new_order_cache(),
+            chain_id,
         })
     }
 
