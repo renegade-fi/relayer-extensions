@@ -38,12 +38,12 @@ impl UniswapXSolver {
         let priority_order_price = order.get_price()?;
         let renegade_price = self.get_renegade_price(&order).await?;
         let is_sell = order.is_sell();
-        let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
-        info!("Priority fee (wei): {}", priority_fee);
+        let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
+        info!("Priority fee (wei): {}", priority_fee_wei);
 
         // Scale the order
-        let scaled_input = order.input.scale(priority_fee)?;
-        let scaled_output = order.outputs[0].scale(priority_fee)?;
+        let scaled_input = order.input.scale(priority_fee_wei)?;
+        let scaled_output = order.outputs[0].scale(priority_fee_wei)?;
         info!("Input scaled from {} to {}", input.amount, scaled_input);
         info!("Output scaled from {} to {}", first_output.amount, scaled_output);
 

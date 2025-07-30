@@ -67,12 +67,12 @@ mod tests {
         let renegade_price = 1090.0; // filler's offered price
         let is_sell = true; // selling ETH for USDC
 
-        let priority_fee = compute_priority_fee(priority_order_price, renegade_price, is_sell);
+        let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
 
         // Expected calculation:
         // improvement = (1090 - 1000) / 1000 = 0.09 = 9%
         // bps = 0.09 * 10,000 = 900 bps
         // mps = 900 * 1000 = 900,000 mps
-        assert_eq!(priority_fee, U256::from(900_000u128));
+        assert_eq!(priority_fee_wei, U256::from(900_000u128));
     }
 }

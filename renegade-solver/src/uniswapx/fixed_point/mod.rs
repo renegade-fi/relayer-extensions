@@ -5,21 +5,40 @@ use alloy_primitives::U256;
 
 pub mod error;
 
-/// Returns x * y / denominator, rounded down.
-/// Equivalent to Solidity's mulDivDown with overflow protection
-pub fn mul_div_down(x: U256, y: U256, denominator: U256) -> FixedPointResult<U256> {
+/// Validates division parameters and checks for early return conditions.
+/// Returns Ok(Some(result)) for early return cases (like y=0),
+/// Ok(None) if validation passes and calculation should proceed,
+/// or Err for validation failures.
+fn validate_division(
+    x: U256,
+    y: U256,
+    denominator: U256,
+) -> Result<Option<U256>, FixedPointMathError> {
     if denominator.is_zero() {
         return Err(FixedPointMathError::DivisionByZero);
     }
 
     if y.is_zero() {
-        return Ok(U256::ZERO);
+        return Ok(Some(U256::ZERO));
     }
 
     // Check for overflow: x <= U256::MAX / y
     let max_x = U256::MAX / y;
     if x > max_x {
         return Err(FixedPointMathError::Overflow);
+    }
+
+    // Validation passed, calculation can proceed
+    Ok(None)
+}
+
+/// Returns x * y / denominator, rounded down.
+/// Equivalent to Solidity's mulDivDown with overflow protection
+pub fn mul_div_down(x: U256, y: U256, denominator: U256) -> FixedPointResult {
+    // Validate division parameters
+    match validate_division(x, y, denominator)? {
+        Some(early_result) => return Ok(early_result),
+        None => {}, // Continue with calculation
     }
 
     // Safe to multiply and divide
@@ -28,19 +47,11 @@ pub fn mul_div_down(x: U256, y: U256, denominator: U256) -> FixedPointResult<U25
 
 /// Returns x * y / denominator, rounded up.
 /// Equivalent to Solidity's mulDivUp with overflow protection
-pub fn mul_div_up(x: U256, y: U256, denominator: U256) -> FixedPointResult<U256> {
-    if denominator.is_zero() {
-        return Err(FixedPointMathError::DivisionByZero);
-    }
-
-    if y.is_zero() {
-        return Ok(U256::ZERO);
-    }
-
-    // Check for overflow: x <= U256::MAX / y
-    let max_x = U256::MAX / y;
-    if x > max_x {
-        return Err(FixedPointMathError::Overflow);
+pub fn mul_div_up(x: U256, y: U256, denominator: U256) -> FixedPointResult {
+    // Validate division parameters
+    match validate_division(x, y, denominator)? {
+        Some(early_result) => return Ok(early_result),
+        None => {}, // Continue with calculation
     }
 
     let product = x * y;

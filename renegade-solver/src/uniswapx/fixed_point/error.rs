@@ -1,8 +1,9 @@
 //! Error types for fixed point math
+use alloy_primitives::U256;
 use thiserror::Error;
 
 /// Type alias for Results using FixedPointMathError
-pub type FixedPointResult<T> = Result<T, FixedPointMathError>;
+pub type FixedPointResult = Result<U256, FixedPointMathError>;
 
 /// The error type for fixed point math
 #[derive(Error, Debug)]

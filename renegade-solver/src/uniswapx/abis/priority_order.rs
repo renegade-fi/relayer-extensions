@@ -98,11 +98,11 @@ impl PriorityInput {
     /// This implements scaling favoring the swapper where higher priority fees
     /// result in lower required input amounts. The scaling is bounded by 0
     /// and the original input amount.
-    pub fn scale(&self, priority_fee: U256) -> FixedPointResult<U256> {
+    pub fn scale(&self, priority_fee_wei: U256) -> FixedPointResult {
         let priority_fee_scaling_rate = self.mpsPerPriorityFeeWei;
 
         // Discount scaling factor = priority fee * priority fee scaling rate
-        let discount_scaling_factor = priority_fee
+        let discount_scaling_factor = priority_fee_wei
             .checked_mul(priority_fee_scaling_rate)
             .ok_or(FixedPointMathError::Overflow)?;
 
@@ -130,7 +130,7 @@ impl PriorityOutput {
     /// This implements scaling favoring the swapper where higher priority fees
     /// result in higher output amounts. The scaling is bounded by the
     /// original output amount and above.
-    pub fn scale(&self, priority_fee: U256) -> FixedPointResult<U256> {
+    pub fn scale(&self, priority_fee_wei: U256) -> FixedPointResult {
         let priority_fee_scaling_rate = self.mpsPerPriorityFeeWei;
 
         if priority_fee_scaling_rate == U256::ZERO {
@@ -138,7 +138,7 @@ impl PriorityOutput {
         }
 
         // Scaling factor = priority fee * priority fee scaling rate
-        let scaling_factor = priority_fee
+        let scaling_factor = priority_fee_wei
             .checked_mul(priority_fee_scaling_rate)
             .ok_or(FixedPointMathError::Overflow)?;
 
