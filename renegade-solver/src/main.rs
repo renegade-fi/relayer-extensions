@@ -10,6 +10,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
+use price_reporter_client::PriceReporterClient;
 use serde_json::json;
 use tracing::{info, info_span};
 use warp::Filter;
@@ -33,8 +34,15 @@ async fn main() {
     // Construct a darkpool executor client that will be used to submit txs
     let executor_client = ExecutorClient::new(&cli).expect("Failed to create executor client");
 
+    // Create the price reporter client
+    let price_reporter_client = PriceReporterClient::new(
+        cli.price_reporter_url.clone(),
+        true, // exit_on_stale
+    )
+    .expect("Failed to create price reporter client");
+
     // Create the UniswapX solver and begin its polling loop
-    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client)
+    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client, price_reporter_client)
         .await
         .expect("Failed to create UniswapX solver");
     uniswapx.spawn_polling_loop();

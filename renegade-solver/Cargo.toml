@@ -32,6 +32,7 @@ renegade-sdk = "0.1.15"
 renegade-util = { workspace = true, features = [
     "telemetry",
 ] }
+price-reporter-client = { path = "../price-reporter-client" }
 
 # === Misc Dependencies === #
 bimap = "0.6"
