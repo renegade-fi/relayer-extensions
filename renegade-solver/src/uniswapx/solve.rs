@@ -67,11 +67,13 @@ impl UniswapXSolver {
         let external_order = self.build_scaled_order(&order, priority_fee_wei)?;
         let renegade_bundle = self.solve_renegade_leg(external_order).await?;
         if let Some(bundle) = renegade_bundle {
-            let delta = bundle.receive.amount as i128 - u256_to_u128(first_output.amount)? as i128;
-            info!(
-                "Found renegade solution with output amount: {} (delta: {})",
-                bundle.receive.amount, delta
-            );
+            info!("Found renegade solution with output amount: {}", bundle.receive.amount);
+            // Negative delta means the renegade bundle is smaller than the order
+            let signed_delta =
+                bundle.receive.amount as i128 - u256_to_u128(first_output.amount)? as i128;
+            if signed_delta < 0 {
+                info!("Renegade bundle is smaller than the order by {}", signed_delta);
+            }
         } else {
             info!("No renegade solution found");
         }
