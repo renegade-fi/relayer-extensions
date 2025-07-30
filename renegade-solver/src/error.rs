@@ -41,6 +41,9 @@ pub enum SolverError {
     /// Fixed point math error
     #[error("Fixed point math error: {0}")]
     FixedPoint(#[from] FixedPointMathError),
+    /// An order's input and outputs both scale with priority fee
+    #[error("Input and outputs both scale with priority fee")]
+    InputOutputScaling,
 }
 
 impl SolverError {
