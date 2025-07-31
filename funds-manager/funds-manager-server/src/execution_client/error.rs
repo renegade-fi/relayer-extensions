@@ -24,6 +24,9 @@ pub enum ExecutionClientError {
     /// An error validating a quote
     #[error("quote validation error: {0}")]
     QuoteValidation(String),
+    /// An error converting a venue quote to an executable quote
+    #[error("quote conversion error: {0}")]
+    QuoteConversion(String),
 }
 
 impl ExecutionClientError {
@@ -55,6 +58,12 @@ impl ExecutionClientError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn quote_validation<T: ToString>(e: T) -> Self {
         ExecutionClientError::QuoteValidation(e.to_string())
+    }
+
+    /// Create a new quote conversion error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn quote_conversion<T: ToString>(e: T) -> Self {
+        ExecutionClientError::QuoteConversion(e.to_string())
     }
 }
 

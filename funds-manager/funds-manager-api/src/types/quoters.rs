@@ -67,6 +67,7 @@ pub struct WithdrawFundsRequest {
 // --- Execution --- //
 
 /// The subset of the quote response forwarded to consumers of this client
+// TODO: Remove in favor of `funds_manager_server::execution_client::venues::ExecutionQuote`
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionQuote {
