@@ -161,7 +161,7 @@ impl ExecutorClient {
             .ok_or_else(|| ExecutorError::contract_interaction("base fee overflow"))?;
 
         // Final gas price for a legacy tx: baseFee + buffer + priority fee.
-        let gas_price_u256 = base_fee_per_gas + base_fee_buffer + priority_fee_wei;
+        let gas_price_u256 = base_fee_buffer + priority_fee_wei;
 
         Ok(u256_to_u128(gas_price_u256)?)
     }
