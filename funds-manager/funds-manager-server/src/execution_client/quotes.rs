@@ -1,8 +1,9 @@
 //! Client methods for fetching quotes and prices from the execution venue
 
-use funds_manager_api::quoters::{ExecutionQuote, LiFiQuoteParams};
-use funds_manager_api::venue::LiFiQuote;
-use tracing::{info, instrument};
+use funds_manager_api::quoters::LiFiQuoteParams;
+use tracing::instrument;
+
+use crate::execution_client::venues::{lifi::LifiQuote, quote::ExecutableQuote};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -22,15 +23,13 @@ impl ExecutionClient {
     pub async fn get_quote(
         &self,
         params: LiFiQuoteParams,
-    ) -> Result<ExecutionQuote, ExecutionClientError> {
+    ) -> Result<ExecutableQuote, ExecutionClientError> {
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string = qs_config.serialize_string(&params).unwrap();
         let url = format!("{}?{}", QUOTE_ENDPOINT, query_string);
 
-        let resp: LiFiQuote = self.send_get_request(&url).await?;
+        let resp: LifiQuote = self.send_get_request(&url).await?;
 
-        info!("Got LiFi quote from: {}", resp.tool);
-
-        Ok(resp.into())
+        ExecutableQuote::from_lifi_quote(resp, self.chain)
     }
 }

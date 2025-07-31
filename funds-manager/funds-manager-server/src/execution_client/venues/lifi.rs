@@ -10,7 +10,10 @@ use serde::Deserialize;
 
 use crate::execution_client::{
     error::ExecutionClientError,
-    venues::{ExecutableQuote, ExecutionQuote, QuoteExecutionData, SupportedExecutionVenue},
+    venues::{
+        quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+        SupportedExecutionVenue,
+    },
 };
 
 /// Transaction request details from LiFi API
@@ -72,6 +75,7 @@ pub struct LifiQuote {
 }
 
 /// Lifi-specific quote execution data
+#[derive(Debug, Clone)]
 pub struct LifiQuoteExecutionData {
     /// The swap contract address
     pub to: Address,

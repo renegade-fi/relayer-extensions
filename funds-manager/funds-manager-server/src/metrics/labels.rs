@@ -23,3 +23,6 @@ pub const HASH_TAG: &str = "hash";
 
 /// Metric tag for the (environment-agnostic) chain name
 pub const CHAIN_TAG: &str = "chain";
+
+/// Metric tag for the venue that executed a swap
+pub const VENUE_TAG: &str = "venue";
