@@ -183,4 +183,26 @@ impl ExecutorClient {
 
         Ok(base_fee_per_gas)
     }
+
+    /// Wait until the chain reaches at least the given block number
+    async fn wait_for_block(&self, target_block: u64) -> Result<(), ExecutorError> {
+        use tokio::time::sleep;
+
+        loop {
+            let latest_block = self
+                .provider()
+                .get_block(BlockId::latest())
+                .await
+                .map_err(ExecutorError::rpc)?
+                .ok_or_else(|| ExecutorError::rpc("No latest block found"))?;
+
+            let latest_block_number = latest_block.header.number;
+
+            if latest_block_number >= target_block {
+                return Ok(());
+            }
+
+            sleep(BLOCK_POLLING_INTERVAL).await;
+        }
+    }
 }

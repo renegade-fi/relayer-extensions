@@ -9,6 +9,7 @@ use renegade_solidity_abi::IDarkpool::{
 
 use alloy_primitives::U256;
 
+use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::uniswapx::executor_client::{errors::ExecutorError, ExecutorClient};
 
 impl ExecutorClient {
@@ -48,7 +49,12 @@ impl ExecutorClient {
         calldata: &[u8],
         signed_order: SignedOrder,
         priority_fee_wei: U256,
+        auction_start_block: U256,
     ) -> Result<TransactionReceipt, ExecutorError> {
+        // Wait for auction start block before submission
+        let target_block = u256_to_u128(auction_start_block)? as u64;
+        self.wait_for_block(target_block).await?;
+
         // Parse the calldata for the executeAtomicMatchSettle call
         let (internal_party_payload, match_settle_statement, proofs, linking_proofs) =
             self.parse_calldata_for_execute_atomic_match_settle(calldata)?;

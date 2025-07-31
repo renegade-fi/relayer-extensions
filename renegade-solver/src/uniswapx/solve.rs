@@ -83,7 +83,8 @@ impl UniswapXSolver {
             }
 
             // Submit the solution to the reactor
-            self.submit_solution(&bundle, signed_order, priority_fee_wei).await?;
+            self.submit_solution(&bundle, signed_order, priority_fee_wei, order.auctionStartBlock)
+                .await?;
         } else {
             info!("No renegade solution found");
         }
@@ -97,11 +98,17 @@ impl UniswapXSolver {
         bundle: &AtomicMatchApiBundle,
         signed_order: SignedOrder,
         priority_fee_wei: U256,
+        auction_start_block: U256,
     ) -> SolverResult<()> {
         if let Some(calldata) = &bundle.settlement_tx.input.data {
             let receipt = self
                 .executor_client
-                .execute_atomic_match_settle(calldata.as_ref(), signed_order, priority_fee_wei)
+                .execute_atomic_match_settle(
+                    calldata.as_ref(),
+                    signed_order,
+                    priority_fee_wei,
+                    auction_start_block,
+                )
                 .await?;
             info!("Filled order with tx hash: {}", receipt.transaction_hash);
         }
