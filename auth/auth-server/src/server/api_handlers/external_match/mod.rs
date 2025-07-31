@@ -286,7 +286,9 @@ impl Server {
         // Check that the base and quote tokens are valid
         let base = Token::from_addr_biguint(body.base_mint());
         let quote = Token::from_addr_biguint(body.quote_mint());
-        if !base.is_named() {
+
+        let base_valid = base.is_named() || base.is_native_asset();
+        if !base_valid {
             let base_addr = base.get_addr();
             return Err(AuthServerError::bad_request(format!("Invalid base token: {base_addr}")));
         }
