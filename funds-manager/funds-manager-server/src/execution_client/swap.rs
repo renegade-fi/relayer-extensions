@@ -404,11 +404,9 @@ impl ExecutionClient {
         let base_addr = augmented_quote.quote.base_addr();
         let renegade_price =
             self.price_reporter.get_price(&base_addr.to_string(), augmented_quote.chain).await?;
-
-        // Get the price of the quote
-        let quote_amount = augmented_quote.quote.quote_amount() as f64;
-        let base_amount = augmented_quote.quote.base_amount() as f64;
-        let quote_price = quote_amount / base_amount;
+        let quote_price = augmented_quote
+            .get_decimal_corrected_price()
+            .map_err(ExecutionClientError::quote_validation)?;
 
         // Check that the price is within the max price impact
         let deviation = if augmented_quote.quote.is_sell() {

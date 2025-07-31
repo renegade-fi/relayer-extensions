@@ -207,6 +207,21 @@ impl AugmentedExecutionQuote {
         Ok(self.get_sell_token().convert_to_decimal(sell_amount))
     }
 
+    /// Get the decimal corrected price
+    pub fn get_decimal_corrected_price(&self) -> Result<f64, String> {
+        // Fetch the decimal corrected amounts
+        let buy_amount = self.get_decimal_corrected_buy_amount()?;
+        let sell_amount = self.get_decimal_corrected_sell_amount()?;
+        let (base_amt, quote_amt) = if self.quote.is_sell() {
+            (sell_amount, buy_amount)
+        } else {
+            (buy_amount, sell_amount)
+        };
+
+        let price = quote_amt / base_amt;
+        Ok(price)
+    }
+
     /// Get the buy amount min as a decimal-corrected string
     pub fn get_decimal_corrected_buy_amount_min(&self) -> Result<f64, String> {
         let buy_amount_min = u256_try_into_u128(self.quote.buy_amount_min)?;
