@@ -1,6 +1,9 @@
 //! The definition of the executor client, which holds the configuration
 //! details, along with a lower-level handle for the executor smart contract
-use crate::uniswapx::executor_client::errors::{ExecutorConfigError, ExecutorError};
+use crate::uniswapx::{
+    abis::conversion::u256_to_u128,
+    executor_client::errors::{ExecutorConfigError, ExecutorError},
+};
 use alloy::{
     eips::BlockId,
     providers::{DynProvider, Provider, ProviderBuilder},
@@ -10,6 +13,7 @@ use alloy::{
 };
 use alloy_contract::{CallBuilder, CallDecoder};
 use alloy_primitives::Address;
+use alloy_primitives::U256;
 use renegade_solidity_abi::IDarkpool::IDarkpoolInstance as ExecutorInstance;
 use std::{str::FromStr, time::Duration};
 mod contract_interaction;
@@ -88,16 +92,6 @@ pub struct ExecutorClient {
 }
 
 impl ExecutorClient {
-    /// Get the contract address
-    pub fn contract_address(&self) -> Address {
-        *self.contract.address()
-    }
-
-    /// Get the underlying contract instance for advanced usage
-    pub fn contract(&self) -> &ExecutorInstance<ExecutorProvider> {
-        &self.contract
-    }
-
     /// Get a reference to the underlying provider
     pub fn provider(&self) -> &ExecutorProvider {
         self.contract.provider()
@@ -131,11 +125,12 @@ impl ExecutorClient {
     async fn send_tx<C>(
         &self,
         tx: ExecutorCallBuilder<'_, C>,
+        priority_fee_wei: U256,
     ) -> Result<TransactionReceipt, ExecutorError>
     where
         C: CallDecoder + Send + Sync,
     {
-        let gas_price = self.get_adjusted_gas_price().await?;
+        let gas_price = self.get_adjusted_gas_price(priority_fee_wei).await?;
         let receipt = tx
             .gas_price(gas_price)
             .send()
@@ -154,21 +149,38 @@ impl ExecutorClient {
         Ok(receipt)
     }
 
-    /// Get the adjusted gas price for submitting a transaction
-    ///
-    /// We multiply the latest basefee to prevent reverts
-    async fn get_adjusted_gas_price(&self) -> Result<u128, ExecutorError> {
-        // Set the gas price to a multiple of the latest basefee for simplicity
+    /// Computes a `gasPrice` from a caller-supplied priority fee and the base
+    /// fee from the latest block.
+    async fn get_adjusted_gas_price(&self, priority_fee_wei: U256) -> Result<u128, ExecutorError> {
+        // Fetch the latest block to obtain the current base fee.
+        let base_fee_per_gas = self.get_latest_block_base_fee().await?;
+
+        // Apply our safety buffer: baseFee × GAS_PRICE_MULTIPLIER.
+        let base_fee_buffer = base_fee_per_gas
+            .checked_mul(U256::from(GAS_PRICE_MULTIPLIER))
+            .ok_or_else(|| ExecutorError::contract_interaction("base fee overflow"))?;
+
+        // Final gas price for a legacy tx: baseFee + buffer + priority fee.
+        let gas_price_u256 = base_fee_per_gas + base_fee_buffer + priority_fee_wei;
+
+        Ok(u256_to_u128(gas_price_u256)?)
+    }
+
+    /// Returns the base fee per gas for the latest block as a U256
+    async fn get_latest_block_base_fee(&self) -> Result<U256, ExecutorError> {
         let latest_block = self
             .provider()
             .get_block(BlockId::latest())
             .await
             .map_err(ExecutorError::rpc)?
-            .ok_or(ExecutorError::rpc("No latest block found"))?;
+            .ok_or_else(|| ExecutorError::rpc("No latest block found"))?;
 
-        let latest_basefee =
-            latest_block.header.base_fee_per_gas.ok_or(ExecutorError::rpc("No basefee found"))?;
-        let gas_price = (latest_basefee * GAS_PRICE_MULTIPLIER) as u128;
-        Ok(gas_price)
+        let base_fee_per_gas_u128 = latest_block
+            .header
+            .base_fee_per_gas
+            .ok_or_else(|| ExecutorError::rpc("No base fee in latest block"))?;
+        let base_fee_per_gas = U256::from(base_fee_per_gas_u128);
+
+        Ok(base_fee_per_gas)
     }
 }

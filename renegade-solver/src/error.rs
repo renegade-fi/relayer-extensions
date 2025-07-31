@@ -12,7 +12,9 @@ use warp::{
     Rejection,
 };
 
-use crate::uniswapx::fixed_point::error::FixedPointMathError;
+use crate::uniswapx::{
+    executor_client::errors::ExecutorError, fixed_point::error::FixedPointMathError,
+};
 
 /// Type alias for Results using SolverError
 pub type SolverResult<T> = Result<T, SolverError>;
@@ -23,27 +25,30 @@ pub enum SolverError {
     /// An error ABI encoding/decoding a value
     #[error("ABI encoding/decoding error: {0}")]
     AbiEncoding(String),
-    /// HTTP error occurred
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
-    /// An invalid u256 was provided
-    #[error("Invalid u256: {0}")]
-    InvalidU256(U256),
-    /// JSON serialization/deserialization error
-    #[error("JSON error: {0}")]
-    Serialization(#[from] serde_json::Error),
-    /// Error from the renegade client
-    #[error("Renegade client error: {0}")]
-    Renegade(#[from] ExternalMatchClientError),
-    /// Error from the price reporter client
-    #[error("Price reporter client error: {0}")]
-    PriceReporter(#[from] PriceReporterClientError),
+    /// Error from the executor client
+    #[error("Executor client error: {0}")]
+    Executor(#[from] ExecutorError),
     /// Fixed point math error
     #[error("Fixed point math error: {0}")]
     FixedPoint(#[from] FixedPointMathError),
+    /// HTTP error occurred
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
     /// An order's input and outputs both scale with priority fee
     #[error("Input and outputs both scale with priority fee")]
     InputOutputScaling,
+    /// Conversion error from U256 to u128
+    #[error("Invalid u256 to u128 conversion: {0}")]
+    InvalidU256(U256),
+    /// Error from the price reporter client
+    #[error("Price reporter client error: {0}")]
+    PriceReporter(#[from] PriceReporterClientError),
+    /// Error from the renegade client
+    #[error("Renegade client error: {0}")]
+    Renegade(#[from] ExternalMatchClientError),
+    /// JSON serialization/deserialization error
+    #[error("JSON error: {0}")]
+    Serialization(#[from] serde_json::Error),
 }
 
 impl SolverError {
@@ -55,6 +60,12 @@ impl SolverError {
 }
 
 impl Reject for SolverError {}
+
+impl From<U256> for SolverError {
+    fn from(u: U256) -> Self {
+        SolverError::InvalidU256(u)
+    }
+}
 
 // ------------------
 // | Error Handling |
