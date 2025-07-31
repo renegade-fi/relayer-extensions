@@ -18,7 +18,7 @@ use rand::Rng;
 use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_common::types::token::Token;
-use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_WRAPPER_TICKER};
 use renegade_util::hex::biguint_to_hex_addr;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -65,6 +65,10 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
 /// Get a ticker from a `BigUint` encoded mint
 pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
     let token = Token::from_addr_biguint(mint);
+    if token.is_native_asset() {
+        return Ok(NATIVE_ASSET_WRAPPER_TICKER.to_string());
+    }
+
     token.get_ticker().ok_or_else(|| {
         let token_addr = biguint_to_hex_addr(mint);
         AuthServerError::bad_request(format!("Invalid token: {token_addr}"))
