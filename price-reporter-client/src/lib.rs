@@ -132,7 +132,8 @@ impl PriceReporterClient {
         mint: &str,
         chain: Chain,
     ) -> Result<f64, PriceReporterClientError> {
-        let token = Token::from_addr_on_chain(mint, chain);
+        let mint = mint.to_lowercase();
+        let token = Token::from_addr_on_chain(&mint, chain);
         if let Some(ticker) = token.get_ticker()
             && STABLECOIN_TICKERS.contains(&ticker.as_str())
         {
@@ -141,11 +142,11 @@ impl PriceReporterClient {
 
         let ws_is_connected = self.multi_price_stream.is_connected();
         if ws_is_connected {
-            return Ok(self.multi_price_stream.get_price(mint).await);
+            return Ok(self.multi_price_stream.get_price(&mint).await);
         }
 
         warn!("Price stream is not connected, fetching price via HTTP");
-        self.get_price_http(mint).await
+        self.get_price_http(&mint).await
     }
 
     /// Get the price of a token from the price reporter via HTTP

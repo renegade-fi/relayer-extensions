@@ -36,7 +36,7 @@ const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
 /// The maximum price deviation from the Renegade price that is allowed
-const MAX_PRICE_DEVIATION: f64 = 0.01; // 1%
+const MAX_PRICE_DEVIATION: f64 = 0.02; // 1%
 /// The amount to increase an approval by for a swap
 ///
 /// We "over-approve" so that we don't need to re-approve on every swap
@@ -416,9 +416,10 @@ impl ExecutionClient {
         };
 
         if deviation > MAX_PRICE_DEVIATION {
-            return Err(ExecutionClientError::quote_validation(format!(
-                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
-            )));
+            let err_msg = format!(
+                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}; Base addr: {base_addr}; Renegade price: {renegade_price}; Quote price: {quote_price}"
+            );
+            return Err(ExecutionClientError::quote_validation(err_msg));
         }
 
         Ok(())
