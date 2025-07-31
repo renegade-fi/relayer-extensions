@@ -9,13 +9,7 @@
 /// for more details.
 use alloy_primitives::U256;
 
-use crate::{
-    error::SolverResult,
-    uniswapx::{
-        abis::{priority_order::MPS, uniswapx::PriorityOrderReactor::PriorityOrder},
-        UniswapXSolver,
-    },
-};
+use crate::uniswapx::abis::priority_order::MPS;
 
 /// Compute the priority fee in wei
 pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_sell: bool) -> U256 {
@@ -27,6 +21,11 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
     };
 
     if !improvement {
+        tracing::info!(
+            "Renegade price: {} | UniswapX price: {} | Improvement: 0 bps",
+            renegade_price,
+            priority_order_price,
+        );
         return U256::ZERO;
     }
 
@@ -47,17 +46,6 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
     );
 
     priority_fee_wei
-}
-
-impl UniswapXSolver {
-    /// Get the price of a token from the price reporter client
-    ///
-    /// Assumes one side of the order is USDC and there is only one output token
-    pub(crate) async fn get_renegade_price(&self, order: &PriorityOrder) -> SolverResult<f64> {
-        let mint = order.base_token().get_addr();
-        let price = self.price_reporter_client.get_price(&mint, self.chain_id).await?;
-        Ok(price)
-    }
 }
 
 #[cfg(test)]

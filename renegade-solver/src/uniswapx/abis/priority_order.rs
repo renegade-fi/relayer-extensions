@@ -14,6 +14,7 @@ use crate::{
             error::{FixedPointMathError, FixedPointResult},
             mul_div_down, mul_div_up,
         },
+        NATIVE_ETH_ADDRESS, WETH_TICKER,
     },
 };
 
@@ -50,11 +51,16 @@ impl PriorityOrder {
     }
 
     /// Returns the base token address (non-USDC token)
+    ///
+    /// Maps Native ETH to WETH since this returns a Renegade Token where native
+    /// ETH address is not valid
     pub fn base_token(&self) -> Token {
         if self.is_sell() {
-            Token::from_addr(&self.input.token.to_string())
+            let base = self.map_native_eth_to_weth(self.input.token.to_string());
+            Token::from_addr(&base)
         } else {
-            self.output_token()
+            let base = self.map_native_eth_to_weth(self.output_token().get_addr().to_string());
+            Token::from_addr(&base)
         }
     }
 
@@ -101,6 +107,14 @@ impl PriorityOrder {
     /// Assumes all outputs have the same token
     pub fn output_token(&self) -> Token {
         Token::from_addr(&self.outputs[0].token.to_string())
+    }
+
+    /// Map Native ETH to WETH
+    fn map_native_eth_to_weth(&self, token: String) -> String {
+        match token.as_str() {
+            NATIVE_ETH_ADDRESS => Token::from_ticker(WETH_TICKER).get_addr(),
+            _ => token,
+        }
     }
 }
 

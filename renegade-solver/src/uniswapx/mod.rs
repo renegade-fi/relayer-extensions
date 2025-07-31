@@ -34,6 +34,12 @@ const ORDER_CACHE_SIZE: usize = 100;
 const NATIVE_ETH_SYMBOL: &str = "ETH";
 /// The symbol for USDC
 const USDC_SYMBOL: &str = "USDC";
+/// Native ETH address as per UniswapX
+const NATIVE_ETH_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
+/// Native ETH address as per Renegade
+const NATIVE_ETH_ADDRESS_RENEGADE: &str = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+/// WETH ticker
+const WETH_TICKER: &str = "WETH";
 
 /// A shared read-only bimap of supported tokens
 ///
