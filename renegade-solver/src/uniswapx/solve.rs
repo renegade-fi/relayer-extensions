@@ -2,7 +2,8 @@
 
 use alloy::primitives::Address;
 use alloy_primitives::U256;
-use renegade_sdk::types::ExternalOrder;
+use renegade_sdk::types::{AtomicMatchApiBundle, ExternalOrder};
+use renegade_solidity_abi::IDarkpool::SignedOrder;
 use tracing::info;
 
 use crate::{
@@ -22,6 +23,7 @@ impl UniswapXSolver {
         // The order amounts in the raw API response are currently incorrect, so we need
         // to pull them from the ABI encoded order
         let order = api_order.decode_priority_order()?;
+        let signed_order = api_order.decode_signed_order()?;
 
         // Check if the order is serviceable
         if !self.is_order_serviceable(&order)? || !self.temporary_order_filter(&order)? {
@@ -72,15 +74,36 @@ impl UniswapXSolver {
             );
             let input_delta = bundle.send.amount as i128 - u256_to_u128(scaled_input)? as i128;
             if input_delta > 0 {
-                info!("Renegade bundle is larger than the order by {}", input_delta);
+                info!("Input delta: {}", input_delta);
             }
             // Negative delta means the renegade bundle is smaller than the order
             let output_delta = bundle.receive.amount as i128 - u256_to_u128(scaled_output)? as i128;
             if output_delta < 0 {
-                info!("Renegade bundle is smaller than the order by {}", output_delta);
+                info!("Output delta: {}", output_delta);
             }
+
+            // Submit the solution to the reactor
+            self.submit_solution(&bundle, signed_order, priority_fee_wei).await?;
         } else {
             info!("No renegade solution found");
+        }
+
+        Ok(())
+    }
+
+    /// Submit a solution to the executor
+    async fn submit_solution(
+        &self,
+        bundle: &AtomicMatchApiBundle,
+        signed_order: SignedOrder,
+        priority_fee_wei: U256,
+    ) -> SolverResult<()> {
+        if let Some(calldata) = &bundle.settlement_tx.input.data {
+            let receipt = self
+                .executor_client
+                .execute_atomic_match_settle(calldata.as_ref(), signed_order, priority_fee_wei)
+                .await?;
+            info!("Filled order with tx hash: {}", receipt.transaction_hash);
         }
 
         Ok(())
