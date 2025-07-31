@@ -2,12 +2,19 @@
 #![allow(deprecated)]
 
 use alloy::primitives::Address;
+use renegade_common::types::token::Token;
 use renegade_sdk::{
     types::{AtomicMatchApiBundle, ExternalOrder, OrderSide},
     ExternalMatchOptions, ExternalOrderBuilder,
 };
 
-use crate::{error::SolverResult, uniswapx::UniswapXSolver};
+use crate::{
+    error::SolverResult,
+    uniswapx::{
+        abis::uniswapx::PriorityOrderReactor::PriorityOrder, UniswapXSolver, NATIVE_ETH_ADDRESS,
+        NATIVE_ETH_ADDRESS_RENEGADE, WETH_TICKER,
+    },
+};
 
 impl UniswapXSolver {
     /// Fetch a match bundle for one leg of a trade
@@ -25,6 +32,19 @@ impl UniswapXSolver {
         Ok(maybe_bundle.map(|b| b.match_bundle))
     }
 
+    /// Get the price of a token from the price reporter client
+    ///
+    /// Assumes one side of the order is USDC and there is only one output token
+    pub(crate) async fn get_renegade_price(&self, order: &PriorityOrder) -> SolverResult<f64> {
+        let mint = match order.base_token().get_addr().as_str() {
+            NATIVE_ETH_ADDRESS => Token::from_ticker(WETH_TICKER).get_addr(),
+            _ => order.base_token().get_addr(),
+        };
+
+        let price = self.price_reporter_client.get_price(&mint, self.chain_id).await?;
+        Ok(price)
+    }
+
     // -----------
     // | Helpers |
     // -----------
@@ -35,6 +55,14 @@ impl UniswapXSolver {
     /// be disabled
     fn get_external_match_options() -> ExternalMatchOptions {
         ExternalMatchOptions::new().with_gas_estimation(false)
+    }
+
+    /// Map Native ETH to Renegade native ETH address
+    fn map_native_eth_to_renegade_eth(&self, token: String) -> String {
+        match token.as_str() {
+            NATIVE_ETH_ADDRESS => NATIVE_ETH_ADDRESS_RENEGADE.to_string(),
+            _ => token,
+        }
     }
 
     /// Build an order for the given token pair
@@ -61,8 +89,9 @@ impl UniswapXSolver {
         quote: Address,
         output_amount: u128,
     ) -> SolverResult<ExternalOrder> {
+        let base = self.map_native_eth_to_renegade_eth(base.to_string());
         let order = ExternalOrderBuilder::new()
-            .base_mint(&base.to_string())
+            .base_mint(&base)
             .quote_mint(&quote.to_string())
             .exact_base_output(output_amount)
             .side(OrderSide::Buy)
@@ -77,8 +106,9 @@ impl UniswapXSolver {
         quote: Address,
         output_amount: u128,
     ) -> SolverResult<ExternalOrder> {
+        let base = self.map_native_eth_to_renegade_eth(base.to_string());
         let order = ExternalOrderBuilder::new()
-            .base_mint(&base.to_string())
+            .base_mint(&base)
             .quote_mint(&quote.to_string())
             .exact_quote_output(output_amount)
             .side(OrderSide::Sell)
