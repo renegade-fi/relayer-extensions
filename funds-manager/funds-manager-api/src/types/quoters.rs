@@ -59,6 +59,21 @@ pub struct WithdrawFundsRequest {
 
 // --- Execution --- //
 
+/// Parameters for requesting a quote to be executed
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuoteParams {
+    /// The token that should be transferred. Can be the address or the symbol
+    pub from_token: String,
+    /// The token that should be transferred to. Can be the address or the
+    /// symbol
+    pub to_token: String,
+    /// The amount that should be sent including all decimals (e.g. 1000000 for
+    /// 1 USDC (6 decimals))
+    #[serde(with = "u256_string_serialization")]
+    pub from_amount: U256,
+}
+
 /// A simplified representation of an execution quote, suitable for API
 /// responses
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,56 +91,6 @@ pub struct ApiExecutionQuote {
     pub buy_amount: U256,
     /// The venue that provided the quote
     pub venue: String,
-}
-
-/// The subset of LiFi quote request query parameters that we support
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LiFiQuoteParams {
-    /// The token that should be transferred. Can be the address or the symbol
-    pub from_token: String,
-    /// The token that should be transferred to. Can be the address or the
-    /// symbol
-    pub to_token: String,
-    /// The amount that should be sent including all decimals (e.g. 1000000 for
-    /// 1 USDC (6 decimals))
-    #[serde(with = "u256_string_serialization")]
-    pub from_amount: U256,
-    /// The sending wallet address
-    pub from_address: String,
-    /// The receiving wallet address. If none is provided, the fromAddress will
-    /// be used
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub to_address: Option<String>,
-    /// The ID of the sending chain
-    pub from_chain: usize,
-    /// The ID of the receiving chain
-    pub to_chain: usize,
-    /// The maximum allowed slippage for the transaction as a decimal value.
-    /// 0.005 represents 0.5%.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slippage: Option<f64>,
-    /// The maximum price impact for the transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_price_impact: Option<f64>,
-    /// Timing setting to wait for a certain amount of swap rates. In the format
-    /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
-    /// Please check docs.li.fi for more details.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub swap_step_timing_strategies: Option<Vec<String>>,
-    /// Which kind of route should be preferred
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub order: Option<String>,
-    /// Parameter to skip transaction simulation. The quote will be returned
-    /// faster but the transaction gas limit won't be accurate.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_simulation: Option<bool>,
-    /// List of exchanges that are allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_exchanges: Option<Vec<String>>,
-    /// List of exchanges that are not allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deny_exchanges: Option<Vec<String>>,
 }
 
 /// The response body for executing an immediate swap
@@ -153,7 +118,7 @@ pub struct SwapIntoTargetTokenRequest {
     /// The quote parameters for the swap. The `from_token` and `from_amount`
     /// fields will be ignored and calculated by the server, but they are still
     /// required to be set.
-    pub quote_params: LiFiQuoteParams,
+    pub quote_params: QuoteParams,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot

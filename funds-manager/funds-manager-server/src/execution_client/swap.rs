@@ -2,26 +2,15 @@
 
 use std::cmp::Ordering;
 
-use alloy::{
-    eips::BlockId,
-    hex,
-    network::TransactionBuilder,
-    providers::{DynProvider, Provider},
-    rpc::types::{TransactionReceipt, TransactionRequest},
-    signers::local::PrivateKeySigner,
-};
-use alloy_primitives::{Address, Log, U256};
-use alloy_sol_types::SolEvent;
-use funds_manager_api::{
-    quoters::{LiFiQuoteParams, SwapIntoTargetTokenRequest},
-    u256_try_into_u64,
-};
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::{Address, TxHash, U256};
+use funds_manager_api::quoters::{QuoteParams, SwapIntoTargetTokenRequest};
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
-use crate::{
-    execution_client::venues::quote::{ExecutableQuote, ExecutionQuote},
-    helpers::IERC20::{self, Transfer},
+use crate::execution_client::venues::{
+    quote::{ExecutableQuote, ExecutionQuote},
+    ExecutionResult,
 };
 
 use super::{error::ExecutionClientError, ExecutionClient};
@@ -36,14 +25,6 @@ const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
 /// The maximum price deviation from the Renegade price that is allowed
 const MAX_PRICE_DEVIATION: f64 = 0.01; // 1%
-/// The amount to increase an approval by for a swap
-///
-/// We "over-approve" so that we don't need to re-approve on every swap
-const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
-/// The address of the LiFi diamond (same address on Arbitrum One and Base
-/// Mainnet), constantized here to simplify approvals
-const LIFI_DIAMOND_ADDRESS: Address =
-    Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
@@ -52,14 +33,14 @@ const SWAP_TO_COVER_BUFFER: f64 = 1.1;
 // | Types |
 // ---------
 
-/// The outcome of an executed swap
-pub struct SwapOutcome {
+/// The outcome of a successfully-executed decaying swap
+pub struct DecayingSwapOutcome {
     /// The quote that was executed
     pub quote: ExecutionQuote,
     /// The actual amount of the token that was bought
     pub buy_amount_actual: U256,
-    /// The transaction receipt of the swap
-    pub receipt: TransactionReceipt,
+    /// The transaction hash in which the swap was executed
+    pub tx_hash: TxHash,
     /// The cumulative gas cost of the swap, across all attempts.
     pub cumulative_gas_cost: U256,
 }
@@ -81,55 +62,11 @@ impl SwapCandidate {
     }
 }
 
-// -----------
-// | Helpers |
-// -----------
-
-/// Compute the gas cost of a transaction in WEI
-fn get_gas_cost(receipt: &TransactionReceipt) -> U256 {
-    U256::from(receipt.gas_used) * U256::from(receipt.effective_gas_price)
-}
-
 // --------------------
 // | Execution Client |
 // --------------------
 
 impl ExecutionClient {
-    /// Construct a swap transaction from an execution quote
-    async fn build_swap_tx(
-        &self,
-        quote: &ExecutableQuote,
-        client: &DynProvider,
-    ) -> Result<TransactionRequest, ExecutionClientError> {
-        let lifi_execution_data = quote.execution_data.lifi()?;
-
-        let latest_block = client
-            .get_block(BlockId::latest())
-            .await
-            .map_err(ExecutionClientError::onchain)?
-            .ok_or(ExecutionClientError::onchain("No latest block found"))?;
-
-        let latest_basefee = latest_block
-            .header
-            .base_fee_per_gas
-            .ok_or(ExecutionClientError::onchain("No basefee found"))?
-            as u128;
-
-        let gas_limit = u256_try_into_u64(lifi_execution_data.gas_limit)
-            .map_err(ExecutionClientError::onchain)?;
-
-        let tx = TransactionRequest::default()
-            .with_to(lifi_execution_data.to)
-            .with_from(lifi_execution_data.from)
-            .with_value(lifi_execution_data.value)
-            .with_input(lifi_execution_data.data.clone())
-            .with_max_fee_per_gas(latest_basefee * 2)
-            .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit);
-
-        Ok(tx)
-    }
-
     /// Attempt to execute a swap, retrying failed swaps with
     /// decreased quotes down to a minimum trade size.
     ///
@@ -137,22 +74,8 @@ impl ExecutionClient {
     /// attempted swaps
     pub async fn swap_immediate_decaying(
         &self,
-        mut params: LiFiQuoteParams,
-        wallet: PrivateKeySigner,
-    ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
-        // Approve the top-level sell amount
-        let sell_token_amount = params.from_amount;
-        let sell_token_address: Address =
-            params.from_token.parse().map_err(ExecutionClientError::parse)?;
-
-        self.approve_erc20_allowance(
-            sell_token_address,
-            LIFI_DIAMOND_ADDRESS,
-            sell_token_amount,
-            &wallet,
-        )
-        .await?;
-
+        mut params: QuoteParams,
+    ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
             let maybe_executable_quote = self.get_executable_quote(params.clone()).await?;
@@ -161,28 +84,24 @@ impl ExecutionClient {
             }
             let executable_quote = maybe_executable_quote.unwrap();
 
-            // Submit the swap
-            let client = self.get_signing_provider(wallet.clone());
-            let tx = self.build_swap_tx(&executable_quote, &client).await?;
-            let receipt = self.send_tx(tx, &client).await?;
-            cumulative_gas_cost += get_gas_cost(&receipt);
+            // Execute the quote
+            // TODO: Requires initializing & storing Lifi client on the execution client
+            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } = todo!();
+            cumulative_gas_cost += gas_cost;
 
-            // If the swap succeeds, return
-            if receipt.status() {
-                let buy_amount_actual = self.get_buy_amount_actual(&receipt, &executable_quote)?;
-
-                return Ok(Some(SwapOutcome {
+            // If the swap was successful, return
+            if let Some(tx_hash) = tx_hash {
+                return Ok(Some(DecayingSwapOutcome {
                     quote: executable_quote.quote,
                     buy_amount_actual,
-                    receipt,
+                    tx_hash,
                     cumulative_gas_cost,
                 }));
             }
 
             // Otherwise, decrease the swap size and try again
-            warn!("tx ({:#x}) failed, retrying w/ reduced-size quote", receipt.transaction_hash);
-            params =
-                LiFiQuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
+            warn!("swap failed, retrying w/ reduced-size quote");
+            params = QuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
         }
     }
 
@@ -194,7 +113,7 @@ impl ExecutionClient {
         &self,
         req: SwapIntoTargetTokenRequest,
         wallet: PrivateKeySigner,
-    ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let SwapIntoTargetTokenRequest { target_amount, quote_params } = req;
 
         let target_token = Token::from_addr_on_chain(&quote_params.to_token, self.chain);
@@ -239,9 +158,9 @@ impl ExecutionClient {
         &self,
         target_token: Token,
         amount_to_cover_usdc: f64,
-        params: LiFiQuoteParams,
+        params: QuoteParams,
         wallet: PrivateKeySigner,
-    ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let target_ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
 
         // Get the balances of the candidate tokens to swap out of,
@@ -338,9 +257,9 @@ impl ExecutionClient {
         target_token_addr: String,
         candidate: SwapCandidate,
         amount_to_cover_usdc: f64,
-        params: LiFiQuoteParams,
+        params: QuoteParams,
         wallet: PrivateKeySigner,
-    ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let balance_value = candidate.notional_value();
         let SwapCandidate { token, balance, price } = candidate;
 
@@ -359,14 +278,13 @@ impl ExecutionClient {
         }
 
         let swap_amount = token.convert_from_decimal(swap_amount_decimal);
-        let swap_params = LiFiQuoteParams {
+        let swap_params = QuoteParams {
             to_token: target_token_addr,
             from_token: token.get_addr(),
             from_amount: U256::from(swap_amount),
-            ..params
         };
 
-        let swap_outcome = self.swap_immediate_decaying(swap_params, wallet).await?;
+        let swap_outcome = self.swap_immediate_decaying(swap_params).await?;
         Ok(swap_outcome)
     }
 
@@ -378,9 +296,10 @@ impl ExecutionClient {
     #[instrument(skip_all)]
     pub async fn get_executable_quote(
         &self,
-        params: LiFiQuoteParams,
+        params: QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
-        let executable_quote = self.get_quote(params).await?;
+        // TODO: Replace with multi-venue quote selection
+        let executable_quote = todo!();
         self.validate_quote(&executable_quote).await?;
 
         let quote_amount = executable_quote.quote.quote_amount_decimal();
@@ -420,66 +339,5 @@ impl ExecutionClient {
         }
 
         Ok(())
-    }
-
-    /// Approve an erc20 allowance
-    #[instrument(skip(self, wallet))]
-    pub(crate) async fn approve_erc20_allowance(
-        &self,
-        token_address: Address,
-        spender: Address,
-        amount: U256,
-        wallet: &PrivateKeySigner,
-    ) -> Result<(), ExecutionClientError> {
-        let client = self.get_signing_provider(wallet.clone());
-        let erc20 = IERC20::new(token_address, client);
-
-        // First, check if the allowance is already sufficient
-        let allowance = erc20
-            .allowance(wallet.address(), spender)
-            .call()
-            .await
-            .map_err(ExecutionClientError::onchain)?;
-
-        if allowance >= amount {
-            info!("Already approved erc20 allowance for {spender:#x}");
-            return Ok(());
-        }
-
-        // Otherwise, approve the allowance
-        let approval_amount = amount * APPROVAL_AMPLIFIER;
-        let tx = erc20.approve(spender, approval_amount);
-        let pending_tx = tx.send().await.map_err(ExecutionClientError::onchain)?;
-
-        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::onchain)?;
-
-        info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
-        Ok(())
-    }
-
-    /// Extract the transfer amount from a transaction receipt
-    fn get_buy_amount_actual(
-        &self,
-        receipt: &TransactionReceipt,
-        executable_quote: &ExecutableQuote,
-    ) -> Result<U256, ExecutionClientError> {
-        let buy_mint = executable_quote.quote.buy_token.get_alloy_address();
-        let recipient = executable_quote.execution_data.lifi()?.from;
-
-        let logs: Vec<Log<Transfer>> = receipt
-            .logs()
-            .iter()
-            .filter_map(|log| {
-                if log.address() != buy_mint {
-                    None
-                } else {
-                    Transfer::decode_log(&log.inner).ok()
-                }
-            })
-            .collect();
-
-        logs.iter()
-            .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
-            .ok_or(ExecutionClientError::onchain("no matching transfer event found"))
     }
 }
