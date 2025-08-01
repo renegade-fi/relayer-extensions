@@ -22,7 +22,7 @@ impl ExecutionClient {
     pub async fn get_quote(
         &self,
         params: LiFiQuoteParams,
-    ) -> Result<ExecutionQuote, ExecutionClientError> {
+    ) -> Result<ExecutableQuote, ExecutionClientError> {
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string = qs_config.serialize_string(&params).unwrap();
         let url = format!("{}?{}", QUOTE_ENDPOINT, query_string);
@@ -36,8 +36,6 @@ impl ExecutionClient {
             },
         };
 
-        info!("Got LiFi quote from: {}", resp.tool);
-
-        Ok(resp.into())
+        ExecutableQuote::from_lifi_quote(resp, self.chain)
     }
 }

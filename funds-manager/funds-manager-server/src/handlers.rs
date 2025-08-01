@@ -262,7 +262,7 @@ pub(crate) async fn swap_immediate_handler(
     };
 
     Ok(warp::reply::json(&SwapImmediateResponse {
-        quote: outcome.augmented_quote.quote.clone(),
+        quote: outcome.quote.into(),
         tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
         execution_cost,
     }))
@@ -300,7 +300,7 @@ pub(crate) async fn swap_into_target_token_handler(
         };
 
         responses.push(SwapImmediateResponse {
-            quote: outcome.augmented_quote.quote.clone(),
+            quote: outcome.quote.into(),
             tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
             execution_cost,
         });

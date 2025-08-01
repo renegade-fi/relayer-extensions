@@ -1,15 +1,8 @@
 //! API types for quoter management
-use alloy_primitives::{hex, Address, Bytes, U256};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    serialization::{f64_string_serialization, u256_string_serialization},
-    u256_try_into_u128,
-};
+use crate::serialization::{f64_string_serialization, u256_string_serialization};
 
 // --------------
 // | Api Routes |
@@ -66,18 +59,19 @@ pub struct WithdrawFundsRequest {
 
 // --- Execution --- //
 
-/// The subset of the quote response forwarded to consumers of this client
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// A simplified representation of an execution quote, suitable for API
+/// responses
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecutionQuote {
-    /// The token address we're buying
-    pub buy_token_address: Address,
-    /// The token address we're selling
-    pub sell_token_address: Address,
-    /// The amount of tokens to sell
+pub struct ApiExecutionQuote {
+    /// The address of the token being sold
+    pub sell_token_address: String,
+    /// The address of the token being bought
+    pub buy_token_address: String,
+    /// The amount of the token being sold
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
-    /// The amount of tokens expected to be received
+    /// The amount of the token being bought
     #[serde(with = "u256_string_serialization")]
     pub buy_amount: U256,
     /// The minimum amount of tokens expected to be received
@@ -307,7 +301,7 @@ pub struct LiFiQuoteParams {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SwapImmediateResponse {
     /// The quote that was executed
-    pub quote: ExecutionQuote,
+    pub quote: ApiExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
     /// The execution cost in USD
