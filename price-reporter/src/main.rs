@@ -12,16 +12,15 @@ use std::{collections::HashSet, net::SocketAddr};
 
 use errors::ServerError;
 use http_server::HttpServer;
+use itertools::Itertools;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{get_all_tokens, Token, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{default_exchange_stable, get_all_base_tokens, Token},
 };
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{
-    get_canonical_exchanges, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
-};
+use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo};
 use ws_server::handle_connection;
 
 use crate::{exchanges::ExchangeConnectionsConfig, price_stream_manager::GlobalPriceStreams};
@@ -32,9 +31,6 @@ mod http_server;
 mod price_stream_manager;
 mod utils;
 mod ws_server;
-
-/// Stablecoin tickers to filter
-const STABLECOIN_TICKERS: [&str; 3] = [USD_TICKER, USDC_TICKER, USDT_TICKER];
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
@@ -103,34 +99,44 @@ pub(crate) fn init_default_price_streams(
     info!("Initializing default price streams");
 
     let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
+    let enabled_exchanges =
+        Exchange::all().into_iter().filter(|e| !disabled_exchanges_set.contains(e)).collect_vec();
 
-    for base_token in get_all_tokens() {
-        // Initalize USDC streams to be used for quote conversion
-        if base_token.get_ticker().unwrap() == USDC_TICKER {
-            for exchange in get_canonical_exchanges() {
-                init_price_stream(
-                    base_token.clone(),
-                    exchange,
-                    global_price_streams,
-                    config.clone(),
-                )?;
-            }
-            continue;
-        }
-        // Skip other stables
-        if STABLECOIN_TICKERS.contains(&base_token.get_ticker().unwrap().as_str()) {
-            continue;
-        }
+    // Collect all streams to initialize; stores tuples (base_token, exchange)
+    // Use a hashset to avoid duplicates
+    let mut streams = HashSet::new();
+
+    // 1. Add all quote conversion streams
+    // These are streams of USDC/DEFAULT_STABLE for each exchange
+    let usdc = Token::usdc();
+    for exchange in enabled_exchanges.iter().copied() {
+        streams.insert((usdc.clone(), exchange));
+    }
+
+    // 2. Add in unit streams for all default stables
+    // We use unit streams to allow for conversion into stable-stable pairs
+    // E.g. USDT/USDC
+    for exchange in enabled_exchanges.iter().copied() {
+        let default_stable = default_exchange_stable(&exchange);
+        streams.insert((default_stable, exchange));
+    }
+
+    // 3. Add in streams for all base tokens
+    for base_token in get_all_base_tokens() {
         let supported_exchanges: Vec<Exchange> = get_supported_exchanges(&base_token, config)
             .difference(&disabled_exchanges_set)
             .copied()
             .collect();
 
-        for exchange in supported_exchanges {
-            init_price_stream(base_token.clone(), exchange, global_price_streams, config.clone())?;
-        }
+        supported_exchanges.into_iter().for_each(|exchange| {
+            streams.insert((base_token.clone(), exchange));
+        });
     }
 
+    // Initialize all streams
+    for (base_token, exchange) in streams {
+        init_price_stream(base_token, exchange, global_price_streams, config.clone())?;
+    }
     Ok(())
 }
 

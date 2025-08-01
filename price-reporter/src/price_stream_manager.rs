@@ -3,7 +3,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use renegade_common::types::{exchange::Exchange, price::Price};
-use renegade_util::concurrency::runtime::sleep_forever_async;
 use tokio::{
     sync::{watch::channel, RwLock},
     time::Instant,
@@ -29,6 +28,8 @@ use crate::{
 ///
 /// We simply send a price of 1.0 for such pairs
 const UNIT_PAIR_PRICE: f64 = 1.0;
+/// The interval at which to refresh the unit price
+const UNIT_PRICE_REFRESH_INTERVAL_MS: u64 = 1_000; // 1 second
 
 /// A map of price streams from exchanges maintained by the server,
 /// shared across all connections
@@ -112,10 +113,14 @@ impl GlobalPriceStreams {
 
     /// Stream a unit pair price
     ///
-    /// We simply send a price of 1.0 for the pair and hold the stream open
+    /// We simply send a price of 1.0 in a loop with a delay. This will keep the
+    /// price "fresh" as measured by consumers in this service and via the API.
     async fn stream_unit_pair_price(price_tx: &PriceSender) {
-        let _ = price_tx.send(UNIT_PAIR_PRICE);
-        sleep_forever_async().await
+        let refresh_interval = Duration::from_millis(UNIT_PRICE_REFRESH_INTERVAL_MS);
+        loop {
+            let _ = price_tx.send(UNIT_PAIR_PRICE);
+            tokio::time::sleep(refresh_interval).await;
+        }
     }
 
     /// Manages an exchange connection, sending keepalive messages and

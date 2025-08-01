@@ -40,7 +40,7 @@ use crate::{errors::ServerError, http_server::routes::Handler};
 mod canonical_exchange;
 mod pair_info;
 
-pub use canonical_exchange::{get_canonical_exchanges, set_canonical_exchange_map};
+pub use canonical_exchange::set_canonical_exchange_map;
 pub use pair_info::PairInfo;
 
 // ----------
@@ -248,7 +248,7 @@ pub fn parse_config_env_vars() -> PriceReporterConfig {
         .map(|key_str| HmacKey::from_base64_string(&key_str).expect("Invalid admin HMAC key"));
 
     let disabled_exchanges = match env::var(DISABLED_EXCHANGES_ENV_VAR) {
-        Err(_) => vec![],
+        Err(_) => vec![Exchange::UniswapV3],
         Ok(exchanges) => exchanges
             .split(',')
             .map(Exchange::from_str)
