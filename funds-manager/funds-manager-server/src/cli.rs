@@ -203,8 +203,6 @@ pub struct ChainConfig {
     // --- Execution Venue Params --- //
     /// The execution venue api key
     pub execution_venue_api_key: Option<String>,
-    /// The execution venue base url
-    pub execution_venue_base_url: String,
 }
 
 impl ChainConfig {
@@ -253,7 +251,6 @@ impl ChainConfig {
         let execution_client = ExecutionClient::new(
             chain,
             self.execution_venue_api_key.clone(),
-            self.execution_venue_base_url.clone(),
             &self.rpc_url,
             price_reporter.clone(),
         )

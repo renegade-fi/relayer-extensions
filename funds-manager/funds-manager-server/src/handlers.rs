@@ -19,7 +19,7 @@ use funds_manager_api::hot_wallets::{
     TransferToVaultRequest, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    DepositAddressResponse, LiFiQuoteParams, SwapImmediateResponse, SwapIntoTargetTokenRequest,
+    DepositAddressResponse, QuoteParams, SwapImmediateResponse, SwapIntoTargetTokenRequest,
     WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, VaultBalancesResponse};
@@ -233,7 +233,7 @@ pub(crate) async fn get_deposit_address_handler(
 #[instrument(skip_all)]
 pub(crate) async fn swap_immediate_handler(
     chain: Chain,
-    params: LiFiQuoteParams,
+    params: QuoteParams,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let execution_client = server.get_execution_client(&chain)?;
@@ -243,12 +243,9 @@ pub(crate) async fn swap_immediate_handler(
     // Top up the quoter hot wallet gas before swapping
     custody_client.top_up_quoter_hot_wallet_gas().await?;
 
-    let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
-    let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
-
     // Execute the swap, decaying the size of the swap each time it fails to execute
     let outcome = execution_client
-        .swap_immediate_decaying(params, wallet)
+        .swap_immediate_decaying(params)
         .await?
         .ok_or(ExecutionClientError::custom("No swap executed".to_string()))?;
 
@@ -263,7 +260,7 @@ pub(crate) async fn swap_immediate_handler(
 
     Ok(warp::reply::json(&SwapImmediateResponse {
         quote: outcome.quote.into(),
-        tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
+        tx_hash: format!("{:#x}", outcome.tx_hash),
         execution_cost,
     }))
 }
@@ -301,7 +298,7 @@ pub(crate) async fn swap_into_target_token_handler(
 
         responses.push(SwapImmediateResponse {
             quote: outcome.quote.into(),
-            tx_hash: format!("{:#x}", outcome.receipt.transaction_hash),
+            tx_hash: format!("{:#x}", outcome.tx_hash),
             execution_cost,
         });
     }

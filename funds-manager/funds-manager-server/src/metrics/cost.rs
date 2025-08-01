@@ -1,6 +1,5 @@
 //! Defines functionality to compute and record data for swap execution
 
-use alloy::rpc::types::TransactionReceipt;
 use alloy_primitives::{Address, TxHash, U256};
 use funds_manager_api::u256_try_into_u128;
 use renegade_common::types::{chain::Chain, token::Token};
@@ -11,7 +10,7 @@ use tracing::{info, warn};
 use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
-    execution_client::{swap::SwapOutcome, venues::quote::ExecutionQuote},
+    execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
     helpers::to_env_agnostic_name,
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, HASH_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
@@ -70,7 +69,7 @@ impl MetricsRecorder {
     /// Record the cost metrics for a swap operation
     pub async fn record_swap_cost(
         &self,
-        swap_outcome: &SwapOutcome,
+        swap_outcome: &DecayingSwapOutcome,
     ) -> Result<SwapExecutionData, FundsManagerError> {
         let cost_data = match self.build_swap_cost_data(swap_outcome).await {
             Ok(cost_data) => cost_data,
@@ -81,8 +80,8 @@ impl MetricsRecorder {
         };
 
         // Record metrics from the cost data
-        self.record_metrics_from_cost_data(&swap_outcome.receipt, &swap_outcome.quote, &cost_data);
-        self.log_swap_cost_data(&cost_data, swap_outcome.receipt.transaction_hash);
+        self.record_metrics_from_cost_data(&swap_outcome.tx_hash, &swap_outcome.quote, &cost_data);
+        self.log_swap_cost_data(&cost_data, swap_outcome.tx_hash);
 
         Ok(cost_data)
     }
@@ -96,10 +95,14 @@ impl MetricsRecorder {
     /// Build the unified swap cost data from available information
     async fn build_swap_cost_data(
         &self,
-        swap_outcome: &SwapOutcome,
+        swap_outcome: &DecayingSwapOutcome,
     ) -> Result<SwapExecutionData, FundsManagerError> {
-        let SwapOutcome { quote, buy_amount_actual, receipt, cumulative_gas_cost: swap_gas_cost } =
-            swap_outcome;
+        let DecayingSwapOutcome {
+            quote,
+            buy_amount_actual,
+            tx_hash,
+            cumulative_gas_cost: swap_gas_cost,
+        } = swap_outcome;
 
         let base_mint = quote.base_token().get_alloy_address();
         let binance_price = self.get_price(&base_mint, quote.chain).await?;
@@ -137,7 +140,7 @@ impl MetricsRecorder {
 
             // Market reference data
             binance_price,
-            transaction_hash: format!("{:#x}", receipt.transaction_hash),
+            transaction_hash: format!("{:#x}", tx_hash),
 
             // Execution details
             buy_amount_actual: decimal_corrected_buy_amount_actual.to_string(),
@@ -156,11 +159,11 @@ impl MetricsRecorder {
     /// Record metrics from the unified cost data
     fn record_metrics_from_cost_data(
         &self,
-        receipt: &TransactionReceipt,
+        tx_hash: &TxHash,
         quote: &ExecutionQuote,
         cost_data: &SwapExecutionData,
     ) {
-        let labels = self.get_labels(quote, receipt);
+        let labels = self.get_labels(quote, tx_hash);
 
         metrics::gauge!(SWAP_EXECUTION_COST_METRIC_NAME, &labels)
             .set(cost_data.execution_cost_usdc);
@@ -171,11 +174,7 @@ impl MetricsRecorder {
     }
 
     /// Derive the labels given a quote and a transaction receipt
-    fn get_labels(
-        &self,
-        quote: &ExecutionQuote,
-        receipt: &TransactionReceipt,
-    ) -> Vec<(String, String)> {
+    fn get_labels(&self, quote: &ExecutionQuote, tx_hash: &TxHash) -> Vec<(String, String)> {
         let base_token = quote.base_token();
         let mint = format!("{:#x}", base_token.get_alloy_address());
         let asset = base_token.get_ticker().unwrap_or(mint);
@@ -185,7 +184,7 @@ impl MetricsRecorder {
         vec![
             (ASSET_TAG.to_string(), asset),
             (TRADE_SIDE_FACTOR_TAG.to_string(), side_label.to_string()),
-            (HASH_TAG.to_string(), format!("{:#x}", receipt.transaction_hash)),
+            (HASH_TAG.to_string(), format!("{:#x}", tx_hash)),
             (CHAIN_TAG.to_string(), chain),
             (VENUE_TAG.to_string(), quote.venue.to_string()),
         ]
