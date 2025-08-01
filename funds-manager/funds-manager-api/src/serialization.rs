@@ -1,7 +1,7 @@
 //! Serialization helpers for the funds manager API
 
 /// A module for serializing and deserializing U256 as strings
-pub(crate) mod u256_string_serialization {
+pub mod u256_string_serialization {
     use alloy_primitives::U256;
     use serde::{de::Error, Deserialize, Deserializer, Serializer};
 
