@@ -201,8 +201,8 @@ pub struct ChainConfig {
     pub protocol_decryption_key: Option<String>,
 
     // --- Execution Venue Params --- //
-    /// The execution venue api key
-    pub execution_venue_api_key: Option<String>,
+    /// The Lifi API key
+    pub lifi_api_key: Option<String>,
 }
 
 impl ChainConfig {
@@ -247,12 +247,21 @@ impl ChainConfig {
             gas_sponsor_address,
         )?;
 
+        let quoter_hot_wallet =
+            custody_client.get_quoter_hot_wallet().await.map_err(FundsManagerError::on_chain)?;
+
+        let quoter_hot_wallet_private_key = custody_client
+            .get_hot_wallet_private_key(&quoter_hot_wallet.address)
+            .await
+            .map_err(FundsManagerError::on_chain)?;
+
         // Build an execution client
         let execution_client = ExecutionClient::new(
             chain,
-            self.execution_venue_api_key.clone(),
+            self.lifi_api_key.clone(),
             &self.rpc_url,
             price_reporter.clone(),
+            quoter_hot_wallet_private_key,
         )
         .map_err(FundsManagerError::custom)?;
 

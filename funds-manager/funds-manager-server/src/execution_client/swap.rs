@@ -2,15 +2,17 @@
 
 use std::cmp::Ordering;
 
-use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::{Address, TxHash, U256};
-use funds_manager_api::quoters::{QuoteParams, SwapIntoTargetTokenRequest};
+use funds_manager_api::{
+    quoters::{QuoteParams, SwapIntoTargetTokenRequest},
+    u256_try_into_u128,
+};
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
 use crate::execution_client::venues::{
-    quote::{ExecutableQuote, ExecutionQuote},
-    ExecutionResult,
+    quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+    ExecutionResult, ExecutionVenue,
 };
 
 use super::{error::ExecutionClientError, ExecutionClient};
@@ -78,15 +80,18 @@ impl ExecutionClient {
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let maybe_executable_quote = self.get_executable_quote(params.clone()).await?;
-            if maybe_executable_quote.is_none() {
+            let executable_quote = self.get_best_quote(params.clone()).await?;
+            let quote_amount = executable_quote.quote.quote_amount_decimal();
+
+            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+                warn!("Decaying swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
                 return Ok(None);
             }
-            let executable_quote = maybe_executable_quote.unwrap();
 
             // Execute the quote
-            // TODO: Requires initializing & storing Lifi client on the execution client
-            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } = todo!();
+            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+                self.execute_quote(&executable_quote).await?;
+
             cumulative_gas_cost += gas_cost;
 
             // If the swap was successful, return
@@ -112,15 +117,13 @@ impl ExecutionClient {
     pub async fn try_swap_into_target_token(
         &self,
         req: SwapIntoTargetTokenRequest,
-        wallet: PrivateKeySigner,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let SwapIntoTargetTokenRequest { target_amount, quote_params } = req;
 
         let target_token = Token::from_addr_on_chain(&quote_params.to_token, self.chain);
 
         // Check that the current token balances doesn't already cover the target amount
-        let current_balance =
-            self.get_erc20_balance(&target_token.addr, &wallet.address().to_string()).await?;
+        let current_balance = self.get_erc20_balance(&target_token.addr).await?;
 
         if current_balance >= target_amount {
             let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
@@ -138,13 +141,7 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(
-            target_token,
-            amount_to_cover_usdc,
-            quote_params,
-            wallet,
-        )
-        .await
+        self.execute_swaps_into_target_token(target_token, amount_to_cover_usdc).await
     }
 
     // ---------------------------------
@@ -158,15 +155,12 @@ impl ExecutionClient {
         &self,
         target_token: Token,
         amount_to_cover_usdc: f64,
-        params: QuoteParams,
-        wallet: PrivateKeySigner,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let target_ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
 
         // Get the balances of the candidate tokens to swap out of,
         // sorted by descending value
-        let swap_candidates =
-            self.get_swap_candidates(&target_token, &wallet.address().to_string()).await?;
+        let swap_candidates = self.get_swap_candidates(&target_token).await?;
 
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
@@ -175,32 +169,34 @@ impl ExecutionClient {
 
         let mut outcomes = vec![];
         for candidate in swap_candidates {
+            if remaining_amount_usdc < MIN_SWAP_QUOTE_AMOUNT {
+                info!("Remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps");
+                break;
+            }
+
             let token = &candidate.token;
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
 
             let maybe_outcome = self
-                .try_swap_candidate(
-                    target_token.get_addr(),
-                    candidate,
-                    remaining_amount_usdc,
-                    params.clone(),
-                    wallet.clone(),
-                )
+                .try_swap_candidate(target_token.get_addr(), candidate, remaining_amount_usdc)
                 .await?;
 
             if maybe_outcome.is_none() {
-                break;
+                continue;
             }
 
             let swap_outcome = maybe_outcome.unwrap();
             let sell_amount = swap_outcome.quote.sell_amount_decimal();
-            let quoted_buy_amount = swap_outcome.quote.buy_amount_decimal();
+            let buy_amount = u256_try_into_u128(swap_outcome.buy_amount_actual)
+                .map_err(ExecutionClientError::parse)?;
+
+            let buy_amount_decimal = swap_outcome.quote.buy_token.convert_to_decimal(buy_amount);
 
             outcomes.push(swap_outcome);
 
-            info!("Swapped {sell_amount} {ticker} for {quoted_buy_amount} {target_ticker}");
+            info!("Swapped {sell_amount} {ticker} for {buy_amount_decimal} {target_ticker}");
 
-            remaining_amount_usdc -= quoted_buy_amount;
+            remaining_amount_usdc -= buy_amount_decimal;
         }
 
         Ok(outcomes)
@@ -212,7 +208,6 @@ impl ExecutionClient {
     async fn get_swap_candidates(
         &self,
         target_token: &Token,
-        wallet_address: &str,
     ) -> Result<Vec<SwapCandidate>, ExecutionClientError> {
         let candidate_tokens: Vec<Token> = get_all_tokens()
             .into_iter()
@@ -221,7 +216,7 @@ impl ExecutionClient {
 
         let mut swap_candidates = vec![];
         for token in candidate_tokens {
-            let balance = self.get_erc20_balance(&token.addr, wallet_address).await?;
+            let balance = self.get_erc20_balance(&token.addr).await?;
             let price = self.price_reporter.get_price(&token.addr, self.chain).await?;
             swap_candidates.push(SwapCandidate { token, balance, price });
         }
@@ -257,8 +252,6 @@ impl ExecutionClient {
         target_token_addr: String,
         candidate: SwapCandidate,
         amount_to_cover_usdc: f64,
-        params: QuoteParams,
-        wallet: PrivateKeySigner,
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let balance_value = candidate.notional_value();
         let SwapCandidate { token, balance, price } = candidate;
@@ -284,7 +277,9 @@ impl ExecutionClient {
             from_amount: U256::from(swap_amount),
         };
 
-        let swap_outcome = self.swap_immediate_decaying(swap_params).await?;
+        // If there was an error in executing the candidate swap, we return `None` so
+        // that we can continue attempting swaps across the other candidates.
+        let swap_outcome = self.swap_immediate_decaying(swap_params).await.ok().flatten();
         Ok(swap_outcome)
     }
 
@@ -292,24 +287,43 @@ impl ExecutionClient {
     // | General Swapping Helpers |
     // ----------------------------
 
-    /// Get an execution quote for a swap
-    #[instrument(skip_all)]
-    pub async fn get_executable_quote(
+    /// Get the best quote for a swap, across all execution venues
+    #[instrument(
+        skip_all,
+        fields(
+            from_token = %params.from_token,
+            to_token = %params.to_token,
+            from_amount = %params.from_amount
+        )
+    )]
+    async fn get_best_quote(
         &self,
         params: QuoteParams,
-    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
-        // TODO: Replace with multi-venue quote selection
-        let executable_quote = todo!();
-        self.validate_quote(&executable_quote).await?;
+    ) -> Result<ExecutableQuote, ExecutionClientError> {
+        let venues = self.venues.get_all_venues();
 
-        let quote_amount = executable_quote.quote.quote_amount_decimal();
+        // We expect there to be at least one execution venue
+        let first_venue = venues.first().unwrap();
+        let remaining_venues = venues.iter().skip(1);
 
-        if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            warn!("Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
-            return Ok(None);
+        let mut best_quote = first_venue.get_quote(params.clone()).await?;
+        for venue in remaining_venues {
+            let quote = venue.get_quote(params.clone()).await?;
+
+            let quote_price = quote.quote.get_price(None /* buy_amount */);
+            let best_quote_price = best_quote.quote.get_price(None /* buy_amount */);
+
+            let is_better_sell = quote.quote.is_sell() && quote_price > best_quote_price;
+            let is_better_buy = !quote.quote.is_sell() && quote_price < best_quote_price;
+
+            if is_better_sell || is_better_buy {
+                best_quote = quote;
+            }
         }
 
-        Ok(Some(executable_quote))
+        self.validate_quote(&best_quote).await?;
+
+        Ok(best_quote)
     }
 
     /// Validate a quote against the Renegade price
@@ -339,5 +353,18 @@ impl ExecutionClient {
         }
 
         Ok(())
+    }
+
+    /// Execute a quote on the associated venue
+    async fn execute_quote(
+        &self,
+        executable_quote: &ExecutableQuote,
+    ) -> Result<ExecutionResult, ExecutionClientError> {
+        match executable_quote.execution_data {
+            QuoteExecutionData::Lifi(_) => self.venues.lifi.execute_quote(executable_quote).await,
+            QuoteExecutionData::Cowswap() => {
+                todo!()
+            },
+        }
     }
 }

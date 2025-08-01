@@ -8,7 +8,7 @@ use funds_manager_api::quoters::QuoteParams;
 
 use crate::execution_client::{
     error::ExecutionClientError,
-    venues::quote::{ExecutableQuote, ExecutionQuote},
+    venues::{lifi::LifiClient, quote::ExecutableQuote},
 };
 
 pub mod lifi;
@@ -31,6 +31,21 @@ impl Display for SupportedExecutionVenue {
     }
 }
 
+/// A collection of all execution venues used by the execution client
+#[derive(Clone)]
+pub struct AllExecutionVenues {
+    /// The Lifi client
+    pub lifi: LifiClient,
+    // TODO: Add Cowswap client
+}
+
+impl AllExecutionVenues {
+    /// Get all venues
+    pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
+        vec![&self.lifi]
+    }
+}
+
 /// The outcome of an executed swap
 pub struct ExecutionResult {
     /// The actual amount of the token that was bought
@@ -43,12 +58,9 @@ pub struct ExecutionResult {
 }
 
 /// Exposes the basic functionality of an execution venue:
-/// Getting & executing quotes
+/// getting & executing quotes
 #[async_trait]
-pub trait ExecutionVenue {
-    /// The venue-specific auxiliary data required to execute a quote
-    type ExecutionData;
-
+pub trait ExecutionVenue: Sync {
     /// Get a quote from the venue
     async fn get_quote(&self, params: QuoteParams)
         -> Result<ExecutableQuote, ExecutionClientError>;
@@ -56,7 +68,6 @@ pub trait ExecutionVenue {
     /// Execute a quote from the venue
     async fn execute_quote(
         &self,
-        quote: &ExecutionQuote,
-        execution_data: &Self::ExecutionData,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError>;
 }

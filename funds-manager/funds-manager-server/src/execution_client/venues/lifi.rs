@@ -21,7 +21,7 @@ use http::StatusCode;
 use renegade_common::types::{chain::Chain, token::Token};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{error, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::{
     execution_client::{
@@ -473,17 +473,8 @@ impl LifiClient {
 
 #[async_trait]
 impl ExecutionVenue for LifiClient {
-    type ExecutionData = LifiQuoteExecutionData;
-
     /// Get a quote from the Lifi API
-    #[instrument(
-        skip(self, params),
-        fields(
-            from_token = %params.from_token,
-            to_token = %params.to_token,
-            from_amount = %params.from_amount
-        )
-    )]
+    #[instrument(skip_all)]
     async fn get_quote(
         &self,
         params: QuoteParams,
@@ -501,19 +492,24 @@ impl ExecutionVenue for LifiClient {
     /// Execute a quote from the Lifi API
     async fn execute_quote(
         &self,
-        quote: &ExecutionQuote,
-        execution_data: &LifiQuoteExecutionData,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
+        let ExecutableQuote { quote, execution_data } = executable_quote;
+        let lifi_execution_data = execution_data.lifi()?;
+
         self.approve_erc20_allowance(quote.sell_token.get_alloy_address(), quote.sell_amount)
             .await?;
 
-        let tx = self.build_swap_tx(execution_data).await?;
+        let tx = self.build_swap_tx(&lifi_execution_data).await?;
+
+        info!("Executing Lifi quote from {}", lifi_execution_data.tool);
+
         let receipt = self.send_tx(tx).await?;
         let gas_cost = get_gas_cost(&receipt);
         let tx_hash = receipt.transaction_hash;
 
         if receipt.status() {
-            let recipient = execution_data.from;
+            let recipient = lifi_execution_data.from;
             let buy_token_address = quote.buy_token.get_alloy_address();
             let buy_amount_actual =
                 self.get_buy_amount_actual(&receipt, buy_token_address, recipient)?;
