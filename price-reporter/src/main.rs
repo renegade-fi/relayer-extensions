@@ -22,13 +22,14 @@ use tracing::{error, info};
 use utils::{
     get_canonical_exchanges, parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo,
 };
-use ws_server::{handle_connection, GlobalPriceStreams};
+use ws_server::handle_connection;
 
-use crate::exchanges::ExchangeConnectionsConfig;
+use crate::{exchanges::ExchangeConnectionsConfig, price_stream_manager::GlobalPriceStreams};
 
 mod errors;
 mod exchanges;
 mod http_server;
+mod price_stream_manager;
 mod utils;
 mod ws_server;
 
@@ -94,7 +95,7 @@ async fn main() -> Result<(), ServerError> {
 }
 
 /// Initialize price streams for all default token mapped pairs
-pub fn init_default_price_streams(
+pub(crate) fn init_default_price_streams(
     global_price_streams: &GlobalPriceStreams,
     config: &ExchangeConnectionsConfig,
     disabled_exchanges: Vec<Exchange>,

@@ -18,8 +18,8 @@ use tracing::error;
 
 use crate::{
     errors::ServerError,
+    price_stream_manager::GlobalPriceStreams,
     utils::{HttpRouter, PriceReporterConfig},
-    ws_server::GlobalPriceStreams,
 };
 
 use self::routes::{Handler, HealthCheckHandler, PriceHandler, HEALTH_CHECK_ROUTE, PRICE_ROUTE};
