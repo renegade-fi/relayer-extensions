@@ -3,6 +3,7 @@
 pub mod error;
 pub mod quotes;
 pub mod swap;
+pub mod venues;
 
 use std::sync::Arc;
 

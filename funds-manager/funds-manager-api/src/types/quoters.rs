@@ -1,15 +1,8 @@
 //! API types for quoter management
-use alloy_primitives::{hex, Address, Bytes, U256};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    serialization::{f64_string_serialization, u256_string_serialization},
-    u256_try_into_u128,
-};
+use crate::serialization::{f64_string_serialization, u256_string_serialization};
 
 // --------------
 // | Api Routes |
@@ -66,217 +59,23 @@ pub struct WithdrawFundsRequest {
 
 // --- Execution --- //
 
-/// The subset of the quote response forwarded to consumers of this client
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// A simplified representation of an execution quote, suitable for API
+/// responses
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecutionQuote {
-    /// The token address we're buying
-    pub buy_token_address: Address,
-    /// The token address we're selling
-    pub sell_token_address: Address,
-    /// The amount of tokens to sell
+pub struct ApiExecutionQuote {
+    /// The address of the token being sold
+    pub sell_token_address: String,
+    /// The address of the token being bought
+    pub buy_token_address: String,
+    /// The amount of the token being sold
     #[serde(with = "u256_string_serialization")]
     pub sell_amount: U256,
-    /// The amount of tokens expected to be received
+    /// The amount of the token being bought
     #[serde(with = "u256_string_serialization")]
     pub buy_amount: U256,
-    /// The minimum amount of tokens expected to be received
-    #[serde(with = "u256_string_serialization")]
-    pub buy_amount_min: U256,
-    /// The submitting address
-    pub from: Address,
-    /// The swap contract address
-    pub to: Address,
-    /// The calldata for the swap
-    pub data: Bytes,
-    /// The value of the tx; should be zero
-    #[serde(with = "u256_string_serialization")]
-    pub value: U256,
-    /// The gas price used in the swap
-    #[serde(with = "u256_string_serialization")]
-    pub gas_price: U256,
-    /// The estimated gas for the swap
-    #[serde(with = "u256_string_serialization")]
-    pub estimated_gas: U256,
-    /// The gas limit for the swap
-    #[serde(with = "u256_string_serialization")]
-    pub gas_limit: U256,
-}
-
-impl ExecutionQuote {
-    /// Whether the quote is a sell order in Renegade terms
-    pub fn is_sell(&self) -> bool {
-        let usdc = Token::usdc();
-        self.buy_token_address == usdc.get_alloy_address()
-    }
-
-    /// Get the base token address
-    pub fn base_addr(&self) -> Address {
-        if self.is_sell() {
-            self.sell_token_address
-        } else {
-            self.buy_token_address
-        }
-    }
-
-    /// Get the base amount
-    pub fn base_amount(&self) -> u128 {
-        let amt_u256 = if self.is_sell() { self.sell_amount } else { self.buy_amount };
-        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
-    }
-
-    /// Get the quote token address
-    pub fn quote_addr(&self) -> Address {
-        if self.is_sell() {
-            self.buy_token_address
-        } else {
-            self.sell_token_address
-        }
-    }
-
-    /// Get the quote amount
-    pub fn quote_amount(&self) -> u128 {
-        let amt_u256 = if self.is_sell() { self.buy_amount } else { self.sell_amount };
-        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
-    }
-}
-
-/// An execution quote, augmented with additional contextual data
-#[derive(Clone, Debug)]
-pub struct AugmentedExecutionQuote {
-    /// The quote
-    pub quote: ExecutionQuote,
-    /// The chain the quote is for
-    pub chain: Chain,
-}
-
-impl AugmentedExecutionQuote {
-    /// Create a new augmented execution quote
-    pub fn new(quote: ExecutionQuote, chain: Chain) -> Self {
-        Self { quote, chain }
-    }
-
-    /// Convert the quote to a canonical string representation for HMAC signing
-    pub fn to_canonical_string(&self) -> String {
-        format!(
-            "{}{}{}{}{}{}{}{}{}{}{}{}",
-            self.quote.buy_token_address,
-            self.quote.sell_token_address,
-            self.quote.sell_amount,
-            self.quote.buy_amount,
-            self.quote.from,
-            self.quote.to,
-            hex::encode(&self.quote.data),
-            self.quote.value,
-            self.quote.gas_price,
-            self.quote.estimated_gas,
-            self.quote.gas_limit,
-            self.chain,
-        )
-    }
-
-    /// Get the buy token address as a formatted string
-    pub fn get_buy_token_address(&self) -> String {
-        format!("{:#x}", self.quote.buy_token_address)
-    }
-
-    /// Get the sell token address as a formatted string
-    pub fn get_sell_token_address(&self) -> String {
-        format!("{:#x}", self.quote.sell_token_address)
-    }
-
-    /// Get the from address as a formatted string
-    pub fn get_from_address(&self) -> String {
-        format!("{:#x}", self.quote.from)
-    }
-
-    /// Get the to address as a formatted string
-    pub fn get_to_address(&self) -> String {
-        format!("{:#x}", self.quote.to)
-    }
-
-    /// Get the buy amount as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount(&self) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(self.quote.buy_amount)?;
-        Ok(self.get_buy_token().convert_to_decimal(buy_amount))
-    }
-
-    /// Get the sell amount as a decimal-corrected string
-    pub fn get_decimal_corrected_sell_amount(&self) -> Result<f64, String> {
-        let sell_amount = u256_try_into_u128(self.quote.sell_amount)?;
-        Ok(self.get_sell_token().convert_to_decimal(sell_amount))
-    }
-
-    /// Get the buy amount min as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount_min(&self) -> Result<f64, String> {
-        let buy_amount_min = u256_try_into_u128(self.quote.buy_amount_min)?;
-        Ok(self.get_buy_token().convert_to_decimal(buy_amount_min))
-    }
-}
-
-impl AugmentedExecutionQuote {
-    /// Get the price in units of USDC per base token.
-    /// If a custom buy amount is provided, it is used in place of the standard
-    /// buy amount.
-    pub fn get_price(&self, buy_amount: Option<U256>) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(buy_amount.unwrap_or(self.quote.buy_amount))?;
-        let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount);
-
-        let decimal_sell_amount = self.get_decimal_corrected_sell_amount()?;
-
-        let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
-        if self.is_buy() {
-            Ok(1.0 / buy_per_sell)
-        } else {
-            Ok(buy_per_sell)
-        }
-    }
-
-    /// Returns the non-USDC token
-    pub fn get_base_token(&self) -> Token {
-        if self.is_buy() {
-            self.get_buy_token()
-        } else {
-            self.get_sell_token()
-        }
-    }
-
-    /// Return true if the sell token is USDC
-    pub fn is_buy(&self) -> bool {
-        let usdc_mint = &Token::from_ticker_on_chain(USDC_TICKER, self.chain).get_alloy_address();
-        &self.quote.sell_token_address == usdc_mint
-    }
-
-    /// Returns the token being bought
-    pub fn get_buy_token(&self) -> Token {
-        Token::from_addr_on_chain(&self.get_buy_token_address(), self.chain)
-    }
-
-    /// Returns the token being sold
-    pub fn get_sell_token(&self) -> Token {
-        Token::from_addr_on_chain(&self.get_sell_token_address(), self.chain)
-    }
-
-    /// Returns the volume in USDC
-    pub fn get_quote_amount(&self) -> Result<f64, String> {
-        if self.is_buy() {
-            self.get_decimal_corrected_sell_amount()
-        } else {
-            self.get_decimal_corrected_buy_amount()
-        }
-    }
-
-    /// Returns the notional volume in USDC, taking into account the actual
-    /// buy amount for sell orders
-    pub fn notional_volume_usdc(&self, buy_amount_actual: U256) -> Result<f64, String> {
-        if self.is_buy() {
-            self.get_decimal_corrected_sell_amount()
-        } else {
-            let buy_amount = u256_try_into_u128(buy_amount_actual)?;
-
-            Ok(self.get_buy_token().convert_to_decimal(buy_amount))
-        }
-    }
+    /// The venue that provided the quote
+    pub venue: String,
 }
 
 /// The subset of LiFi quote request query parameters that we support
@@ -333,7 +132,7 @@ pub struct LiFiQuoteParams {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SwapImmediateResponse {
     /// The quote that was executed
-    pub quote: ExecutionQuote,
+    pub quote: ApiExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
     /// The execution cost in USD

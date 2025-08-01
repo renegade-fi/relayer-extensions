@@ -10,20 +10,19 @@ use alloy::{
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, Log, U256};
+use alloy_sol_types::SolEvent;
 use funds_manager_api::{
-    quoters::{
-        AugmentedExecutionQuote, ExecutionQuote, LiFiQuoteParams, SwapIntoTargetTokenRequest,
-    },
+    quoters::{LiFiQuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u64,
 };
-use renegade_common::types::{
-    chain::Chain,
-    token::{get_all_tokens, Token},
-};
+use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
-use crate::helpers::IERC20;
+use crate::{
+    execution_client::venues::quote::{ExecutableQuote, ExecutionQuote},
+    helpers::IERC20::{self, Transfer},
+};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -56,7 +55,9 @@ const SWAP_TO_COVER_BUFFER: f64 = 1.1;
 /// The outcome of an executed swap
 pub struct SwapOutcome {
     /// The quote that was executed
-    pub augmented_quote: AugmentedExecutionQuote,
+    pub quote: ExecutionQuote,
+    /// The actual amount of the token that was bought
+    pub buy_amount_actual: U256,
     /// The transaction receipt of the swap
     pub receipt: TransactionReceipt,
     /// The cumulative gas cost of the swap, across all attempts.
@@ -97,9 +98,11 @@ impl ExecutionClient {
     /// Construct a swap transaction from an execution quote
     async fn build_swap_tx(
         &self,
-        quote: &ExecutionQuote,
+        quote: &ExecutableQuote,
         client: &DynProvider,
     ) -> Result<TransactionRequest, ExecutionClientError> {
+        let lifi_execution_data = quote.execution_data.lifi()?;
+
         let latest_block = client
             .get_block(BlockId::latest())
             .await
@@ -112,14 +115,14 @@ impl ExecutionClient {
             .ok_or(ExecutionClientError::onchain("No basefee found"))?
             as u128;
 
-        let gas_limit =
-            u256_try_into_u64(quote.gas_limit).map_err(ExecutionClientError::onchain)?;
+        let gas_limit = u256_try_into_u64(lifi_execution_data.gas_limit)
+            .map_err(ExecutionClientError::onchain)?;
 
         let tx = TransactionRequest::default()
-            .with_to(quote.to)
-            .with_from(quote.from)
-            .with_value(quote.value)
-            .with_input(quote.data.clone())
+            .with_to(lifi_execution_data.to)
+            .with_from(lifi_execution_data.from)
+            .with_value(lifi_execution_data.value)
+            .with_input(lifi_execution_data.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
             .with_max_priority_fee_per_gas(latest_basefee * 2)
             .with_gas_limit(gas_limit);
@@ -152,22 +155,28 @@ impl ExecutionClient {
 
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let maybe_augmented_quote =
-                self.get_augmented_quote(params.clone(), self.chain).await?;
-            if maybe_augmented_quote.is_none() {
+            let maybe_executable_quote = self.get_executable_quote(params.clone()).await?;
+            if maybe_executable_quote.is_none() {
                 return Ok(None);
             }
-            let augmented_quote = maybe_augmented_quote.unwrap();
+            let executable_quote = maybe_executable_quote.unwrap();
 
             // Submit the swap
             let client = self.get_signing_provider(wallet.clone());
-            let tx = self.build_swap_tx(&augmented_quote.quote, &client).await?;
+            let tx = self.build_swap_tx(&executable_quote, &client).await?;
             let receipt = self.send_tx(tx, &client).await?;
             cumulative_gas_cost += get_gas_cost(&receipt);
 
             // If the swap succeeds, return
             if receipt.status() {
-                return Ok(Some(SwapOutcome { augmented_quote, receipt, cumulative_gas_cost }));
+                let buy_amount_actual = self.get_buy_amount_actual(&receipt, &executable_quote)?;
+
+                return Ok(Some(SwapOutcome {
+                    quote: executable_quote.quote,
+                    buy_amount_actual,
+                    receipt,
+                    cumulative_gas_cost,
+                }));
             }
 
             // Otherwise, decrease the swap size and try again
@@ -265,16 +274,8 @@ impl ExecutionClient {
             }
 
             let swap_outcome = maybe_outcome.unwrap();
-
-            let sell_amount = swap_outcome
-                .augmented_quote
-                .get_decimal_corrected_sell_amount()
-                .map_err(ExecutionClientError::custom)?;
-
-            let quoted_buy_amount = swap_outcome
-                .augmented_quote
-                .get_decimal_corrected_buy_amount()
-                .map_err(ExecutionClientError::custom)?;
+            let sell_amount = swap_outcome.quote.sell_amount_decimal();
+            let quoted_buy_amount = swap_outcome.quote.buy_amount_decimal();
 
             outcomes.push(swap_outcome);
 
@@ -375,43 +376,38 @@ impl ExecutionClient {
 
     /// Get an execution quote for a swap
     #[instrument(skip_all)]
-    pub async fn get_augmented_quote(
+    pub async fn get_executable_quote(
         &self,
         params: LiFiQuoteParams,
-        chain: Chain,
-    ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
-        let quote = self.get_quote(params).await?;
-        let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
-        self.validate_quote(&augmented_quote).await?;
+    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        let executable_quote = self.get_quote(params).await?;
+        self.validate_quote(&executable_quote).await?;
 
-        let quote_amount =
-            augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
+        let quote_amount = executable_quote.quote.quote_amount_decimal();
 
         if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
             warn!("Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
             return Ok(None);
         }
 
-        Ok(Some(augmented_quote))
+        Ok(Some(executable_quote))
     }
 
     /// Validate a quote against the Renegade price
     async fn validate_quote(
         &self,
-        augmented_quote: &AugmentedExecutionQuote,
+        executable_quote: &ExecutableQuote,
     ) -> Result<(), ExecutionClientError> {
-        // Get the renegade price for the pair
-        let base_addr = augmented_quote.quote.base_addr();
-        let renegade_price =
-            self.price_reporter.get_price(&base_addr.to_string(), augmented_quote.chain).await?;
+        let quote = &executable_quote.quote;
 
-        // Get the price of the quote
-        let quote_amount = augmented_quote.quote.quote_amount() as f64;
-        let base_amount = augmented_quote.quote.base_amount() as f64;
-        let quote_price = quote_amount / base_amount;
+        // Get the renegade price for the pair
+        let base_addr = &quote.base_token().addr;
+        let renegade_price = self.price_reporter.get_price(base_addr, quote.chain).await?;
+
+        let quote_price = quote.get_price(None /* buy_amount */);
 
         // Check that the price is within the max price impact
-        let deviation = if augmented_quote.quote.is_sell() {
+        let deviation = if quote.is_sell() {
             (renegade_price - quote_price) / renegade_price
         } else {
             (quote_price - renegade_price) / renegade_price
@@ -459,5 +455,31 @@ impl ExecutionClient {
 
         info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
         Ok(())
+    }
+
+    /// Extract the transfer amount from a transaction receipt
+    fn get_buy_amount_actual(
+        &self,
+        receipt: &TransactionReceipt,
+        executable_quote: &ExecutableQuote,
+    ) -> Result<U256, ExecutionClientError> {
+        let buy_mint = executable_quote.quote.buy_token.get_alloy_address();
+        let recipient = executable_quote.execution_data.lifi()?.from;
+
+        let logs: Vec<Log<Transfer>> = receipt
+            .logs()
+            .iter()
+            .filter_map(|log| {
+                if log.address() != buy_mint {
+                    None
+                } else {
+                    Transfer::decode_log(&log.inner).ok()
+                }
+            })
+            .collect();
+
+        logs.iter()
+            .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
+            .ok_or(ExecutionClientError::onchain("no matching transfer event found"))
     }
 }
