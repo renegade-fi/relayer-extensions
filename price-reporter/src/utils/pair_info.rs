@@ -16,7 +16,10 @@ use renegade_util::err_str;
 
 use crate::{
     errors::ServerError,
-    exchanges::util::supports_pair,
+    exchanges::{
+        binance::BinanceConnection, coinbase::CoinbaseConnection, connection::ExchangeConnection,
+        kraken::KrakenConnection, okx::OkxConnection,
+    },
     utils::{
         canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
         resolve_tokens_and_chain, PriceTopic,
@@ -24,7 +27,7 @@ use crate::{
 };
 
 /// Used to uniquely identify a price stream
-#[derive(Derivative, Clone)]
+#[derive(Derivative, Clone, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct PairInfo {
     /// The exchange
@@ -138,19 +141,19 @@ impl PairInfo {
         format!("{}-{}-{}", self.exchange, self.base, self.quote)
     }
 
+    // --------------
+    // | Validation |
+    // --------------
+
     /// Validate a pair info tuple, checking that the exchange supports the base
     /// and quote tokens
     pub async fn validate_subscription(&self) -> Result<(), ServerError> {
         let (exchange, base, quote) = (self.exchange, self.base_token(), self.quote_token());
-
         if exchange == Exchange::UniswapV3 {
             return Err(ServerError::InvalidPairInfo("UniswapV3 is not supported".to_string()));
         }
 
-        if !supports_pair(&exchange, &base, &quote)
-            .await
-            .map_err(ServerError::ExchangeConnection)?
-        {
+        if !self.is_supported().await? {
             return Err(ServerError::InvalidPairInfo(format!(
                 "{} does not support the pair ({}, {})",
                 self.exchange, base, quote
@@ -158,6 +161,38 @@ impl PairInfo {
         }
 
         Ok(())
+    }
+
+    /// Check if the given exchange supports the given pair
+    pub async fn is_supported(&self) -> Result<bool, ServerError> {
+        // If the pair is a unit pair (e.g. USDT-USDT), we don't need to check
+        // if the exchange supports it
+        if self.is_unit_pair() {
+            return Ok(true);
+        }
+
+        let (exchange, base_token, quote_token) =
+            (self.exchange, self.base_token(), self.quote_token());
+
+        Ok(match exchange {
+            Exchange::Binance => {
+                BinanceConnection::supports_pair(&base_token, &quote_token).await?
+            },
+            Exchange::Coinbase => {
+                CoinbaseConnection::supports_pair(&base_token, &quote_token).await?
+            },
+            Exchange::Kraken => KrakenConnection::supports_pair(&base_token, &quote_token).await?,
+            Exchange::Okx => OkxConnection::supports_pair(&base_token, &quote_token).await?,
+            Exchange::Renegade => {
+                BinanceConnection::supports_pair(&base_token, &quote_token).await?
+            },
+            _ => return Err(ServerError::invalid_pair_info(self)),
+        })
+    }
+
+    /// Returns whether the pair is a unit pair
+    pub fn is_unit_pair(&self) -> bool {
+        self.base == self.quote
     }
 
     // --------------------

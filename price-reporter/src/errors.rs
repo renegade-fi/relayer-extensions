@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crate::exchanges::error::ExchangeConnectionError;
+use crate::{exchanges::error::ExchangeConnectionError, utils::PairInfo};
 
 /// An error that can occur in the price reporter server.
 #[derive(Debug, thiserror::Error)]
@@ -17,7 +17,7 @@ pub enum ServerError {
     InvalidPairInfo(String),
     /// An error establishing a connection to an exchange
     #[error("Error establishing connection to {0}")]
-    ExchangeConnection(ExchangeConnectionError),
+    ExchangeConnection(#[from] ExchangeConnectionError),
     /// An error getting the peer address of a websocket connection
     #[error("Error getting peer address: {0}")]
     GetPeerAddr(io::Error),
@@ -42,4 +42,14 @@ pub enum ServerError {
     /// An error indicating that the admin key was not provided
     #[error("No admin key provided")]
     NoAdminKey,
+}
+
+impl ServerError {
+    /// An invalid pair info error
+    pub fn invalid_pair_info(pair_info: &PairInfo) -> Self {
+        Self::InvalidPairInfo(format!(
+            "{}:{}:{}",
+            pair_info.exchange, pair_info.base, pair_info.quote
+        ))
+    }
 }

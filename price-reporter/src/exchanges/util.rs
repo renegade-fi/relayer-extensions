@@ -3,26 +3,7 @@
 use itertools::Itertools;
 use renegade_common::types::{exchange::Exchange, token::Token};
 
-use crate::exchanges::{
-    binance::BinanceConnection, coinbase::CoinbaseConnection, connection::ExchangeConnection,
-    error::ExchangeConnectionError, kraken::KrakenConnection, okx::OkxConnection,
-};
-
-/// Check if the given exchange supports the given pair
-pub async fn supports_pair(
-    exchange: &Exchange,
-    base_token: &Token,
-    quote_token: &Token,
-) -> Result<bool, ExchangeConnectionError> {
-    Ok(match exchange {
-        Exchange::Binance => BinanceConnection::supports_pair(base_token, quote_token).await?,
-        Exchange::Coinbase => CoinbaseConnection::supports_pair(base_token, quote_token).await?,
-        Exchange::Kraken => KrakenConnection::supports_pair(base_token, quote_token).await?,
-        Exchange::Okx => OkxConnection::supports_pair(base_token, quote_token).await?,
-        Exchange::Renegade => BinanceConnection::supports_pair(base_token, quote_token).await?,
-        _ => return Err(ExchangeConnectionError::unsupported_exchange(*exchange)),
-    })
-}
+use crate::exchanges::error::ExchangeConnectionError;
 
 /// Returns whether or not the given exchange lists both the tokens in the pair
 /// separately

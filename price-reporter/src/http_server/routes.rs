@@ -16,8 +16,8 @@ use crate::{
     exchanges::ExchangeConnectionsConfig,
     http_server::{resp_body, ResponseBody},
     init_default_price_streams,
+    price_stream_manager::GlobalPriceStreams,
     utils::{setup_all_token_remaps, PairInfo, UrlParams},
-    ws_server::GlobalPriceStreams,
 };
 
 /// A handler is attached to a route and handles the process of translating an
