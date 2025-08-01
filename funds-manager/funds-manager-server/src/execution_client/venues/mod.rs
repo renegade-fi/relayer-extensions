@@ -11,6 +11,7 @@ use crate::execution_client::{
     venues::{lifi::LifiClient, quote::ExecutableQuote},
 };
 
+pub mod cowswap;
 pub mod lifi;
 pub mod quote;
 
