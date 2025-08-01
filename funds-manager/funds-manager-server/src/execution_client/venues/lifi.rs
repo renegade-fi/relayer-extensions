@@ -17,11 +17,10 @@ use async_trait::async_trait;
 use funds_manager_api::{
     quoters::QuoteParams, serialization::u256_string_serialization, u256_try_into_u64,
 };
-use http::StatusCode;
 use renegade_common::types::{chain::Chain, token::Token};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument, warn};
+use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
@@ -32,8 +31,8 @@ use crate::{
         },
     },
     helpers::{
-        approve_erc20_allowance, get_gas_cost, send_tx_with_retry, to_chain_id, IERC20::Transfer,
-        ONE_CONFIRMATION,
+        approve_erc20_allowance, get_gas_cost, handle_http_response, send_tx_with_retry,
+        to_chain_id, IERC20::Transfer, ONE_CONFIRMATION,
     },
 };
 
@@ -328,13 +327,13 @@ impl LifiClient {
         base_provider: DynProvider,
         hot_wallet: PrivateKeySigner,
         chain: Chain,
-    ) -> Result<Self, ExecutionClientError> {
+    ) -> Self {
         let hot_wallet_address = hot_wallet.address();
         let rpc_provider = DynProvider::new(
             ProviderBuilder::new().wallet(hot_wallet).connect_provider(base_provider),
         );
 
-        Ok(Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain })
+        Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
 
     /// Send a get request to the execution venue
@@ -351,15 +350,7 @@ impl LifiClient {
         }
 
         let response = request.send().await?;
-        let status = response.status();
-        if status != StatusCode::OK {
-            let body = response.text().await?;
-            let msg = format!("Unexpected status code: {status}\nbody: {body}");
-            error!(msg);
-            return Err(ExecutionClientError::http(msg));
-        }
-
-        response.json::<T>().await.map_err(ExecutionClientError::http)
+        handle_http_response(response).await.map_err(ExecutionClientError::http)
     }
 
     /// Construct Lifi quote parameters from a venue-agnostic quote params
