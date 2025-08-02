@@ -4,9 +4,10 @@ use alloy_primitives::Address;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
 use crate::{execution_client::error::ExecutionClientError, helpers::handle_http_response};
+
+pub mod api_types;
 
 // -------------
 // | Constants |
