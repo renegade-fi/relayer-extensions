@@ -152,12 +152,11 @@ impl ExecutionClient {
 
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let maybe_augmented_quote =
-                self.get_augmented_quote(params.clone(), self.chain).await?;
-            if maybe_augmented_quote.is_none() {
-                return Ok(None);
-            }
-            let augmented_quote = maybe_augmented_quote.unwrap();
+            let augmented_quote = match self.get_augmented_quote(params.clone(), self.chain).await?
+            {
+                None => return Ok(None),
+                Some(augmented_quote) => augmented_quote,
+            };
 
             // Submit the swap
             let client = self.get_signing_provider(wallet.clone());
@@ -380,6 +379,12 @@ impl ExecutionClient {
         params: LiFiQuoteParams,
         chain: Chain,
     ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
+        // Zero quotes may be requested when executing a decaying swap,
+        // in which case no quote is possible
+        if params.from_amount == U256::ZERO {
+            return Ok(None);
+        }
+
         let quote = self.get_quote(params).await?;
         let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
         self.validate_quote(&augmented_quote).await?;
