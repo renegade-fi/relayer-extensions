@@ -103,44 +103,6 @@ pub struct ExecutionQuote {
     pub gas_limit: U256,
 }
 
-impl ExecutionQuote {
-    /// Whether the quote is a sell order in Renegade terms
-    pub fn is_sell(&self) -> bool {
-        let usdc = Token::usdc();
-        self.buy_token_address == usdc.get_alloy_address()
-    }
-
-    /// Get the base token address
-    pub fn base_addr(&self) -> Address {
-        if self.is_sell() {
-            self.sell_token_address
-        } else {
-            self.buy_token_address
-        }
-    }
-
-    /// Get the base amount
-    pub fn base_amount(&self) -> u128 {
-        let amt_u256 = if self.is_sell() { self.sell_amount } else { self.buy_amount };
-        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
-    }
-
-    /// Get the quote token address
-    pub fn quote_addr(&self) -> Address {
-        if self.is_sell() {
-            self.buy_token_address
-        } else {
-            self.sell_token_address
-        }
-    }
-
-    /// Get the quote amount
-    pub fn quote_amount(&self) -> u128 {
-        let amt_u256 = if self.is_sell() { self.buy_amount } else { self.sell_amount };
-        u256_try_into_u128(amt_u256).expect("Quote amount overflows u128")
-    }
-}
-
 /// An execution quote, augmented with additional contextual data
 #[derive(Clone, Debug)]
 pub struct AugmentedExecutionQuote {
@@ -212,11 +174,8 @@ impl AugmentedExecutionQuote {
         // Fetch the decimal corrected amounts
         let buy_amount = self.get_decimal_corrected_buy_amount()?;
         let sell_amount = self.get_decimal_corrected_sell_amount()?;
-        let (base_amt, quote_amt) = if self.quote.is_sell() {
-            (sell_amount, buy_amount)
-        } else {
-            (buy_amount, sell_amount)
-        };
+        let (base_amt, quote_amt) =
+            if self.is_buy() { (buy_amount, sell_amount) } else { (sell_amount, buy_amount) };
 
         let price = quote_amt / base_amt;
         Ok(price)

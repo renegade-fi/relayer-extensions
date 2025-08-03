@@ -401,18 +401,18 @@ impl ExecutionClient {
         augmented_quote: &AugmentedExecutionQuote,
     ) -> Result<(), ExecutionClientError> {
         // Get the renegade price for the pair
-        let base_addr = augmented_quote.quote.base_addr();
+        let base_addr = &augmented_quote.get_base_token().addr;
         let renegade_price =
-            self.price_reporter.get_price(&base_addr.to_string(), augmented_quote.chain).await?;
+            self.price_reporter.get_price(base_addr, augmented_quote.chain).await?;
         let quote_price = augmented_quote
             .get_decimal_corrected_price()
             .map_err(ExecutionClientError::quote_validation)?;
 
         // Check that the price is within the max price impact
-        let deviation = if augmented_quote.quote.is_sell() {
-            (renegade_price - quote_price) / renegade_price
-        } else {
+        let deviation = if augmented_quote.is_buy() {
             (quote_price - renegade_price) / renegade_price
+        } else {
+            (renegade_price - quote_price) / renegade_price
         };
 
         if deviation > MAX_PRICE_DEVIATION {
