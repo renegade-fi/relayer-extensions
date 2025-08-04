@@ -6855,6 +6855,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "prover-service"
+version = "0.1.0"
+dependencies = [
+ "circuit-types",
+ "circuits",
+ "clap",
+ "http 0.2.12",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "util",
+ "warp",
+]
+
+[[package]]
 name = "quanta"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
