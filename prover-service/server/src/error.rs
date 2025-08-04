@@ -15,6 +15,8 @@ pub enum ProverServiceError {
     Setup(String),
 }
 
+impl warp::reject::Reject for ProverServiceError {}
+
 impl ProverServiceError {
     // --- Constructors --- //
 
