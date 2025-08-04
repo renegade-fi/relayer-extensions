@@ -1,14 +1,128 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! The API for the prover service
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
+#![deny(unsafe_code)]
+#![deny(clippy::needless_pass_by_ref_mut)]
+#![deny(clippy::needless_pass_by_value)]
+#![deny(clippy::unused_async)]
+
+use renegade_circuit_types::PlonkProof;
+use renegade_circuits::{
+    self,
+    zk_circuits::{
+        valid_commitments::{SizedValidCommitmentsWitness, ValidCommitmentsStatement},
+        valid_fee_redemption::{SizedValidFeeRedemptionStatement, SizedValidFeeRedemptionWitness},
+        valid_malleable_match_settle_atomic::{
+            SizedValidMalleableMatchSettleAtomicStatement,
+            SizedValidMalleableMatchSettleAtomicWitness,
+        },
+        valid_match_settle::{SizedValidMatchSettleStatement, SizedValidMatchSettleWitness},
+        valid_match_settle_atomic::{
+            SizedValidMatchSettleAtomicStatement, SizedValidMatchSettleAtomicWitness,
+        },
+        valid_offline_fee_settlement::{
+            SizedValidOfflineFeeSettlementStatement, SizedValidOfflineFeeSettlementWitness,
+        },
+        valid_reblind::{SizedValidReblindWitness, ValidReblindStatement},
+        valid_wallet_create::{SizedValidWalletCreateStatement, SizedValidWalletCreateWitness},
+        valid_wallet_update::{SizedValidWalletUpdateStatement, SizedValidWalletUpdateWitness},
+    },
+};
+use serde::{Deserialize, Serialize};
+
+// ------------------
+// | Response Types |
+// ------------------
+
+/// A generic response type representing a proof
+#[derive(Serialize, Deserialize)]
+pub struct ProofResponse {
+    /// The proof
+    pub proof: PlonkProof,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// -----------------
+// | Request Types |
+// -----------------
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+/// A request to prove `VALID WALLET CREATE`
+#[derive(Serialize, Deserialize)]
+pub struct ValidWalletCreateRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidWalletCreateStatement,
+    /// The witness
+    pub witness: SizedValidWalletCreateWitness,
+}
+
+/// A request to prove `VALID WALLET UPDATE`
+#[derive(Serialize, Deserialize)]
+pub struct ValidWalletUpdateRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidWalletUpdateStatement,
+    /// The witness
+    pub witness: SizedValidWalletUpdateWitness,
+}
+
+/// A request to prove `VALID COMMITMENTS`
+#[derive(Serialize, Deserialize)]
+pub struct ValidCommitmentsRequest {
+    /// The statement (public variables)
+    pub statement: ValidCommitmentsStatement,
+    /// The witness
+    pub witness: SizedValidCommitmentsWitness,
+}
+
+/// A request to prove `VALID REBLIND`
+#[derive(Serialize, Deserialize)]
+pub struct ValidReblindRequest {
+    /// The statement (public variables)
+    pub statement: ValidReblindStatement,
+    /// The witness
+    pub witness: SizedValidReblindWitness,
+}
+
+/// A request to prove `VALID MATCH SETTLE`
+#[derive(Serialize, Deserialize)]
+pub struct ValidMatchSettleRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidMatchSettleStatement,
+    /// The witness
+    pub witness: SizedValidMatchSettleWitness,
+}
+
+/// A request to prove `VALID MATCH SETTLE ATOMIC`
+#[derive(Serialize, Deserialize)]
+pub struct ValidMatchSettleAtomicRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidMatchSettleAtomicStatement,
+    /// The witness
+    pub witness: SizedValidMatchSettleAtomicWitness,
+}
+
+/// A request to prove `VALID MALLEABLE MATCH SETTLE ATOMIC`
+#[derive(Serialize, Deserialize)]
+pub struct ValidMalleableMatchSettleAtomicRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidMalleableMatchSettleAtomicStatement,
+    /// The witness
+    pub witness: SizedValidMalleableMatchSettleAtomicWitness,
+}
+
+/// A request to prove `VALID FEE REDEMPTION`
+#[derive(Serialize, Deserialize)]
+pub struct ValidFeeRedemptionRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidFeeRedemptionStatement,
+    /// The witness
+    pub witness: SizedValidFeeRedemptionWitness,
+}
+
+/// A request to prove `VALID OFFLINE FEE SETTLEMENT`
+#[derive(Serialize, Deserialize)]
+pub struct ValidOfflineFeeSettlementRequest {
+    /// The statement (public variables)
+    pub statement: SizedValidOfflineFeeSettlementStatement,
+    /// The witness
+    pub witness: SizedValidOfflineFeeSettlementWitness,
 }

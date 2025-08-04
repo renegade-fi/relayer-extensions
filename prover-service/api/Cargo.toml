@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+# === Renegade Dependencies === #
+renegade-circuits = { workspace = true }
+renegade-circuit-types = { workspace = true, features = ["proof-system-types"] }
+
+# === Misc Dependencies === #
+serde = { version = "1", features = ["derive"] }

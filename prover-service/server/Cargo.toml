@@ -13,6 +13,7 @@ warp = "0.3"
 renegade-circuits = { workspace = true }
 renegade-circuit-types = { workspace = true }
 renegade-util = { workspace = true, features = ["telemetry"] }
+prover-service-api = { path = "../api" }
 
 # === Misc Dependencies === #
 clap = { version = "4", features = ["derive", "env"] }
