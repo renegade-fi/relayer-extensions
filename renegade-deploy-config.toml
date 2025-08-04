@@ -116,3 +116,25 @@ region = "ca-central-1"
 environment = "mainnet"
 resource = "price-reporter"
 region = "ca-central-1"
+
+######################
+### Prover Service ###
+######################
+
+[services.testnet-prover-service]
+[services.testnet-prover-service.build]
+dockerfile = "prover-service/Dockerfile"
+ecr_repo = "prover-service-testnet"
+
+[services.testnet-prover-service.deploy]
+environment = "testnet"
+resource = "prover-service"
+
+[services.mainnet-prover-service]
+[services.mainnet-prover-service.build]
+dockerfile = "prover-service/Dockerfile"
+ecr_repo = "prover-service-mainnet"
+
+[services.mainnet-prover-service.deploy]
+environment = "mainnet"
+resource = "prover-service"

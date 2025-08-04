@@ -32,10 +32,8 @@ async fn main() {
     let cli = Cli::parse();
     cli.configure_telemetry().expect("failed to setup telemetry");
 
-    // --- Setup --- //
+    // Run the server
     let routes = setup_routes();
-
-    // --- Run --- //
     let listen_addr: SocketAddr = ([0, 0, 0, 0], cli.port).into();
     info!("listening on {}", listen_addr);
     warp::serve(routes).bind(listen_addr).await;
@@ -56,11 +54,12 @@ fn setup_routes() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + C
 // --- Middleware --- //
 
 /// Custom tracing filter that creates spans for requests at info level
-/// with the auth_server::request target to work with our RUST_LOG configuration
+/// with the prover_service::request target to work with our RUST_LOG
+/// configuration
 fn with_tracing() -> warp::trace::Trace<impl Fn(warp::trace::Info) -> tracing::Span + Clone> {
     warp::trace(|info| {
         let span = info_span!(
-            target: "auth_server::request",
+            target: "prover_service::request",
             "handle_request",
             method = %info.method(),
             path = %info.path(),
