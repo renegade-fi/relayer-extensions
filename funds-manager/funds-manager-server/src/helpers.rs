@@ -20,7 +20,9 @@ use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use rand::Rng;
 use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
-use tracing::{info, instrument};
+use reqwest::Response;
+use serde::Deserialize;
+use tracing::{error, info, instrument};
 
 use crate::{
     cli::{Environment, BLOCK_POLLING_INTERVAL},
@@ -352,4 +354,19 @@ pub fn convert_headers(headers: &warp::hyper::HeaderMap) -> http1::HeaderMap {
     }
 
     converted
+}
+
+/// Handle an HTTP response
+pub async fn handle_http_response<Res: for<'de> Deserialize<'de>>(
+    response: Response,
+) -> Result<Res, FundsManagerError> {
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await?;
+        let msg = format!("Unexpected status code: {status}\nbody: {body}");
+        error!(msg);
+        return Err(FundsManagerError::http(msg));
+    }
+
+    response.json::<Res>().await.map_err(FundsManagerError::http)
 }

@@ -125,6 +125,12 @@ impl From<PriceReporterClientError> for FundsManagerError {
     }
 }
 
+impl From<reqwest::Error> for FundsManagerError {
+    fn from(e: reqwest::Error) -> Self {
+        FundsManagerError::http(e)
+    }
+}
+
 /// API-specific error type
 #[derive(Debug)]
 pub enum ApiError {

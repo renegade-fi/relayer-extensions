@@ -279,11 +279,8 @@ pub(crate) async fn swap_into_target_token_handler(
     // Top up the quoter hot wallet gas before swapping
     custody_client.top_up_quoter_hot_wallet_gas().await?;
 
-    let hot_wallet = custody_client.get_quoter_hot_wallet().await?;
-    let wallet = custody_client.get_hot_wallet_private_key(&hot_wallet.address).await?;
-
     // Execute the swap, decaying the size of the swap each time it fails to execute
-    let outcomes = execution_client.try_swap_into_target_token(req, wallet).await?;
+    let outcomes = execution_client.try_swap_into_target_token(req).await?;
 
     // Compute swap costs and respond
     let mut responses = vec![];

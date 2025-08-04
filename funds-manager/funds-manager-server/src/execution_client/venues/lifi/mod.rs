@@ -14,28 +14,28 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, Log, U256};
 use alloy_sol_types::SolEvent;
 use async_trait::async_trait;
-use funds_manager_api::{
-    quoters::QuoteParams, serialization::u256_string_serialization, u256_try_into_u64,
-};
-use http::StatusCode;
-use renegade_common::types::{chain::Chain, token::Token};
+use funds_manager_api::{quoters::QuoteParams, u256_try_into_u64};
+use renegade_common::types::chain::Chain;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tracing::{error, instrument, warn};
+use serde::Deserialize;
+use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
+            lifi::api_types::{LifiQuote, LifiQuoteParams},
             quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
     helpers::{
-        approve_erc20_allowance, get_gas_cost, send_tx_with_retry, to_chain_id, IERC20::Transfer,
-        ONE_CONFIRMATION,
+        approve_erc20_allowance, get_gas_cost, handle_http_response, send_tx_with_retry,
+        to_chain_id, IERC20::Transfer, ONE_CONFIRMATION,
     },
 };
+
+pub mod api_types;
 
 // -------------
 // | Constants |
@@ -85,172 +85,6 @@ const DEFAULT_DENIED_EXCHANGES: [&str; 1] = ["sushiswap"];
 // ---------
 // | Types |
 // ---------
-
-/// The subset of Lifi quote request query parameters that we support
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LifiQuoteParams {
-    /// The token that should be transferred. Can be the address or the symbol
-    pub from_token: String,
-    /// The token that should be transferred to. Can be the address or the
-    /// symbol
-    pub to_token: String,
-    /// The amount that should be sent including all decimals (e.g. 1000000 for
-    /// 1 USDC (6 decimals))
-    #[serde(with = "u256_string_serialization")]
-    pub from_amount: U256,
-    /// The sending wallet address
-    pub from_address: String,
-    /// The receiving wallet address. If none is provided, the fromAddress will
-    /// be used
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub to_address: Option<String>,
-    /// The ID of the sending chain
-    pub from_chain: usize,
-    /// The ID of the receiving chain
-    pub to_chain: usize,
-    /// The maximum allowed slippage for the transaction as a decimal value.
-    /// 0.005 represents 0.5%.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slippage: Option<f64>,
-    /// The maximum price impact for the transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_price_impact: Option<f64>,
-    /// Timing setting to wait for a certain amount of swap rates. In the format
-    /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
-    /// Please check docs.li.fi for more details.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub swap_step_timing_strategies: Option<Vec<String>>,
-    /// Which kind of route should be preferred
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub order: Option<String>,
-    /// Parameter to skip transaction simulation. The quote will be returned
-    /// faster but the transaction gas limit won't be accurate.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_simulation: Option<bool>,
-    /// List of exchanges that are allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_exchanges: Option<Vec<String>>,
-    /// List of exchanges that are not allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deny_exchanges: Option<Vec<String>>,
-}
-
-/// Transaction request details from LiFi API
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LifiTransactionRequest {
-    /// Destination contract address
-    to: String,
-    /// Hex-encoded calldata for the transaction
-    data: String,
-    /// Amount of native token to send (in hex)
-    value: String,
-    /// Gas limit in hex
-    gas_limit: String,
-}
-
-/// Quote estimate details from LiFi API
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Estimate {
-    /// Amount of tokens to sell (including decimals)
-    from_amount: String,
-    /// Amount of tokens to receive (including decimals)
-    to_amount: String,
-}
-
-/// Token information from LiFi API
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LifiToken {
-    /// Token contract address
-    address: String,
-}
-
-/// Swap action details from LiFi API
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Action {
-    /// Token being sold
-    from_token: LifiToken,
-    /// Token being bought
-    to_token: LifiToken,
-    /// Address initiating the swap
-    from_address: String,
-}
-
-/// Raw quote response structure from LiFi API
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LifiQuote {
-    /// Transaction request details
-    transaction_request: LifiTransactionRequest,
-    /// Quote estimate details
-    estimate: Estimate,
-    /// Swap action details
-    action: Action,
-    /// Tool (venue) providing the route
-    tool: String,
-}
-
-impl LifiQuote {
-    /// Get the token being sold
-    fn get_sell_token(&self, chain: Chain) -> Token {
-        Token::from_addr_on_chain(&self.action.from_token.address, chain)
-    }
-
-    /// Get the token being bought
-    fn get_buy_token(&self, chain: Chain) -> Token {
-        Token::from_addr_on_chain(&self.action.to_token.address, chain)
-    }
-
-    /// Get the amount of tokens being sold
-    fn get_sell_amount(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(&self.estimate.from_amount, 10)
-            .map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the amount of tokens being bought
-    fn get_buy_amount(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(&self.estimate.to_amount, 10)
-            .map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the address of the swap contract that will be called
-    fn get_to_address(&self) -> Result<Address, ExecutionClientError> {
-        self.transaction_request.to.parse().map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the address of the submitting address
-    fn get_from_address(&self) -> Result<Address, ExecutionClientError> {
-        self.action.from_address.parse().map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the value of the tx; should be zero
-    fn get_value(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(self.transaction_request.value.trim_start_matches("0x"), 16)
-            .map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the calldata for the swap
-    fn get_data(&self) -> Result<Bytes, ExecutionClientError> {
-        hex::decode(self.transaction_request.data.trim_start_matches("0x"))
-            .map_err(ExecutionClientError::quote_conversion)
-            .map(Bytes::from)
-    }
-
-    /// Get the gas limit for the swap
-    fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(self.transaction_request.gas_limit.trim_start_matches("0x"), 16)
-            .map_err(ExecutionClientError::quote_conversion)
-    }
-
-    /// Get the tool (venue) providing the route
-    fn get_tool(&self) -> String {
-        self.tool.clone()
-    }
-}
 
 /// Lifi-specific quote execution data
 #[derive(Debug, Clone)]
@@ -328,13 +162,13 @@ impl LifiClient {
         base_provider: DynProvider,
         hot_wallet: PrivateKeySigner,
         chain: Chain,
-    ) -> Result<Self, ExecutionClientError> {
+    ) -> Self {
         let hot_wallet_address = hot_wallet.address();
         let rpc_provider = DynProvider::new(
             ProviderBuilder::new().wallet(hot_wallet).connect_provider(base_provider),
         );
 
-        Ok(Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain })
+        Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
 
     /// Send a get request to the execution venue
@@ -351,15 +185,7 @@ impl LifiClient {
         }
 
         let response = request.send().await?;
-        let status = response.status();
-        if status != StatusCode::OK {
-            let body = response.text().await?;
-            let msg = format!("Unexpected status code: {status}\nbody: {body}");
-            error!(msg);
-            return Err(ExecutionClientError::http(msg));
-        }
-
-        response.json::<T>().await.map_err(ExecutionClientError::http)
+        handle_http_response(response).await.map_err(ExecutionClientError::http)
     }
 
     /// Construct Lifi quote parameters from a venue-agnostic quote params
@@ -473,17 +299,8 @@ impl LifiClient {
 
 #[async_trait]
 impl ExecutionVenue for LifiClient {
-    type ExecutionData = LifiQuoteExecutionData;
-
     /// Get a quote from the Lifi API
-    #[instrument(
-        skip(self, params),
-        fields(
-            from_token = %params.from_token,
-            to_token = %params.to_token,
-            from_amount = %params.from_amount
-        )
-    )]
+    #[instrument(skip_all)]
     async fn get_quote(
         &self,
         params: QuoteParams,
@@ -501,19 +318,24 @@ impl ExecutionVenue for LifiClient {
     /// Execute a quote from the Lifi API
     async fn execute_quote(
         &self,
-        quote: &ExecutionQuote,
-        execution_data: &LifiQuoteExecutionData,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
+        let ExecutableQuote { quote, execution_data } = executable_quote;
+        let lifi_execution_data = execution_data.lifi()?;
+
         self.approve_erc20_allowance(quote.sell_token.get_alloy_address(), quote.sell_amount)
             .await?;
 
-        let tx = self.build_swap_tx(execution_data).await?;
+        let tx = self.build_swap_tx(&lifi_execution_data).await?;
+
+        info!("Executing Lifi quote from {}", lifi_execution_data.tool);
+
         let receipt = self.send_tx(tx).await?;
         let gas_cost = get_gas_cost(&receipt);
         let tx_hash = receipt.transaction_hash;
 
         if receipt.status() {
-            let recipient = execution_data.from;
+            let recipient = lifi_execution_data.from;
             let buy_token_address = quote.buy_token.get_alloy_address();
             let buy_amount_actual =
                 self.get_buy_amount_actual(&receipt, buy_token_address, recipient)?;
