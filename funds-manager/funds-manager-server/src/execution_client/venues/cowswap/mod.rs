@@ -1,7 +1,12 @@
 //! Cowswap-specific logic for getting quotes and executing swaps.
 
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
+};
+
 use alloy::signers::local::PrivateKeySigner;
-use alloy_primitives::U256;
+use alloy_primitives::{TxHash, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
@@ -12,7 +17,10 @@ use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
-            cowswap::api_types::{OrderKind, OrderQuoteRequest, OrderQuoteResponse, SigningScheme},
+            cowswap::api_types::{
+                OrderCreation, OrderKind, OrderParameters, OrderQuoteRequest, OrderQuoteResponse,
+                SigningScheme, Trade,
+            },
             quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
@@ -34,6 +42,18 @@ const COWSWAP_API_VERSION_PATH_SEGMENT: &str = "api/v1";
 
 /// The endpoint for requesting a Cowswap quote
 const COWSWAP_QUOTE_ENDPOINT: &str = "quote";
+
+/// The endpoint for placing a Cowswap order
+const COWSWAP_ORDER_ENDPOINT: &str = "orders";
+
+/// The endpoint for fetching Cowswap trades
+const COWSWAP_TRADES_ENDPOINT: &str = "trades";
+
+/// The query parameter for filtering trades by order UID
+const ORDER_UID_QUERY_PARAM: &str = "orderUid";
+
+/// The maximum amount of time to wait for a trade to be executed
+const MAX_TRADE_EXECUTION_WAIT_TIME: u64 = 60; // 60 seconds
 
 // ---------
 // | Types |
@@ -184,6 +204,81 @@ impl CowswapClient {
             sell_amount_before_fee: params.from_amount,
         }
     }
+
+    /// Construct a request to place a Cowswap order from an executable quote
+    fn construct_order_request(
+        &self,
+        executable_quote: &ExecutableQuote,
+    ) -> Result<OrderCreation, ExecutionClientError> {
+        let ExecutableQuote { quote, execution_data } = executable_quote;
+        let cowswap_execution_data = execution_data.cowswap()?;
+
+        let sell_token = quote.sell_token.get_addr();
+        let buy_token = quote.buy_token.get_addr();
+        let sell_amount = quote.sell_amount;
+        let buy_amount = quote.buy_amount;
+        let valid_to = cowswap_execution_data.valid_to;
+        let fee_amount = cowswap_execution_data.fee_amount;
+        let kind = cowswap_execution_data.kind;
+        let partially_fillable = cowswap_execution_data.partially_fillable;
+
+        let order = OrderParameters {
+            sell_token,
+            buy_token,
+            sell_amount,
+            buy_amount,
+            valid_to,
+            fee_amount,
+            kind,
+            partially_fillable,
+        };
+
+        let signing_scheme = cowswap_execution_data.signing_scheme;
+        let signature = cowswap_execution_data.signature;
+        let app_data = cowswap_execution_data.app_data;
+
+        let order_creation = OrderCreation { order, signing_scheme, signature, app_data };
+
+        Ok(order_creation)
+    }
+
+    /// Await the execution of a Cowswap order.
+    ///
+    /// We wait only for a single trade to be executed, since
+    /// we currently set `partially_fillable` to `false` in the order request.
+    async fn await_trade_execution(
+        &self,
+        order_id: String,
+    ) -> Result<ExecutionResult, ExecutionClientError> {
+        let path = format!("{COWSWAP_TRADES_ENDPOINT}?{ORDER_UID_QUERY_PARAM}={order_id}");
+
+        let start = Instant::now();
+        let mut elapsed = start.elapsed();
+        while elapsed.as_secs() < MAX_TRADE_EXECUTION_WAIT_TIME {
+            let trades: Vec<Trade> = self.send_get_request(&path).await?;
+
+            // Await for a single trade to be executed on the order
+            if let Some(trade) = trades.first() {
+                let tx_hash =
+                    TxHash::from_str(&trade.tx_hash).map_err(ExecutionClientError::parse)?;
+                let execution_result = ExecutionResult {
+                    buy_amount_actual: trade.buy_amount,
+                    gas_cost: U256::ZERO, // We don't pay gas to settle Cowswap trades
+                    tx_hash: Some(tx_hash),
+                };
+
+                return Ok(execution_result);
+            }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            elapsed = start.elapsed();
+        }
+
+        // TODO: Here, we can cancel the order as it still hasn't been executed,
+        // but for now we rely on the `valid_to` field to expire the order.
+
+        Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost: U256::ZERO, tx_hash: None })
+    }
 }
 
 // ------------------------
@@ -210,9 +305,13 @@ impl ExecutionVenue for CowswapClient {
     /// Execute a quote from the Cowswap API
     async fn execute_quote(
         &self,
-        _executable_quote: &ExecutableQuote,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
-        todo!()
+        let order_request = self.construct_order_request(executable_quote)?;
+        let order_id: String =
+            self.send_post_request(COWSWAP_ORDER_ENDPOINT, order_request).await?;
+
+        self.await_trade_execution(order_id).await
     }
 }
 

@@ -165,9 +165,17 @@ impl OrderQuoteResponse {
         (sell_amount_after_slippage, buy_amount_after_slippage)
     }
 
-    /// Whether the order is partially fillable
+    /// Whether the order is partially fillable.
+    ///
+    /// For now, we set this to `false`, to:
+    /// 1. Simplify polling for trade execution
+    /// 2. Reduce the probability of trading against ourselves. E.g., if we're
+    ///    buying some quoter's base token, presumably it doesn't have much in
+    ///    its balances, so we're unlikely to self-trade. However, if the trade
+    ///    were partially fillable, we could still self-trade in a smaller
+    ///    amount.
     pub fn is_partially_fillable(&self) -> bool {
-        self.quote.partially_fillable
+        false
     }
 
     /// Get the kind of order that was quoted

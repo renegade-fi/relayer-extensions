@@ -154,7 +154,7 @@ impl QuoteExecutionData {
 
     /// "Unwraps" Cowswap quote execution data, returning an error if it is not
     /// the Cowswap variant
-    pub fn cowswap(self) -> Result<CowswapQuoteExecutionData, ExecutionClientError> {
+    pub fn cowswap(&self) -> Result<CowswapQuoteExecutionData, ExecutionClientError> {
         match self {
             QuoteExecutionData::Cowswap(data) => Ok(data.clone()),
             _ => Err(ExecutionClientError::quote_conversion("Non-Cowswap quote execution data")),
