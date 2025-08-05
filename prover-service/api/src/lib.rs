@@ -35,9 +35,16 @@ use serde::{Deserialize, Serialize};
 // | Response Types |
 // ------------------
 
-/// A generic response type representing a proof
+/// A generic repsonse representing a Plonk proof
 #[derive(Serialize, Deserialize)]
 pub struct ProofResponse {
+    /// The proof
+    pub proof: PlonkProof,
+}
+
+/// A generic response type representing a Plonk proof and a linking hint
+#[derive(Serialize, Deserialize)]
+pub struct ProofAndHintResponse {
     /// The proof
     pub proof: PlonkProof,
     /// The proof's link hint
