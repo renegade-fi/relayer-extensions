@@ -80,6 +80,12 @@ impl ExecutionClient {
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
+            // The from amount may have decayed to zero,
+            // in which case fetching a quote is impossible
+            if params.from_amount == U256::ZERO {
+                return Ok(None);
+            }
+
             let executable_quote = self.get_best_quote(params.clone()).await?;
             let quote_amount = executable_quote.quote.quote_amount_decimal();
 
