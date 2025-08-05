@@ -7,9 +7,12 @@ use warp::reply::{Json, WithStatus};
 /// The error type for the service
 #[derive(Debug, thiserror::Error)]
 pub enum ProverServiceError {
-    /// The request was invalid
-    #[error("invalid request: {0}")]
-    InvalidRequest(String),
+    /// A custom error
+    #[error("error: {0}")]
+    Custom(String),
+    /// An error proving a circuit
+    #[error("error proving circuit: {0}")]
+    Prover(String),
     /// The error occurred while setting up telemetry
     #[error("error setting up server: {0}")]
     Setup(String),
@@ -20,10 +23,16 @@ impl warp::reject::Reject for ProverServiceError {}
 impl ProverServiceError {
     // --- Constructors --- //
 
-    /// Create a new invalid request error
+    /// Create a new custom error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn invalid_request<T: ToString>(msg: T) -> Self {
-        Self::InvalidRequest(msg.to_string())
+    pub fn custom<T: ToString>(msg: T) -> Self {
+        Self::Custom(msg.to_string())
+    }
+
+    /// Create a new prover error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn prover<T: ToString>(msg: T) -> Self {
+        Self::Prover(msg.to_string())
     }
 
     /// Create a new setup error
@@ -36,8 +45,8 @@ impl ProverServiceError {
 
     /// Convert a prover service error to a warp reply
     pub fn to_reply(&self) -> WithStatus<Json> {
+        #[allow(clippy::match_single_binding)]
         let (code, msg) = match self {
-            Self::InvalidRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             x => (StatusCode::INTERNAL_SERVER_ERROR, x.to_string()),
         };
 
