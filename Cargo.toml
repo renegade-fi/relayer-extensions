@@ -26,22 +26,22 @@ lto = true
 
 [workspace.dependencies]
 # === Renegade Dependencies === #
-renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
+renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
 contracts-common = { git = "https://github.com/renegade-fi/renegade-contracts.git" }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0", features = [
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1", features = [
     "auth",
 ] }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0", features = [
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1", features = [
     "channels",
 ] }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", rev = "dd1c9a0" }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", rev = "c9950c1" }
 renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-solidity-contracts" }
 
 

@@ -7,7 +7,7 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 
-use renegade_circuit_types::PlonkProof;
+use renegade_circuit_types::{PlonkLinkProof, PlonkProof, ProofLinkingHint};
 use renegade_circuits::{
     self,
     zk_circuits::{
@@ -35,11 +35,41 @@ use serde::{Deserialize, Serialize};
 // | Response Types |
 // ------------------
 
-/// A generic response type representing a proof
+/// A generic repsonse representing a Plonk proof
 #[derive(Serialize, Deserialize)]
 pub struct ProofResponse {
     /// The proof
     pub proof: PlonkProof,
+}
+
+/// A generic response type representing a Plonk proof and a linking hint
+#[derive(Serialize, Deserialize)]
+pub struct ProofAndHintResponse {
+    /// The proof
+    pub proof: PlonkProof,
+    /// The proof's link hint
+    pub link_hint: ProofLinkingHint,
+}
+
+/// A proof-link response
+///
+/// Sent by the prover service when only a linking proof has been requested
+#[derive(Serialize, Deserialize)]
+pub struct ProofLinkResponse {
+    /// The proof-linking proof
+    pub link_proof: PlonkLinkProof,
+}
+
+/// A response including a plonk proof and a proof-linking proof
+///
+/// This type is returned in response to requests which themselves include a
+/// link hint for the prover service to link against
+#[derive(Serialize, Deserialize)]
+pub struct ProofAndLinkResponse {
+    /// The plonk proof
+    pub plonk_proof: PlonkProof,
+    /// The proof-linking proof
+    pub link_proof: PlonkLinkProof,
 }
 
 // -----------------
@@ -73,6 +103,16 @@ pub struct ValidCommitmentsRequest {
     pub witness: SizedValidCommitmentsWitness,
 }
 
+/// A request to generate a proof-link of `VALID COMMITMENTS` <-> `VALID
+/// REBLIND`
+#[derive(Serialize, Deserialize)]
+pub struct LinkCommitmentsReblindRequest {
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
+    /// The link hint for `VALID REBLIND`
+    pub valid_reblind_hint: ProofLinkingHint,
+}
+
 /// A request to prove `VALID REBLIND`
 #[derive(Serialize, Deserialize)]
 pub struct ValidReblindRequest {
@@ -89,6 +129,23 @@ pub struct ValidMatchSettleRequest {
     pub statement: SizedValidMatchSettleStatement,
     /// The witness
     pub witness: SizedValidMatchSettleWitness,
+    /// The link hint for `VALID COMMITMENTS` for party 0
+    pub valid_commitments_hint0: ProofLinkingHint,
+    /// The link hint for `VALID COMMITMENTS` for party 1
+    pub valid_commitments_hint1: ProofLinkingHint,
+}
+
+/// A response to a request to prove `VALID MATCH SETTLE`
+///
+/// This type includes two link proofs, so it warrants its own type
+#[derive(Serialize, Deserialize)]
+pub struct ValidMatchSettleResponse {
+    /// The plonk proof
+    pub plonk_proof: PlonkProof,
+    /// The proof-linking proof for party 0
+    pub link_proof0: PlonkLinkProof,
+    /// The proof-linking proof for party 1
+    pub link_proof1: PlonkLinkProof,
 }
 
 /// A request to prove `VALID MATCH SETTLE ATOMIC`
@@ -98,6 +155,8 @@ pub struct ValidMatchSettleAtomicRequest {
     pub statement: SizedValidMatchSettleAtomicStatement,
     /// The witness
     pub witness: SizedValidMatchSettleAtomicWitness,
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
 }
 
 /// A request to prove `VALID MALLEABLE MATCH SETTLE ATOMIC`
@@ -107,6 +166,8 @@ pub struct ValidMalleableMatchSettleAtomicRequest {
     pub statement: SizedValidMalleableMatchSettleAtomicStatement,
     /// The witness
     pub witness: SizedValidMalleableMatchSettleAtomicWitness,
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
 }
 
 /// A request to prove `VALID FEE REDEMPTION`
