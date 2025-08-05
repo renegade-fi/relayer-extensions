@@ -72,6 +72,11 @@ pub struct QuoteParams {
     /// 1 USDC (6 decimals))
     #[serde(with = "u256_string_serialization")]
     pub from_amount: U256,
+    /// The slippage tolerance for the quote, as a decimal (e.g. 0.0001 for
+    /// 1 basis point, or 0.01%)
+    ///
+    /// If not provided, the default slippage tolerance will be used.
+    pub slippage_tolerance: Option<f64>,
 }
 
 /// A simplified representation of an execution quote, suitable for API
@@ -91,6 +96,8 @@ pub struct ApiExecutionQuote {
     pub buy_amount: U256,
     /// The venue that provided the quote
     pub venue: String,
+    /// The chain ID that the quote was generated on
+    pub chain_id: u64,
 }
 
 /// The response body for executing an immediate swap

@@ -126,12 +126,14 @@ impl ExecutableQuote {
     /// Convert a Cowswap quote into an executable quote
     pub fn from_cowswap_quote(
         cowswap_quote: OrderQuoteResponse,
+        slippage_tolerance: Option<f64>,
         chain: Chain,
         private_key: &PrivateKeySigner,
     ) -> Self {
         let sell_token = cowswap_quote.get_sell_token(chain);
         let buy_token = cowswap_quote.get_buy_token(chain);
-        let (sell_amount, buy_amount) = cowswap_quote.get_quote_amounts_after_costs();
+        let (sell_amount, buy_amount) =
+            cowswap_quote.get_quote_amounts_after_costs(slippage_tolerance);
 
         let quote = ExecutionQuote {
             sell_token,
@@ -420,12 +422,17 @@ impl ExecutionVenue for CowswapClient {
         &self,
         params: QuoteParams,
     ) -> Result<ExecutableQuote, ExecutionClientError> {
+        let slippage_tolerance = params.slippage_tolerance;
         let quote_request = self.construct_quote_params(params);
         let quote_response: OrderQuoteResponse =
             self.send_post_request(COWSWAP_QUOTE_ENDPOINT, quote_request).await?;
 
-        let executable_quote =
-            ExecutableQuote::from_cowswap_quote(quote_response, self.chain, &self.hot_wallet);
+        let executable_quote = ExecutableQuote::from_cowswap_quote(
+            quote_response,
+            slippage_tolerance,
+            self.chain,
+            &self.hot_wallet,
+        );
 
         Ok(executable_quote)
     }

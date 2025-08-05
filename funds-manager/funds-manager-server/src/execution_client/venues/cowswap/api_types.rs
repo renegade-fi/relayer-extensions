@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use funds_manager_api::serialization::u256_string_serialization;
 
+use crate::execution_client::swap::DEFAULT_SLIPPAGE_TOLERANCE;
+
 // -------------
 // | Constants |
 // -------------
@@ -21,14 +23,7 @@ use funds_manager_api::serialization::u256_string_serialization;
 const COWSWAP_QUOTE_VALID_FOR: u32 = 60 * 5; // 5 minutes
 
 /// The number of basis points in 1
-const BPS_IN_ONE: U256 = U256::from_limbs([10_000, 0, 0, 0]);
-
-/// The default slippage tolerance, in basis points.
-///
-/// "Slippage" here is the deviation of the placed order's limit price
-/// relative to the quoted price - NOT deviation relative to the reference
-/// (e.g. Binance) price.
-const DEFAULT_SLIPPAGE_BPS: U256 = U256::from_limbs([5, 0, 0, 0]); // 5bps, or 0.05%
+const BPS_IN_ONE: f64 = 10_000.0;
 
 /// The default `app_data` for an order.
 const DEFAULT_APP_DATA: &str = "{}";
@@ -152,18 +147,24 @@ impl OrderQuoteResponse {
     ///
     /// Taken from implementation here:
     /// <https://github.com/cowprotocol/cow-sdk/blob/main/src/order-book/quoteAmountsAndCostsUtils.ts#L155>
-    pub fn get_quote_amounts_after_costs(&self) -> (U256, U256) {
+    pub fn get_quote_amounts_after_costs(&self, slippage_tolerance: Option<f64>) -> (U256, U256) {
         let sell_amount_before_fees = self.get_sell_amount();
         let fee_amount = self.quote.fee_amount;
 
         let sell_amount_after_fees = sell_amount_before_fees + fee_amount;
         let buy_amount_after_fees = self.get_buy_amount();
 
+        let slippage_tolerance_bps_f64 =
+            slippage_tolerance.unwrap_or(DEFAULT_SLIPPAGE_TOLERANCE) * BPS_IN_ONE;
+
+        let slippage_tolerance_bps = U256::from(slippage_tolerance_bps_f64);
+
         // Currently, we only support sell orders, but we include this match statement
         // for type safety in the case that we support buy orders in the future.
         let (sell_amount_after_slippage, buy_amount_after_slippage) = match self.quote.kind {
             OrderKind::Sell => {
-                let slippage_amount = (buy_amount_after_fees * DEFAULT_SLIPPAGE_BPS) / BPS_IN_ONE;
+                let slippage_amount =
+                    (buy_amount_after_fees * slippage_tolerance_bps) / U256::from(BPS_IN_ONE);
                 (sell_amount_after_fees, buy_amount_after_fees - slippage_amount)
             },
         };
