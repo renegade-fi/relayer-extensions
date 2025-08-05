@@ -6862,6 +6862,7 @@ dependencies = [
  "circuits",
  "clap",
  "http 0.2.12",
+ "prover-service-api",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -6869,6 +6870,15 @@ dependencies = [
  "tracing",
  "util",
  "warp",
+]
+
+[[package]]
+name = "prover-service-api"
+version = "0.1.0"
+dependencies = [
+ "circuit-types",
+ "circuits",
+ "serde",
 ]
 
 [[package]]

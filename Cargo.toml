@@ -11,7 +11,8 @@ members = [
     "funds-manager/funds-manager-server",
     "price-reporter",
     "price-reporter-client",
-    "prover-service"
+    "prover-service/server",
+    "prover-service/api",
 ]
 
 [profile.bench]
