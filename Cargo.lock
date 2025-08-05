@@ -4714,6 +4714,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-auth-basic"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0c088bddfd73005b09807131224ad12c302655436b1270c8346a3ae8aaa37a"
+dependencies = [
+ "base64 0.22.1",
+]
+
+[[package]]
 name = "http-body"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6873,6 +6882,7 @@ dependencies = [
  "circuits",
  "clap",
  "http 0.2.12",
+ "http-auth-basic",
  "prover-service-api",
  "serde",
  "serde_json",

@@ -19,6 +19,9 @@ pub struct Cli {
     /// The port to listen on
     #[clap(short, long, default_value = "3000", env = "PORT")]
     pub port: u16,
+    /// The HTTP basic auth password
+    #[clap(long, env = "HTTP_AUTH_PASSWORD")]
+    pub auth_password: String,
 
     // --- Telemetry --- //
     /// Whether or not to enable Datadog-formatted logs
