@@ -7,6 +7,9 @@ use warp::reply::{Json, WithStatus};
 /// The error type for the service
 #[derive(Debug, thiserror::Error)]
 pub enum ProverServiceError {
+    /// A bad request
+    #[error("bad request: {0}")]
+    BadRequest(String),
     /// A custom error
     #[error("error: {0}")]
     Custom(String),
@@ -16,12 +19,21 @@ pub enum ProverServiceError {
     /// The error occurred while setting up telemetry
     #[error("error setting up server: {0}")]
     Setup(String),
+    /// An unauthorized request
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 impl warp::reject::Reject for ProverServiceError {}
 
 impl ProverServiceError {
     // --- Constructors --- //
+
+    /// Create a new bad request error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn bad_request<T: ToString>(msg: T) -> Self {
+        Self::BadRequest(msg.to_string())
+    }
 
     /// Create a new custom error
     #[allow(clippy::needless_pass_by_value)]
@@ -41,12 +53,20 @@ impl ProverServiceError {
         Self::Setup(msg.to_string())
     }
 
+    /// Create a new unauthorized error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn unauthorized<T: ToString>(msg: T) -> Self {
+        Self::Unauthorized(msg.to_string())
+    }
+
     // --- Reply -- //
 
     /// Convert a prover service error to a warp reply
     pub fn to_reply(&self) -> WithStatus<Json> {
         #[allow(clippy::match_single_binding)]
         let (code, msg) = match self {
+            ProverServiceError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            ProverServiceError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             x => (StatusCode::INTERNAL_SERVER_ERROR, x.to_string()),
         };
 
