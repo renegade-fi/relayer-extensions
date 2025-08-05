@@ -7,7 +7,7 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 
-use renegade_circuit_types::PlonkProof;
+use renegade_circuit_types::{PlonkLinkProof, PlonkProof, ProofLinkingHint};
 use renegade_circuits::{
     self,
     zk_circuits::{
@@ -40,6 +40,28 @@ use serde::{Deserialize, Serialize};
 pub struct ProofResponse {
     /// The proof
     pub proof: PlonkProof,
+    /// The proof's link hint
+    pub link_hint: ProofLinkingHint,
+}
+
+/// A proof-link response
+///
+/// Sent by the prover service when only a linking proof has been requested
+#[derive(Serialize, Deserialize)]
+pub struct ProofLinkResponse {
+    /// The proof-linking proof
+    pub link_proof: PlonkLinkProof,
+}
+
+/// A response including a plonk proof and a proof-linking proof
+///
+/// This type is returned in response to requests which themselves include a
+/// link hint for the prover service to link against
+pub struct ProofAndLinkResponse {
+    /// The plonk proof
+    pub plonk_proof: PlonkProof,
+    /// The proof-linking proof
+    pub link_proof: PlonkLinkProof,
 }
 
 // -----------------
@@ -71,6 +93,16 @@ pub struct ValidCommitmentsRequest {
     pub statement: ValidCommitmentsStatement,
     /// The witness
     pub witness: SizedValidCommitmentsWitness,
+}
+
+/// A request to generate a proof-link of `VALID COMMITMENTS` <-> `VALID
+/// REBLIND`
+#[derive(Serialize, Deserialize)]
+pub struct LinkCommitmentsReblindRequest {
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
+    /// The link hint for `VALID REBLIND`
+    pub valid_reblind_hint: ProofLinkingHint,
 }
 
 /// A request to prove `VALID REBLIND`

@@ -5,16 +5,17 @@
 // ---------------------
 
 use prover_service_api::{
-    ProofResponse, ValidCommitmentsRequest, ValidFeeRedemptionRequest,
-    ValidMalleableMatchSettleAtomicRequest, ValidMatchSettleAtomicRequest, ValidMatchSettleRequest,
-    ValidOfflineFeeSettlementRequest, ValidReblindRequest, ValidWalletCreateRequest,
-    ValidWalletUpdateRequest,
+    LinkCommitmentsReblindRequest, ProofLinkResponse, ProofResponse, ValidCommitmentsRequest,
+    ValidFeeRedemptionRequest, ValidMalleableMatchSettleAtomicRequest,
+    ValidMatchSettleAtomicRequest, ValidMatchSettleRequest, ValidOfflineFeeSettlementRequest,
+    ValidReblindRequest, ValidWalletCreateRequest, ValidWalletUpdateRequest,
 };
 use renegade_circuit_types::traits::SingleProverCircuit;
 use renegade_circuits::{
-    singleprover_prove,
+    singleprover_prove_with_hint,
     zk_circuits::{
-        valid_commitments::SizedValidCommitments, valid_fee_redemption::SizedValidFeeRedemption,
+        proof_linking::link_sized_commitments_reblind, valid_commitments::SizedValidCommitments,
+        valid_fee_redemption::SizedValidFeeRedemption,
         valid_malleable_match_settle_atomic::SizedValidMalleableMatchSettleAtomic,
         valid_match_settle::SizedValidMatchSettle,
         valid_match_settle_atomic::SizedValidMatchSettleAtomic,
@@ -56,6 +57,24 @@ pub(crate) async fn handle_valid_commitments(
 #[instrument(skip_all)]
 pub(crate) async fn handle_valid_reblind(request: ValidReblindRequest) -> Result<Json, Rejection> {
     generate_proof_json::<SizedValidReblind>(request.witness, request.statement).await
+}
+
+/// Handle a request to generate a proof-link of `VALID COMMITMENTS` <-> `VALID
+/// REBLIND`
+#[instrument(skip_all)]
+pub(crate) async fn handle_link_commitments_reblind(
+    request: LinkCommitmentsReblindRequest,
+) -> Result<Json, Rejection> {
+    // Spawn on a blocking thread to avoid blocking the async pool
+    let link_proof = tokio::task::spawn_blocking(move || {
+        link_sized_commitments_reblind(&request.valid_reblind_hint, &request.valid_commitments_hint)
+    })
+    .await
+    .map_err(ProverServiceError::custom)? // join error
+    .map_err(ProverServiceError::prover)?; // proof system error
+
+    let resp = ProofLinkResponse { link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `VALID MATCH SETTLE`
@@ -113,11 +132,11 @@ where
     C::Statement: 'static + Send,
 {
     // Spawn on a blocking thread
-    let proof = tokio::task::spawn_blocking(move || singleprover_prove::<C>(witness, statement))
+    let (proof, link_hint) = tokio::task::spawn_blocking(move || singleprover_prove_with_hint::<C>(witness, statement))
         .await
         .map_err(ProverServiceError::custom)? // join error
         .map_err(ProverServiceError::prover)?; // proof system error
 
-    let resp = ProofResponse { proof };
+    let resp = ProofResponse { proof, link_hint };
     Ok(warp::reply::json(&resp))
 }

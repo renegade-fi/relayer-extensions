@@ -23,7 +23,7 @@ use crate::{
     cli::Cli,
     error::{ProverServiceError, json_error},
     prover::{
-        handle_valid_commitments, handle_valid_fee_redemption,
+        handle_link_commitments_reblind, handle_valid_commitments, handle_valid_fee_redemption,
         handle_valid_malleable_match_settle_atomic, handle_valid_match_settle,
         handle_valid_match_settle_atomic, handle_valid_offline_fee_settlement,
         handle_valid_reblind, handle_valid_wallet_create, handle_valid_wallet_update,
@@ -80,6 +80,11 @@ fn setup_routes() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + C
         .and(warp::body::json())
         .and_then(handle_valid_reblind);
 
+    let link_commitments_reblind = warp::path("link-commitments-reblind")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and_then(handle_link_commitments_reblind);
+
     // Prove valid match settle
     let valid_match_settle = warp::path("prove-valid-match-settle")
         .and(warp::post())
@@ -115,6 +120,7 @@ fn setup_routes() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + C
         .or(valid_wallet_update)
         .or(valid_commitments)
         .or(valid_reblind)
+        .or(link_commitments_reblind)
         .or(valid_match_settle)
         .or(valid_match_settle_atomic)
         .or(valid_malleable_match_settle_atomic)
