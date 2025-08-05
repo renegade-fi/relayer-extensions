@@ -1,7 +1,10 @@
 //! Cowswap API type definitions.
 //! See: <https://docs.cow.fi/cow-protocol/reference/apis/orderbook>
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fmt::Display,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::U256;
@@ -30,11 +33,6 @@ const DEFAULT_SLIPPAGE_BPS: U256 = U256::from_limbs([5, 0, 0, 0]); // 5bps, or 0
 /// The default `app_data` for an order.
 const DEFAULT_APP_DATA: &str = "{}";
 
-/// The default `app_data` hash for an order,
-/// i.e. the keccak-256 hash of "{}".
-const DEFAULT_APP_DATA_HASH: &str =
-    "0xb48d38f93eaa084033fc5970bf96e559c33c4cdc07d889ab00b4d63f9590739d";
-
 /// The kind of order to request a Cowswap quote for.
 ///
 /// We only support sell orders, to maintain the convention
@@ -44,6 +42,14 @@ const DEFAULT_APP_DATA_HASH: &str =
 pub enum OrderKind {
     /// A sell order
     Sell,
+}
+
+impl Display for OrderKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrderKind::Sell => write!(f, "sell"),
+        }
+    }
 }
 
 /// The scheme used to sign an order.
@@ -168,7 +174,7 @@ impl OrderQuoteResponse {
     /// Whether the order is partially fillable.
     ///
     /// For now, we set this to `false`, to:
-    /// 1. Simplify polling for trade execution
+    /// 1. Simplify polling for trade execution & swap cost accounting
     /// 2. Reduce the probability of trading against ourselves. E.g., if we're
     ///    buying some quoter's base token, presumably it doesn't have much in
     ///    its balances, so we're unlikely to self-trade. However, if the trade
@@ -237,7 +243,7 @@ pub struct OrderCreation {
 }
 
 /// A trade that was executed on Cowswap
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Trade {
     /// The block number at which the trade was executed

@@ -5,29 +5,39 @@ use std::{
     time::{Duration, Instant},
 };
 
-use alloy::signers::local::PrivateKeySigner;
-use alloy_primitives::{TxHash, U256};
+use alloy::{
+    hex,
+    providers::{DynProvider, ProviderBuilder},
+    signers::{local::PrivateKeySigner, SignerSync},
+};
+use alloy_primitives::{Address, FixedBytes, TxHash, U256};
+use alloy_sol_types::{eip712_domain, SolStruct};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::{info, instrument};
 
 use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
-            cowswap::api_types::{
-                OrderCreation, OrderKind, OrderParameters, OrderQuoteRequest, OrderQuoteResponse,
-                SigningScheme, Trade,
+            cowswap::{
+                abi::Order,
+                api_types::{
+                    OrderCreation, OrderKind, OrderParameters, OrderQuoteRequest,
+                    OrderQuoteResponse, SigningScheme, Trade,
+                },
             },
             quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
-    helpers::handle_http_response,
+    helpers::{approve_erc20_allowance, handle_http_response, to_chain_id},
 };
 
+pub mod abi;
 pub mod api_types;
 
 // -------------
@@ -54,6 +64,28 @@ const ORDER_UID_QUERY_PARAM: &str = "orderUid";
 
 /// The maximum amount of time to wait for a trade to be executed
 const MAX_TRADE_EXECUTION_WAIT_TIME: u64 = 60; // 60 seconds
+
+/// The default `app_data` hash for an order,
+/// i.e. the keccak-256 hash of "{}".
+const DEFAULT_APP_DATA_HASH: &str =
+    "0xb48d38f93eaa084033fc5970bf96e559c33c4cdc07d889ab00b4d63f9590739d";
+
+/// The default kind of balance on which Cowswap orders operate.
+const DEFAULT_BALANCE_KIND: &str = "erc20";
+
+/// The name of the EIP-712 domain for Cowswap
+const EIP_712_DOMAIN_NAME: &str = "Gnosis Protocol";
+
+/// The version of the EIP-712 domain for Cowswap
+const EIP_712_DOMAIN_VERSION: &str = "v2";
+
+/// The address of the Cowswap settlement contract (same on all chains)
+const COWSWAP_SETTLEMENT_CONTRACT_ADDRESS: Address =
+    Address::new(hex!("0x9008D19f58AAbD9eD0D60971565AA8510560ab41"));
+
+/// The address of the Cowswap VaultRelayer (same on all chains)
+const COWSWAP_VAULT_RELAYER_ADDRESS: Address =
+    Address::new(hex!("0xC92E8bdf79f0507f65a392b0ab4667716BFE0110"));
 
 // ---------
 // | Types |
@@ -151,12 +183,18 @@ pub struct CowswapClient {
     hot_wallet: PrivateKeySigner,
     /// The chain on which the client is operating
     chain: Chain,
+    /// The RPC provider
+    rpc_provider: DynProvider,
 }
 
 impl CowswapClient {
     /// Create a new client
-    pub fn new(hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
-        Self { http_client: Client::new(), hot_wallet, chain }
+    pub fn new(base_provider: DynProvider, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
+        let rpc_provider = DynProvider::new(
+            ProviderBuilder::new().wallet(hot_wallet.clone()).connect_provider(base_provider),
+        );
+
+        Self { http_client: Client::new(), hot_wallet, chain, rpc_provider }
     }
 
     /// Send a POST request to the Cowswap API
@@ -233,13 +271,96 @@ impl CowswapClient {
             partially_fillable,
         };
 
+        let signature = self.sign_order(&order)?;
         let signing_scheme = cowswap_execution_data.signing_scheme;
-        let signature = cowswap_execution_data.signature;
         let app_data = cowswap_execution_data.app_data;
-
         let order_creation = OrderCreation { order, signing_scheme, signature, app_data };
 
         Ok(order_creation)
+    }
+
+    /// Approve an erc20 allowance for the Cowswap VaultRelayer
+    #[instrument(skip(self))]
+    async fn approve_erc20_allowance(
+        &self,
+        token_address: Address,
+        amount: U256,
+    ) -> Result<(), ExecutionClientError> {
+        approve_erc20_allowance(
+            token_address,
+            COWSWAP_VAULT_RELAYER_ADDRESS,
+            self.hot_wallet.address(),
+            amount,
+            self.rpc_provider.clone(),
+        )
+        .await
+        .map_err(ExecutionClientError::onchain)
+    }
+
+    /// Sign the order encoded by the given parameters, returning signature as a
+    /// hex string
+    fn sign_order(&self, order: &OrderParameters) -> Result<String, ExecutionClientError> {
+        let signable_order = self.construct_signable_order(order)?;
+
+        let eip712_domain = eip712_domain! {
+            name: EIP_712_DOMAIN_NAME,
+            version: EIP_712_DOMAIN_VERSION,
+            chain_id: to_chain_id(self.chain),
+            verifying_contract: COWSWAP_SETTLEMENT_CONTRACT_ADDRESS,
+        };
+
+        let order_hash = signable_order.eip712_signing_hash(&eip712_domain);
+        let raw_signature = self
+            .hot_wallet
+            .sign_hash_sync(&order_hash)
+            .map_err(ExecutionClientError::quote_conversion)?;
+
+        let signature = hex::encode_prefixed(raw_signature.as_bytes());
+
+        Ok(signature)
+    }
+
+    /// Construct an EIP-712-signable order from an order parameters struct
+    fn construct_signable_order(
+        &self,
+        order_parameters: &OrderParameters,
+    ) -> Result<Order, ExecutionClientError> {
+        let sell_token =
+            Address::from_str(&order_parameters.sell_token).map_err(ExecutionClientError::parse)?;
+
+        let buy_token =
+            Address::from_str(&order_parameters.buy_token).map_err(ExecutionClientError::parse)?;
+
+        let receiver = Address::ZERO;
+        let sell_amount = order_parameters.sell_amount;
+        let buy_amount = order_parameters.buy_amount;
+        let valid_to = order_parameters.valid_to;
+
+        let app_data = FixedBytes::<32>::from_str(DEFAULT_APP_DATA_HASH)
+            .map_err(ExecutionClientError::parse)?;
+
+        let fee_amount = order_parameters.fee_amount;
+        let kind = order_parameters.kind.to_string();
+        let partially_fillable = order_parameters.partially_fillable;
+        let sell_token_balance = DEFAULT_BALANCE_KIND.to_string();
+        let buy_token_balance = DEFAULT_BALANCE_KIND.to_string();
+
+        let order = Order {
+            sellToken: sell_token,
+            buyToken: buy_token,
+            receiver,
+            sellAmount: sell_amount,
+            buyAmount: buy_amount,
+            validTo: valid_to,
+            appData: app_data,
+            feeAmount: fee_amount,
+            kind,
+            partiallyFillable: partially_fillable,
+            sellTokenBalance: sell_token_balance,
+            buyTokenBalance: buy_token_balance,
+        };
+
+        Ok(order)
     }
 
     /// Await the execution of a Cowswap order.
@@ -261,6 +382,7 @@ impl CowswapClient {
             if let Some(trade) = trades.first() {
                 let tx_hash =
                     TxHash::from_str(&trade.tx_hash).map_err(ExecutionClientError::parse)?;
+
                 let execution_result = ExecutionResult {
                     buy_amount_actual: trade.buy_amount,
                     gas_cost: U256::ZERO, // We don't pay gas to settle Cowswap trades
@@ -287,7 +409,13 @@ impl CowswapClient {
 
 #[async_trait]
 impl ExecutionVenue for CowswapClient {
+    /// Get the name of the venue
+    fn venue_specifier(&self) -> SupportedExecutionVenue {
+        SupportedExecutionVenue::Cowswap
+    }
+
     /// Get a quote from the Cowswap API
+    #[instrument(skip_all)]
     async fn get_quote(
         &self,
         params: QuoteParams,
@@ -303,10 +431,19 @@ impl ExecutionVenue for CowswapClient {
     }
 
     /// Execute a quote from the Cowswap API
+    #[instrument(skip_all)]
     async fn execute_quote(
         &self,
         executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
+        info!("Executing Cowswap quote");
+
+        self.approve_erc20_allowance(
+            executable_quote.quote.sell_token.get_alloy_address(),
+            executable_quote.quote.sell_amount,
+        )
+        .await?;
+
         let order_request = self.construct_order_request(executable_quote)?;
         let order_id: String =
             self.send_post_request(COWSWAP_ORDER_ENDPOINT, order_request).await?;

@@ -64,6 +64,9 @@ pub struct ExecutionResult {
 /// getting & executing quotes
 #[async_trait]
 pub trait ExecutionVenue: Sync {
+    /// Get the name of the venue
+    fn venue_specifier(&self) -> SupportedExecutionVenue;
+
     /// Get a quote from the venue
     async fn get_quote(&self, params: QuoteParams)
         -> Result<ExecutableQuote, ExecutionClientError>;

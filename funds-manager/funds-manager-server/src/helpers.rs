@@ -299,7 +299,7 @@ pub fn from_env_agnostic_name(chain: &str, environment: &Environment) -> Chain {
 }
 
 /// Convert a chain to its chain id
-pub fn to_chain_id(chain: Chain) -> usize {
+pub fn to_chain_id(chain: Chain) -> u64 {
     match chain {
         Chain::ArbitrumOne => 42161,
         Chain::ArbitrumSepolia => 421614,

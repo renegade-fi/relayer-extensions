@@ -44,7 +44,8 @@ impl ExecutionClient {
 
         let lifi =
             LifiClient::new(lifi_api_key, rpc_provider.clone(), quoter_hot_wallet.clone(), chain);
-        let cowswap = CowswapClient::new(quoter_hot_wallet, chain);
+
+        let cowswap = CowswapClient::new(rpc_provider.clone(), quoter_hot_wallet, chain);
 
         let venues = AllExecutionVenues { lifi, cowswap };
 

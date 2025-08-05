@@ -198,8 +198,8 @@ impl LifiClient {
             to_token: params.to_token,
             from_amount: params.from_amount,
             from_address: self.hot_wallet_address.to_string(),
-            from_chain: to_chain_id(self.chain),
-            to_chain: to_chain_id(self.chain),
+            from_chain: to_chain_id(self.chain) as usize,
+            to_chain: to_chain_id(self.chain) as usize,
             slippage: Some(DEFAULT_SLIPPAGE_TOLERANCE),
             max_price_impact: Some(DEFAULT_MAX_PRICE_IMPACT),
             swap_step_timing_strategies: Some(vec![DEFAULT_TIMING_STRATEGY.to_string()]),
@@ -299,6 +299,11 @@ impl LifiClient {
 
 #[async_trait]
 impl ExecutionVenue for LifiClient {
+    /// Get the name of the venue
+    fn venue_specifier(&self) -> SupportedExecutionVenue {
+        SupportedExecutionVenue::Lifi
+    }
+
     /// Get a quote from the Lifi API
     #[instrument(skip_all)]
     async fn get_quote(
@@ -316,6 +321,7 @@ impl ExecutionVenue for LifiClient {
     }
 
     /// Execute a quote from the Lifi API
+    #[instrument(skip_all)]
     async fn execute_quote(
         &self,
         executable_quote: &ExecutableQuote,
