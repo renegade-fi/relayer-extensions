@@ -2,7 +2,10 @@
 
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
-use renegade_common::types::{chain::Chain, token::Token};
+use renegade_common::types::{
+    chain::Chain,
+    token::{Token, USDC_TICKER},
+};
 
 use crate::execution_client::{
     error::ExecutionClientError,
@@ -29,7 +32,7 @@ pub struct ExecutionQuote {
 impl ExecutionQuote {
     /// Whether the quote is a sell order in Renegade terms
     pub fn is_sell(&self) -> bool {
-        self.buy_token == Token::usdc()
+        self.buy_token == Token::from_ticker_on_chain(USDC_TICKER, self.chain)
     }
 
     /// Get the base token
