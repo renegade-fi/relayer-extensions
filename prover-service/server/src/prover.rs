@@ -5,22 +5,30 @@
 // ---------------------
 
 use prover_service_api::{
-    LinkCommitmentsReblindRequest, ProofLinkResponse, ProofResponse, ValidCommitmentsRequest,
-    ValidFeeRedemptionRequest, ValidMalleableMatchSettleAtomicRequest,
-    ValidMatchSettleAtomicRequest, ValidMatchSettleRequest, ValidOfflineFeeSettlementRequest,
-    ValidReblindRequest, ValidWalletCreateRequest, ValidWalletUpdateRequest,
+    LinkCommitmentsReblindRequest, ProofAndLinkResponse, ProofLinkResponse, ProofResponse,
+    ValidCommitmentsRequest, ValidFeeRedemptionRequest, ValidMalleableMatchSettleAtomicRequest,
+    ValidMatchSettleAtomicRequest, ValidMatchSettleRequest, ValidMatchSettleResponse,
+    ValidOfflineFeeSettlementRequest, ValidReblindRequest, ValidWalletCreateRequest,
+    ValidWalletUpdateRequest,
 };
-use renegade_circuit_types::traits::SingleProverCircuit;
+use renegade_circuit_types::{
+    PlonkLinkProof, PlonkProof, ProofLinkingHint, errors::ProverError, traits::SingleProverCircuit,
+};
 use renegade_circuits::{
     singleprover_prove_with_hint,
     zk_circuits::{
-        proof_linking::link_sized_commitments_reblind, valid_commitments::SizedValidCommitments,
+        proof_linking::{
+            link_sized_commitments_atomic_match_settle, link_sized_commitments_match_settle,
+            link_sized_commitments_reblind,
+        },
+        valid_commitments::SizedValidCommitments,
         valid_fee_redemption::SizedValidFeeRedemption,
         valid_malleable_match_settle_atomic::SizedValidMalleableMatchSettleAtomic,
         valid_match_settle::SizedValidMatchSettle,
         valid_match_settle_atomic::SizedValidMatchSettleAtomic,
         valid_offline_fee_settlement::SizedValidOfflineFeeSettlement,
-        valid_reblind::SizedValidReblind, valid_wallet_create::SizedValidWalletCreate,
+        valid_reblind::SizedValidReblind,
+        valid_wallet_create::SizedValidWalletCreate,
         valid_wallet_update::SizedValidWalletUpdate,
     },
 };
@@ -65,13 +73,9 @@ pub(crate) async fn handle_valid_reblind(request: ValidReblindRequest) -> Result
 pub(crate) async fn handle_link_commitments_reblind(
     request: LinkCommitmentsReblindRequest,
 ) -> Result<Json, Rejection> {
-    // Spawn on a blocking thread to avoid blocking the async pool
-    let link_proof = tokio::task::spawn_blocking(move || {
-        link_sized_commitments_reblind(&request.valid_reblind_hint, &request.valid_commitments_hint)
-    })
-    .await
-    .map_err(ProverServiceError::custom)? // join error
-    .map_err(ProverServiceError::prover)?; // proof system error
+    let link_proof =
+        link_reblind_commitments(request.valid_reblind_hint, request.valid_commitments_hint)
+            .await?;
 
     let resp = ProofLinkResponse { link_proof };
     Ok(warp::reply::json(&resp))
@@ -82,7 +86,27 @@ pub(crate) async fn handle_link_commitments_reblind(
 pub(crate) async fn handle_valid_match_settle(
     request: ValidMatchSettleRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidMatchSettle>(request.witness, request.statement).await
+    // Prove `VALID MATCH SETTLE` and generate a link hint
+    let (plonk_proof, link_hint) =
+        prove_circuit::<SizedValidMatchSettle>(request.witness, request.statement).await?;
+
+    // Generate the link proofs
+    let link_proof0 = link_commitments_match_settle(
+        0, // party
+        request.valid_commitments_hint0,
+        link_hint.clone(),
+    )
+    .await?;
+
+    let link_proof1 = link_commitments_match_settle(
+        1, // party
+        request.valid_commitments_hint1,
+        link_hint,
+    )
+    .await?;
+
+    let resp = ValidMatchSettleResponse { plonk_proof, link_proof0, link_proof1 };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `VALID MATCH SETTLE ATOMIC`
@@ -90,7 +114,15 @@ pub(crate) async fn handle_valid_match_settle(
 pub(crate) async fn handle_valid_match_settle_atomic(
     request: ValidMatchSettleAtomicRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidMatchSettleAtomic>(request.witness, request.statement).await
+    // Prove `VALID MATCH SETTLE ATOMIC` and generate a link hint
+    let (plonk_proof, link_hint) =
+        prove_circuit::<SizedValidMatchSettleAtomic>(request.witness, request.statement).await?;
+
+    // Generate the link proof
+    let link_proof =
+        link_commitments_match_settle_atomic(request.valid_commitments_hint, link_hint).await?;
+    let resp = ProofAndLinkResponse { plonk_proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `VALID MALLEABLE MATCH SETTLE ATOMIC`
@@ -98,8 +130,17 @@ pub(crate) async fn handle_valid_match_settle_atomic(
 pub(crate) async fn handle_valid_malleable_match_settle_atomic(
     request: ValidMalleableMatchSettleAtomicRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidMalleableMatchSettleAtomic>(request.witness, request.statement)
-        .await
+    // Prove `VALID MALLEABLE MATCH SETTLE ATOMIC` and generate a link hint
+    let (plonk_proof, link_hint) =
+        prove_circuit::<SizedValidMalleableMatchSettleAtomic>(request.witness, request.statement)
+            .await?;
+
+    // Generate the link proof
+    let link_proof =
+        link_commitments_malleable_match_settle_atomic(request.valid_commitments_hint, link_hint)
+            .await?;
+    let resp = ProofAndLinkResponse { plonk_proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `VALID FEE REDEMPTION`
@@ -122,8 +163,10 @@ pub(crate) async fn handle_valid_offline_fee_settlement(
 // | Helpers |
 // -----------
 
+// --- Plonk Prover --- //
+
 /// Prove a circuit and return a json-ified proof
-pub(crate) async fn generate_proof_json<C: SingleProverCircuit>(
+async fn generate_proof_json<C: SingleProverCircuit>(
     witness: C::Witness,
     statement: C::Statement,
 ) -> Result<Json, Rejection>
@@ -132,11 +175,80 @@ where
     C::Statement: 'static + Send,
 {
     // Spawn on a blocking thread
-    let (proof, link_hint) = tokio::task::spawn_blocking(move || singleprover_prove_with_hint::<C>(witness, statement))
+    let (proof, link_hint) = prove_circuit::<C>(witness, statement).await?;
+    let resp = ProofResponse { proof, link_hint };
+    Ok(warp::reply::json(&resp))
+}
+
+/// Prove a circuit; return the proof and link hint
+async fn prove_circuit<C: SingleProverCircuit>(
+    witness: C::Witness,
+    statement: C::Statement,
+) -> Result<(PlonkProof, ProofLinkingHint), Rejection>
+where
+    C::Witness: 'static + Send,
+    C::Statement: 'static + Send,
+{
+    run_blocking(move || singleprover_prove_with_hint::<C>(witness, statement)).await
+}
+
+// --- Proof Linking --- //
+
+/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID REBLIND`
+async fn link_reblind_commitments(
+    reblind_hint: ProofLinkingHint,
+    commitments_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || link_sized_commitments_reblind(&reblind_hint, &commitments_hint)).await
+}
+
+/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MATCH SETTLE`
+async fn link_commitments_match_settle(
+    party: u64,
+    commitments_hint: ProofLinkingHint,
+    match_settle_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || {
+        link_sized_commitments_match_settle(party, &commitments_hint, &match_settle_hint)
+    })
+    .await
+}
+
+/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MATCH SETTLE ATOMIC`
+async fn link_commitments_match_settle_atomic(
+    commitments_hint: ProofLinkingHint,
+    match_settle_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || {
+        link_sized_commitments_atomic_match_settle(&commitments_hint, &match_settle_hint)
+    })
+    .await
+}
+
+/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MALLEABLE MATCH
+/// SETTLE ATOMIC`
+async fn link_commitments_malleable_match_settle_atomic(
+    commitments_hint: ProofLinkingHint,
+    malleable_match_settle_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || {
+        link_sized_commitments_atomic_match_settle(&commitments_hint, &malleable_match_settle_hint)
+    })
+    .await
+}
+
+// --- Runtime --- //
+
+/// Block on a prover callback and handle errors
+async fn run_blocking<F, R>(f: F) -> Result<R, Rejection>
+where
+    F: FnOnce() -> Result<R, ProverError> + Send + 'static,
+    R: Send + 'static,
+{
+    let r = tokio::task::spawn_blocking(f)
         .await
         .map_err(ProverServiceError::custom)? // join error
         .map_err(ProverServiceError::prover)?; // proof system error
 
-    let resp = ProofResponse { proof, link_hint };
-    Ok(warp::reply::json(&resp))
+    Ok(r)
 }

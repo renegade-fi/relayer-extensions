@@ -57,6 +57,7 @@ pub struct ProofLinkResponse {
 ///
 /// This type is returned in response to requests which themselves include a
 /// link hint for the prover service to link against
+#[derive(Serialize, Deserialize)]
 pub struct ProofAndLinkResponse {
     /// The plonk proof
     pub plonk_proof: PlonkProof,
@@ -121,6 +122,23 @@ pub struct ValidMatchSettleRequest {
     pub statement: SizedValidMatchSettleStatement,
     /// The witness
     pub witness: SizedValidMatchSettleWitness,
+    /// The link hint for `VALID COMMITMENTS` for party 0
+    pub valid_commitments_hint0: ProofLinkingHint,
+    /// The link hint for `VALID COMMITMENTS` for party 1
+    pub valid_commitments_hint1: ProofLinkingHint,
+}
+
+/// A response to a request to prove `VALID MATCH SETTLE`
+///
+/// This type includes two link proofs, so it warrants its own type
+#[derive(Serialize, Deserialize)]
+pub struct ValidMatchSettleResponse {
+    /// The plonk proof
+    pub plonk_proof: PlonkProof,
+    /// The proof-linking proof for party 0
+    pub link_proof0: PlonkLinkProof,
+    /// The proof-linking proof for party 1
+    pub link_proof1: PlonkLinkProof,
 }
 
 /// A request to prove `VALID MATCH SETTLE ATOMIC`
@@ -130,6 +148,8 @@ pub struct ValidMatchSettleAtomicRequest {
     pub statement: SizedValidMatchSettleAtomicStatement,
     /// The witness
     pub witness: SizedValidMatchSettleAtomicWitness,
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
 }
 
 /// A request to prove `VALID MALLEABLE MATCH SETTLE ATOMIC`
@@ -139,6 +159,8 @@ pub struct ValidMalleableMatchSettleAtomicRequest {
     pub statement: SizedValidMalleableMatchSettleAtomicStatement,
     /// The witness
     pub witness: SizedValidMalleableMatchSettleAtomicWitness,
+    /// The link hint for `VALID COMMITMENTS`
+    pub valid_commitments_hint: ProofLinkingHint,
 }
 
 /// A request to prove `VALID FEE REDEMPTION`
