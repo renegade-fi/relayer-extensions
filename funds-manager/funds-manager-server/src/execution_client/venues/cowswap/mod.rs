@@ -381,7 +381,7 @@ impl CowswapClient {
 
             // Await for a single trade to be executed on the order
             if let Some(trade) = trades.first() {
-                info!("Cowswap trade executed in tx {:#x}", trade.tx_hash);
+                info!("Cowswap trade executed in tx {}", trade.tx_hash);
 
                 let tx_hash =
                     TxHash::from_str(&trade.tx_hash).map_err(ExecutionClientError::parse)?;
