@@ -9,7 +9,7 @@ use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
 use crate::{
-    execution_client::venues::{lifi::LifiClient, AllExecutionVenues},
+    execution_client::venues::{cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues},
     helpers::{build_provider, get_erc20_balance},
 };
 
@@ -42,8 +42,12 @@ impl ExecutionClient {
         let hot_wallet_address = quoter_hot_wallet.address();
         let rpc_provider = build_provider(rpc_url).map_err(ExecutionClientError::parse)?;
 
-        let lifi = LifiClient::new(lifi_api_key, rpc_provider.clone(), quoter_hot_wallet, chain);
-        let venues = AllExecutionVenues { lifi };
+        let lifi =
+            LifiClient::new(lifi_api_key, rpc_provider.clone(), quoter_hot_wallet.clone(), chain);
+
+        let cowswap = CowswapClient::new(rpc_provider.clone(), quoter_hot_wallet, chain);
+
+        let venues = AllExecutionVenues { lifi, cowswap };
 
         Ok(Self { chain, rpc_provider, price_reporter, hot_wallet_address, venues })
     }

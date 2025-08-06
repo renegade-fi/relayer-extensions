@@ -8,7 +8,7 @@ use funds_manager_api::quoters::QuoteParams;
 
 use crate::execution_client::{
     error::ExecutionClientError,
-    venues::{lifi::LifiClient, quote::ExecutableQuote},
+    venues::{cowswap::CowswapClient, lifi::LifiClient, quote::ExecutableQuote},
 };
 
 pub mod cowswap;
@@ -16,6 +16,7 @@ pub mod lifi;
 pub mod quote;
 
 /// An enum used to specify supported execution venues
+#[derive(Debug)]
 pub enum SupportedExecutionVenue {
     /// The Lifi venue
     Lifi,
@@ -37,13 +38,14 @@ impl Display for SupportedExecutionVenue {
 pub struct AllExecutionVenues {
     /// The Lifi client
     pub lifi: LifiClient,
-    // TODO: Add Cowswap client
+    /// The Cowswap client
+    pub cowswap: CowswapClient,
 }
 
 impl AllExecutionVenues {
     /// Get all venues
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
-        vec![&self.lifi]
+        vec![&self.lifi, &self.cowswap]
     }
 }
 
@@ -62,6 +64,9 @@ pub struct ExecutionResult {
 /// getting & executing quotes
 #[async_trait]
 pub trait ExecutionVenue: Sync {
+    /// Get the name of the venue
+    fn venue_specifier(&self) -> SupportedExecutionVenue;
+
     /// Get a quote from the venue
     async fn get_quote(&self, params: QuoteParams)
         -> Result<ExecutableQuote, ExecutionClientError>;
