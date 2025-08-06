@@ -30,6 +30,8 @@ const MAX_PRICE_DEVIATION: f64 = 0.01; // 1%
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
+/// The default slippage tolerance for a quote
+pub const DEFAULT_SLIPPAGE_TOLERANCE: f64 = 0.001; // 10bps
 
 // ---------
 // | Types |
@@ -153,7 +155,7 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(target_token, amount_to_cover_usdc).await
+        self.execute_swaps_into_target_token(quote_params, target_token, amount_to_cover_usdc).await
     }
 
     // ---------------------------------
@@ -165,6 +167,7 @@ impl ExecutionClient {
     /// Returns a vector of outcomes for the executed swaps.
     async fn execute_swaps_into_target_token(
         &self,
+        params: QuoteParams,
         target_token: Token,
         amount_to_cover_usdc: f64,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
@@ -190,7 +193,12 @@ impl ExecutionClient {
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
 
             let maybe_outcome = self
-                .try_swap_candidate(target_token.get_addr(), candidate, remaining_amount_usdc)
+                .try_swap_candidate(
+                    params.clone(),
+                    target_token.get_addr(),
+                    candidate,
+                    remaining_amount_usdc,
+                )
                 .await?;
 
             if maybe_outcome.is_none() {
@@ -261,6 +269,7 @@ impl ExecutionClient {
     /// or `None` if no swap occurred.
     async fn try_swap_candidate(
         &self,
+        params: QuoteParams,
         target_token_addr: String,
         candidate: SwapCandidate,
         amount_to_cover_usdc: f64,
@@ -287,6 +296,7 @@ impl ExecutionClient {
             to_token: target_token_addr,
             from_token: token.get_addr(),
             from_amount: U256::from(swap_amount),
+            ..params
         };
 
         // If there was an error in executing the candidate swap, we return `None` so

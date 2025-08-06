@@ -7,11 +7,15 @@ use renegade_common::types::{
     token::{Token, USDC_TICKER},
 };
 
-use crate::execution_client::{
-    error::ExecutionClientError,
-    venues::{
-        cowswap::CowswapQuoteExecutionData, lifi::LifiQuoteExecutionData, SupportedExecutionVenue,
+use crate::{
+    execution_client::{
+        error::ExecutionClientError,
+        venues::{
+            cowswap::CowswapQuoteExecutionData, lifi::LifiQuoteExecutionData,
+            SupportedExecutionVenue,
+        },
     },
+    helpers::to_chain_id,
 };
 
 /// The basic information included in an execution quote,
@@ -129,7 +133,14 @@ impl From<ExecutionQuote> for ApiExecutionQuote {
         let buy_amount = value.buy_amount;
         let venue = value.venue.to_string();
 
-        ApiExecutionQuote { sell_token_address, buy_token_address, sell_amount, buy_amount, venue }
+        ApiExecutionQuote {
+            sell_token_address,
+            buy_token_address,
+            sell_amount,
+            buy_amount,
+            venue,
+            chain_id: to_chain_id(value.chain),
+        }
     }
 }
 
