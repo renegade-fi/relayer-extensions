@@ -7,13 +7,20 @@ use renegade_common::types::{
     token::{Token, USDC_TICKER},
 };
 
-use crate::execution_client::{
-    error::ExecutionClientError,
-    venues::{lifi::LifiQuoteExecutionData, SupportedExecutionVenue},
+use crate::{
+    execution_client::{
+        error::ExecutionClientError,
+        venues::{
+            cowswap::CowswapQuoteExecutionData, lifi::LifiQuoteExecutionData,
+            SupportedExecutionVenue,
+        },
+    },
+    helpers::to_chain_id,
 };
 
 /// The basic information included in an execution quote,
 /// agnostic of the venue that provided the quote
+#[derive(Debug)]
 pub struct ExecutionQuote {
     /// The token being sold
     pub sell_token: Token,
@@ -126,17 +133,24 @@ impl From<ExecutionQuote> for ApiExecutionQuote {
         let buy_amount = value.buy_amount;
         let venue = value.venue.to_string();
 
-        ApiExecutionQuote { sell_token_address, buy_token_address, sell_amount, buy_amount, venue }
+        ApiExecutionQuote {
+            sell_token_address,
+            buy_token_address,
+            sell_amount,
+            buy_amount,
+            venue,
+            chain_id: to_chain_id(value.chain),
+        }
     }
 }
 
 /// An enum wrapping the venue-specific auxiliary data needed to execute a quote
+#[derive(Debug)]
 pub enum QuoteExecutionData {
     /// Lifi-specific quote execution data
     Lifi(LifiQuoteExecutionData),
     /// Cowswap-specific quote execution data
-    // TODO: Implement Cowswap quote execution data
-    Cowswap(),
+    Cowswap(CowswapQuoteExecutionData),
 }
 
 impl QuoteExecutionData {
@@ -151,9 +165,9 @@ impl QuoteExecutionData {
 
     /// "Unwraps" Cowswap quote execution data, returning an error if it is not
     /// the Cowswap variant
-    pub fn cowswap(self) -> Result<(), ExecutionClientError> {
+    pub fn cowswap(&self) -> Result<CowswapQuoteExecutionData, ExecutionClientError> {
         match self {
-            QuoteExecutionData::Cowswap() => Ok(()),
+            QuoteExecutionData::Cowswap(data) => Ok(data.clone()),
             _ => Err(ExecutionClientError::quote_conversion("Non-Cowswap quote execution data")),
         }
     }
@@ -161,6 +175,7 @@ impl QuoteExecutionData {
 
 /// An executable quote, which includes the basic quote information
 /// along with any auxiliary data needed to execute the quote
+#[derive(Debug)]
 pub struct ExecutableQuote {
     /// The quote
     pub quote: ExecutionQuote,

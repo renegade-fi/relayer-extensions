@@ -38,6 +38,8 @@ const LIFI_DIAMOND_ADDRESS: Address =
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
+/// The default slippage tolerance for a quote
+pub const DEFAULT_SLIPPAGE_TOLERANCE: f64 = 0.001; // 10bps
 
 // ---------
 // | Types |
@@ -147,7 +149,7 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(target_token, amount_to_cover_usdc).await
+        self.execute_swaps_into_target_token(quote_params, target_token, amount_to_cover_usdc).await
     }
 
     // ---------------------------------
@@ -159,6 +161,7 @@ impl ExecutionClient {
     /// Returns a vector of outcomes for the executed swaps.
     async fn execute_swaps_into_target_token(
         &self,
+        params: QuoteParams,
         target_token: Token,
         amount_to_cover_usdc: f64,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
@@ -184,7 +187,12 @@ impl ExecutionClient {
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
 
             let maybe_outcome = self
-                .try_swap_candidate(target_token.get_addr(), candidate, remaining_amount_usdc)
+                .try_swap_candidate(
+                    params.clone(),
+                    target_token.get_addr(),
+                    candidate,
+                    remaining_amount_usdc,
+                )
                 .await?;
 
             if maybe_outcome.is_none() {
@@ -255,6 +263,7 @@ impl ExecutionClient {
     /// or `None` if no swap occurred.
     async fn try_swap_candidate(
         &self,
+        params: QuoteParams,
         target_token_addr: String,
         candidate: SwapCandidate,
         amount_to_cover_usdc: f64,
@@ -281,6 +290,7 @@ impl ExecutionClient {
             to_token: target_token_addr,
             from_token: token.get_addr(),
             from_amount: U256::from(swap_amount),
+            ..params
         };
 
         // If there was an error in executing the candidate swap, we return `None` so
@@ -317,13 +327,19 @@ impl ExecutionClient {
         let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
         self.validate_quote(&augmented_quote).await?;
 
-        // We expect there to be at least one execution venue
-        let first_venue = venues.first().unwrap();
-        let remaining_venues = venues.iter().skip(1);
+            if let Err(e) = quote_res {
+                warn!("Error getting quote from {}: {e}", venue.venue_specifier());
+                continue;
+            }
 
-        let mut best_quote = first_venue.get_quote(params.clone()).await?;
-        for venue in remaining_venues {
-            let quote = venue.get_quote(params.clone()).await?;
+            let quote = quote_res.unwrap();
+
+            if maybe_best_quote.is_none() {
+                maybe_best_quote = Some(quote);
+                continue;
+            }
+
+            let best_quote = maybe_best_quote.as_ref().unwrap();
 
             let quote_price = quote.quote.get_price(None /* buy_amount */);
             let best_quote_price = best_quote.quote.get_price(None /* buy_amount */);
@@ -332,13 +348,15 @@ impl ExecutionClient {
             let is_better_buy = !quote.quote.is_sell() && quote_price < best_quote_price;
 
             if is_better_sell || is_better_buy {
-                best_quote = quote;
+                maybe_best_quote = Some(quote);
             }
         }
 
-        self.validate_quote(&best_quote).await?;
+        if let Some(ref best_quote) = maybe_best_quote {
+            self.validate_quote(best_quote).await?;
+        }
 
-        Ok(best_quote)
+        Ok(maybe_best_quote)
     }
 
     /// Validate a quote against the Renegade price
@@ -378,8 +396,8 @@ impl ExecutionClient {
     ) -> Result<ExecutionResult, ExecutionClientError> {
         match executable_quote.execution_data {
             QuoteExecutionData::Lifi(_) => self.venues.lifi.execute_quote(executable_quote).await,
-            QuoteExecutionData::Cowswap() => {
-                todo!()
+            QuoteExecutionData::Cowswap(_) => {
+                self.venues.cowswap.execute_quote(executable_quote).await
             },
         }
     }
