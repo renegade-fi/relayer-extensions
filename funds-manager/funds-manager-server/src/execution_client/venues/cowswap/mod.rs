@@ -17,7 +17,7 @@ use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
@@ -381,6 +381,8 @@ impl CowswapClient {
 
             // Await for a single trade to be executed on the order
             if let Some(trade) = trades.first() {
+                info!("Cowswap trade executed in tx {:#x}", trade.tx_hash);
+
                 let tx_hash =
                     TxHash::from_str(&trade.tx_hash).map_err(ExecutionClientError::parse)?;
 
@@ -399,6 +401,8 @@ impl CowswapClient {
 
         // TODO: Here, we can cancel the order as it still hasn't been executed,
         // but for now we rely on the `valid_to` field to expire the order.
+
+        warn!("Cowswap trade not executed after {MAX_TRADE_EXECUTION_WAIT_TIME} seconds");
 
         Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost: U256::ZERO, tx_hash: None })
     }

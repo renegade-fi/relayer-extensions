@@ -335,8 +335,9 @@ impl ExecutionClient {
 
         let mut maybe_best_quote = None;
         for (venue, quote_res) in quote_results {
+            let venue_specifier = venue.venue_specifier();
             if let Err(e) = quote_res {
-                warn!("Error getting quote from {}: {e}", venue.venue_specifier());
+                warn!("Error getting quote from {venue_specifier}: {e}");
                 continue;
             }
 
@@ -350,10 +351,14 @@ impl ExecutionClient {
             let best_quote = maybe_best_quote.as_ref().unwrap();
 
             let quote_price = quote.quote.get_price(None /* buy_amount */);
+
+            let is_sell = quote.quote.is_sell();
+            info!("{venue_specifier} quote price: {quote_price} (is_sell: {is_sell})");
+
             let best_quote_price = best_quote.quote.get_price(None /* buy_amount */);
 
-            let is_better_sell = quote.quote.is_sell() && quote_price > best_quote_price;
-            let is_better_buy = !quote.quote.is_sell() && quote_price < best_quote_price;
+            let is_better_sell = is_sell && quote_price > best_quote_price;
+            let is_better_buy = !is_sell && quote_price < best_quote_price;
 
             if is_better_sell || is_better_buy {
                 maybe_best_quote = Some(quote);

@@ -18,7 +18,7 @@ use funds_manager_api::{quoters::QuoteParams, u256_try_into_u64};
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::{
     execution_client::{
@@ -313,7 +313,14 @@ impl ExecutionVenue for LifiClient {
         let query_string = qs_config.serialize_string(&lifi_params).unwrap();
         let path = format!("{LIFI_QUOTE_ENDPOINT}?{query_string}");
 
-        let resp: LifiQuote = self.send_get_request(&path).await?;
+        // Log the request path if the quote fails
+        let resp: LifiQuote = match self.send_get_request(&path).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("LiFi error with path: {path}: {e}");
+                return Err(e);
+            },
+        };
 
         ExecutableQuote::from_lifi_quote(resp, self.chain)
     }
