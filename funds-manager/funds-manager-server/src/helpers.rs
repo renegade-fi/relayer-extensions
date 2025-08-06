@@ -12,7 +12,7 @@ use alloy::{
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
-use alloy_primitives::{utils::format_units, Address};
+use alloy_primitives::{utils::format_units, Address, U256};
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
@@ -20,7 +20,9 @@ use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use rand::Rng;
 use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
-use tracing::instrument;
+use reqwest::Response;
+use serde::Deserialize;
+use tracing::{error, info, instrument};
 
 use crate::{
     cli::{Environment, BLOCK_POLLING_INTERVAL},
@@ -36,6 +38,11 @@ const TX_MAX_RETRIES: u32 = 5;
 const TX_MIN_DELAY: Duration = Duration::from_millis(500);
 /// The maximum delay between retries
 const TX_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// The amount to increase an approval by for a swap
+///
+/// We "over-approve" so that we don't need to re-approve on every swap
+const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
 
 /// The error message indicating that a nonce is too low
 const ERR_NONCE_TOO_LOW: &str = "nonce too low";
@@ -133,6 +140,41 @@ pub async fn get_erc20_balance(
     let bal_f64 = bal_str.parse::<f64>().map_err(FundsManagerError::parse)?;
 
     Ok(bal_f64)
+}
+
+/// Approve an erc20 allowance
+pub(crate) async fn approve_erc20_allowance(
+    token_address: Address,
+    spender: Address,
+    owner: Address,
+    amount: U256,
+    rpc_provider: DynProvider,
+) -> Result<(), FundsManagerError> {
+    let erc20 = IERC20::new(token_address, rpc_provider);
+
+    // First, check if the allowance is already sufficient
+    let allowance =
+        erc20.allowance(owner, spender).call().await.map_err(FundsManagerError::on_chain)?;
+
+    if allowance >= amount {
+        info!("Already approved erc20 allowance for {spender:#x}");
+        return Ok(());
+    }
+
+    // Otherwise, approve the allowance
+    let approval_amount = amount * APPROVAL_AMPLIFIER;
+    let tx = erc20.approve(spender, approval_amount);
+    let pending_tx = tx.send().await.map_err(FundsManagerError::on_chain)?;
+
+    let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+
+    info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
+    Ok(())
+}
+
+/// Compute the gas cost of a transaction in WEI
+pub fn get_gas_cost(receipt: &TransactionReceipt) -> U256 {
+    U256::from(receipt.gas_used) * U256::from(receipt.effective_gas_price)
 }
 
 // -----------------------
@@ -256,6 +298,17 @@ pub fn from_env_agnostic_name(chain: &str, environment: &Environment) -> Chain {
     }
 }
 
+/// Convert a chain to its chain id
+pub fn to_chain_id(chain: Chain) -> u64 {
+    match chain {
+        Chain::ArbitrumOne => 42161,
+        Chain::ArbitrumSepolia => 421614,
+        Chain::BaseMainnet => 8453,
+        Chain::BaseSepolia => 84532,
+        Chain::Devnet => 0,
+    }
+}
+
 /// Convert a string to title case
 pub fn titlecase(s: &str) -> String {
     s.split_whitespace()
@@ -301,4 +354,19 @@ pub fn convert_headers(headers: &warp::hyper::HeaderMap) -> http1::HeaderMap {
     }
 
     converted
+}
+
+/// Handle an HTTP response
+pub async fn handle_http_response<Res: for<'de> Deserialize<'de>>(
+    response: Response,
+) -> Result<Res, FundsManagerError> {
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await?;
+        let msg = format!("Unexpected status code: {status}\nbody: {body}");
+        error!(msg);
+        return Err(FundsManagerError::http(msg));
+    }
+
+    response.json::<Res>().await.map_err(FundsManagerError::http)
 }

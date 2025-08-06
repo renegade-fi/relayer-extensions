@@ -2,28 +2,19 @@
 
 use std::cmp::Ordering;
 
-use alloy::{
-    eips::BlockId,
-    hex,
-    network::TransactionBuilder,
-    providers::{DynProvider, Provider},
-    rpc::types::{TransactionReceipt, TransactionRequest},
-    signers::local::PrivateKeySigner,
-};
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, TxHash, U256};
 use funds_manager_api::{
-    quoters::{
-        AugmentedExecutionQuote, ExecutionQuote, LiFiQuoteParams, SwapIntoTargetTokenRequest,
-    },
-    u256_try_into_u64,
+    quoters::{QuoteParams, SwapIntoTargetTokenRequest},
+    u256_try_into_u128,
 };
-use renegade_common::types::{
-    chain::Chain,
-    token::{get_all_tokens, Token},
-};
+use futures::future::join_all;
+use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
-use crate::helpers::IERC20;
+use crate::execution_client::venues::{
+    quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+    ExecutionResult, ExecutionVenue,
+};
 
 use super::{error::ExecutionClientError, ExecutionClient};
 
@@ -36,29 +27,25 @@ const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
 /// The maximum price deviation from the Renegade price that is allowed
-const MAX_PRICE_DEVIATION: f64 = 0.02; // 1%
-/// The amount to increase an approval by for a swap
-///
-/// We "over-approve" so that we don't need to re-approve on every swap
-const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
-/// The address of the LiFi diamond (same address on Arbitrum One and Base
-/// Mainnet), constantized here to simplify approvals
-const LIFI_DIAMOND_ADDRESS: Address =
-    Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
+const MAX_PRICE_DEVIATION: f64 = 0.02; // 2%
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
+/// The default slippage tolerance for a quote
+pub const DEFAULT_SLIPPAGE_TOLERANCE: f64 = 0.001; // 10bps
 
 // ---------
 // | Types |
 // ---------
 
-/// The outcome of an executed swap
-pub struct SwapOutcome {
+/// The outcome of a successfully-executed decaying swap
+pub struct DecayingSwapOutcome {
     /// The quote that was executed
-    pub augmented_quote: AugmentedExecutionQuote,
-    /// The transaction receipt of the swap
-    pub receipt: TransactionReceipt,
+    pub quote: ExecutionQuote,
+    /// The actual amount of the token that was bought
+    pub buy_amount_actual: U256,
+    /// The transaction hash in which the swap was executed
+    pub tx_hash: TxHash,
     /// The cumulative gas cost of the swap, across all attempts.
     pub cumulative_gas_cost: U256,
 }
@@ -80,53 +67,11 @@ impl SwapCandidate {
     }
 }
 
-// -----------
-// | Helpers |
-// -----------
-
-/// Compute the gas cost of a transaction in WEI
-fn get_gas_cost(receipt: &TransactionReceipt) -> U256 {
-    U256::from(receipt.gas_used) * U256::from(receipt.effective_gas_price)
-}
-
 // --------------------
 // | Execution Client |
 // --------------------
 
 impl ExecutionClient {
-    /// Construct a swap transaction from an execution quote
-    async fn build_swap_tx(
-        &self,
-        quote: &ExecutionQuote,
-        client: &DynProvider,
-    ) -> Result<TransactionRequest, ExecutionClientError> {
-        let latest_block = client
-            .get_block(BlockId::latest())
-            .await
-            .map_err(ExecutionClientError::onchain)?
-            .ok_or(ExecutionClientError::onchain("No latest block found"))?;
-
-        let latest_basefee = latest_block
-            .header
-            .base_fee_per_gas
-            .ok_or(ExecutionClientError::onchain("No basefee found"))?
-            as u128;
-
-        let gas_limit =
-            u256_try_into_u64(quote.gas_limit).map_err(ExecutionClientError::onchain)?;
-
-        let tx = TransactionRequest::default()
-            .with_to(quote.to)
-            .with_from(quote.from)
-            .with_value(quote.value)
-            .with_input(quote.data.clone())
-            .with_max_fee_per_gas(latest_basefee * 2)
-            .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit);
-
-        Ok(tx)
-    }
-
     /// Attempt to execute a swap, retrying failed swaps with
     /// decreased quotes down to a minimum trade size.
     ///
@@ -134,45 +79,49 @@ impl ExecutionClient {
     /// attempted swaps
     pub async fn swap_immediate_decaying(
         &self,
-        mut params: LiFiQuoteParams,
-        wallet: PrivateKeySigner,
-    ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
-        // Approve the top-level sell amount
-        let sell_token_amount = params.from_amount;
-        let sell_token_address: Address =
-            params.from_token.parse().map_err(ExecutionClientError::parse)?;
-
-        self.approve_erc20_allowance(
-            sell_token_address,
-            LIFI_DIAMOND_ADDRESS,
-            sell_token_amount,
-            &wallet,
-        )
-        .await?;
-
+        mut params: QuoteParams,
+    ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let augmented_quote = match self.get_augmented_quote(params.clone(), self.chain).await?
-            {
-                None => return Ok(None),
-                Some(augmented_quote) => augmented_quote,
-            };
+            // The from amount may have decayed to zero,
+            // in which case fetching a quote is impossible
+            if params.from_amount == U256::ZERO {
+                return Ok(None);
+            }
 
-            // Submit the swap
-            let client = self.get_signing_provider(wallet.clone());
-            let tx = self.build_swap_tx(&augmented_quote.quote, &client).await?;
-            let receipt = self.send_tx(tx, &client).await?;
-            cumulative_gas_cost += get_gas_cost(&receipt);
+            let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
+            if maybe_executable_quote.is_none() {
+                warn!("No quote found for swap across all venues");
+                return Ok(None);
+            }
 
-            // If the swap succeeds, return
-            if receipt.status() {
-                return Ok(Some(SwapOutcome { augmented_quote, receipt, cumulative_gas_cost }));
+            let executable_quote = maybe_executable_quote.unwrap();
+            let quote_amount = executable_quote.quote.quote_amount_decimal();
+
+            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+                warn!("Decaying swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+                return Ok(None);
+            }
+
+            // Execute the quote
+            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+                self.execute_quote(&executable_quote).await?;
+
+            cumulative_gas_cost += gas_cost;
+
+            // If the swap was successful, return
+            if let Some(tx_hash) = tx_hash {
+                return Ok(Some(DecayingSwapOutcome {
+                    quote: executable_quote.quote,
+                    buy_amount_actual,
+                    tx_hash,
+                    cumulative_gas_cost,
+                }));
             }
 
             // Otherwise, decrease the swap size and try again
-            warn!("tx ({:#x}) failed, retrying w/ reduced-size quote", receipt.transaction_hash);
-            params =
-                LiFiQuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
+            warn!("swap failed, retrying w/ reduced-size quote");
+            params = QuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
         }
     }
 
@@ -183,15 +132,13 @@ impl ExecutionClient {
     pub async fn try_swap_into_target_token(
         &self,
         req: SwapIntoTargetTokenRequest,
-        wallet: PrivateKeySigner,
-    ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let SwapIntoTargetTokenRequest { target_amount, quote_params } = req;
 
         let target_token = Token::from_addr_on_chain(&quote_params.to_token, self.chain);
 
         // Check that the current token balances doesn't already cover the target amount
-        let current_balance =
-            self.get_erc20_balance(&target_token.addr, &wallet.address().to_string()).await?;
+        let current_balance = self.get_erc20_balance(&target_token.addr).await?;
 
         if current_balance >= target_amount {
             let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
@@ -209,13 +156,7 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(
-            target_token,
-            amount_to_cover_usdc,
-            quote_params,
-            wallet,
-        )
-        .await
+        self.execute_swaps_into_target_token(quote_params, target_token, amount_to_cover_usdc).await
     }
 
     // ---------------------------------
@@ -227,17 +168,15 @@ impl ExecutionClient {
     /// Returns a vector of outcomes for the executed swaps.
     async fn execute_swaps_into_target_token(
         &self,
+        params: QuoteParams,
         target_token: Token,
         amount_to_cover_usdc: f64,
-        params: LiFiQuoteParams,
-        wallet: PrivateKeySigner,
-    ) -> Result<Vec<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let target_ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
 
         // Get the balances of the candidate tokens to swap out of,
         // sorted by descending value
-        let swap_candidates =
-            self.get_swap_candidates(&target_token, &wallet.address().to_string()).await?;
+        let swap_candidates = self.get_swap_candidates(&target_token).await?;
 
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
@@ -246,40 +185,39 @@ impl ExecutionClient {
 
         let mut outcomes = vec![];
         for candidate in swap_candidates {
+            if remaining_amount_usdc < MIN_SWAP_QUOTE_AMOUNT {
+                info!("Remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps");
+                break;
+            }
+
             let token = &candidate.token;
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
 
             let maybe_outcome = self
                 .try_swap_candidate(
+                    params.clone(),
                     target_token.get_addr(),
                     candidate,
                     remaining_amount_usdc,
-                    params.clone(),
-                    wallet.clone(),
                 )
                 .await?;
 
             if maybe_outcome.is_none() {
-                break;
+                continue;
             }
 
             let swap_outcome = maybe_outcome.unwrap();
+            let sell_amount = swap_outcome.quote.sell_amount_decimal();
+            let buy_amount = u256_try_into_u128(swap_outcome.buy_amount_actual)
+                .map_err(ExecutionClientError::parse)?;
 
-            let sell_amount = swap_outcome
-                .augmented_quote
-                .get_decimal_corrected_sell_amount()
-                .map_err(ExecutionClientError::custom)?;
-
-            let quoted_buy_amount = swap_outcome
-                .augmented_quote
-                .get_decimal_corrected_buy_amount()
-                .map_err(ExecutionClientError::custom)?;
+            let buy_amount_decimal = swap_outcome.quote.buy_token.convert_to_decimal(buy_amount);
 
             outcomes.push(swap_outcome);
 
-            info!("Swapped {sell_amount} {ticker} for {quoted_buy_amount} {target_ticker}");
+            info!("Swapped {sell_amount} {ticker} for {buy_amount_decimal} {target_ticker}");
 
-            remaining_amount_usdc -= quoted_buy_amount;
+            remaining_amount_usdc -= buy_amount_decimal;
         }
 
         Ok(outcomes)
@@ -291,7 +229,6 @@ impl ExecutionClient {
     async fn get_swap_candidates(
         &self,
         target_token: &Token,
-        wallet_address: &str,
     ) -> Result<Vec<SwapCandidate>, ExecutionClientError> {
         let candidate_tokens: Vec<Token> = get_all_tokens()
             .into_iter()
@@ -300,7 +237,7 @@ impl ExecutionClient {
 
         let mut swap_candidates = vec![];
         for token in candidate_tokens {
-            let balance = self.get_erc20_balance(&token.addr, wallet_address).await?;
+            let balance = self.get_erc20_balance(&token.addr).await?;
             let price = self.price_reporter.get_price(&token.addr, self.chain).await?;
             swap_candidates.push(SwapCandidate { token, balance, price });
         }
@@ -333,12 +270,11 @@ impl ExecutionClient {
     /// or `None` if no swap occurred.
     async fn try_swap_candidate(
         &self,
+        params: QuoteParams,
         target_token_addr: String,
         candidate: SwapCandidate,
         amount_to_cover_usdc: f64,
-        params: LiFiQuoteParams,
-        wallet: PrivateKeySigner,
-    ) -> Result<Option<SwapOutcome>, ExecutionClientError> {
+    ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let balance_value = candidate.notional_value();
         let SwapCandidate { token, balance, price } = candidate;
 
@@ -357,14 +293,16 @@ impl ExecutionClient {
         }
 
         let swap_amount = token.convert_from_decimal(swap_amount_decimal);
-        let swap_params = LiFiQuoteParams {
+        let swap_params = QuoteParams {
             to_token: target_token_addr,
             from_token: token.get_addr(),
             from_amount: U256::from(swap_amount),
             ..params
         };
 
-        let swap_outcome = self.swap_immediate_decaying(swap_params, wallet).await?;
+        // If there was an error in executing the candidate swap, we return `None` so
+        // that we can continue attempting swaps across the other candidates.
+        let swap_outcome = self.swap_immediate_decaying(swap_params).await.ok().flatten();
         Ok(swap_outcome)
     }
 
@@ -372,96 +310,102 @@ impl ExecutionClient {
     // | General Swapping Helpers |
     // ----------------------------
 
-    /// Get an execution quote for a swap
-    #[instrument(skip_all)]
-    pub async fn get_augmented_quote(
+    /// Get the best quote for a swap, across all execution venues
+    #[instrument(
+        skip_all,
+        fields(
+            from_token = %params.from_token,
+            to_token = %params.to_token,
+            from_amount = %params.from_amount
+        )
+    )]
+    async fn get_best_quote(
         &self,
-        params: LiFiQuoteParams,
-        chain: Chain,
-    ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
-        // Zero quotes may be requested when executing a decaying swap,
-        // in which case no quote is possible
-        if params.from_amount == U256::ZERO {
-            return Ok(None);
+        params: QuoteParams,
+    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        // Fetch all quotes in parallel
+        let quote_futures = self.venues.get_all_venues().into_iter().map(|venue| {
+            let params = params.clone();
+            async move {
+                let quote_res = venue.get_quote(params).await;
+                (venue, quote_res)
+            }
+        });
+        let quote_results = join_all(quote_futures).await;
+
+        let mut maybe_best_quote = None;
+        for (venue, quote_res) in quote_results {
+            if let Err(e) = quote_res {
+                warn!("Error getting quote from {}: {e}", venue.venue_specifier());
+                continue;
+            }
+
+            let quote = quote_res.unwrap();
+
+            if maybe_best_quote.is_none() {
+                maybe_best_quote = Some(quote);
+                continue;
+            }
+
+            let best_quote = maybe_best_quote.as_ref().unwrap();
+
+            let quote_price = quote.quote.get_price(None /* buy_amount */);
+            let best_quote_price = best_quote.quote.get_price(None /* buy_amount */);
+
+            let is_better_sell = quote.quote.is_sell() && quote_price > best_quote_price;
+            let is_better_buy = !quote.quote.is_sell() && quote_price < best_quote_price;
+
+            if is_better_sell || is_better_buy {
+                maybe_best_quote = Some(quote);
+            }
         }
 
-        let quote = self.get_quote(params).await?;
-        let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
-        self.validate_quote(&augmented_quote).await?;
-
-        let quote_amount =
-            augmented_quote.get_quote_amount().map_err(ExecutionClientError::parse)?;
-
-        if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            warn!("Recursive swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
-            return Ok(None);
+        if let Some(ref best_quote) = maybe_best_quote {
+            self.validate_quote(best_quote).await?;
         }
 
-        Ok(Some(augmented_quote))
+        Ok(maybe_best_quote)
     }
 
     /// Validate a quote against the Renegade price
     async fn validate_quote(
         &self,
-        augmented_quote: &AugmentedExecutionQuote,
+        executable_quote: &ExecutableQuote,
     ) -> Result<(), ExecutionClientError> {
+        let quote = &executable_quote.quote;
+
         // Get the renegade price for the pair
-        let base_addr = &augmented_quote.get_base_token().addr;
-        let renegade_price =
-            self.price_reporter.get_price(base_addr, augmented_quote.chain).await?;
-        let quote_price = augmented_quote
-            .get_decimal_corrected_price()
-            .map_err(ExecutionClientError::quote_validation)?;
+        let base_addr = &quote.base_token().addr;
+        let renegade_price = self.price_reporter.get_price(base_addr, quote.chain).await?;
+
+        let quote_price = quote.get_price(None /* buy_amount */);
 
         // Check that the price is within the max price impact
-        let deviation = if augmented_quote.is_buy() {
-            (quote_price - renegade_price) / renegade_price
-        } else {
+        let deviation = if quote.is_sell() {
             (renegade_price - quote_price) / renegade_price
+        } else {
+            (quote_price - renegade_price) / renegade_price
         };
 
         if deviation > MAX_PRICE_DEVIATION {
-            let err_msg = format!(
-                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}; Base addr: {base_addr}; Renegade price: {renegade_price}; Quote price: {quote_price}"
-            );
-            return Err(ExecutionClientError::quote_validation(err_msg));
+            return Err(ExecutionClientError::quote_validation(format!(
+                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
+            )));
         }
 
         Ok(())
     }
 
-    /// Approve an erc20 allowance
-    #[instrument(skip(self, wallet))]
-    pub(crate) async fn approve_erc20_allowance(
+    /// Execute a quote on the associated venue
+    async fn execute_quote(
         &self,
-        token_address: Address,
-        spender: Address,
-        amount: U256,
-        wallet: &PrivateKeySigner,
-    ) -> Result<(), ExecutionClientError> {
-        let client = self.get_signing_provider(wallet.clone());
-        let erc20 = IERC20::new(token_address, client);
-
-        // First, check if the allowance is already sufficient
-        let allowance = erc20
-            .allowance(wallet.address(), spender)
-            .call()
-            .await
-            .map_err(ExecutionClientError::onchain)?;
-
-        if allowance >= amount {
-            info!("Already approved erc20 allowance for {spender:#x}");
-            return Ok(());
+        executable_quote: &ExecutableQuote,
+    ) -> Result<ExecutionResult, ExecutionClientError> {
+        match executable_quote.execution_data {
+            QuoteExecutionData::Lifi(_) => self.venues.lifi.execute_quote(executable_quote).await,
+            QuoteExecutionData::Cowswap(_) => {
+                self.venues.cowswap.execute_quote(executable_quote).await
+            },
         }
-
-        // Otherwise, approve the allowance
-        let approval_amount = amount * APPROVAL_AMPLIFIER;
-        let tx = erc20.approve(spender, approval_amount);
-        let pending_tx = tx.send().await.map_err(ExecutionClientError::onchain)?;
-
-        let receipt = pending_tx.get_receipt().await.map_err(ExecutionClientError::onchain)?;
-
-        info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
-        Ok(())
     }
 }

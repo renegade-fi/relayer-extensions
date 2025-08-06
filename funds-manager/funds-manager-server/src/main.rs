@@ -40,9 +40,9 @@ use funds_manager_api::hot_wallets::{
     TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
 };
 use funds_manager_api::quoters::{
-    LiFiQuoteParams, SwapIntoTargetTokenRequest, WithdrawFundsRequest,
-    WithdrawToHyperliquidRequest, GET_DEPOSIT_ADDRESS_ROUTE, SWAP_IMMEDIATE_ROUTE,
-    SWAP_INTO_TARGET_TOKEN_ROUTE, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    QuoteParams, SwapIntoTargetTokenRequest, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
+    GET_DEPOSIT_ADDRESS_ROUTE, SWAP_IMMEDIATE_ROUTE, SWAP_INTO_TARGET_TOKEN_ROUTE,
+    WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("quoters"))
         .and(warp::path(SWAP_IMMEDIATE_ROUTE))
         .and(with_hmac_auth(server.clone()))
-        .map(with_chain_and_json_body::<LiFiQuoteParams>)
+        .map(with_chain_and_json_body::<QuoteParams>)
         .and_then(identity)
         .untuple_one()
         .and(with_server(server.clone()))

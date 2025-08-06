@@ -3,7 +3,7 @@
 #![deny(clippy::missing_docs_in_private_items)]
 
 pub mod auth;
-mod serialization;
+pub mod serialization;
 mod types;
 pub use types::*;
 

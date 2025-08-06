@@ -1,15 +1,8 @@
 //! API types for quoter management
-use alloy_primitives::{hex, Address, Bytes, U256};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    serialization::{f64_string_serialization, u256_string_serialization},
-    u256_try_into_u128,
-};
+use crate::serialization::{f64_string_serialization, u256_string_serialization};
 
 // --------------
 // | Api Routes |
@@ -66,197 +59,10 @@ pub struct WithdrawFundsRequest {
 
 // --- Execution --- //
 
-/// The subset of the quote response forwarded to consumers of this client
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionQuote {
-    /// The token address we're buying
-    pub buy_token_address: Address,
-    /// The token address we're selling
-    pub sell_token_address: Address,
-    /// The amount of tokens to sell
-    #[serde(with = "u256_string_serialization")]
-    pub sell_amount: U256,
-    /// The amount of tokens expected to be received
-    #[serde(with = "u256_string_serialization")]
-    pub buy_amount: U256,
-    /// The minimum amount of tokens expected to be received
-    #[serde(with = "u256_string_serialization")]
-    pub buy_amount_min: U256,
-    /// The submitting address
-    pub from: Address,
-    /// The swap contract address
-    pub to: Address,
-    /// The calldata for the swap
-    pub data: Bytes,
-    /// The value of the tx; should be zero
-    #[serde(with = "u256_string_serialization")]
-    pub value: U256,
-    /// The gas price used in the swap
-    #[serde(with = "u256_string_serialization")]
-    pub gas_price: U256,
-    /// The estimated gas for the swap
-    #[serde(with = "u256_string_serialization")]
-    pub estimated_gas: U256,
-    /// The gas limit for the swap
-    #[serde(with = "u256_string_serialization")]
-    pub gas_limit: U256,
-}
-
-/// An execution quote, augmented with additional contextual data
-#[derive(Clone, Debug)]
-pub struct AugmentedExecutionQuote {
-    /// The quote
-    pub quote: ExecutionQuote,
-    /// The chain the quote is for
-    pub chain: Chain,
-}
-
-impl AugmentedExecutionQuote {
-    /// Create a new augmented execution quote
-    pub fn new(quote: ExecutionQuote, chain: Chain) -> Self {
-        Self { quote, chain }
-    }
-
-    /// Convert the quote to a canonical string representation for HMAC signing
-    pub fn to_canonical_string(&self) -> String {
-        format!(
-            "{}{}{}{}{}{}{}{}{}{}{}{}",
-            self.quote.buy_token_address,
-            self.quote.sell_token_address,
-            self.quote.sell_amount,
-            self.quote.buy_amount,
-            self.quote.from,
-            self.quote.to,
-            hex::encode(&self.quote.data),
-            self.quote.value,
-            self.quote.gas_price,
-            self.quote.estimated_gas,
-            self.quote.gas_limit,
-            self.chain,
-        )
-    }
-
-    /// Get the buy token address as a formatted string
-    pub fn get_buy_token_address(&self) -> String {
-        format!("{:#x}", self.quote.buy_token_address)
-    }
-
-    /// Get the sell token address as a formatted string
-    pub fn get_sell_token_address(&self) -> String {
-        format!("{:#x}", self.quote.sell_token_address)
-    }
-
-    /// Get the from address as a formatted string
-    pub fn get_from_address(&self) -> String {
-        format!("{:#x}", self.quote.from)
-    }
-
-    /// Get the to address as a formatted string
-    pub fn get_to_address(&self) -> String {
-        format!("{:#x}", self.quote.to)
-    }
-
-    /// Get the buy amount as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount(&self) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(self.quote.buy_amount)?;
-        Ok(self.get_buy_token().convert_to_decimal(buy_amount))
-    }
-
-    /// Get the sell amount as a decimal-corrected string
-    pub fn get_decimal_corrected_sell_amount(&self) -> Result<f64, String> {
-        let sell_amount = u256_try_into_u128(self.quote.sell_amount)?;
-        Ok(self.get_sell_token().convert_to_decimal(sell_amount))
-    }
-
-    /// Get the decimal corrected price
-    pub fn get_decimal_corrected_price(&self) -> Result<f64, String> {
-        // Fetch the decimal corrected amounts
-        let buy_amount = self.get_decimal_corrected_buy_amount()?;
-        let sell_amount = self.get_decimal_corrected_sell_amount()?;
-        let (base_amt, quote_amt) =
-            if self.is_buy() { (buy_amount, sell_amount) } else { (sell_amount, buy_amount) };
-
-        let price = quote_amt / base_amt;
-        Ok(price)
-    }
-
-    /// Get the buy amount min as a decimal-corrected string
-    pub fn get_decimal_corrected_buy_amount_min(&self) -> Result<f64, String> {
-        let buy_amount_min = u256_try_into_u128(self.quote.buy_amount_min)?;
-        Ok(self.get_buy_token().convert_to_decimal(buy_amount_min))
-    }
-}
-
-impl AugmentedExecutionQuote {
-    /// Get the price in units of USDC per base token.
-    /// If a custom buy amount is provided, it is used in place of the standard
-    /// buy amount.
-    pub fn get_price(&self, buy_amount: Option<U256>) -> Result<f64, String> {
-        let buy_amount = u256_try_into_u128(buy_amount.unwrap_or(self.quote.buy_amount))?;
-        let decimal_buy_amount = self.get_buy_token().convert_to_decimal(buy_amount);
-
-        let decimal_sell_amount = self.get_decimal_corrected_sell_amount()?;
-
-        let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
-        if self.is_buy() {
-            Ok(1.0 / buy_per_sell)
-        } else {
-            Ok(buy_per_sell)
-        }
-    }
-
-    /// Returns the non-USDC token
-    pub fn get_base_token(&self) -> Token {
-        if self.is_buy() {
-            self.get_buy_token()
-        } else {
-            self.get_sell_token()
-        }
-    }
-
-    /// Return true if the sell token is USDC
-    pub fn is_buy(&self) -> bool {
-        let usdc_mint = &Token::from_ticker_on_chain(USDC_TICKER, self.chain).get_alloy_address();
-        &self.quote.sell_token_address == usdc_mint
-    }
-
-    /// Returns the token being bought
-    pub fn get_buy_token(&self) -> Token {
-        Token::from_addr_on_chain(&self.get_buy_token_address(), self.chain)
-    }
-
-    /// Returns the token being sold
-    pub fn get_sell_token(&self) -> Token {
-        Token::from_addr_on_chain(&self.get_sell_token_address(), self.chain)
-    }
-
-    /// Returns the volume in USDC
-    pub fn get_quote_amount(&self) -> Result<f64, String> {
-        if self.is_buy() {
-            self.get_decimal_corrected_sell_amount()
-        } else {
-            self.get_decimal_corrected_buy_amount()
-        }
-    }
-
-    /// Returns the notional volume in USDC, taking into account the actual
-    /// buy amount for sell orders
-    pub fn notional_volume_usdc(&self, buy_amount_actual: U256) -> Result<f64, String> {
-        if self.is_buy() {
-            self.get_decimal_corrected_sell_amount()
-        } else {
-            let buy_amount = u256_try_into_u128(buy_amount_actual)?;
-
-            Ok(self.get_buy_token().convert_to_decimal(buy_amount))
-        }
-    }
-}
-
-/// The subset of LiFi quote request query parameters that we support
+/// Parameters for requesting a quote to be executed
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LiFiQuoteParams {
+pub struct QuoteParams {
     /// The token that should be transferred. Can be the address or the symbol
     pub from_token: String,
     /// The token that should be transferred to. Can be the address or the
@@ -266,48 +72,39 @@ pub struct LiFiQuoteParams {
     /// 1 USDC (6 decimals))
     #[serde(with = "u256_string_serialization")]
     pub from_amount: U256,
-    /// The sending wallet address
-    pub from_address: String,
-    /// The receiving wallet address. If none is provided, the fromAddress will
-    /// be used
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub to_address: Option<String>,
-    /// The ID of the sending chain
-    pub from_chain: usize,
-    /// The ID of the receiving chain
-    pub to_chain: usize,
-    /// The maximum allowed slippage for the transaction as a decimal value.
-    /// 0.005 represents 0.5%.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slippage: Option<f64>,
-    /// The maximum price impact for the transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_price_impact: Option<f64>,
-    /// Timing setting to wait for a certain amount of swap rates. In the format
-    /// minWaitTime-${minWaitTimeMs}-${startingExpectedResults}-${reduceEveryMs}.
-    /// Please check docs.li.fi for more details.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub swap_step_timing_strategies: Option<Vec<String>>,
-    /// Which kind of route should be preferred
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub order: Option<String>,
-    /// Parameter to skip transaction simulation. The quote will be returned
-    /// faster but the transaction gas limit won't be accurate.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_simulation: Option<bool>,
-    /// List of exchanges that are allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_exchanges: Option<Vec<String>>,
-    /// List of exchanges that are not allowed for this transaction
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deny_exchanges: Option<Vec<String>>,
+    /// The slippage tolerance for the quote, as a decimal (e.g. 0.0001 for
+    /// 1 basis point, or 0.01%)
+    ///
+    /// If not provided, the default slippage tolerance will be used.
+    pub slippage_tolerance: Option<f64>,
+}
+
+/// A simplified representation of an execution quote, suitable for API
+/// responses
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiExecutionQuote {
+    /// The address of the token being sold
+    pub sell_token_address: String,
+    /// The address of the token being bought
+    pub buy_token_address: String,
+    /// The amount of the token being sold
+    #[serde(with = "u256_string_serialization")]
+    pub sell_amount: U256,
+    /// The amount of the token being bought
+    #[serde(with = "u256_string_serialization")]
+    pub buy_amount: U256,
+    /// The venue that provided the quote
+    pub venue: String,
+    /// The chain ID that the quote was generated on
+    pub chain_id: u64,
 }
 
 /// The response body for executing an immediate swap
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SwapImmediateResponse {
     /// The quote that was executed
-    pub quote: ExecutionQuote,
+    pub quote: ApiExecutionQuote,
     /// The tx hash of the swap
     pub tx_hash: String,
     /// The execution cost in USD
@@ -328,7 +125,7 @@ pub struct SwapIntoTargetTokenRequest {
     /// The quote parameters for the swap. The `from_token` and `from_amount`
     /// fields will be ignored and calculated by the server, but they are still
     /// required to be set.
-    pub quote_params: LiFiQuoteParams,
+    pub quote_params: QuoteParams,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot
