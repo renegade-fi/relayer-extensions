@@ -110,7 +110,6 @@ pub struct CowswapQuoteExecutionData {
     /// The EIP-712 signature over the order.
     ///
     /// Concretely, the hex-encoded `r || s || v` values, totaling 65 bytes.
-    // TODO: Determine if `v` is expected to be 0/1 or 27/28.
     pub signature: String,
     /// A string encoding of the JSON `app_data` that was used to request the
     /// quote.
@@ -450,6 +449,10 @@ impl ExecutionVenue for CowswapClient {
             executable_quote.quote.sell_amount,
         )
         .await?;
+
+        // We set an extra sleep here, since empirically we've seen the Cowswap API
+        // not index the approval to the VaultRelayer by the time we place an order.
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let order_request = self.construct_order_request(executable_quote)?;
         let order_id: String =

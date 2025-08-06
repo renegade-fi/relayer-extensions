@@ -7,6 +7,7 @@ use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
+use futures::future::join_all;
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
@@ -26,15 +27,7 @@ const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
 /// The maximum price deviation from the Renegade price that is allowed
-const MAX_PRICE_DEVIATION: f64 = 0.02; // 1%
-/// The amount to increase an approval by for a swap
-///
-/// We "over-approve" so that we don't need to re-approve on every swap
-const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
-/// The address of the LiFi diamond (same address on Arbitrum One and Base
-/// Mainnet), constantized here to simplify approvals
-const LIFI_DIAMOND_ADDRESS: Address =
-    Address::new(hex!("0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"));
+const MAX_PRICE_DEVIATION: f64 = 0.02; // 2%
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
@@ -90,11 +83,25 @@ impl ExecutionClient {
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let augmented_quote = match self.get_augmented_quote(params.clone(), self.chain).await?
-            {
-                None => return Ok(None),
-                Some(augmented_quote) => augmented_quote,
-            };
+            // The from amount may have decayed to zero,
+            // in which case fetching a quote is impossible
+            if params.from_amount == U256::ZERO {
+                return Ok(None);
+            }
+
+            let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
+            if maybe_executable_quote.is_none() {
+                warn!("No quote found for swap across all venues");
+                return Ok(None);
+            }
+
+            let executable_quote = maybe_executable_quote.unwrap();
+            let quote_amount = executable_quote.quote.quote_amount_decimal();
+
+            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+                warn!("Decaying swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+                return Ok(None);
+            }
 
             // Execute the quote
             let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
@@ -314,19 +321,20 @@ impl ExecutionClient {
     )]
     async fn get_best_quote(
         &self,
-        params: LiFiQuoteParams,
-        chain: Chain,
-    ) -> Result<Option<AugmentedExecutionQuote>, ExecutionClientError> {
-        // Zero quotes may be requested when executing a decaying swap,
-        // in which case no quote is possible
-        if params.from_amount == U256::ZERO {
-            return Ok(None);
-        }
+        params: QuoteParams,
+    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        // Fetch all quotes in parallel
+        let quote_futures = self.venues.get_all_venues().into_iter().map(|venue| {
+            let params = params.clone();
+            async move {
+                let quote_res = venue.get_quote(params).await;
+                (venue, quote_res)
+            }
+        });
+        let quote_results = join_all(quote_futures).await;
 
-        let quote = self.get_quote(params).await?;
-        let augmented_quote = AugmentedExecutionQuote::new(quote.clone(), chain);
-        self.validate_quote(&augmented_quote).await?;
-
+        let mut maybe_best_quote = None;
+        for (venue, quote_res) in quote_results {
             if let Err(e) = quote_res {
                 warn!("Error getting quote from {}: {e}", venue.venue_specifier());
                 continue;
@@ -364,26 +372,25 @@ impl ExecutionClient {
         &self,
         executable_quote: &ExecutableQuote,
     ) -> Result<(), ExecutionClientError> {
+        let quote = &executable_quote.quote;
+
         // Get the renegade price for the pair
-        let base_addr = &augmented_quote.get_base_token().addr;
-        let renegade_price =
-            self.price_reporter.get_price(base_addr, augmented_quote.chain).await?;
-        let quote_price = augmented_quote
-            .get_decimal_corrected_price()
-            .map_err(ExecutionClientError::quote_validation)?;
+        let base_addr = &quote.base_token().addr;
+        let renegade_price = self.price_reporter.get_price(base_addr, quote.chain).await?;
+
+        let quote_price = quote.get_price(None /* buy_amount */);
 
         // Check that the price is within the max price impact
-        let deviation = if augmented_quote.is_buy() {
-            (quote_price - renegade_price) / renegade_price
-        } else {
+        let deviation = if quote.is_sell() {
             (renegade_price - quote_price) / renegade_price
+        } else {
+            (quote_price - renegade_price) / renegade_price
         };
 
         if deviation > MAX_PRICE_DEVIATION {
-            let err_msg = format!(
-                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}; Base addr: {base_addr}; Renegade price: {renegade_price}; Quote price: {quote_price}"
-            );
-            return Err(ExecutionClientError::quote_validation(err_msg));
+            return Err(ExecutionClientError::quote_validation(format!(
+                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
+            )));
         }
 
         Ok(())
