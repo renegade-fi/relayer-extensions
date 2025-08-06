@@ -7,6 +7,7 @@ use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
+use futures::future::join_all;
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
@@ -322,10 +323,18 @@ impl ExecutionClient {
         &self,
         params: QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
-        let mut maybe_best_quote = None;
-        for venue in self.venues.get_all_venues() {
-            let quote_res = venue.get_quote(params.clone()).await;
+        // Fetch all quotes in parallel
+        let quote_futures = self.venues.get_all_venues().into_iter().map(|venue| {
+            let params = params.clone();
+            async move {
+                let quote_res = venue.get_quote(params).await;
+                (venue, quote_res)
+            }
+        });
+        let quote_results = join_all(quote_futures).await;
 
+        let mut maybe_best_quote = None;
+        for (venue, quote_res) in quote_results {
             if let Err(e) = quote_res {
                 warn!("Error getting quote from {}: {e}", venue.venue_specifier());
                 continue;

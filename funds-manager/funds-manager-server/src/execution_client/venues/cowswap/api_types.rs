@@ -19,8 +19,8 @@ use crate::execution_client::swap::DEFAULT_SLIPPAGE_TOLERANCE;
 // | Constants |
 // -------------
 
-/// The number of seconds for which a quote is valid
-const COWSWAP_QUOTE_VALID_FOR: u32 = 60 * 5; // 5 minutes
+/// The number of seconds for which an order is valid
+const COWSWAP_ORDER_VALID_FOR: u32 = 2 * 60; // 2 minutes
 
 /// The number of basis points in 1 unit
 const BPS_PER_UNIT: f64 = 10_000.0;
@@ -203,7 +203,7 @@ impl OrderQuoteResponse {
             SystemTime::now().duration_since(UNIX_EPOCH).expect("negative timestamp").as_secs()
                 as u32;
 
-        now + COWSWAP_QUOTE_VALID_FOR
+        now + COWSWAP_ORDER_VALID_FOR
     }
 
     /// Sign the order represented by this quote with the given private key,

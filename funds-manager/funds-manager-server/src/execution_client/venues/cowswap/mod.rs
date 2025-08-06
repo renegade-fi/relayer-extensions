@@ -451,6 +451,10 @@ impl ExecutionVenue for CowswapClient {
         )
         .await?;
 
+        // We set an extra sleep here, since empirically we've seen the Cowswap API
+        // not index the approval to the VaultRelayer by the time we place an order.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         let order_request = self.construct_order_request(executable_quote)?;
         let order_id: String =
             self.send_post_request(COWSWAP_ORDER_ENDPOINT, order_request).await?;
