@@ -342,6 +342,10 @@ impl ExecutionClient {
             }
 
             let quote = quote_res.unwrap();
+            let quote_price = quote.quote.get_price(None /* buy_amount */);
+            let is_sell = quote.quote.is_sell();
+
+            info!("{venue_specifier} quote price: {quote_price} (is_sell: {is_sell})");
 
             if maybe_best_quote.is_none() {
                 maybe_best_quote = Some(quote);
@@ -349,12 +353,6 @@ impl ExecutionClient {
             }
 
             let best_quote = maybe_best_quote.as_ref().unwrap();
-
-            let quote_price = quote.quote.get_price(None /* buy_amount */);
-
-            let is_sell = quote.quote.is_sell();
-            info!("{venue_specifier} quote price: {quote_price} (is_sell: {is_sell})");
-
             let best_quote_price = best_quote.quote.get_price(None /* buy_amount */);
 
             let is_better_sell = is_sell && quote_price > best_quote_price;
