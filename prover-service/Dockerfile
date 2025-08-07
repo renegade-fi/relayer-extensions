@@ -36,7 +36,7 @@ RUN apt-get update && \
     apt-get install -y pkg-config libssl-dev libclang-dev libpq-dev ca-certificates
 
 # Update Cargo.toml to include only "prover-service" in workspace members
-RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["prover-service"]' Cargo.toml
+RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["prover-service/server"]' Cargo.toml
 RUN cargo chef prepare --recipe-path recipe.json --bin prover-service
 
 # Build only the dependencies to cache them in this layer
