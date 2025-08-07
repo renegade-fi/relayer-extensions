@@ -14,7 +14,9 @@ use http::StatusCode;
 use renegade_circuit_types::traits::{SingleProverCircuit, setup_preprocessed_keys};
 use renegade_circuits::zk_circuits::{
     valid_commitments::SizedValidCommitments, valid_fee_redemption::SizedValidFeeRedemption,
+    valid_malleable_match_settle_atomic::SizedValidMalleableMatchSettleAtomic,
     valid_match_settle::SizedValidMatchSettle,
+    valid_match_settle_atomic::SizedValidMatchSettleAtomic,
     valid_offline_fee_settlement::SizedValidOfflineFeeSettlement, valid_reblind::SizedValidReblind,
     valid_relayer_fee_settlement::SizedValidRelayerFeeSettlement,
     valid_wallet_create::SizedValidWalletCreate, valid_wallet_update::SizedValidWalletUpdate,
@@ -88,6 +90,8 @@ fn preprocess_circuits() -> Result<(), ProverServiceError> {
     setup_preprocessed_keys::<SizedValidCommitments>();
     setup_preprocessed_keys::<SizedValidReblind>();
     setup_preprocessed_keys::<SizedValidMatchSettle>();
+    setup_preprocessed_keys::<SizedValidMatchSettleAtomic>();
+    setup_preprocessed_keys::<SizedValidMalleableMatchSettleAtomic>();
     setup_preprocessed_keys::<SizedValidRelayerFeeSettlement>();
     setup_preprocessed_keys::<SizedValidOfflineFeeSettlement>();
     setup_preprocessed_keys::<SizedValidFeeRedemption>();
@@ -98,6 +102,9 @@ fn preprocess_circuits() -> Result<(), ProverServiceError> {
     SizedValidCommitments::get_circuit_layout().map_err(ProverServiceError::setup)?;
     SizedValidReblind::get_circuit_layout().map_err(ProverServiceError::setup)?;
     SizedValidMatchSettle::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidMatchSettleAtomic::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidMalleableMatchSettleAtomic::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
     SizedValidRelayerFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
     SizedValidOfflineFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
     SizedValidFeeRedemption::get_circuit_layout().map_err(ProverServiceError::setup)?;
