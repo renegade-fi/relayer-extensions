@@ -201,6 +201,7 @@ where
 }
 
 /// Prove a circuit; return the proof and link hint
+#[instrument(skip_all, fields(circuit = C::name()))]
 async fn prove_circuit<C: SingleProverCircuit>(
     witness: C::Witness,
     statement: C::Statement,
@@ -215,6 +216,7 @@ where
 // --- Proof Linking --- //
 
 /// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID REBLIND`
+#[instrument(skip_all)]
 async fn link_reblind_commitments(
     reblind_hint: ProofLinkingHint,
     commitments_hint: ProofLinkingHint,
@@ -223,6 +225,7 @@ async fn link_reblind_commitments(
 }
 
 /// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MATCH SETTLE ATOMIC`
+#[instrument(skip_all)]
 async fn link_commitments_match_settle_atomic(
     commitments_hint: ProofLinkingHint,
     match_settle_hint: ProofLinkingHint,
@@ -235,6 +238,7 @@ async fn link_commitments_match_settle_atomic(
 
 /// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MALLEABLE MATCH
 /// SETTLE ATOMIC`
+#[instrument(skip_all)]
 async fn link_commitments_malleable_match_settle_atomic(
     commitments_hint: ProofLinkingHint,
     malleable_match_settle_hint: ProofLinkingHint,
