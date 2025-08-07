@@ -7,7 +7,7 @@ use alloy::{
     eips::BlockId,
     hex,
     network::TransactionBuilder,
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, Provider},
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
@@ -31,8 +31,8 @@ use crate::{
         },
     },
     helpers::{
-        approve_erc20_allowance, get_gas_cost, handle_http_response, send_tx_with_retry,
-        to_chain_id, IERC20::Transfer, ONE_CONFIRMATION,
+        approve_erc20_allowance, build_provider, get_gas_cost, handle_http_response,
+        send_tx_with_retry, to_chain_id, IERC20::Transfer, ONE_CONFIRMATION,
     },
 };
 
@@ -157,14 +157,12 @@ impl LifiClient {
     /// Create a new client
     pub fn new(
         api_key: Option<String>,
-        base_provider: DynProvider,
+        rpc_url: &str,
         hot_wallet: PrivateKeySigner,
         chain: Chain,
     ) -> Self {
         let hot_wallet_address = hot_wallet.address();
-        let rpc_provider = DynProvider::new(
-            ProviderBuilder::new().wallet(hot_wallet).connect_provider(base_provider),
-        );
+        let rpc_provider = build_provider(rpc_url, Some(hot_wallet));
 
         Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }

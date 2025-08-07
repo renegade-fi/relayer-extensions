@@ -158,7 +158,7 @@ impl CustodyClient {
             FundsManagerError::parse(format!("Invalid token address: {token_address}"))
         })?;
 
-        let token = IERC20::new(token_address, self.arbitrum_provider.clone());
+        let token = IERC20::new(token_address, self.get_basic_provider());
         let balance =
             token.balanceOf(wallet_address).call().await.map_err(FundsManagerError::on_chain)?;
 

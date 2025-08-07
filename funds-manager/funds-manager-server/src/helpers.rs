@@ -9,6 +9,7 @@ use alloy::{
         DynProvider, Provider, ProviderBuilder,
     },
     rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
@@ -76,19 +77,23 @@ sol! {
 /// nonce manager, which fetches the most recent nonce for each tx. We
 /// use different instantiations of the client throughout the codebase,
 /// so the cached nonce manager will get out of sync.
-pub fn build_provider(url: &str) -> Result<DynProvider, FundsManagerError> {
-    let url = url.parse().map_err(FundsManagerError::parse)?;
-    let provider = ProviderBuilder::new()
-        .disable_recommended_fillers()
+pub fn build_provider(url: &str, wallet: Option<PrivateKeySigner>) -> DynProvider {
+    let url = url.parse().expect("invalid RPC URL");
+    let builder = ProviderBuilder::default()
         .with_simple_nonce_management()
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
-        .filler(BlobGasFiller)
-        .connect_http(url);
+        .filler(BlobGasFiller);
+
+    let provider = if let Some(wallet) = wallet {
+        builder.wallet(wallet).connect_http(url).erased()
+    } else {
+        builder.connect_http(url).erased()
+    };
 
     provider.client().set_poll_interval(BLOCK_POLLING_INTERVAL);
 
-    Ok(DynProvider::new(provider))
+    provider
 }
 
 /// Send a transaction, retrying on failure

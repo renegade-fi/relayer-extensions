@@ -38,18 +38,16 @@ impl ExecutionClient {
         rpc_url: &str,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
-    ) -> Result<Self, ExecutionClientError> {
+    ) -> Self {
         let hot_wallet_address = quoter_hot_wallet.address();
-        let rpc_provider = build_provider(rpc_url).map_err(ExecutionClientError::parse)?;
+        let rpc_provider = build_provider(rpc_url, None /* wallet */);
 
-        let lifi =
-            LifiClient::new(lifi_api_key, rpc_provider.clone(), quoter_hot_wallet.clone(), chain);
-
-        let cowswap = CowswapClient::new(rpc_provider.clone(), quoter_hot_wallet, chain);
+        let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain);
+        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet, chain);
 
         let venues = AllExecutionVenues { lifi, cowswap };
 
-        Ok(Self { chain, rpc_provider, price_reporter, hot_wallet_address, venues })
+        Self { chain, rpc_provider, price_reporter, hot_wallet_address, venues }
     }
 
     /// Get the erc20 balance of an address
