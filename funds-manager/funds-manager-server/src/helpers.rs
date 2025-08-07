@@ -150,7 +150,7 @@ pub(crate) async fn approve_erc20_allowance(
     amount: U256,
     rpc_provider: DynProvider,
 ) -> Result<(), FundsManagerError> {
-    let erc20 = IERC20::new(token_address, rpc_provider);
+    let erc20 = IERC20::new(token_address, rpc_provider.clone());
 
     // First, check if the allowance is already sufficient
     let allowance =
@@ -163,10 +163,8 @@ pub(crate) async fn approve_erc20_allowance(
 
     // Otherwise, approve the allowance
     let approval_amount = amount * APPROVAL_AMPLIFIER;
-    let tx = erc20.approve(spender, approval_amount);
-    let pending_tx = tx.send().await.map_err(FundsManagerError::on_chain)?;
-
-    let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+    let tx = erc20.approve(spender, approval_amount).into_transaction_request();
+    let receipt = send_tx_with_retry(tx, &rpc_provider, ONE_CONFIRMATION).await?;
 
     info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
     Ok(())
