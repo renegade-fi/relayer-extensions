@@ -11,11 +11,20 @@ use std::net::SocketAddr;
 
 use clap::Parser;
 use http::StatusCode;
-use tracing::info;
+use renegade_circuit_types::traits::{SingleProverCircuit, setup_preprocessed_keys};
+use renegade_circuits::zk_circuits::{
+    valid_commitments::SizedValidCommitments, valid_fee_redemption::SizedValidFeeRedemption,
+    valid_match_settle::SizedValidMatchSettle,
+    valid_offline_fee_settlement::SizedValidOfflineFeeSettlement, valid_reblind::SizedValidReblind,
+    valid_relayer_fee_settlement::SizedValidRelayerFeeSettlement,
+    valid_wallet_create::SizedValidWalletCreate, valid_wallet_update::SizedValidWalletUpdate,
+};
+use tracing::{error, info};
 use warp::{Filter, reject::Rejection, reply::Reply};
 
 use crate::{
     cli::Cli,
+    error::ProverServiceError,
     middleware::{basic_auth, handle_rejection, with_tracing},
     prover::{
         handle_link_commitments_reblind, handle_valid_commitments, handle_valid_fee_redemption,
@@ -52,11 +61,47 @@ async fn async_main() {
     let cli = Cli::parse();
     cli.configure_telemetry().expect("failed to setup telemetry");
 
+    // Setup the circuits
+    tokio::task::spawn_blocking(|| {
+        if let Err(e) = preprocess_circuits() {
+            error!("failed to setup circuits: {e}");
+        }
+    })
+    .await
+    .expect("failed to setup circuits");
+
     // Run the server
     let routes = setup_routes(cli.auth_password);
     let listen_addr: SocketAddr = ([0, 0, 0, 0], cli.port).into();
     info!("listening on {}", listen_addr);
     warp::serve(routes).bind(listen_addr).await;
+}
+
+// --- Setup --- //
+
+/// Initialize the proving key/verification key & circuit layout caches for
+/// all of the circuits
+fn preprocess_circuits() -> Result<(), ProverServiceError> {
+    // Set up the proving & verification keys for all of the circuits
+    setup_preprocessed_keys::<SizedValidWalletCreate>();
+    setup_preprocessed_keys::<SizedValidWalletUpdate>();
+    setup_preprocessed_keys::<SizedValidCommitments>();
+    setup_preprocessed_keys::<SizedValidReblind>();
+    setup_preprocessed_keys::<SizedValidMatchSettle>();
+    setup_preprocessed_keys::<SizedValidRelayerFeeSettlement>();
+    setup_preprocessed_keys::<SizedValidOfflineFeeSettlement>();
+    setup_preprocessed_keys::<SizedValidFeeRedemption>();
+
+    // Set up layouts for all of the circuits
+    SizedValidWalletCreate::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidWalletUpdate::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidCommitments::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidReblind::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidMatchSettle::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidRelayerFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidOfflineFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidFeeRedemption::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    Ok(())
 }
 
 // --- Routes --- //
