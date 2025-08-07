@@ -105,6 +105,12 @@ impl ExecutionClient {
 
             let executable_quote = maybe_executable_quote.unwrap();
 
+            if self.check_price_deviation(&executable_quote.quote).await? {
+                warn!("Quote deviates too far from the Renegade price, retrying w/ reduced-size quote");
+                params.from_amount /= SWAP_DECAY_FACTOR;
+                continue;
+            }
+
             // Execute the quote
             let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
                 self.execute_quote(&executable_quote).await?;
@@ -123,7 +129,7 @@ impl ExecutionClient {
 
             // Otherwise, decrease the swap size and try again
             warn!("swap failed, retrying w/ reduced-size quote");
-            params = QuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
+            params.from_amount /= SWAP_DECAY_FACTOR;
         }
     }
 
@@ -386,20 +392,14 @@ impl ExecutionClient {
             }
         }
 
-        if let Some(ref best_quote) = maybe_best_quote {
-            self.validate_quote(best_quote).await?;
-        }
-
         Ok(maybe_best_quote)
     }
 
-    /// Validate a quote against the Renegade price
-    async fn validate_quote(
+    /// Check if a quote deviates too far from the Renegade price
+    async fn check_price_deviation(
         &self,
-        executable_quote: &ExecutableQuote,
-    ) -> Result<(), ExecutionClientError> {
-        let quote = &executable_quote.quote;
-
+        quote: &ExecutionQuote,
+    ) -> Result<bool, ExecutionClientError> {
         // Get the renegade price for the pair
         let base_addr = &quote.base_token().addr;
         let renegade_price = self.price_reporter.get_price(base_addr, quote.chain).await?;
@@ -413,13 +413,7 @@ impl ExecutionClient {
             (quote_price - renegade_price) / renegade_price
         };
 
-        if deviation > MAX_PRICE_DEVIATION {
-            return Err(ExecutionClientError::quote_validation(format!(
-                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
-            )));
-        }
-
-        Ok(())
+        Ok(deviation > MAX_PRICE_DEVIATION)
     }
 
     /// Execute a quote on the associated venue
