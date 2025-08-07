@@ -26,8 +26,8 @@ use super::{error::ExecutionClientError, ExecutionClient};
 const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
-/// The maximum price deviation from the Renegade price that is allowed
-const MAX_PRICE_DEVIATION: f64 = 0.02; // 2%
+/// The default maximum allowable deviation from the Renegade price in a quote
+const DEFAULT_MAX_PRICE_DEVIATION: f64 = 0.005; // 50bps, or 0.5%
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
@@ -105,6 +105,11 @@ impl ExecutionClient {
 
             let executable_quote = maybe_executable_quote.unwrap();
 
+            if self.exceeds_price_deviation(&executable_quote.quote).await? {
+                params.from_amount /= SWAP_DECAY_FACTOR;
+                continue;
+            }
+
             // Execute the quote
             let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
                 self.execute_quote(&executable_quote).await?;
@@ -123,7 +128,7 @@ impl ExecutionClient {
 
             // Otherwise, decrease the swap size and try again
             warn!("swap failed, retrying w/ reduced-size quote");
-            params = QuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
+            params.from_amount /= SWAP_DECAY_FACTOR;
         }
     }
 
@@ -386,20 +391,14 @@ impl ExecutionClient {
             }
         }
 
-        if let Some(ref best_quote) = maybe_best_quote {
-            self.validate_quote(best_quote).await?;
-        }
-
         Ok(maybe_best_quote)
     }
 
-    /// Validate a quote against the Renegade price
-    async fn validate_quote(
+    /// Check if a quote deviates too far from the Renegade price
+    async fn exceeds_price_deviation(
         &self,
-        executable_quote: &ExecutableQuote,
-    ) -> Result<(), ExecutionClientError> {
-        let quote = &executable_quote.quote;
-
+        quote: &ExecutionQuote,
+    ) -> Result<bool, ExecutionClientError> {
         // Get the renegade price for the pair
         let base_addr = &quote.base_token().addr;
         let renegade_price = self.price_reporter.get_price(base_addr, quote.chain).await?;
@@ -413,13 +412,24 @@ impl ExecutionClient {
             (quote_price - renegade_price) / renegade_price
         };
 
-        if deviation > MAX_PRICE_DEVIATION {
-            return Err(ExecutionClientError::quote_validation(format!(
-                "Price deviation of {deviation} is greater than max price deviation of {MAX_PRICE_DEVIATION}"
-            )));
+        let max_deviation = quote
+            .base_token()
+            .get_ticker()
+            .and_then(|ticker| self.max_price_deviations.get(&ticker).copied())
+            .unwrap_or(DEFAULT_MAX_PRICE_DEVIATION);
+
+        let exceeds_max_deviation = deviation > max_deviation;
+        if exceeds_max_deviation {
+            warn!(
+                quote_price,
+                renegade_price,
+                deviation,
+                max_deviation,
+                "Quote deviates too far from the Renegade price"
+            );
         }
 
-        Ok(())
+        Ok(exceeds_max_deviation)
     }
 
     /// Execute a quote on the associated venue

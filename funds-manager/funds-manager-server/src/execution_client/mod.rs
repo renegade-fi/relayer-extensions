@@ -9,6 +9,7 @@ use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
 use crate::{
+    cli::MaxPriceDeviations,
     execution_client::venues::{cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues},
     helpers::{build_provider, get_erc20_balance},
 };
@@ -28,6 +29,8 @@ pub struct ExecutionClient {
     hot_wallet_address: Address,
     /// The venues used for execution
     venues: AllExecutionVenues,
+    /// Map from ticker -> max price deviation allowed in a quote for that token
+    max_price_deviations: MaxPriceDeviations,
 }
 
 impl ExecutionClient {
@@ -38,6 +41,7 @@ impl ExecutionClient {
         rpc_url: &str,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
+        max_price_deviations: MaxPriceDeviations,
     ) -> Self {
         let hot_wallet_address = quoter_hot_wallet.address();
         let rpc_provider = build_provider(rpc_url, None /* wallet */);
@@ -47,7 +51,14 @@ impl ExecutionClient {
 
         let venues = AllExecutionVenues { lifi, cowswap };
 
-        Self { chain, rpc_provider, price_reporter, hot_wallet_address, venues }
+        Self {
+            chain,
+            rpc_provider,
+            price_reporter,
+            hot_wallet_address,
+            venues,
+            max_price_deviations,
+        }
     }
 
     /// Get the erc20 balance of an address
