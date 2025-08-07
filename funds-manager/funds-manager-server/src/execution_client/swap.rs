@@ -26,8 +26,8 @@ use super::{error::ExecutionClientError, ExecutionClient};
 const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 /// The minimum amount of USDC that will be attempted to be swapped recursively
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
-/// The maximum price deviation from the Renegade price that is allowed
-const MAX_PRICE_DEVIATION: f64 = 0.02; // 2%
+/// The default maximum allowable deviation from the Renegade price in a quote
+const DEFAULT_MAX_PRICE_DEVIATION: f64 = 0.005; // 50bps, or 0.5%
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
@@ -105,8 +105,7 @@ impl ExecutionClient {
 
             let executable_quote = maybe_executable_quote.unwrap();
 
-            if self.check_price_deviation(&executable_quote.quote).await? {
-                warn!("Quote deviates too far from the Renegade price, retrying w/ reduced-size quote");
+            if self.exceeds_price_deviation(&executable_quote.quote).await? {
                 params.from_amount /= SWAP_DECAY_FACTOR;
                 continue;
             }
@@ -396,7 +395,7 @@ impl ExecutionClient {
     }
 
     /// Check if a quote deviates too far from the Renegade price
-    async fn check_price_deviation(
+    async fn exceeds_price_deviation(
         &self,
         quote: &ExecutionQuote,
     ) -> Result<bool, ExecutionClientError> {
@@ -413,7 +412,24 @@ impl ExecutionClient {
             (quote_price - renegade_price) / renegade_price
         };
 
-        Ok(deviation > MAX_PRICE_DEVIATION)
+        let max_deviation = quote
+            .base_token()
+            .get_ticker()
+            .and_then(|ticker| self.max_price_deviations.get(&ticker).copied())
+            .unwrap_or(DEFAULT_MAX_PRICE_DEVIATION);
+
+        let exceeds_max_deviation = deviation > max_deviation;
+        if exceeds_max_deviation {
+            warn!(
+                quote_price,
+                renegade_price,
+                deviation,
+                max_deviation,
+                "Quote deviates too far from the Renegade price"
+            );
+        }
+
+        Ok(exceeds_max_deviation)
     }
 
     /// Execute a quote on the associated venue

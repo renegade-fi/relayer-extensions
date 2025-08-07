@@ -178,6 +178,10 @@ impl Cli {
     }
 }
 
+/// A map from token ticker to the maximum price deviation allowed in a quote
+/// for that token
+pub type MaxPriceDeviations = HashMap<String, f64>;
+
 /// Funds manager configuration options for a given chain
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChainConfig {
@@ -200,9 +204,13 @@ pub struct ChainConfig {
     /// is omitted
     pub protocol_decryption_key: Option<String>,
 
-    // --- Execution Venue Params --- //
+    // --- Execution Params --- //
     /// The Lifi API key
     pub lifi_api_key: Option<String>,
+    /// A map from token ticker to the maximum price deviation allowed in a
+    /// quote for that token
+    #[serde(default)]
+    pub max_price_deviations: MaxPriceDeviations,
 }
 
 impl ChainConfig {
@@ -262,6 +270,7 @@ impl ChainConfig {
             &self.rpc_url,
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
+            self.max_price_deviations.clone(),
         );
 
         // Build a metrics recorder
