@@ -7,7 +7,7 @@ use std::{
 
 use alloy::{
     hex,
-    providers::{DynProvider, ProviderBuilder},
+    providers::DynProvider,
     signers::{local::PrivateKeySigner, SignerSync},
 };
 use alloy_primitives::{Address, FixedBytes, TxHash, U256};
@@ -34,7 +34,7 @@ use crate::{
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
-    helpers::{approve_erc20_allowance, handle_http_response, to_chain_id},
+    helpers::{approve_erc20_allowance, build_provider, handle_http_response, to_chain_id},
 };
 
 pub mod abi;
@@ -190,10 +190,8 @@ pub struct CowswapClient {
 
 impl CowswapClient {
     /// Create a new client
-    pub fn new(base_provider: DynProvider, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
-        let rpc_provider = DynProvider::new(
-            ProviderBuilder::new().wallet(hot_wallet.clone()).connect_provider(base_provider),
-        );
+    pub fn new(rpc_url: &str, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
+        let rpc_provider = build_provider(rpc_url, Some(hot_wallet.clone()));
 
         Self { http_client: Client::new(), hot_wallet, chain, rpc_provider }
     }

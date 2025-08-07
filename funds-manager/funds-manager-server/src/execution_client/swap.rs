@@ -77,15 +77,23 @@ impl ExecutionClient {
     ///
     /// Returns the quote, transaction receipt, and cumulative gas cost of all
     /// attempted swaps
+    #[instrument(
+        skip_all,
+        fields(
+            from_token = %params.from_token,
+            to_token = %params.to_token,
+            from_amount = %params.from_amount
+        )
+    )]
     pub async fn swap_immediate_decaying(
         &self,
         mut params: QuoteParams,
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            // The from amount may have decayed to zero,
-            // in which case fetching a quote is impossible
-            if params.from_amount == U256::ZERO {
+            let expected_quote_amount = self.get_expected_quote_amount(&params).await?;
+            if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+                warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
                 return Ok(None);
             }
 
@@ -96,12 +104,6 @@ impl ExecutionClient {
             }
 
             let executable_quote = maybe_executable_quote.unwrap();
-            let quote_amount = executable_quote.quote.quote_amount_decimal();
-
-            if quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-                warn!("Decaying swap amount of {quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
-                return Ok(None);
-            }
 
             // Execute the quote
             let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
@@ -123,6 +125,27 @@ impl ExecutionClient {
             warn!("swap failed, retrying w/ reduced-size quote");
             params = QuoteParams { from_amount: params.from_amount / SWAP_DECAY_FACTOR, ..params };
         }
+    }
+
+    /// Compute the expected quote amount for a swap, using the Renegade price
+    /// for the sell token
+    async fn get_expected_quote_amount(
+        &self,
+        params: &QuoteParams,
+    ) -> Result<f64, ExecutionClientError> {
+        let from_token = Token::from_addr_on_chain(&params.from_token, self.chain);
+        let from_amount_u128 =
+            u256_try_into_u128(params.from_amount).map_err(ExecutionClientError::parse)?;
+
+        let from_amount_f64 = from_token.convert_to_decimal(from_amount_u128);
+        if from_token.is_stablecoin() {
+            return Ok(from_amount_f64);
+        }
+
+        let price = self.price_reporter.get_price(&from_token.addr, self.chain).await?;
+        let approx_quote_amount = from_amount_f64 * price;
+
+        Ok(approx_quote_amount)
     }
 
     /// Try to execute swaps to cover a target amount of a token,

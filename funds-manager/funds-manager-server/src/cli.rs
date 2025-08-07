@@ -262,8 +262,7 @@ impl ChainConfig {
             &self.rpc_url,
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
-        )
-        .map_err(FundsManagerError::custom)?;
+        );
 
         // Build a metrics recorder
         let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain);

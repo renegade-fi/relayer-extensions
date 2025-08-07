@@ -24,7 +24,7 @@ pub struct MetricsRecorder {
 impl MetricsRecorder {
     /// Create a new metrics recorder
     pub fn new(price_reporter: PriceReporterClient, rpc_url: &str, chain: Chain) -> Self {
-        let provider = build_provider(rpc_url).expect("invalid RPC URL");
+        let provider = build_provider(rpc_url, None /* wallet */);
 
         MetricsRecorder { price_reporter, provider, chain }
     }

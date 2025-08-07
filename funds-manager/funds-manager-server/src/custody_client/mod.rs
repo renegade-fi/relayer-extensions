@@ -11,7 +11,7 @@ pub mod withdraw;
 
 use alloy::{
     network::TransactionBuilder,
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, Provider},
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
@@ -126,8 +126,8 @@ pub struct CustodyClient {
     chain_id: u64,
     /// The Fireblocks API client
     fireblocks_client: Arc<FireblocksClient>,
-    /// The arbitrum RPC provider to use for the custody client
-    arbitrum_provider: DynProvider,
+    /// The RPC URL to use for the custody client
+    rpc_url: String,
     /// The database connection pool
     db_pool: Arc<DbPool>,
     /// The AWS config
@@ -145,7 +145,7 @@ impl CustodyClient {
         chain_id: u64,
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
-        arbitrum_rpc_url: String,
+        rpc_url: String,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
@@ -153,13 +153,11 @@ impl CustodyClient {
         let fireblocks_client =
             Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
 
-        let arbitrum_provider = build_provider(&arbitrum_rpc_url)?;
-
         Ok(Self {
             chain,
             chain_id,
             fireblocks_client,
-            arbitrum_provider,
+            rpc_url,
             db_pool,
             aws_config,
             gas_sponsor_address,
@@ -314,17 +312,20 @@ impl CustodyClient {
 
     /// Get an instance of a signer with the http provider attached
     fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
-        let provider =
-            ProviderBuilder::new().wallet(wallet).connect_provider(self.arbitrum_provider.clone());
+        build_provider(&self.rpc_url, Some(wallet))
+    }
 
-        DynProvider::new(provider)
+    /// Get a basic provider for the configured RPC URL, i.e. one that is unable
+    /// to sign transactions
+    fn get_basic_provider(&self) -> DynProvider {
+        build_provider(&self.rpc_url, None /* wallet */)
     }
 
     /// Get the native token balance of an address
     pub(crate) async fn get_ether_balance(&self, address: &str) -> Result<f64, FundsManagerError> {
         let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
         let balance = self
-            .arbitrum_provider
+            .get_basic_provider()
             .get_balance(address)
             .await
             .map_err(FundsManagerError::on_chain)?;
@@ -358,7 +359,7 @@ impl CustodyClient {
         token_address: &str,
         address: &str,
     ) -> Result<f64, FundsManagerError> {
-        get_erc20_balance(token_address, address, self.arbitrum_provider.clone()).await
+        get_erc20_balance(token_address, address, self.get_basic_provider()).await
     }
 
     /// Perform an erc20 transfer

@@ -402,7 +402,6 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
         error!("API Error: {:?}", api_error);
         Ok(warp::reply::with_status(message.clone(), code))
     } else {
-        error!("Unhandled rejection: {:?}", err);
         Err(err)
     }
 }
