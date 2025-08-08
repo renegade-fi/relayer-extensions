@@ -100,6 +100,14 @@ impl Server {
         // so that the relayer can deserialize the proxied request
         headers.insert(CONTENT_LENGTH, body.len().into());
 
+        // Inject OpenTelemetry context propagation headers so the relayer
+        // can join the same distributed trace (e.g. Datadog/APM)
+        opentelemetry::global::get_text_map_propagator(|propagator| {
+            let cx = opentelemetry::Context::current();
+            let mut injector = opentelemetry_http::HeaderInjector(&mut headers);
+            propagator.inject_context(&cx, &mut injector);
+        });
+
         // Admin authenticate the request
         self.admin_authenticate(path, &mut headers, &body);
 
