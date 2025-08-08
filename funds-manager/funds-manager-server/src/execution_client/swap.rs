@@ -11,9 +11,14 @@ use futures::future::join_all;
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
-use crate::execution_client::venues::{
-    quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-    ExecutionResult, ExecutionVenue,
+use crate::{
+    execution_client::venues::{
+        quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+        ExecutionResult, ExecutionVenue,
+    },
+    metrics::labels::{
+        ASSET_TAG, CHAIN_TAG, QUOTE_PRICE_DEVIATION, TRADE_SIDE_FACTOR_TAG, VENUE_TAG,
+    },
 };
 
 use super::{error::ExecutionClientError, ExecutionClient};
@@ -423,6 +428,10 @@ impl ExecutionClient {
             (quote_price - renegade_price) / renegade_price
         };
 
+        // Record the price deviation regardless of whether it exceeds the threshold.
+        // This metric is useful for tuning the deviation maximums.
+        record_price_deviation(quote, deviation);
+
         let max_deviation = quote
             .base_token()
             .get_ticker()
@@ -464,4 +473,19 @@ impl ExecutionClient {
             },
         }
     }
+}
+
+/// Record a quote's price deviation from the Renegade price
+fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
+    let base_token = quote.base_token();
+    let asset = base_token.get_ticker().unwrap_or(base_token.get_addr());
+
+    metrics::gauge!(
+        QUOTE_PRICE_DEVIATION,
+        CHAIN_TAG => quote.chain.to_string(),
+        ASSET_TAG => asset,
+        TRADE_SIDE_FACTOR_TAG => if quote.is_sell() { "sell" } else { "buy" },
+        VENUE_TAG => quote.venue.to_string(),
+    )
+    .set(deviation);
 }
