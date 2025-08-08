@@ -2,7 +2,9 @@
 
 use http::StatusCode;
 use http_auth_basic::Credentials;
-use tracing::{error, info_span};
+use std::convert::Infallible;
+use tracing::{Span, error, info_span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use warp::{
     Filter,
     filters::body::BodyDeserializeError,
@@ -94,4 +96,28 @@ pub(crate) fn with_tracing()
 
         span
     })
+}
+
+// -----------------------------
+// | OTEL Context Propagation  |
+// -----------------------------
+
+/// Extract OpenTelemetry context from incoming headers and set it as the parent
+/// of the current request span. This allows the prover service to join traces
+/// started upstream (auth-server -> relayer -> prover-service).
+pub(crate) fn propagate_span() -> impl Filter<Extract = (), Error = Infallible> + Clone {
+    // Clone all headers; this filter never rejects
+    warp::header::headers_cloned()
+        .and_then(|headers: http::HeaderMap| async move {
+            // Extract parent context from headers using the global propagator
+            let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+                propagator.extract(&opentelemetry_http::HeaderExtractor(&headers))
+            });
+
+            // Attach as parent of the current tracing span
+            let span: Span = Span::current();
+            span.set_parent(parent_cx);
+            Ok::<(), Infallible>(())
+        })
+        .untuple_one()
 }

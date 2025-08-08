@@ -11,6 +11,7 @@ pub(crate) mod helpers;
 pub(crate) mod rate_limiter;
 mod setup;
 
+use std::str::FromStr;
 use std::{sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
@@ -26,7 +27,7 @@ use bytes::Bytes;
 use db::DbPool;
 use gas_estimation::gas_cost_sampler::GasCostSampler;
 use http::header::CONTENT_LENGTH;
-use http::{HeaderMap, HeaderValue, Method, Response};
+use http::{HeaderMap, HeaderName, HeaderValue, Method, Response};
 use price_reporter_client::PriceReporterClient;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
@@ -35,6 +36,7 @@ use renegade_api::{RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAM
 use renegade_common::types::chain::Chain;
 use renegade_common::types::hmac::HmacKey;
 use renegade_util::get_current_time_millis;
+use renegade_util::telemetry::propagation::trace_context;
 use reqwest::Client;
 use tracing::error;
 
@@ -102,11 +104,7 @@ impl Server {
 
         // Inject OpenTelemetry context propagation headers so the relayer
         // can join the same distributed trace (e.g. Datadog/APM)
-        opentelemetry::global::get_text_map_propagator(|propagator| {
-            let cx = opentelemetry::Context::current();
-            let mut injector = opentelemetry_http::HeaderInjector(&mut headers);
-            propagator.inject_context(&cx, &mut injector);
-        });
+        self.add_trace_context_headers(&mut headers);
 
         // Admin authenticate the request
         self.admin_authenticate(path, &mut headers, &body);
@@ -153,5 +151,16 @@ impl Server {
         let b64_sig = b64_general_purpose::STANDARD_NO_PAD.encode(sig);
         let sig_header = HeaderValue::from_str(&b64_sig).expect("b64 encoding should not fail");
         headers.insert(RENEGADE_AUTH_HEADER_NAME, sig_header);
+    }
+
+    /// Add the trace context headers to the request
+    fn add_trace_context_headers(&self, headers: &mut HeaderMap) {
+        for (key, value) in trace_context() {
+            let maybe_name = HeaderName::from_str(&key);
+            let maybe_val = HeaderValue::from_str(&value);
+            if let (Ok(name), Ok(val)) = (maybe_name, maybe_val) {
+                headers.append(name, val);
+            }
+        }
     }
 }
