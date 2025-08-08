@@ -105,7 +105,10 @@ impl ExecutionClient {
 
             let executable_quote = maybe_executable_quote.unwrap();
 
-            if self.exceeds_price_deviation(&executable_quote.quote).await? {
+            if self
+                .exceeds_price_deviation(&executable_quote.quote, params.slippage_tolerance)
+                .await?
+            {
                 params.from_amount /= SWAP_DECAY_FACTOR;
                 continue;
             }
@@ -405,6 +408,7 @@ impl ExecutionClient {
     async fn exceeds_price_deviation(
         &self,
         quote: &ExecutionQuote,
+        slippage_tolerance: Option<f64>,
     ) -> Result<bool, ExecutionClientError> {
         // Get the renegade price for the pair
         let base_addr = &quote.base_token().addr;
@@ -425,13 +429,22 @@ impl ExecutionClient {
             .and_then(|ticker| self.max_price_deviations.get(&ticker).copied())
             .unwrap_or(DEFAULT_MAX_PRICE_DEVIATION);
 
-        let exceeds_max_deviation = deviation > max_deviation;
+        // If the client specified a slippage tolerance greater than the configured
+        // max deviation, we respect the client's preference to "force through" the
+        // quote.
+        let deviation_threshold = if let Some(slippage_tolerance) = slippage_tolerance {
+            slippage_tolerance.max(max_deviation)
+        } else {
+            max_deviation
+        };
+
+        let exceeds_max_deviation = deviation > deviation_threshold;
         if exceeds_max_deviation {
             warn!(
                 quote_price,
                 renegade_price,
                 deviation,
-                max_deviation,
+                deviation_threshold,
                 "Quote deviates too far from the Renegade price"
             );
         }
