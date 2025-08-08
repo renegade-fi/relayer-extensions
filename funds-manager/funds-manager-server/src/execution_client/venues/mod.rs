@@ -25,7 +25,9 @@ pub struct AllExecutionVenues {
 impl AllExecutionVenues {
     /// Get all venues
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
-        vec![&self.lifi, &self.cowswap]
+        // TEMP: We are disabling Cowswap by default until we have a mechanism
+        // for self-trade prevention
+        vec![&self.lifi]
     }
 
     /// Get a venue by its specifier
