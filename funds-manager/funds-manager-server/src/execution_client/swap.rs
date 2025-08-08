@@ -99,7 +99,7 @@ impl ExecutionClient {
 
             let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
             if maybe_executable_quote.is_none() {
-                warn!("No quote found for swap across all venues");
+                warn!("No quote found for swap");
                 return Ok(None);
             }
 
@@ -351,8 +351,15 @@ impl ExecutionClient {
         &self,
         params: QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        // If a venue is specified in the params, we only consider that venue
+        let venues = if let Some(venue) = params.venue {
+            vec![self.venues.get_venue(venue)]
+        } else {
+            self.venues.get_all_venues()
+        };
+
         // Fetch all quotes in parallel
-        let quote_futures = self.venues.get_all_venues().into_iter().map(|venue| {
+        let quote_futures = venues.into_iter().map(|venue| {
             let params = params.clone();
             async move {
                 let quote_res = venue.get_quote(params).await;
