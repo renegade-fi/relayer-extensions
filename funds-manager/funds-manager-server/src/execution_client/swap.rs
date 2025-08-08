@@ -11,9 +11,14 @@ use futures::future::join_all;
 use renegade_common::types::token::{get_all_tokens, Token};
 use tracing::{info, instrument, warn};
 
-use crate::execution_client::venues::{
-    quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-    ExecutionResult, ExecutionVenue,
+use crate::{
+    execution_client::venues::{
+        quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+        ExecutionResult, ExecutionVenue,
+    },
+    metrics::labels::{
+        ASSET_TAG, CHAIN_TAG, QUOTE_PRICE_DEVIATION, TRADE_SIDE_FACTOR_TAG, VENUE_TAG,
+    },
 };
 
 use super::{error::ExecutionClientError, ExecutionClient};
@@ -99,13 +104,16 @@ impl ExecutionClient {
 
             let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
             if maybe_executable_quote.is_none() {
-                warn!("No quote found for swap across all venues");
+                warn!("No quote found for swap");
                 return Ok(None);
             }
 
             let executable_quote = maybe_executable_quote.unwrap();
 
-            if self.exceeds_price_deviation(&executable_quote.quote).await? {
+            if self
+                .exceeds_price_deviation(&executable_quote.quote, params.slippage_tolerance)
+                .await?
+            {
                 params.from_amount /= SWAP_DECAY_FACTOR;
                 continue;
             }
@@ -351,8 +359,15 @@ impl ExecutionClient {
         &self,
         params: QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        // If a venue is specified in the params, we only consider that venue
+        let venues = if let Some(venue) = params.venue {
+            vec![self.venues.get_venue(venue)]
+        } else {
+            self.venues.get_all_venues()
+        };
+
         // Fetch all quotes in parallel
-        let quote_futures = self.venues.get_all_venues().into_iter().map(|venue| {
+        let quote_futures = venues.into_iter().map(|venue| {
             let params = params.clone();
             async move {
                 let quote_res = venue.get_quote(params).await;
@@ -398,6 +413,7 @@ impl ExecutionClient {
     async fn exceeds_price_deviation(
         &self,
         quote: &ExecutionQuote,
+        slippage_tolerance: Option<f64>,
     ) -> Result<bool, ExecutionClientError> {
         // Get the renegade price for the pair
         let base_addr = &quote.base_token().addr;
@@ -412,19 +428,32 @@ impl ExecutionClient {
             (quote_price - renegade_price) / renegade_price
         };
 
+        // Record the price deviation regardless of whether it exceeds the threshold.
+        // This metric is useful for tuning the deviation maximums.
+        record_price_deviation(quote, deviation);
+
         let max_deviation = quote
             .base_token()
             .get_ticker()
             .and_then(|ticker| self.max_price_deviations.get(&ticker).copied())
             .unwrap_or(DEFAULT_MAX_PRICE_DEVIATION);
 
-        let exceeds_max_deviation = deviation > max_deviation;
+        // If the client specified a slippage tolerance greater than the configured
+        // max deviation, we respect the client's preference to "force through" the
+        // quote.
+        let deviation_threshold = if let Some(slippage_tolerance) = slippage_tolerance {
+            slippage_tolerance.max(max_deviation)
+        } else {
+            max_deviation
+        };
+
+        let exceeds_max_deviation = deviation > deviation_threshold;
         if exceeds_max_deviation {
             warn!(
                 quote_price,
                 renegade_price,
                 deviation,
-                max_deviation,
+                deviation_threshold,
                 "Quote deviates too far from the Renegade price"
             );
         }
@@ -444,4 +473,19 @@ impl ExecutionClient {
             },
         }
     }
+}
+
+/// Record a quote's price deviation from the Renegade price
+fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
+    let base_token = quote.base_token();
+    let asset = base_token.get_ticker().unwrap_or(base_token.get_addr());
+
+    metrics::gauge!(
+        QUOTE_PRICE_DEVIATION,
+        CHAIN_TAG => quote.chain.to_string(),
+        ASSET_TAG => asset,
+        TRADE_SIDE_FACTOR_TAG => if quote.is_sell() { "sell" } else { "buy" },
+        VENUE_TAG => quote.venue.to_string(),
+    )
+    .set(deviation);
 }

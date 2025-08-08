@@ -1,4 +1,6 @@
 //! API types for quoter management
+use std::fmt::Display;
+
 use alloy_primitives::U256;
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +61,24 @@ pub struct WithdrawFundsRequest {
 
 // --- Execution --- //
 
+/// An enum used to specify supported execution venues
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SupportedExecutionVenue {
+    /// The Lifi venue
+    Lifi,
+    /// The Cowswap venue
+    Cowswap,
+}
+
+impl Display for SupportedExecutionVenue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SupportedExecutionVenue::Lifi => write!(f, "Lifi"),
+            SupportedExecutionVenue::Cowswap => write!(f, "Cowswap"),
+        }
+    }
+}
+
 /// Parameters for requesting a quote to be executed
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +97,9 @@ pub struct QuoteParams {
     ///
     /// If not provided, the default slippage tolerance will be used.
     pub slippage_tolerance: Option<f64>,
+    /// The venue to use for the quote. If not provided, the best quote across
+    /// all venues will be selected.
+    pub venue: Option<SupportedExecutionVenue>,
 }
 
 /// A simplified representation of an execution quote, suitable for API

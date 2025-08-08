@@ -1,10 +1,8 @@
 //! Venue-specific logic for getting quotes and executing swaps
 
-use std::fmt::Display;
-
 use alloy_primitives::{TxHash, U256};
 use async_trait::async_trait;
-use funds_manager_api::quoters::QuoteParams;
+use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 
 use crate::execution_client::{
     error::ExecutionClientError,
@@ -14,24 +12,6 @@ use crate::execution_client::{
 pub mod cowswap;
 pub mod lifi;
 pub mod quote;
-
-/// An enum used to specify supported execution venues
-#[derive(Debug)]
-pub enum SupportedExecutionVenue {
-    /// The Lifi venue
-    Lifi,
-    /// The Cowswap venue
-    Cowswap,
-}
-
-impl Display for SupportedExecutionVenue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SupportedExecutionVenue::Lifi => write!(f, "Lifi"),
-            SupportedExecutionVenue::Cowswap => write!(f, "Cowswap"),
-        }
-    }
-}
 
 /// A collection of all execution venues used by the execution client
 #[derive(Clone)]
@@ -46,6 +26,14 @@ impl AllExecutionVenues {
     /// Get all venues
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
         vec![&self.lifi, &self.cowswap]
+    }
+
+    /// Get a venue by its specifier
+    pub fn get_venue(&self, venue: SupportedExecutionVenue) -> &dyn ExecutionVenue {
+        match venue {
+            SupportedExecutionVenue::Lifi => &self.lifi,
+            SupportedExecutionVenue::Cowswap => &self.cowswap,
+        }
     }
 }
 
