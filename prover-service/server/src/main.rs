@@ -27,7 +27,7 @@ use warp::{Filter, reject::Rejection, reply::Reply};
 use crate::{
     cli::Cli,
     error::ProverServiceError,
-    middleware::{basic_auth, handle_rejection, with_tracing},
+    middleware::{basic_auth, handle_rejection, propagate_span, with_tracing},
     prover::{
         handle_link_commitments_reblind, handle_valid_commitments, handle_valid_fee_redemption,
         handle_valid_malleable_match_settle_atomic, handle_valid_match_settle,
@@ -125,6 +125,7 @@ fn setup_routes(
     // Prove valid wallet create
     let valid_wallet_create = warp::path("prove-valid-wallet-create")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_wallet_create);
@@ -132,6 +133,7 @@ fn setup_routes(
     // Prove valid wallet update
     let valid_wallet_update = warp::path("prove-valid-wallet-update")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_wallet_update);
@@ -139,6 +141,7 @@ fn setup_routes(
     // Prove valid commitments
     let valid_commitments = warp::path("prove-valid-commitments")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_commitments);
@@ -146,12 +149,14 @@ fn setup_routes(
     // Prove valid reblind
     let valid_reblind = warp::path("prove-valid-reblind")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_reblind);
 
     let link_commitments_reblind = warp::path("link-commitments-reblind")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_link_commitments_reblind);
@@ -159,6 +164,7 @@ fn setup_routes(
     // Prove valid match settle
     let valid_match_settle = warp::path("prove-valid-match-settle")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_match_settle);
@@ -166,6 +172,7 @@ fn setup_routes(
     // Prove valid match settle atomic
     let valid_match_settle_atomic = warp::path("prove-valid-match-settle-atomic")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_match_settle_atomic);
@@ -174,6 +181,7 @@ fn setup_routes(
     let valid_malleable_match_settle_atomic =
         warp::path("prove-valid-malleable-match-settle-atomic")
             .and(warp::post())
+            .and(propagate_span())
             .and(basic_auth(auth_pwd.clone()))
             .and(warp::body::json())
             .and_then(handle_valid_malleable_match_settle_atomic);
@@ -181,6 +189,7 @@ fn setup_routes(
     // Prove valid fee redemption
     let valid_fee_redemption = warp::path("prove-valid-fee-redemption")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
         .and_then(handle_valid_fee_redemption);
@@ -188,6 +197,7 @@ fn setup_routes(
     // Prove valid offline fee settlement
     let valid_offline_fee_settlement = warp::path("prove-valid-offline-fee-settlement")
         .and(warp::post())
+        .and(propagate_span())
         .and(basic_auth(auth_pwd))
         .and(warp::body::json())
         .and_then(handle_valid_offline_fee_settlement);
