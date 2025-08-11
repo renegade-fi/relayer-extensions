@@ -9,6 +9,7 @@ use crate::execution_client::{
     venues::{cowswap::CowswapClient, lifi::LifiClient, quote::ExecutableQuote},
 };
 
+pub mod bebop;
 pub mod cowswap;
 pub mod lifi;
 pub mod quote;
