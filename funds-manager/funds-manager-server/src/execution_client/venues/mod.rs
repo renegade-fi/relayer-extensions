@@ -27,7 +27,7 @@ impl AllExecutionVenues {
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
         // TEMP: We are disabling Cowswap by default until we have a mechanism
         // for self-trade prevention
-        vec![&self.lifi]
+        vec![&self.lifi, &self.cowswap]
     }
 
     /// Get a venue by its specifier

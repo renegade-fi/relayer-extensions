@@ -1,8 +1,13 @@
 //! Defines functionality to compute and record data for swap execution
 
+use alloy::providers::Provider;
 use alloy_primitives::{Address, TxHash, U256};
+use alloy_sol_types::SolEvent;
 use funds_manager_api::u256_try_into_u128;
-use renegade_common::types::{chain::Chain, token::Token};
+use renegade_common::types::{
+    chain::Chain,
+    token::{Token, USDC_TICKER},
+};
 use renegade_darkpool_client::conversion::u256_to_amount;
 use serde::Serialize;
 use tracing::{info, warn};
@@ -11,11 +16,11 @@ use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
     execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
-    helpers::to_env_agnostic_name,
+    helpers::{to_env_agnostic_name, IERC20::Transfer},
     metrics::labels::{
-        ASSET_TAG, CHAIN_TAG, SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
-        SWAP_NOTIONAL_VOLUME_METRIC_NAME, SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
-        VENUE_TAG,
+        ASSET_TAG, CHAIN_TAG, SELF_TRADE_VOLUME_USDC_METRIC_NAME, SWAP_EXECUTION_COST_METRIC_NAME,
+        SWAP_GAS_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
+        SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG, VENUE_TAG,
     },
 };
 
@@ -53,6 +58,8 @@ pub struct SwapExecutionData {
     pub execution_cost_usdc: f64,
     /// The gas cost of execution in USD
     pub gas_cost_usd: f64,
+    /// The USDC volume transferred through the darkpool in the swap
+    pub self_trade_volume_usdc: f64,
     /// The venue that executed the swap
     pub venue: String,
 
@@ -129,6 +136,8 @@ impl MetricsRecorder {
         let received_delta =
             decimal_corrected_buy_amount_estimated - decimal_corrected_buy_amount_actual;
 
+        let self_trade_volume_usdc = self.get_self_trade_volume(*tx_hash).await?;
+
         // Create and return the unified cost data
         Ok(SwapExecutionData {
             // Token information
@@ -149,6 +158,7 @@ impl MetricsRecorder {
             relative_spread,
             execution_cost_usdc,
             gas_cost_usd,
+            self_trade_volume_usdc,
             venue: quote.venue.to_string(),
 
             // Slippage information
@@ -166,6 +176,8 @@ impl MetricsRecorder {
         metrics::gauge!(SWAP_NOTIONAL_VOLUME_METRIC_NAME, &labels)
             .set(cost_data.notional_volume_usdc);
         metrics::gauge!(SWAP_RELATIVE_SPREAD_METRIC_NAME, &labels).set(cost_data.relative_spread);
+        metrics::gauge!(SELF_TRADE_VOLUME_USDC_METRIC_NAME, &labels)
+            .set(cost_data.self_trade_volume_usdc);
     }
 
     /// Derive the labels given a quote and a transaction receipt
@@ -205,6 +217,52 @@ impl MetricsRecorder {
         Ok(cost)
     }
 
+    /// Get the USDC volume transferred through the darkpool in the given
+    /// transaction.
+    ///
+    /// This function assumes the transaction hash is for a swap executed by the
+    /// funds manager, in which case this represents the notional volume
+    /// that we executed through our own protocol.
+    async fn get_self_trade_volume(&self, tx_hash: TxHash) -> Result<f64, FundsManagerError> {
+        let receipt = self
+            .provider
+            .get_transaction_receipt(tx_hash)
+            .await
+            .map_err(FundsManagerError::on_chain)?;
+
+        if receipt.is_none() {
+            return Err(FundsManagerError::on_chain(format!(
+                "No receipt found for tx {tx_hash:#x}"
+            )));
+        }
+        let receipt = receipt.unwrap();
+
+        let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
+        let usdc_address = usdc_token.get_alloy_address();
+
+        receipt
+            .logs()
+            .iter()
+            .map(|log| {
+                if log.address() != usdc_address {
+                    return Ok(0.0);
+                }
+
+                let transfer =
+                    Transfer::decode_log(&log.inner).map_err(FundsManagerError::parse)?;
+
+                if transfer.to == self.darkpool_address || transfer.from == self.darkpool_address {
+                    let value =
+                        u256_try_into_u128(transfer.value).map_err(FundsManagerError::parse)?;
+                    Ok(usdc_token.convert_to_decimal(value))
+                } else {
+                    Ok(0.0)
+                }
+            })
+            .collect::<Result<Vec<f64>, FundsManagerError>>()
+            .map(|darkpool_usdc_transfer_amounts| darkpool_usdc_transfer_amounts.iter().sum())
+    }
+
     /// Log swap cost data in a Datadog-compatible format
     fn log_swap_cost_data(&self, cost_data: &SwapExecutionData, tx_hash: TxHash) {
         info!(
@@ -221,6 +279,7 @@ impl MetricsRecorder {
             notional_volume_usdc = %cost_data.notional_volume_usdc,
             relative_spread = %cost_data.relative_spread,
             execution_cost_usdc = %cost_data.execution_cost_usdc,
+            self_trade_volume_usdc = %cost_data.self_trade_volume_usdc,
             received_delta = %cost_data.received_delta,
             chain = %to_env_agnostic_name(self.chain),
             venue = %cost_data.venue,

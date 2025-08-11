@@ -15,6 +15,9 @@ pub const SWAP_RELATIVE_SPREAD_METRIC_NAME: &str = "swap_relative_spread";
 /// Metric describing the price deviation of a quote from the Renegade price
 pub const QUOTE_PRICE_DEVIATION: &str = "quote_price_deviation";
 
+/// Metric for the USDC volume transferred through the darkpool in the swap
+pub const SELF_TRADE_VOLUME_USDC_METRIC_NAME: &str = "self_trade_volume";
+
 /// Metric tag for the asset's ticker symbol or address
 pub const ASSET_TAG: &str = "asset";
 

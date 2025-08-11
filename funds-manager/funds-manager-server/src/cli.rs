@@ -274,7 +274,11 @@ impl ChainConfig {
         );
 
         // Build a metrics recorder
-        let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain);
+        let darkpool_address =
+            Address::from_str(&self.darkpool_address).map_err(FundsManagerError::parse)?;
+
+        let metrics_recorder =
+            MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain, darkpool_address);
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)
