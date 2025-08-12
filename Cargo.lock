@@ -3348,7 +3348,7 @@ dependencies = [
  "num-traits",
  "pq-sys",
  "r2d2",
- "uuid 0.8.2",
+ "uuid 1.17.0",
 ]
 
 [[package]]
