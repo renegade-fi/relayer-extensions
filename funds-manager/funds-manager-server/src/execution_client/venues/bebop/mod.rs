@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 use renegade_common::types::chain::Chain;
@@ -16,8 +16,10 @@ use crate::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
-            bebop::api_types::{ApprovalType, BebopQuoteParams, BebopQuoteResponse},
-            quote::ExecutableQuote,
+            bebop::api_types::{
+                ApprovalType, BebopQuoteParams, BebopQuoteResponse, BebopRouteSource,
+            },
+            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
         },
     },
@@ -35,6 +37,71 @@ const BEBOP_BASE_URL: &str = "https://api.bebop.xyz/router";
 
 /// The endpoint for getting a quote
 const BEBOP_QUOTE_ENDPOINT: &str = "v1/quote";
+
+// ---------
+// | Types |
+// ---------
+
+/// Bebop quote execution data
+#[derive(Debug, Clone)]
+pub struct BebopQuoteExecutionData {
+    /// The address of the swap contract
+    pub to: Address,
+    /// The submitting address
+    pub from: Address,
+    /// The value of the tx; should be zero
+    pub value: U256,
+    /// The calldata for the swap
+    pub data: Bytes,
+    /// The gas limit for the swap
+    pub gas_limit: U256,
+    /// The approval target for the swap
+    pub approval_target: Address,
+    /// The source of the solution for the quote
+    pub route_source: BebopRouteSource,
+}
+
+impl ExecutableQuote {
+    /// Convert a Bebop quote into an executable quote
+    pub fn from_bebop_quote(
+        bebop_quote: BebopQuoteResponse,
+        chain: Chain,
+    ) -> Result<Self, ExecutionClientError> {
+        let sell_token = bebop_quote.sell_token(chain)?;
+        let buy_token = bebop_quote.buy_token(chain)?;
+        let sell_amount = bebop_quote.sell_amount()?;
+        let buy_amount = bebop_quote.buy_amount()?;
+
+        let quote = ExecutionQuote {
+            sell_token,
+            buy_token,
+            sell_amount,
+            buy_amount,
+            venue: SupportedExecutionVenue::Bebop,
+            chain,
+        };
+
+        let to = bebop_quote.get_to_address()?;
+        let from = bebop_quote.get_from_address()?;
+        let value = bebop_quote.get_value()?;
+        let data = bebop_quote.get_data()?;
+        let gas_limit = bebop_quote.get_gas_limit()?;
+        let approval_target = bebop_quote.get_approval_target()?;
+        let route_source = bebop_quote.get_route_source()?;
+
+        let execution_data = BebopQuoteExecutionData {
+            to,
+            from,
+            value,
+            data,
+            gas_limit,
+            approval_target,
+            route_source,
+        };
+
+        Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Bebop(execution_data) })
+    }
+}
 
 // ----------
 // | Client |
@@ -128,7 +195,7 @@ impl ExecutionVenue for BebopClient {
 
         let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
         let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
-        let executable_quote = todo!();
+        let executable_quote = ExecutableQuote::from_bebop_quote(quote_response, self.chain)?;
 
         Ok(executable_quote)
     }

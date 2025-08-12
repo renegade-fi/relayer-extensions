@@ -471,6 +471,7 @@ impl ExecutionClient {
             QuoteExecutionData::Cowswap(_) => {
                 self.venues.cowswap.execute_quote(executable_quote).await
             },
+            QuoteExecutionData::Bebop(_) => self.venues.bebop.execute_quote(executable_quote).await,
         }
     }
 }

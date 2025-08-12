@@ -11,8 +11,8 @@ use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
-            cowswap::CowswapQuoteExecutionData, lifi::LifiQuoteExecutionData,
-            SupportedExecutionVenue,
+            bebop::BebopQuoteExecutionData, cowswap::CowswapQuoteExecutionData,
+            lifi::LifiQuoteExecutionData, SupportedExecutionVenue,
         },
     },
     helpers::to_chain_id,
@@ -151,6 +151,8 @@ pub enum QuoteExecutionData {
     Lifi(LifiQuoteExecutionData),
     /// Cowswap-specific quote execution data
     Cowswap(CowswapQuoteExecutionData),
+    /// Bebop-specific quote execution data
+    Bebop(BebopQuoteExecutionData),
 }
 
 impl QuoteExecutionData {
@@ -169,6 +171,15 @@ impl QuoteExecutionData {
         match self {
             QuoteExecutionData::Cowswap(data) => Ok(data.clone()),
             _ => Err(ExecutionClientError::quote_conversion("Non-Cowswap quote execution data")),
+        }
+    }
+
+    /// "Unwraps" Bebop quote execution data, returning an error if it is not
+    /// the Bebop variant
+    pub fn bebop(&self) -> Result<BebopQuoteExecutionData, ExecutionClientError> {
+        match self {
+            QuoteExecutionData::Bebop(data) => Ok(data.clone()),
+            _ => Err(ExecutionClientError::quote_conversion("Non-Bebop quote execution data")),
         }
     }
 }
