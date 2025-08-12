@@ -52,163 +52,82 @@ pub enum ApprovalType {
     Standard,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum BebopQuoteResponse {
-    Successful(BebopSuccessfulQuoteResponse),
-    Error(BebopQuoteErrorResponse),
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopSuccessfulQuoteResponse {
+pub struct BebopQuoteResponse {
     routes: Vec<BebopRoute>,
-    errors: BebopQuoteError,
     best_price: BebopRouteSource,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct BebopRoute {
-    #[serde(rename = "type")]
-    pub route_type: BebopRouteSource,
-    quote: BebopQuote,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub enum BebopRouteSource {
-    #[serde(rename = "JAMv2")]
-    JAM,
-    #[serde(rename = "PMMv3")]
-    PMM,
+    JAMv2,
+    PMMv3,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-pub enum BebopQuote {
-    JAM(BebopJamQuote),
-    PMM(BebopPmmQuote),
+#[serde(tag = "type", content = "quote")]
+pub enum BebopRoute {
+    JAMv2(BebopJamQuote),
+    PMMv3(BebopPmmQuote),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopJamQuote {
-    #[serde(flatten)]
-    quote: BebopQuoteInfo,
-    hooks_hash: String,
-    to_sign: BebopSignableJamOrder,
+    slippage: f64,
+    buy_tokens: HashMap<String, BebopBuyToken>,
+    sell_tokens: HashMap<String, BebopSellToken>,
+    settlement_address: String,
+    approval_target: String,
+    price_impact: f64,
+    tx: BebopTxData,
     solver: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopPmmQuote {
-    #[serde(flatten)]
-    quote: BebopQuoteInfo,
-    makers: Vec<String>,
-    to_sign: BebopSignablePmmOrder,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuoteInfo {
     slippage: f64,
-    gas_fee: BebopGasFee,
-    buy_tokens: BebopBuyToken,
-    sell_tokens: BebopQuotedTokenInfo,
+    buy_tokens: HashMap<String, BebopBuyToken>,
+    sell_tokens: HashMap<String, BebopSellToken>,
     settlement_address: String,
     approval_target: String,
-    required_signatures: Vec<String>,
-    price_impact: Option<f64>,
-    tx: Option<BebopTxData>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopGasFee {
-    native: String,
-    usd: Option<f64>,
+    price_impact: f64,
+    tx: BebopTxData,
+    makers: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopBuyToken {
-    #[serde(flatten)]
-    info: BebopQuotedTokenInfo,
+    amount: String,
+    decimals: u8,
+    price_usd: f64,
+    symbol: String,
+    price: f64,
+    price_before_fee: f64,
     minimum_amount: String,
-    amount_before_fee: Option<String>,
-    delta_from_expected: Option<f64>,
+    amount_before_fee: String,
+    delta_from_expected: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopQuotedTokenInfo {
+pub struct BebopSellToken {
     amount: String,
     decimals: u8,
-    price_usd: Option<f64>,
+    price_usd: f64,
     symbol: String,
-    price: Option<f64>,
-    price_before_fee: Option<f64>,
+    price: f64,
+    price_before_fee: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopTxData {
-    from: Option<String>,
+    from: String,
     to: String,
     value: String,
     data: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopSignableJamOrder {
-    taker: String,
-    receiver: String,
-    expiry: u128,
-    exclusivity_deadline: u128,
-    nonce: String,
-    executor: String,
-    partner_info: String,
-    sell_tokens: Vec<String>,
-    buy_tokens: Vec<String>,
-    sell_amounts: Vec<String>,
-    buy_amounts: Vec<String>,
-    hooks_hash: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct BebopSignablePmmOrder {
-    partner_id: u128,
-    expiry: u128,
-    taker_address: String,
-    maker_address: String,
-    maker_nonce: String,
-    taker_token: String,
-    maker_token: String,
-    taker_amount: String,
-    maker_amount: String,
-    receiver: String,
-    packed_commands: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuoteError {
-    error_code: u128,
-    message: Option<String>,
-    fee: Option<BebopMinSizeFee>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopMinSizeFee {
-    ether: f64,
-    usd: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuoteErrorResponse {
-    error: BebopQuoteError,
-    route_errors: HashMap<BebopRouteSource, BebopQuoteError>,
 }

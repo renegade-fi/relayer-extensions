@@ -1,5 +1,7 @@
 //! Bebop-specific logic for getting quotes and executing swaps
 
+use std::str::FromStr;
+
 use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
 use alloy_primitives::Address;
 use async_trait::async_trait;
@@ -7,7 +9,7 @@ use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{info, instrument};
+use tracing::instrument;
 
 use crate::{
     execution_client::{
@@ -80,10 +82,16 @@ impl BebopClient {
 
     /// Construct Bebop quote parameters from a venue-agnostic quote params
     /// object, with reasonable defaults.
-    fn construct_quote_params(&self, params: QuoteParams) -> BebopQuoteParams {
-        BebopQuoteParams {
-            sell_tokens: params.from_token,
-            buy_tokens: params.to_token,
+    fn construct_quote_params(
+        &self,
+        params: QuoteParams,
+    ) -> Result<BebopQuoteParams, ExecutionClientError> {
+        let sell_tokens = get_checksummed_address(&params.from_token)?;
+        let buy_tokens = get_checksummed_address(&params.to_token)?;
+
+        Ok(BebopQuoteParams {
+            sell_tokens,
+            buy_tokens,
             sell_amounts: params.from_amount.to_string(),
             taker_address: self.hot_wallet_address.to_string(),
             approval_type: ApprovalType::Standard,
@@ -93,7 +101,7 @@ impl BebopClient {
             // as we only want these constraints to be enforced if/when we execute the quote.
             skip_validation: true,
             skip_taker_checks: true,
-        }
+        })
     }
 }
 
@@ -114,26 +122,15 @@ impl ExecutionVenue for BebopClient {
         &self,
         params: QuoteParams,
     ) -> Result<ExecutableQuote, ExecutionClientError> {
-        let quote_params = self.construct_quote_params(params);
+        let quote_params = self.construct_quote_params(params)?;
         let query_string =
             serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
 
         let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
         let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
+        let executable_quote = todo!();
 
-        let _executable_quote = match quote_response {
-            BebopQuoteResponse::Error(error_response) => {
-                return Err(ExecutionClientError::custom(format!(
-                    "Error getting Bebop quote: {error_response:?}"
-                )))
-            },
-            BebopQuoteResponse::Successful(quote_response) => {
-                info!("Bebop quote response: {quote_response:?}");
-                todo!()
-            },
-        };
-
-        Ok(_executable_quote)
+        Ok(executable_quote)
     }
 
     /// Execute a quote from the Bebop API
@@ -157,4 +154,11 @@ fn to_bebop_chain(chain: Chain) -> Result<String, ExecutionClientError> {
         Chain::BaseMainnet => Ok("base".to_string()),
         _ => Err(ExecutionClientError::onchain(format!("Bebop does not support chain: {chain}"))),
     }
+}
+
+/// Get a checksummed address for a given address string
+fn get_checksummed_address(address: &str) -> Result<String, ExecutionClientError> {
+    Address::from_str(address)
+        .map(|addr| addr.to_checksum(None /* chain_id */))
+        .map_err(ExecutionClientError::parse)
 }
