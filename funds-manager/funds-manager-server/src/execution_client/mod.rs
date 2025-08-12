@@ -10,7 +10,9 @@ use renegade_common::types::chain::Chain;
 
 use crate::{
     cli::MaxPriceDeviations,
-    execution_client::venues::{cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues},
+    execution_client::venues::{
+        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
+    },
     helpers::{build_provider, get_erc20_balance},
 };
 
@@ -47,9 +49,10 @@ impl ExecutionClient {
         let rpc_provider = build_provider(rpc_url, None /* wallet */);
 
         let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain);
-        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet, chain);
+        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet.clone(), chain);
+        let bebop = BebopClient::new(rpc_url, quoter_hot_wallet, chain);
 
-        let venues = AllExecutionVenues { lifi, cowswap };
+        let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
         Self {
             chain,

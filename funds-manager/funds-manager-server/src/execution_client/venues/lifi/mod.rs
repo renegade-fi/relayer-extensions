@@ -308,7 +308,9 @@ impl ExecutionVenue for LifiClient {
     ) -> Result<ExecutableQuote, ExecutionClientError> {
         let lifi_params = self.construct_quote_params(params);
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
-        let query_string = qs_config.serialize_string(&lifi_params).unwrap();
+        let query_string =
+            qs_config.serialize_string(&lifi_params).map_err(ExecutionClientError::parse)?;
+
         let path = format!("{LIFI_QUOTE_ENDPOINT}?{query_string}");
 
         // Log the request path if the quote fails

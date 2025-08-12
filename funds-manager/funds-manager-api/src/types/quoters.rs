@@ -68,6 +68,8 @@ pub enum SupportedExecutionVenue {
     Lifi,
     /// The Cowswap venue
     Cowswap,
+    /// The Bebop venue
+    Bebop,
 }
 
 impl Display for SupportedExecutionVenue {
@@ -75,6 +77,7 @@ impl Display for SupportedExecutionVenue {
         match self {
             SupportedExecutionVenue::Lifi => write!(f, "Lifi"),
             SupportedExecutionVenue::Cowswap => write!(f, "Cowswap"),
+            SupportedExecutionVenue::Bebop => write!(f, "Bebop"),
         }
     }
 }

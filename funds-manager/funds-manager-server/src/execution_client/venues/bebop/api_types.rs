@@ -3,6 +3,8 @@
 #![allow(missing_docs)]
 #![allow(clippy::missing_docs_in_private_items)]
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// The subset of Bebop quote request query parameters that we support.
@@ -33,6 +35,13 @@ pub struct BebopQuoteParams {
     pub gasless: bool,
     /// The slippage tolerance to use.
     pub slippage: f64,
+    /// Whether to skip taker validation checks.
+    pub skip_validation: bool,
+    /// Whether to skip taker checks.
+    ///
+    /// The difference between this and `skip_validation` is undocumented
+    /// in the Bebop docs.
+    pub skip_taker_checks: bool,
 }
 
 /// The type of approval to use for the quoted order.
@@ -44,6 +53,13 @@ pub enum ApprovalType {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum BebopQuoteResponse {
+    Successful(BebopSuccessfulQuoteResponse),
+    Error(BebopQuoteErrorResponse),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopSuccessfulQuoteResponse {
     routes: Vec<BebopRoute>,
@@ -51,14 +67,14 @@ pub struct BebopSuccessfulQuoteResponse {
     best_price: BebopRouteSource,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BebopRoute {
     #[serde(rename = "type")]
     pub route_type: BebopRouteSource,
     quote: BebopQuote,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub enum BebopRouteSource {
     #[serde(rename = "JAMv2")]
     JAM,
@@ -66,14 +82,14 @@ pub enum BebopRouteSource {
     PMM,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum BebopQuote {
     JAM(BebopJamQuote),
     PMM(BebopPmmQuote),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopJamQuote {
     #[serde(flatten)]
@@ -83,7 +99,7 @@ pub struct BebopJamQuote {
     solver: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopPmmQuote {
     #[serde(flatten)]
@@ -92,7 +108,7 @@ pub struct BebopPmmQuote {
     to_sign: BebopSignablePmmOrder,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopQuoteInfo {
     slippage: f64,
@@ -106,14 +122,14 @@ pub struct BebopQuoteInfo {
     tx: Option<BebopTxData>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopGasFee {
     native: String,
     usd: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopBuyToken {
     #[serde(flatten)]
@@ -123,7 +139,7 @@ pub struct BebopBuyToken {
     delta_from_expected: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopQuotedTokenInfo {
     amount: String,
@@ -134,7 +150,7 @@ pub struct BebopQuotedTokenInfo {
     price_before_fee: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopTxData {
     from: Option<String>,
@@ -143,7 +159,7 @@ pub struct BebopTxData {
     data: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopSignableJamOrder {
     taker: String,
@@ -160,7 +176,7 @@ pub struct BebopSignableJamOrder {
     hooks_hash: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BebopSignablePmmOrder {
     partner_id: u128,
     expiry: u128,
@@ -175,7 +191,7 @@ pub struct BebopSignablePmmOrder {
     packed_commands: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopQuoteError {
     error_code: u128,
@@ -183,9 +199,16 @@ pub struct BebopQuoteError {
     fee: Option<BebopMinSizeFee>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopMinSizeFee {
     ether: f64,
     usd: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BebopQuoteErrorResponse {
+    error: BebopQuoteError,
+    route_errors: HashMap<BebopRouteSource, BebopQuoteError>,
 }

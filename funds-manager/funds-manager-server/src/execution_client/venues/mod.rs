@@ -6,7 +6,9 @@ use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 
 use crate::execution_client::{
     error::ExecutionClientError,
-    venues::{cowswap::CowswapClient, lifi::LifiClient, quote::ExecutableQuote},
+    venues::{
+        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, quote::ExecutableQuote,
+    },
 };
 
 pub mod bebop;
@@ -21,6 +23,8 @@ pub struct AllExecutionVenues {
     pub lifi: LifiClient,
     /// The Cowswap client
     pub cowswap: CowswapClient,
+    /// The Bebop client
+    pub bebop: BebopClient,
 }
 
 impl AllExecutionVenues {
@@ -36,6 +40,7 @@ impl AllExecutionVenues {
         match venue {
             SupportedExecutionVenue::Lifi => &self.lifi,
             SupportedExecutionVenue::Cowswap => &self.cowswap,
+            SupportedExecutionVenue::Bebop => &self.bebop,
         }
     }
 }
