@@ -4,6 +4,7 @@
 //! [here](https://github.com/Uniswap/uniswapx-service/blob/main/swagger.json)
 
 use alloy::{hex, sol_types::SolValue};
+use renegade_solidity_abi::IDarkpool::SignedOrder;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -69,6 +70,17 @@ impl OrderEntity {
             hex::decode(self.encoded_order.clone()).map_err(SolverError::abi_encoding)?;
         let order = PriorityOrder::abi_decode(&order_bytes).unwrap();
         Ok(order)
+    }
+
+    /// Decode a SignedOrder
+    ///
+    /// We decode into the SignedOrder type found in renegade_abi for
+    /// compatibility with the Executor contract
+    pub fn decode_signed_order(&self) -> SolverResult<SignedOrder> {
+        let order_bytes =
+            hex::decode(self.encoded_order.clone()).map_err(SolverError::abi_encoding)?;
+        let sig_bytes = hex::decode(self.signature.clone()).map_err(SolverError::abi_encoding)?;
+        Ok(SignedOrder { order: order_bytes.into(), sig: sig_bytes.into() })
     }
 }
 
