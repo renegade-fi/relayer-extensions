@@ -29,7 +29,7 @@ renegade-common = { workspace = true }
 renegade-config = { workspace = true }
 renegade-constants = { workspace = true }
 renegade-solidity-abi = { workspace = true }
-renegade-sdk = "0.1.15"
+renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk" }
 renegade-util = { workspace = true, features = [
     "telemetry",
 ] }
