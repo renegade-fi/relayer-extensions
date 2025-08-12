@@ -13,7 +13,8 @@ use alloy::{
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
-use alloy_primitives::{utils::format_units, Address, U256};
+use alloy_primitives::{utils::format_units, Address, Log, U256};
+use alloy_sol_types::SolEvent;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
@@ -178,6 +179,29 @@ pub(crate) async fn approve_erc20_allowance(
 /// Compute the gas cost of a transaction in WEI
 pub fn get_gas_cost(receipt: &TransactionReceipt) -> U256 {
     U256::from(receipt.gas_used) * U256::from(receipt.effective_gas_price)
+}
+
+/// Get the amount of a token that was received by a recipient in a transaction
+pub fn get_received_amount(
+    receipt: &TransactionReceipt,
+    token_address: Address,
+    recipient: Address,
+) -> Result<U256, FundsManagerError> {
+    let logs: Vec<Log<IERC20::Transfer>> = receipt
+        .logs()
+        .iter()
+        .filter_map(|log| {
+            if log.address() != token_address {
+                None
+            } else {
+                IERC20::Transfer::decode_log(&log.inner).ok()
+            }
+        })
+        .collect();
+
+    logs.iter()
+        .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
+        .ok_or(FundsManagerError::on_chain("no matching transfer event found"))
 }
 
 // -----------------------
