@@ -127,6 +127,21 @@ pub async fn send_tx_with_retry(
     Err(FundsManagerError::on_chain("Transaction failed after retries"))
 }
 
+/// Get the erc20 balance of an address, as a U256
+pub async fn get_erc20_balance_raw(
+    token_address: &str,
+    address: &str,
+    provider: DynProvider,
+) -> Result<U256, FundsManagerError> {
+    // Set up the contract instance
+    let token_address = Address::from_str(token_address).map_err(FundsManagerError::parse)?;
+    let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
+    let erc20 = IERC20::new(token_address, provider);
+
+    // Fetch the balance
+    erc20.balanceOf(address).call().await.map_err(FundsManagerError::on_chain)
+}
+
 /// Get the erc20 balance of an address
 pub async fn get_erc20_balance(
     token_address: &str,

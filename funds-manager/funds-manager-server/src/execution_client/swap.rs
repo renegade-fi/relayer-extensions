@@ -96,9 +96,7 @@ impl ExecutionClient {
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         loop {
-            let expected_quote_amount = self.get_expected_quote_amount(&params).await?;
-            if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-                warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            if !self.can_execute_swap(&params).await? {
                 return Ok(None);
             }
 
@@ -138,6 +136,23 @@ impl ExecutionClient {
             warn!("swap failed, retrying w/ reduced-size quote");
             params.from_amount /= SWAP_DECAY_FACTOR;
         }
+    }
+
+    /// Check whether a swap represented by the quote params meets the criteria
+    /// for execution
+    async fn can_execute_swap(&self, params: &QuoteParams) -> Result<bool, ExecutionClientError> {
+        if !self.has_sufficient_balance(params).await? {
+            warn!("Hot wallet does not have sufficient balance to cover swap");
+            return Ok(false);
+        }
+
+        let expected_quote_amount = self.get_expected_quote_amount(params).await?;
+        if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+            warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 
     /// Compute the expected quote amount for a swap, using the Renegade price
@@ -407,6 +422,16 @@ impl ExecutionClient {
         }
 
         Ok(maybe_best_quote)
+    }
+
+    /// Check whether the hot wallet has a sufficient balance to cover a swap
+    /// represened by the quote params
+    async fn has_sufficient_balance(
+        &self,
+        params: &QuoteParams,
+    ) -> Result<bool, ExecutionClientError> {
+        let balance = self.get_erc20_balance_raw(&params.from_token).await?;
+        Ok(balance >= params.from_amount)
     }
 
     /// Check if a quote deviates too far from the Renegade price
