@@ -33,7 +33,7 @@ use crate::telemetry::helpers::calculate_implied_price;
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::record_external_match_metrics,
-    labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG},
+    labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG, REQUEST_PATH_METRIC_TAG},
 };
 
 /// The header name for the SDK version
@@ -182,6 +182,7 @@ impl Server {
             (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.to_string()),
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
             (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
+            (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
         ];
 
         // Record quote comparisons before settlement, if enabled
