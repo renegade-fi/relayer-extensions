@@ -273,7 +273,8 @@ impl Server {
         }
 
         let order = &req.signed_quote.quote.order;
-        self.handle_bundle_response(order, ctx)
+        let shared_bundle = req.allow_shared;
+        self.handle_bundle_response(order, ctx, shared_bundle)
     }
 }
 

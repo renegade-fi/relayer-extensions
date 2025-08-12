@@ -30,7 +30,9 @@ use super::gas_sponsorship::refund_calculation::{
 };
 use crate::error::AuthServerError;
 use crate::telemetry::helpers::calculate_implied_price;
-use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
+use crate::telemetry::labels::{
+    GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG, SHARED_BUNDLE_TAG,
+};
 use crate::telemetry::{
     helpers::record_external_match_metrics,
     labels::{KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG, REQUEST_PATH_METRIC_TAG},
@@ -166,6 +168,7 @@ impl Server {
         &self,
         order: &ExternalOrder,
         ctx: &MatchBundleResponseCtx<Req>,
+        shared_bundle: bool,
     ) -> Result<(), AuthServerError>
     where
         Req: Serialize + for<'de> Deserialize<'de>,
@@ -183,6 +186,7 @@ impl Server {
             (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
             (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
             (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
+            (SHARED_BUNDLE_TAG.to_string(), shared_bundle.to_string()),
         ];
 
         // Record quote comparisons before settlement, if enabled

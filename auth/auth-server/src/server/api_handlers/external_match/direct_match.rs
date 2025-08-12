@@ -248,6 +248,6 @@ impl Server {
 
         let req = ctx.request();
         let order = &req.external_order;
-        self.handle_bundle_response(order, ctx)
+        self.handle_bundle_response(order, ctx, true /* shared */)
     }
 }
