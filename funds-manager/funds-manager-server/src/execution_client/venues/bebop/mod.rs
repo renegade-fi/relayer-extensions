@@ -230,7 +230,7 @@ impl BebopClient {
             .with_input(execution_data.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
             .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit);
+            .with_gas_limit(gas_limit * 2);
 
         Ok(tx)
     }

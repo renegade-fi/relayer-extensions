@@ -248,8 +248,11 @@ impl MetricsRecorder {
                     return Ok(0.0);
                 }
 
-                let transfer =
-                    Transfer::decode_log(&log.inner).map_err(FundsManagerError::parse)?;
+                let transfer = match Transfer::decode_log(&log.inner) {
+                    Ok(transfer) => transfer,
+                    // Failure to decode implies the event is not a transfer
+                    Err(_) => return Ok(0.0),
+                };
 
                 if transfer.to == self.darkpool_address || transfer.from == self.darkpool_address {
                     let value =

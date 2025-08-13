@@ -13,7 +13,7 @@ use alloy::{
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
-use alloy_primitives::{utils::format_units, Address, Log, U256};
+use alloy_primitives::{utils::format_units, Address, U256};
 use alloy_sol_types::SolEvent;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
@@ -202,7 +202,7 @@ pub fn get_received_amount(
     token_address: Address,
     recipient: Address,
 ) -> Result<U256, FundsManagerError> {
-    let logs: Vec<Log<IERC20::Transfer>> = receipt
+    receipt
         .logs()
         .iter()
         .filter_map(|log| {
@@ -212,9 +212,6 @@ pub fn get_received_amount(
                 IERC20::Transfer::decode_log(&log.inner).ok()
             }
         })
-        .collect();
-
-    logs.iter()
         .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
         .ok_or(FundsManagerError::on_chain("no matching transfer event found"))
 }
