@@ -4,14 +4,16 @@ pub mod swap;
 pub mod venues;
 
 use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
 use crate::{
     cli::MaxPriceDeviations,
-    execution_client::venues::{cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues},
-    helpers::{build_provider, get_erc20_balance},
+    execution_client::venues::{
+        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
+    },
+    helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
 };
 
 use self::error::ExecutionClientError;
@@ -47,9 +49,10 @@ impl ExecutionClient {
         let rpc_provider = build_provider(rpc_url, None /* wallet */);
 
         let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain);
-        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet, chain);
+        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet.clone(), chain);
+        let bebop = BebopClient::new(rpc_url, quoter_hot_wallet, chain);
 
-        let venues = AllExecutionVenues { lifi, cowswap };
+        let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
         Self {
             chain,
@@ -59,6 +62,20 @@ impl ExecutionClient {
             venues,
             max_price_deviations,
         }
+    }
+
+    /// Get the erc20 balance of an address, as a U256
+    pub(crate) async fn get_erc20_balance_raw(
+        &self,
+        token_address: &str,
+    ) -> Result<U256, ExecutionClientError> {
+        get_erc20_balance_raw(
+            token_address,
+            &self.hot_wallet_address.to_string(),
+            self.rpc_provider.clone(),
+        )
+        .await
+        .map_err(ExecutionClientError::onchain)
     }
 
     /// Get the erc20 balance of an address

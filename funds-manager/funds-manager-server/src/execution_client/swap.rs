@@ -33,6 +33,11 @@ const SWAP_DECAY_FACTOR: U256 = U256::from_limbs([2, 0, 0, 0]);
 const MIN_SWAP_QUOTE_AMOUNT: f64 = 10.0; // 10 USDC
 /// The default maximum allowable deviation from the Renegade price in a quote
 const DEFAULT_MAX_PRICE_DEVIATION: f64 = 0.0100; // 100bps, or 1%
+/// The relative amount by which the price deviation tolerance will be increased
+const PRICE_DEVIATION_INCREASE: f64 = 0.2; // 20%
+/// The maximum multiple of the default price deviation tolerance that will be
+/// allowed
+const MAX_PRICE_DEVIATION_INCREASE: f64 = 4.0; // 4x
 /// The buffer to scale the target amount by when executing swaps to cover it,
 /// to account for price drift
 const SWAP_TO_COVER_BUFFER: f64 = 1.1;
@@ -95,10 +100,9 @@ impl ExecutionClient {
         mut params: QuoteParams,
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
+        let mut max_price_deviation_multiplier = 1.0;
         loop {
-            let expected_quote_amount = self.get_expected_quote_amount(&params).await?;
-            if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-                warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            if !self.can_execute_swap(&params).await? {
                 return Ok(None);
             }
 
@@ -111,10 +115,15 @@ impl ExecutionClient {
             let executable_quote = maybe_executable_quote.unwrap();
 
             if self
-                .exceeds_price_deviation(&executable_quote.quote, params.slippage_tolerance)
+                .exceeds_price_deviation(&executable_quote.quote, max_price_deviation_multiplier)
                 .await?
             {
-                params.from_amount /= SWAP_DECAY_FACTOR;
+                adjust_for_price_deviation(&mut params, &mut max_price_deviation_multiplier);
+                if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
+                    warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
+                    return Ok(None);
+                }
+
                 continue;
             }
 
@@ -138,27 +147,6 @@ impl ExecutionClient {
             warn!("swap failed, retrying w/ reduced-size quote");
             params.from_amount /= SWAP_DECAY_FACTOR;
         }
-    }
-
-    /// Compute the expected quote amount for a swap, using the Renegade price
-    /// for the sell token
-    async fn get_expected_quote_amount(
-        &self,
-        params: &QuoteParams,
-    ) -> Result<f64, ExecutionClientError> {
-        let from_token = Token::from_addr_on_chain(&params.from_token, self.chain);
-        let from_amount_u128 =
-            u256_try_into_u128(params.from_amount).map_err(ExecutionClientError::parse)?;
-
-        let from_amount_f64 = from_token.convert_to_decimal(from_amount_u128);
-        if from_token.is_stablecoin() {
-            return Ok(from_amount_f64);
-        }
-
-        let price = self.price_reporter.get_price(&from_token.addr, self.chain).await?;
-        let approx_quote_amount = from_amount_f64 * price;
-
-        Ok(approx_quote_amount)
     }
 
     /// Try to execute swaps to cover a target amount of a token,
@@ -346,6 +334,44 @@ impl ExecutionClient {
     // | General Swapping Helpers |
     // ----------------------------
 
+    /// Check whether a swap represented by the quote params meets the criteria
+    /// for execution
+    async fn can_execute_swap(&self, params: &QuoteParams) -> Result<bool, ExecutionClientError> {
+        if !self.has_sufficient_balance(params).await? {
+            warn!("Hot wallet does not have sufficient balance to cover swap");
+            return Ok(false);
+        }
+
+        let expected_quote_amount = self.get_expected_quote_amount(params).await?;
+        if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
+            warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    /// Compute the expected quote amount for a swap, using the Renegade price
+    /// for the sell token
+    async fn get_expected_quote_amount(
+        &self,
+        params: &QuoteParams,
+    ) -> Result<f64, ExecutionClientError> {
+        let from_token = Token::from_addr_on_chain(&params.from_token, self.chain);
+        let from_amount_u128 =
+            u256_try_into_u128(params.from_amount).map_err(ExecutionClientError::parse)?;
+
+        let from_amount_f64 = from_token.convert_to_decimal(from_amount_u128);
+        if from_token.is_stablecoin() {
+            return Ok(from_amount_f64);
+        }
+
+        let price = self.price_reporter.get_price(&from_token.addr, self.chain).await?;
+        let approx_quote_amount = from_amount_f64 * price;
+
+        Ok(approx_quote_amount)
+    }
+
     /// Get the best quote for a swap, across all execution venues
     #[instrument(
         skip_all,
@@ -409,11 +435,21 @@ impl ExecutionClient {
         Ok(maybe_best_quote)
     }
 
+    /// Check whether the hot wallet has a sufficient balance to cover a swap
+    /// represened by the quote params
+    async fn has_sufficient_balance(
+        &self,
+        params: &QuoteParams,
+    ) -> Result<bool, ExecutionClientError> {
+        let balance = self.get_erc20_balance_raw(&params.from_token).await?;
+        Ok(balance >= params.from_amount)
+    }
+
     /// Check if a quote deviates too far from the Renegade price
     async fn exceeds_price_deviation(
         &self,
         quote: &ExecutionQuote,
-        slippage_tolerance: Option<f64>,
+        max_deviation_multiplier: f64,
     ) -> Result<bool, ExecutionClientError> {
         // Get the renegade price for the pair
         let base_addr = &quote.base_token().addr;
@@ -438,14 +474,7 @@ impl ExecutionClient {
             .and_then(|ticker| self.max_price_deviations.get(&ticker).copied())
             .unwrap_or(DEFAULT_MAX_PRICE_DEVIATION);
 
-        // If the client specified a slippage tolerance greater than the configured
-        // max deviation, we respect the client's preference to "force through" the
-        // quote.
-        let deviation_threshold = if let Some(slippage_tolerance) = slippage_tolerance {
-            slippage_tolerance.max(max_deviation)
-        } else {
-            max_deviation
-        };
+        let deviation_threshold = max_deviation * max_deviation_multiplier;
 
         let exceeds_max_deviation = deviation > deviation_threshold;
         if exceeds_max_deviation {
@@ -471,6 +500,7 @@ impl ExecutionClient {
             QuoteExecutionData::Cowswap(_) => {
                 self.venues.cowswap.execute_quote(executable_quote).await
             },
+            QuoteExecutionData::Bebop(_) => self.venues.bebop.execute_quote(executable_quote).await,
         }
     }
 }
@@ -488,4 +518,19 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
         VENUE_TAG => quote.venue.to_string(),
     )
     .set(deviation);
+}
+
+/// Adjust the given quote params in the case that the resulting quote exceeds
+/// the price deviation tolerance.
+///
+/// Concretely, this means increasing the max price deviation multiplier if the
+/// params allow for it, or reducing the swap size otherwise.
+fn adjust_for_price_deviation(params: &mut QuoteParams, max_price_deviation_multiplier: &mut f64) {
+    if params.increase_price_deviation {
+        *max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
+        info!("Price deviation exceeded, increasing price deviation tolerance by {max_price_deviation_multiplier}x");
+    } else {
+        info!("Price deviation exceeded, reducing swap size by {SWAP_DECAY_FACTOR}x");
+        params.from_amount /= SWAP_DECAY_FACTOR;
+    }
 }
