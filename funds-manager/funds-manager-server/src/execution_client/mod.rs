@@ -4,7 +4,7 @@ pub mod swap;
 pub mod venues;
 
 use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
@@ -13,7 +13,7 @@ use crate::{
     execution_client::venues::{
         bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
     },
-    helpers::{build_provider, get_erc20_balance},
+    helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
 };
 
 use self::error::ExecutionClientError;
@@ -62,6 +62,20 @@ impl ExecutionClient {
             venues,
             max_price_deviations,
         }
+    }
+
+    /// Get the erc20 balance of an address, as a U256
+    pub(crate) async fn get_erc20_balance_raw(
+        &self,
+        token_address: &str,
+    ) -> Result<U256, ExecutionClientError> {
+        get_erc20_balance_raw(
+            token_address,
+            &self.hot_wallet_address.to_string(),
+            self.rpc_provider.clone(),
+        )
+        .await
+        .map_err(ExecutionClientError::onchain)
     }
 
     /// Get the erc20 balance of an address

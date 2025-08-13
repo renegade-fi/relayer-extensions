@@ -3,9 +3,13 @@
 #![allow(missing_docs)]
 #![allow(clippy::missing_docs_in_private_items)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
+use alloy_primitives::{Address, Bytes, U256};
+use renegade_common::types::{chain::Chain, token::Token};
 use serde::{Deserialize, Serialize};
+
+use crate::execution_client::error::ExecutionClientError;
 
 /// The subset of Bebop quote request query parameters that we support.
 ///
@@ -52,82 +56,153 @@ pub enum ApprovalType {
     Standard,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopQuoteResponse {
     routes: Vec<BebopRoute>,
     best_price: BebopRouteSource,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
+impl BebopQuoteResponse {
+    /// Get the winning route (JAMv2 vs PMMv3) for the quote
+    pub fn best_route(&self) -> Result<&BebopRoute, ExecutionClientError> {
+        self.routes
+            .iter()
+            .find(|route| route.route_source == self.best_price)
+            .ok_or(ExecutionClientError::custom("Winning Bebop route not found"))
+    }
+
+    /// Get the sell token for the quote
+    pub fn sell_token(&self, chain: Chain) -> Result<Token, ExecutionClientError> {
+        let sell_token_address = self
+            .best_route()?
+            .quote
+            .sell_tokens
+            .keys()
+            .next()
+            .ok_or(ExecutionClientError::custom("No sell token found"))?;
+
+        Ok(Token::from_addr_on_chain(sell_token_address, chain))
+    }
+
+    /// Get the buy token for the quote
+    pub fn buy_token(&self, chain: Chain) -> Result<Token, ExecutionClientError> {
+        let buy_token_address = self
+            .best_route()?
+            .quote
+            .buy_tokens
+            .keys()
+            .next()
+            .ok_or(ExecutionClientError::custom("No buy token found"))?;
+
+        Ok(Token::from_addr_on_chain(buy_token_address, chain))
+    }
+
+    /// Get the sell amount for the quote
+    pub fn sell_amount(&self) -> Result<U256, ExecutionClientError> {
+        let bebop_sell_token = self
+            .best_route()?
+            .quote
+            .sell_tokens
+            .values()
+            .next()
+            .ok_or(ExecutionClientError::custom("No sell token found"))?;
+
+        Ok(bebop_sell_token.amount)
+    }
+
+    /// Get the buy amount for the quote
+    pub fn buy_amount(&self) -> Result<U256, ExecutionClientError> {
+        let bebop_buy_token = self
+            .best_route()?
+            .quote
+            .buy_tokens
+            .values()
+            .next()
+            .ok_or(ExecutionClientError::custom("No buy token found"))?;
+
+        Ok(bebop_buy_token.amount)
+    }
+
+    /// Get the `to` address for the quote
+    pub fn get_to_address(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.to)
+    }
+
+    /// Get the `from` address for the quote
+    pub fn get_from_address(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.from)
+    }
+
+    /// Get the `value` for the quote
+    pub fn get_value(&self) -> Result<U256, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.value)
+    }
+
+    /// Get the calldata for the quote
+    pub fn get_data(&self) -> Result<Bytes, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.data.clone())
+    }
+
+    /// Get the gas limit for the quote
+    pub fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.gas)
+    }
+
+    /// Get the approval target for the quote
+    pub fn get_approval_target(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.approval_target)
+    }
+
+    /// Get the route source (JAMv2 vs PMMv3) for the quote
+    pub fn get_route_source(&self) -> Result<BebopRouteSource, ExecutionClientError> {
+        self.best_route().map(|route| route.route_source)
+    }
+}
+
+#[derive(Deserialize, PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum BebopRouteSource {
     JAMv2,
     PMMv3,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", content = "quote")]
-pub enum BebopRoute {
-    JAMv2(BebopJamQuote),
-    PMMv3(BebopPmmQuote),
+impl Display for BebopRouteSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BebopRouteSource::JAMv2 => write!(f, "JAMv2"),
+            BebopRouteSource::PMMv3 => write!(f, "PMMv3"),
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+pub struct BebopRoute {
+    #[serde(rename = "type")]
+    route_source: BebopRouteSource,
+    quote: BebopQuote,
+}
+
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopJamQuote {
-    slippage: f64,
-    buy_tokens: HashMap<String, BebopBuyToken>,
-    sell_tokens: HashMap<String, BebopSellToken>,
-    settlement_address: String,
-    approval_target: String,
-    price_impact: f64,
+pub struct BebopQuote {
+    buy_tokens: HashMap<String, BebopToken>,
+    sell_tokens: HashMap<String, BebopToken>,
+    approval_target: Address,
     tx: BebopTxData,
-    solver: String,
 }
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopPmmQuote {
-    slippage: f64,
-    buy_tokens: HashMap<String, BebopBuyToken>,
-    sell_tokens: HashMap<String, BebopSellToken>,
-    settlement_address: String,
-    approval_target: String,
-    price_impact: f64,
-    tx: BebopTxData,
-    makers: Vec<String>,
+pub struct BebopToken {
+    amount: U256,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopBuyToken {
-    amount: String,
-    decimals: u8,
-    price_usd: f64,
-    symbol: String,
-    price: f64,
-    price_before_fee: f64,
-    minimum_amount: String,
-    amount_before_fee: String,
-    delta_from_expected: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopSellToken {
-    amount: String,
-    decimals: u8,
-    price_usd: f64,
-    symbol: String,
-    price: f64,
-    price_before_fee: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopTxData {
-    from: String,
-    to: String,
-    value: String,
-    data: String,
+    from: Address,
+    to: Address,
+    value: U256,
+    data: Bytes,
+    gas: U256,
 }

@@ -74,8 +74,23 @@ use crate::handlers::{
 // | Cli |
 // -------
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+/// The runtime stack size to use for the server
+const RUNTIME_STACK_SIZE: usize = 50 * 1024 * 1024; // 50MB
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // Create a custom tokio runtime with 50MB stack size.
+    // We sometimes see stack overflows in debug mode; so we manually setup the
+    // stack
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(RUNTIME_STACK_SIZE)
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime")
+        .block_on(async_main())
+}
+
+/// Async main function
+async fn async_main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     cli.validate()?;
     if cli.hmac_key.is_none() {

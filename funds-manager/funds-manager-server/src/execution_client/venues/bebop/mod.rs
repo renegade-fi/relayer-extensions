@@ -2,26 +2,40 @@
 
 use std::str::FromStr;
 
-use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
-use alloy_primitives::Address;
+use alloy::{
+    eips::BlockId,
+    network::TransactionBuilder,
+    providers::{DynProvider, Provider},
+    rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
+};
+use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
-use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
+use funds_manager_api::{
+    quoters::{QuoteParams, SupportedExecutionVenue},
+    u256_try_into_u64,
+};
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::instrument;
+use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
-            bebop::api_types::{ApprovalType, BebopQuoteParams, BebopQuoteResponse},
-            quote::ExecutableQuote,
+            bebop::api_types::{
+                ApprovalType, BebopQuoteParams, BebopQuoteResponse, BebopRouteSource,
+            },
+            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
         },
     },
-    helpers::{build_provider, handle_http_response},
+    helpers::{
+        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
+        handle_http_response, send_tx_with_retry, ONE_CONFIRMATION,
+    },
 };
 
 pub mod api_types;
@@ -36,6 +50,71 @@ const BEBOP_BASE_URL: &str = "https://api.bebop.xyz/router";
 /// The endpoint for getting a quote
 const BEBOP_QUOTE_ENDPOINT: &str = "v1/quote";
 
+// ---------
+// | Types |
+// ---------
+
+/// Bebop quote execution data
+#[derive(Debug, Clone)]
+pub struct BebopQuoteExecutionData {
+    /// The address of the swap contract
+    pub to: Address,
+    /// The submitting address
+    pub from: Address,
+    /// The value of the tx; should be zero
+    pub value: U256,
+    /// The calldata for the swap
+    pub data: Bytes,
+    /// The gas limit for the swap
+    pub gas_limit: U256,
+    /// The approval target for the swap
+    pub approval_target: Address,
+    /// The source of the solution for the quote
+    pub route_source: BebopRouteSource,
+}
+
+impl ExecutableQuote {
+    /// Convert a Bebop quote into an executable quote
+    pub fn from_bebop_quote(
+        bebop_quote: BebopQuoteResponse,
+        chain: Chain,
+    ) -> Result<Self, ExecutionClientError> {
+        let sell_token = bebop_quote.sell_token(chain)?;
+        let buy_token = bebop_quote.buy_token(chain)?;
+        let sell_amount = bebop_quote.sell_amount()?;
+        let buy_amount = bebop_quote.buy_amount()?;
+
+        let quote = ExecutionQuote {
+            sell_token,
+            buy_token,
+            sell_amount,
+            buy_amount,
+            venue: SupportedExecutionVenue::Bebop,
+            chain,
+        };
+
+        let to = bebop_quote.get_to_address()?;
+        let from = bebop_quote.get_from_address()?;
+        let value = bebop_quote.get_value()?;
+        let data = bebop_quote.get_data()?;
+        let gas_limit = bebop_quote.get_gas_limit()?;
+        let approval_target = bebop_quote.get_approval_target()?;
+        let route_source = bebop_quote.get_route_source()?;
+
+        let execution_data = BebopQuoteExecutionData {
+            to,
+            from,
+            value,
+            data,
+            gas_limit,
+            approval_target,
+            route_source,
+        };
+
+        Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Bebop(execution_data) })
+    }
+}
+
 // ----------
 // | Client |
 // ----------
@@ -46,7 +125,7 @@ pub struct BebopClient {
     /// The underlying HTTP client
     http_client: Client,
     /// The RPC provider
-    _rpc_provider: DynProvider,
+    rpc_provider: DynProvider,
     /// The address of the hot wallet used for executing quotes
     hot_wallet_address: Address,
     /// The chain on which the client is operating
@@ -57,9 +136,9 @@ impl BebopClient {
     /// Create a new client
     pub fn new(rpc_url: &str, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
         let hot_wallet_address = hot_wallet.address();
-        let _rpc_provider = build_provider(rpc_url, Some(hot_wallet));
+        let rpc_provider = build_provider(rpc_url, Some(hot_wallet));
 
-        Self { http_client: Client::new(), _rpc_provider, hot_wallet_address, chain }
+        Self { http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
 
     /// Build a Bebop API URL for a given path
@@ -103,6 +182,69 @@ impl BebopClient {
             skip_taker_checks: true,
         })
     }
+
+    /// Approve an erc20 allowance for the given approval target
+    #[instrument(skip(self))]
+    async fn approve_erc20_allowance(
+        &self,
+        token_address: Address,
+        amount: U256,
+        approval_target: Address,
+    ) -> Result<(), ExecutionClientError> {
+        approve_erc20_allowance(
+            token_address,
+            approval_target,
+            self.hot_wallet_address,
+            amount,
+            self.rpc_provider.clone(),
+        )
+        .await
+        .map_err(ExecutionClientError::onchain)
+    }
+
+    /// Build a swap transaction from Bebop execution data
+    async fn build_swap_tx(
+        &self,
+        execution_data: &BebopQuoteExecutionData,
+    ) -> Result<TransactionRequest, ExecutionClientError> {
+        let latest_block = self
+            .rpc_provider
+            .get_block(BlockId::latest())
+            .await
+            .map_err(ExecutionClientError::onchain)?
+            .ok_or(ExecutionClientError::onchain("No latest block found"))?;
+
+        let latest_basefee = latest_block
+            .header
+            .base_fee_per_gas
+            .ok_or(ExecutionClientError::onchain("No basefee found"))?
+            as u128;
+
+        let gas_limit =
+            u256_try_into_u64(execution_data.gas_limit).map_err(ExecutionClientError::onchain)?;
+
+        let tx = TransactionRequest::default()
+            .with_to(execution_data.to)
+            .with_from(execution_data.from)
+            .with_value(execution_data.value)
+            .with_input(execution_data.data.clone())
+            .with_max_fee_per_gas(latest_basefee * 2)
+            .with_max_priority_fee_per_gas(latest_basefee * 2)
+            .with_gas_limit(gas_limit * 2);
+
+        Ok(tx)
+    }
+
+    /// Send an onchain transaction with the configured RPC provider
+    /// (expected to be configured with a signer)
+    async fn send_tx(
+        &self,
+        tx: TransactionRequest,
+    ) -> Result<TransactionReceipt, ExecutionClientError> {
+        send_tx_with_retry(tx, &self.rpc_provider, ONE_CONFIRMATION)
+            .await
+            .map_err(ExecutionClientError::onchain)
+    }
 }
 
 // ------------------------
@@ -128,7 +270,7 @@ impl ExecutionVenue for BebopClient {
 
         let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
         let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
-        let executable_quote = todo!();
+        let executable_quote = ExecutableQuote::from_bebop_quote(quote_response, self.chain)?;
 
         Ok(executable_quote)
     }
@@ -137,9 +279,39 @@ impl ExecutionVenue for BebopClient {
     #[instrument(skip_all)]
     async fn execute_quote(
         &self,
-        _executable_quote: &ExecutableQuote,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
-        todo!()
+        let ExecutableQuote { quote, execution_data } = executable_quote;
+        let bebop_execution_data = execution_data.bebop()?;
+
+        self.approve_erc20_allowance(
+            quote.sell_token.get_alloy_address(),
+            quote.sell_amount,
+            bebop_execution_data.approval_target,
+        )
+        .await?;
+
+        let tx = self.build_swap_tx(&bebop_execution_data).await?;
+
+        info!("Executing Bebop {} quote", bebop_execution_data.route_source);
+
+        let receipt = self.send_tx(tx).await?;
+        let gas_cost = get_gas_cost(&receipt);
+        let tx_hash = receipt.transaction_hash;
+
+        if receipt.status() {
+            let recipient = bebop_execution_data.from;
+            let buy_token_address = quote.buy_token.get_alloy_address();
+            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient)
+                .map_err(ExecutionClientError::onchain)?;
+
+            Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
+        } else {
+            warn!("tx ({:#x}) failed", tx_hash);
+            // For an unsuccessful swap, we exclude the TX hash and report
+            // an actual buy amount of zero, but we still include the gas cost
+            Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+        }
     }
 }
 
