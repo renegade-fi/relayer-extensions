@@ -3,7 +3,13 @@
 #![allow(missing_docs)]
 #![allow(clippy::missing_docs_in_private_items)]
 
+use std::{collections::HashMap, fmt::Display};
+
+use alloy_primitives::{Address, Bytes, U256};
+use renegade_common::types::{chain::Chain, token::Token};
 use serde::{Deserialize, Serialize};
+
+use crate::execution_client::error::ExecutionClientError;
 
 /// The subset of Bebop quote request query parameters that we support.
 ///
@@ -33,6 +39,13 @@ pub struct BebopQuoteParams {
     pub gasless: bool,
     /// The slippage tolerance to use.
     pub slippage: f64,
+    /// Whether to skip taker validation checks.
+    pub skip_validation: bool,
+    /// Whether to skip taker checks.
+    ///
+    /// The difference between this and `skip_validation` is undocumented
+    /// in the Bebop docs.
+    pub skip_taker_checks: bool,
 }
 
 /// The type of approval to use for the quoted order.
@@ -43,149 +56,153 @@ pub enum ApprovalType {
     Standard,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopSuccessfulQuoteResponse {
+pub struct BebopQuoteResponse {
     routes: Vec<BebopRoute>,
-    errors: BebopQuoteError,
     best_price: BebopRouteSource,
 }
 
-#[derive(Serialize, Deserialize)]
+impl BebopQuoteResponse {
+    /// Get the winning route (JAMv2 vs PMMv3) for the quote
+    pub fn best_route(&self) -> Result<&BebopRoute, ExecutionClientError> {
+        self.routes
+            .iter()
+            .find(|route| route.route_source == self.best_price)
+            .ok_or(ExecutionClientError::custom("Winning Bebop route not found"))
+    }
+
+    /// Get the sell token for the quote
+    pub fn sell_token(&self, chain: Chain) -> Result<Token, ExecutionClientError> {
+        let sell_token_address = self
+            .best_route()?
+            .quote
+            .sell_tokens
+            .keys()
+            .next()
+            .ok_or(ExecutionClientError::custom("No sell token found"))?;
+
+        Ok(Token::from_addr_on_chain(sell_token_address, chain))
+    }
+
+    /// Get the buy token for the quote
+    pub fn buy_token(&self, chain: Chain) -> Result<Token, ExecutionClientError> {
+        let buy_token_address = self
+            .best_route()?
+            .quote
+            .buy_tokens
+            .keys()
+            .next()
+            .ok_or(ExecutionClientError::custom("No buy token found"))?;
+
+        Ok(Token::from_addr_on_chain(buy_token_address, chain))
+    }
+
+    /// Get the sell amount for the quote
+    pub fn sell_amount(&self) -> Result<U256, ExecutionClientError> {
+        let bebop_sell_token = self
+            .best_route()?
+            .quote
+            .sell_tokens
+            .values()
+            .next()
+            .ok_or(ExecutionClientError::custom("No sell token found"))?;
+
+        Ok(bebop_sell_token.amount)
+    }
+
+    /// Get the buy amount for the quote
+    pub fn buy_amount(&self) -> Result<U256, ExecutionClientError> {
+        let bebop_buy_token = self
+            .best_route()?
+            .quote
+            .buy_tokens
+            .values()
+            .next()
+            .ok_or(ExecutionClientError::custom("No buy token found"))?;
+
+        Ok(bebop_buy_token.amount)
+    }
+
+    /// Get the `to` address for the quote
+    pub fn get_to_address(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.to)
+    }
+
+    /// Get the `from` address for the quote
+    pub fn get_from_address(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.from)
+    }
+
+    /// Get the `value` for the quote
+    pub fn get_value(&self) -> Result<U256, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.value)
+    }
+
+    /// Get the calldata for the quote
+    pub fn get_data(&self) -> Result<Bytes, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.data.clone())
+    }
+
+    /// Get the gas limit for the quote
+    pub fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.tx.gas)
+    }
+
+    /// Get the approval target for the quote
+    pub fn get_approval_target(&self) -> Result<Address, ExecutionClientError> {
+        self.best_route().map(|route| route.quote.approval_target)
+    }
+
+    /// Get the route source (JAMv2 vs PMMv3) for the quote
+    pub fn get_route_source(&self) -> Result<BebopRouteSource, ExecutionClientError> {
+        self.best_route().map(|route| route.route_source)
+    }
+}
+
+#[derive(Deserialize, PartialEq, Eq, Hash, Debug, Clone, Copy)]
+pub enum BebopRouteSource {
+    JAMv2,
+    PMMv3,
+}
+
+impl Display for BebopRouteSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BebopRouteSource::JAMv2 => write!(f, "JAMv2"),
+            BebopRouteSource::PMMv3 => write!(f, "PMMv3"),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
 pub struct BebopRoute {
     #[serde(rename = "type")]
-    pub route_type: BebopRouteSource,
+    route_source: BebopRouteSource,
     quote: BebopQuote,
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum BebopRouteSource {
-    #[serde(rename = "JAMv2")]
-    JAM,
-    #[serde(rename = "PMMv3")]
-    PMM,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum BebopQuote {
-    JAM(BebopJamQuote),
-    PMM(BebopPmmQuote),
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopJamQuote {
-    #[serde(flatten)]
-    quote: BebopQuoteInfo,
-    hooks_hash: String,
-    to_sign: BebopSignableJamOrder,
-    solver: String,
+pub struct BebopQuote {
+    buy_tokens: HashMap<String, BebopToken>,
+    sell_tokens: HashMap<String, BebopToken>,
+    approval_target: Address,
+    tx: BebopTxData,
 }
-
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BebopPmmQuote {
-    #[serde(flatten)]
-    quote: BebopQuoteInfo,
-    makers: Vec<String>,
-    to_sign: BebopSignablePmmOrder,
+pub struct BebopToken {
+    amount: U256,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuoteInfo {
-    slippage: f64,
-    gas_fee: BebopGasFee,
-    buy_tokens: BebopBuyToken,
-    sell_tokens: BebopQuotedTokenInfo,
-    settlement_address: String,
-    approval_target: String,
-    required_signatures: Vec<String>,
-    price_impact: Option<f64>,
-    tx: Option<BebopTxData>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopGasFee {
-    native: String,
-    usd: Option<f64>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopBuyToken {
-    #[serde(flatten)]
-    info: BebopQuotedTokenInfo,
-    minimum_amount: String,
-    amount_before_fee: Option<String>,
-    delta_from_expected: Option<f64>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuotedTokenInfo {
-    amount: String,
-    decimals: u8,
-    price_usd: Option<f64>,
-    symbol: String,
-    price: Option<f64>,
-    price_before_fee: Option<f64>,
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BebopTxData {
-    from: Option<String>,
-    to: String,
-    value: String,
-    data: String,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopSignableJamOrder {
-    taker: String,
-    receiver: String,
-    expiry: u128,
-    exclusivity_deadline: u128,
-    nonce: String,
-    executor: String,
-    partner_info: String,
-    sell_tokens: Vec<String>,
-    buy_tokens: Vec<String>,
-    sell_amounts: Vec<String>,
-    buy_amounts: Vec<String>,
-    hooks_hash: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct BebopSignablePmmOrder {
-    partner_id: u128,
-    expiry: u128,
-    taker_address: String,
-    maker_address: String,
-    maker_nonce: String,
-    taker_token: String,
-    maker_token: String,
-    taker_amount: String,
-    maker_amount: String,
-    receiver: String,
-    packed_commands: String,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopQuoteError {
-    error_code: u128,
-    message: Option<String>,
-    fee: Option<BebopMinSizeFee>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BebopMinSizeFee {
-    ether: f64,
-    usd: f64,
+    from: Address,
+    to: Address,
+    value: U256,
+    data: Bytes,
+    gas: U256,
 }

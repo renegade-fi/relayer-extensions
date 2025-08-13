@@ -68,6 +68,8 @@ pub enum SupportedExecutionVenue {
     Lifi,
     /// The Cowswap venue
     Cowswap,
+    /// The Bebop venue
+    Bebop,
 }
 
 impl Display for SupportedExecutionVenue {
@@ -75,6 +77,7 @@ impl Display for SupportedExecutionVenue {
         match self {
             SupportedExecutionVenue::Lifi => write!(f, "Lifi"),
             SupportedExecutionVenue::Cowswap => write!(f, "Cowswap"),
+            SupportedExecutionVenue::Bebop => write!(f, "Bebop"),
         }
     }
 }
@@ -97,6 +100,10 @@ pub struct QuoteParams {
     ///
     /// If not provided, the default slippage tolerance will be used.
     pub slippage_tolerance: Option<f64>,
+    /// Whether to increase the price deviation tolerance when it is exceeded
+    /// in fetched quotes
+    #[serde(default)]
+    pub increase_price_deviation: bool,
     /// The venue to use for the quote. If not provided, the best quote across
     /// all venues will be selected.
     pub venue: Option<SupportedExecutionVenue>,
