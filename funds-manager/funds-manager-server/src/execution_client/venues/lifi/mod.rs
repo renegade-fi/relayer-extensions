@@ -11,8 +11,7 @@ use alloy::{
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
-use alloy_primitives::{Address, Bytes, Log, U256};
-use alloy_sol_types::SolEvent;
+use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::{quoters::QuoteParams, u256_try_into_u64};
 use renegade_common::types::chain::Chain;
@@ -31,8 +30,8 @@ use crate::{
         },
     },
     helpers::{
-        approve_erc20_allowance, build_provider, get_gas_cost, handle_http_response,
-        send_tx_with_retry, to_chain_id, IERC20::Transfer, ONE_CONFIRMATION,
+        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
+        handle_http_response, send_tx_with_retry, to_chain_id, ONE_CONFIRMATION,
     },
 };
 
@@ -267,30 +266,6 @@ impl LifiClient {
             .await
             .map_err(ExecutionClientError::onchain)
     }
-
-    /// Extract the transfer amount from a transaction receipt
-    fn get_buy_amount_actual(
-        &self,
-        receipt: &TransactionReceipt,
-        buy_token_address: Address,
-        recipient: Address,
-    ) -> Result<U256, ExecutionClientError> {
-        let logs: Vec<Log<Transfer>> = receipt
-            .logs()
-            .iter()
-            .filter_map(|log| {
-                if log.address() != buy_token_address {
-                    None
-                } else {
-                    Transfer::decode_log(&log.inner).ok()
-                }
-            })
-            .collect();
-
-        logs.iter()
-            .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
-            .ok_or(ExecutionClientError::onchain("no matching transfer event found"))
-    }
 }
 
 #[async_trait]
@@ -348,8 +323,8 @@ impl ExecutionVenue for LifiClient {
         if receipt.status() {
             let recipient = lifi_execution_data.from;
             let buy_token_address = quote.buy_token.get_alloy_address();
-            let buy_amount_actual =
-                self.get_buy_amount_actual(&receipt, buy_token_address, recipient)?;
+            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient)
+                .map_err(ExecutionClientError::onchain)?;
 
             Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
         } else {

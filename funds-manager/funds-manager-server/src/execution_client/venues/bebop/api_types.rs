@@ -3,7 +3,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::missing_docs_in_private_items)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use alloy_primitives::{Address, Bytes, U256};
 use renegade_common::types::{chain::Chain, token::Token};
@@ -164,6 +164,15 @@ impl BebopQuoteResponse {
 pub enum BebopRouteSource {
     JAMv2,
     PMMv3,
+}
+
+impl Display for BebopRouteSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BebopRouteSource::JAMv2 => write!(f, "JAMv2"),
+            BebopRouteSource::PMMv3 => write!(f, "PMMv3"),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
