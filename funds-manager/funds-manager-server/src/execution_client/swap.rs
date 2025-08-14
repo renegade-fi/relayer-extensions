@@ -227,7 +227,7 @@ impl ExecutionClient {
 
         for (token, purchase_value) in filtered_purchase_values {
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
-            match self.buy_token_dollar_amount(token, purchase_value).await {
+            match self.buy_token_dollar_amount(token, purchase_value * SWAP_TO_COVER_BUFFER).await {
                 Ok(Some(outcome)) => swap_outcomes.push(outcome),
                 Ok(None) => warn!("No swap executed for {ticker}"),
                 Err(e) => warn!("Error swapping into {ticker}: {e}"),
@@ -416,9 +416,15 @@ impl ExecutionClient {
 
         let swap_request = SwapIntoTargetTokenRequest {
             target_amount: usdc_target_balance,
-            quote_params: QuoteParams { from_token: usdc_token.get_addr(), ..Default::default() },
+            quote_params: QuoteParams {
+                to_token: usdc_token.get_addr(),
+                from_token: Address::ZERO.to_string(),
+                ..Default::default()
+            },
             exclude_tokens,
         };
+
+        info!("Buying into {usdc_target_balance} USDC to cover multi-swap purchases");
 
         self.try_swap_into_target_token(swap_request).await
     }
@@ -429,6 +435,9 @@ impl ExecutionClient {
         token: Token,
         purchase_value: f64,
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
+        let ticker = token.get_ticker().unwrap_or(token.get_addr());
+        info!("Buying ${purchase_value} of {ticker}");
+
         let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
         let from_amount_u128 = usdc_token.convert_from_decimal(purchase_value);
         let from_amount = from_amount_u128.try_into().map_err(ExecutionClientError::parse)?;

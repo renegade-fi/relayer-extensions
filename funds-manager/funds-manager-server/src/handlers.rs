@@ -436,14 +436,12 @@ pub(crate) async fn refill_gas_sponsor_handler(
     let quoter_wallet = custody_client.get_quoter_hot_wallet().await?;
     let signer = custody_client.get_hot_wallet_private_key(&quoter_wallet.address).await?;
 
-    let allocation = custody_client.fetch_gas_sponsor_allocation().await?;
-
     // Refill the gas sponsor with native ETH
-    custody_client.refill_gas_sponsor_eth(&allocation).await?;
+    custody_client.refill_gas_sponsor_eth().await?;
 
     // Refill the gas sponsor with ERC20s
 
-    let tokens_needing_refill = custody_client.get_tokens_needing_refill(&allocation).await?;
+    let tokens_needing_refill = custody_client.get_tokens_needing_refill().await?;
 
     // Swap into the target tokens such that we can cover the refill amounts
     let swap_outcomes =
