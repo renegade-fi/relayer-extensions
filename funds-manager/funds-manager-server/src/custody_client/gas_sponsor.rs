@@ -37,6 +37,13 @@ const GAS_SPONSOR_REFILL_TOLERANCE: f64 = 0.1; // 10%
 /// in the gas sponsor allocation
 const NATIVE_ETH_TICKER: &str = "ETH";
 
+/// The minimum USDC value of a token transfer to the gas sponsor
+const MIN_TRANSFER_VALUE: f64 = 10.0;
+
+/// The factor by which to reduce the amount of a token to send to the gas
+/// sponsor when we are sending the entire hot wallet balance of the token
+pub const MAX_REFILL_REDUCTION_FACTOR: f64 = 0.9999;
+
 // ---------
 // | Types |
 // ---------
@@ -64,17 +71,8 @@ impl CustodyClient {
     // | Handlers |
     // ------------
 
-    /// Refill the gas sponsor
-    pub(crate) async fn refill_gas_sponsor(&self) -> Result<(), FundsManagerError> {
-        // Fetch token allocation from S3
-        let allocation = self.fetch_gas_sponsor_allocation().await?;
-
-        self.refill_gas_sponsor_tokens(&allocation).await?;
-        self.refill_gas_sponsor_eth(&allocation).await
-    }
-
     /// Fetch the gas sponsor allocation from S3
-    async fn fetch_gas_sponsor_allocation(
+    pub async fn fetch_gas_sponsor_allocation(
         &self,
     ) -> Result<GasSponsorAllocation, FundsManagerError> {
         let bucket = format!("{}-{ALLOCATION_SPONSOR_BUCKET_SUFFIX}", self.chain);
@@ -87,13 +85,16 @@ impl CustodyClient {
         Ok(allocation)
     }
 
-    /// Refill the gas sponsor with ERC-20 tokens for in-kind sponsorship
-    async fn refill_gas_sponsor_tokens(
+    /// Gets the tokens which the gas sponsor needs to be refilled for.
+    ///
+    /// Returns a vector of (token, refill_amount).
+    pub async fn get_tokens_needing_refill(
         &self,
         allocation: &GasSponsorAllocation,
-    ) -> Result<(), FundsManagerError> {
+    ) -> Result<Vec<(Token, f64)>, FundsManagerError> {
         let gas_sponsor_address = self.gas_sponsor_address();
 
+        let mut tokens = Vec::new();
         for (ticker, desired_amount) in allocation {
             // Skip the native ETH allocation, that is handled in `refill_gas_sponsor_eth`
             if ticker == NATIVE_ETH_TICKER {
@@ -106,23 +107,15 @@ impl CustodyClient {
             let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
 
             if bal < desired_amount * (1.0 - GAS_SPONSOR_REFILL_TOLERANCE) {
-                let amount_to_send = desired_amount - bal;
-                match self.send_tokens_to_gas_sponsor(&token.addr, amount_to_send).await {
-                    Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
-                        info!("Sent {amount_to_send} {ticker} from hot wallet to gas sponsor in tx {tx:#x}");
-                    },
-                    Err(e) => {
-                        error!("Failed to send {ticker} to gas sponsor, skipping: {e}");
-                    },
-                }
+                tokens.push((token, *desired_amount - bal));
             }
         }
 
-        Ok(())
+        Ok(tokens)
     }
 
     /// Refill the gas sponsor with ETH
-    async fn refill_gas_sponsor_eth(
+    pub async fn refill_gas_sponsor_eth(
         &self,
         allocation: &GasSponsorAllocation,
     ) -> Result<(), FundsManagerError> {
@@ -147,27 +140,43 @@ impl CustodyClient {
         Ok(())
     }
 
-    /// Send ERC-20 tokens to the gas sponsor contract
-    async fn send_tokens_to_gas_sponsor(
+    /// Send the given amount of the ERC-20 to the gas sponsor contract
+    pub async fn send_token_to_gas_sponsor(
         &self,
-        mint: &str,
+        token: &Token,
         amount: f64,
-    ) -> Result<TransactionReceipt, FundsManagerError> {
-        // Get the quoter hot wallet's private key
-        let quoter_wallet = self.get_quoter_hot_wallet().await?;
-        let signer = self.get_hot_wallet_private_key(&quoter_wallet.address).await?;
+        quoter_wallet: PrivateKeySigner,
+    ) -> Result<(), FundsManagerError> {
+        let ticker = token.get_ticker().unwrap_or(token.get_addr());
+        let mint = &token.addr;
 
-        let bal = self.get_erc20_balance(mint, &quoter_wallet.address).await?;
-        if bal < amount {
+        let bal =
+            self.get_erc20_balance(&token.get_addr(), &quoter_wallet.address().to_string()).await?;
+
+        let send_amount = if bal <= amount { bal * MAX_REFILL_REDUCTION_FACTOR } else { amount };
+
+        let price = self.price_reporter.get_price(mint, self.chain).await?;
+        let value = send_amount * price;
+
+        // TODO: Rather than doing this check here, we should replace the check in
+        // `get_tokens_needing_refill` with it. This should also let us remove
+        // the gas sponsor allocation in favor of a fixed USDC value.
+        if value < MIN_TRANSFER_VALUE {
             return Err(FundsManagerError::custom(format!(
-                "quoter hot wallet does not have enough {mint} to cover the refill"
+                "Attempted transfer of ${value} of {ticker} to gas sponsor is below ${MIN_TRANSFER_VALUE} minimum"
             )));
         }
 
-        let receipt =
-            self.erc20_transfer(mint, &self.gas_sponsor_address(), amount, signer).await?;
+        let receipt = self
+            .erc20_transfer(mint, &self.gas_sponsor_address(), send_amount, quoter_wallet)
+            .await?;
 
-        Ok(receipt)
+        info!(
+            "Sent {amount} {ticker} from hot wallet to gas sponsor in tx {:#x}",
+            receipt.transaction_hash
+        );
+
+        Ok(())
     }
 
     /// Send ETH to the gas sponsor contract

@@ -1,6 +1,6 @@
 //! Handlers for executing swaps
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, iter};
 
 use alloy_primitives::{Address, TxHash, U256};
 use funds_manager_api::{
@@ -8,7 +8,7 @@ use funds_manager_api::{
     u256_try_into_u128,
 };
 use futures::future::join_all;
-use renegade_common::types::token::{get_all_tokens, Token};
+use renegade_common::types::token::{get_all_tokens, Token, USDC_TICKER};
 use tracing::{info, instrument, warn};
 
 use crate::{
@@ -157,9 +157,14 @@ impl ExecutionClient {
         &self,
         req: SwapIntoTargetTokenRequest,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
-        let SwapIntoTargetTokenRequest { target_amount, quote_params } = req;
+        let SwapIntoTargetTokenRequest { target_amount, quote_params, exclude_tokens } = req;
 
         let target_token = Token::from_addr_on_chain(&quote_params.to_token, self.chain);
+        let excluded_tokens = exclude_tokens
+            .into_iter()
+            .map(|t| Token::from_addr_on_chain(&t, self.chain))
+            .chain(iter::once(target_token.clone()))
+            .collect();
 
         // Check that the current token balances doesn't already cover the target amount
         let current_balance = self.get_erc20_balance(&target_token.addr).await?;
@@ -180,7 +185,56 @@ impl ExecutionClient {
             return Ok(vec![]);
         }
 
-        self.execute_swaps_into_target_token(quote_params, target_token, amount_to_cover_usdc).await
+        self.execute_swaps_into_target_token(
+            quote_params,
+            target_token,
+            amount_to_cover_usdc,
+            excluded_tokens,
+        )
+        .await
+    }
+
+    /// Try to execute swaps to cover the target balances of all the input
+    /// tokens.
+    ///
+    /// We do this by first swapping into USDC, excluding the target tokens from
+    /// the swap path, and then swapping from USDC into each of the target
+    /// tokens.
+    ///
+    /// We do this so that we can maintain the current semantics around "buying"
+    /// & "selling", and what the "base" token in a swap is, when recording
+    /// post-swap telemetry.
+    ///
+    /// The tuples in the `target_tokens` vector should contain the target
+    /// token, and the target balance of that token
+    pub async fn multi_swap_into_target_tokens(
+        &self,
+        target_tokens: &[(Token, f64)],
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
+        // Get the final USDC balance needed to cover all the target tokens
+        let purchase_values = self.get_multi_swap_purchase_values(target_tokens).await?;
+
+        let mut swap_outcomes = self.buy_usdc_for_multi_swap(&purchase_values).await?;
+
+        // Filter out any zero-value purchases, and any purchases of USDC
+        let filtered_purchase_values = purchase_values.into_iter().filter(|(token, value)| {
+            let nonzero_purchase = *value > 0.0;
+            let non_usdc_purchase =
+                token.get_ticker().map(|ticker| ticker != USDC_TICKER).unwrap_or(true);
+
+            nonzero_purchase && non_usdc_purchase
+        });
+
+        for (token, purchase_value) in filtered_purchase_values {
+            let ticker = token.get_ticker().unwrap_or(token.get_addr());
+            match self.buy_token_dollar_amount(token, purchase_value).await {
+                Ok(Some(outcome)) => swap_outcomes.push(outcome),
+                Ok(None) => warn!("No swap executed for {ticker}"),
+                Err(e) => warn!("Error swapping into {ticker}: {e}"),
+            }
+        }
+
+        Ok(swap_outcomes)
     }
 
     // ---------------------------------
@@ -195,12 +249,13 @@ impl ExecutionClient {
         params: QuoteParams,
         target_token: Token,
         amount_to_cover_usdc: f64,
+        excluded_tokens: Vec<Token>,
     ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
         let target_ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
 
         // Get the balances of the candidate tokens to swap out of,
         // sorted by descending value
-        let swap_candidates = self.get_swap_candidates(&target_token).await?;
+        let swap_candidates = self.get_swap_candidates(excluded_tokens).await?;
 
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
@@ -252,11 +307,11 @@ impl ExecutionClient {
     /// tuples, sorted by descending value.
     async fn get_swap_candidates(
         &self,
-        target_token: &Token,
+        excluded_tokens: Vec<Token>,
     ) -> Result<Vec<SwapCandidate>, ExecutionClientError> {
         let candidate_tokens: Vec<Token> = get_all_tokens()
             .into_iter()
-            .filter(|token| self.swap_candidate_predicate(token, target_token))
+            .filter(|token| self.swap_candidate_predicate(token, &excluded_tokens))
             .collect();
 
         let mut swap_candidates = vec![];
@@ -278,13 +333,13 @@ impl ExecutionClient {
     }
 
     /// A predicate for filtering candidate tokens to swap into the target token
-    fn swap_candidate_predicate(&self, token: &Token, target_token: &Token) -> bool {
+    fn swap_candidate_predicate(&self, token: &Token, excluded_tokens: &[Token]) -> bool {
         let token_on_chain = token.get_chain() == self.chain;
-        let token_not_target = token.get_addr() != target_token.get_addr();
+        let token_not_excluded = !excluded_tokens.contains(token);
         let token_not_stablecoin = !token.is_stablecoin();
         let token_not_usd_mock = token.get_addr() != Address::ZERO.to_string();
 
-        token_on_chain && token_not_target && token_not_stablecoin && token_not_usd_mock
+        token_on_chain && token_not_excluded && token_not_stablecoin && token_not_usd_mock
     }
 
     /// Try to swap out of a candidate token to cover a target amount of a
@@ -328,6 +383,64 @@ impl ExecutionClient {
         // that we can continue attempting swaps across the other candidates.
         let swap_outcome = self.swap_immediate_decaying(swap_params).await.ok().flatten();
         Ok(swap_outcome)
+    }
+
+    /// Get the USDC value of the amount to purchase to cover the target balance
+    /// for each input token
+    async fn get_multi_swap_purchase_values(
+        &self,
+        target_tokens: &[(Token, f64)],
+    ) -> Result<Vec<(Token, f64)>, ExecutionClientError> {
+        let mut purchase_values = Vec::new();
+
+        for (token, target_balance) in target_tokens {
+            let price = self.price_reporter.get_price(&token.addr, self.chain).await?;
+            let current_balance = self.get_erc20_balance(&token.addr).await?;
+            let purchase_amount = (target_balance - current_balance).max(0.0);
+            let purchase_value = purchase_amount * price;
+            purchase_values.push((token.clone(), purchase_value));
+        }
+
+        Ok(purchase_values)
+    }
+
+    /// Buy USDC such that we can cover the purchases of all input tokens
+    async fn buy_usdc_for_multi_swap(
+        &self,
+        purchase_values: &[(Token, f64)],
+    ) -> Result<Vec<DecayingSwapOutcome>, ExecutionClientError> {
+        let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
+
+        let usdc_target_balance = purchase_values.iter().map(|(_, value)| value).sum();
+        let exclude_tokens = purchase_values.iter().map(|(token, _)| token.get_addr()).collect();
+
+        let swap_request = SwapIntoTargetTokenRequest {
+            target_amount: usdc_target_balance,
+            quote_params: QuoteParams { from_token: usdc_token.get_addr(), ..Default::default() },
+            exclude_tokens,
+        };
+
+        self.try_swap_into_target_token(swap_request).await
+    }
+
+    /// Buy the given dollar value of a token, using default quote params
+    async fn buy_token_dollar_amount(
+        &self,
+        token: Token,
+        purchase_value: f64,
+    ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
+        let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
+        let from_amount_u128 = usdc_token.convert_from_decimal(purchase_value);
+        let from_amount = from_amount_u128.try_into().map_err(ExecutionClientError::parse)?;
+
+        let swap_params = QuoteParams {
+            from_token: usdc_token.get_addr(),
+            to_token: token.get_addr(),
+            from_amount,
+            ..Default::default()
+        };
+
+        self.swap_immediate_decaying(swap_params).await
     }
 
     // ----------------------------

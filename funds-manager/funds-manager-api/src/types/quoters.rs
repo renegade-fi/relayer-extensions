@@ -156,6 +156,9 @@ pub struct SwapIntoTargetTokenRequest {
     /// fields will be ignored and calculated by the server, but they are still
     /// required to be set.
     pub quote_params: QuoteParams,
+    /// The tokens to exclude from the swaps
+    #[serde(default)]
+    pub exclude_tokens: Vec<String>,
 }
 
 /// The request body for withdrawing USDC to Hyperliquid from the quoter hot

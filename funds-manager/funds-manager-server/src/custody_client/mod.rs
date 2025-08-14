@@ -28,6 +28,7 @@ use fireblocks_sdk::{
     },
     models::TransactionResponse,
 };
+use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 use std::sync::Arc;
 use std::time::Duration;
@@ -134,6 +135,8 @@ pub struct CustodyClient {
     aws_config: AwsConfig,
     /// The gas sponsor contract address
     gas_sponsor_address: Address,
+    /// The price reporter client
+    price_reporter: PriceReporterClient,
 }
 
 impl CustodyClient {
@@ -149,6 +152,7 @@ impl CustodyClient {
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
+        price_reporter: PriceReporterClient,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_client =
             Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
@@ -161,6 +165,7 @@ impl CustodyClient {
             db_pool,
             aws_config,
             gas_sponsor_address,
+            price_reporter,
         })
     }
 

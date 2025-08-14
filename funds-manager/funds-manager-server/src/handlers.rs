@@ -429,7 +429,41 @@ pub(crate) async fn refill_gas_sponsor_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     let custody_client = server.get_custody_client(&chain)?;
-    custody_client.refill_gas_sponsor().await?;
+    let execution_client = server.get_execution_client(&chain)?;
+    let metrics_recorder = server.get_metrics_recorder(&chain)?;
+
+    // Get the quoter hot wallet's private key
+    let quoter_wallet = custody_client.get_quoter_hot_wallet().await?;
+    let signer = custody_client.get_hot_wallet_private_key(&quoter_wallet.address).await?;
+
+    let allocation = custody_client.fetch_gas_sponsor_allocation().await?;
+
+    // Refill the gas sponsor with native ETH
+    custody_client.refill_gas_sponsor_eth(&allocation).await?;
+
+    // Refill the gas sponsor with ERC20s
+
+    let tokens_needing_refill = custody_client.get_tokens_needing_refill(&allocation).await?;
+
+    // Swap into the target tokens such that we can cover the refill amounts
+    let swap_outcomes =
+        execution_client.multi_swap_into_target_tokens(&tokens_needing_refill).await?;
+
+    // Send the tokens to the gas sponsor
+    for (token, refill_amount) in tokens_needing_refill {
+        let ticker = token.get_ticker().unwrap_or(token.get_addr());
+        if let Err(e) =
+            custody_client.send_token_to_gas_sponsor(&token, refill_amount, signer.clone()).await
+        {
+            error!("Failed to send {ticker} to gas sponsor, skipping: {e}");
+        }
+    }
+
+    for outcome in swap_outcomes {
+        if let Err(e) = metrics_recorder.record_swap_cost(&outcome).await {
+            warn!("Failed to record swap cost metrics: {e}");
+        }
+    }
 
     let resp = json!({});
     Ok(warp::reply::json(&resp))
