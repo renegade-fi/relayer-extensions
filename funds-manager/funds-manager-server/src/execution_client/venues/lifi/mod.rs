@@ -323,8 +323,7 @@ impl ExecutionVenue for LifiClient {
         if receipt.status() {
             let recipient = lifi_execution_data.from;
             let buy_token_address = quote.buy_token.get_alloy_address();
-            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient)
-                .map_err(ExecutionClientError::onchain)?;
+            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient);
 
             Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
         } else {
