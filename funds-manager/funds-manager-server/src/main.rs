@@ -46,16 +46,6 @@ use funds_manager_api::quoters::{
 };
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
-use handlers::{
-    create_gas_wallet_handler, create_hot_wallet_handler, get_deposit_address_handler,
-    get_fee_hot_wallet_address_handler, get_fee_wallets_handler,
-    get_gas_hot_wallet_address_handler, get_gas_wallets_handler, get_hot_wallet_balances_handler,
-    get_vault_balances_handler, index_fees_handler, quoter_withdraw_handler, redeem_fees_handler,
-    refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
-    report_active_peers_handler, rpc_handler, transfer_to_vault_handler,
-    withdraw_fee_balance_handler, withdraw_from_vault_handler, withdraw_gas_handler,
-    withdraw_to_hyperliquid_handler,
-};
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
 use renegade_common::types::chain::Chain;
 use server::Server;
@@ -66,8 +56,23 @@ use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
-use crate::handlers::{
-    get_unredeemed_fee_totals_handler, swap_immediate_handler, swap_into_target_token_handler,
+use crate::handlers::fee_indexing::{
+    get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_unredeemed_fee_totals_handler,
+    index_fees_handler, redeem_fees_handler, withdraw_fee_balance_handler,
+};
+use crate::handlers::gas::{
+    create_gas_wallet_handler, get_gas_hot_wallet_address_handler, get_gas_wallets_handler,
+    refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
+    report_active_peers_handler, withdraw_gas_handler,
+};
+use crate::handlers::hot_wallets::{create_hot_wallet_handler, get_hot_wallet_balances_handler};
+use crate::handlers::quoters::{
+    get_deposit_address_handler, quoter_withdraw_handler, withdraw_to_hyperliquid_handler,
+};
+use crate::handlers::rpc::rpc_handler;
+use crate::handlers::swap::{swap_immediate_handler, swap_into_target_token_handler};
+use crate::handlers::vaults::{
+    get_vault_balances_handler, transfer_to_vault_handler, withdraw_from_vault_handler,
 };
 
 // -------
