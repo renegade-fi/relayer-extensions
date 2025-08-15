@@ -28,8 +28,6 @@ pub struct BundleContext {
     pub is_sponsored: bool,
     /// The nullifier that was nullified as a result of the bundle being settled
     pub nullifier: Nullifier,
-    /// Whether the bundle was shared
-    pub shared: bool,
     /// The timestamp of the price of the match in milliseconds
     pub price_timestamp: u64,
     /// The timestamp of the assembly of the bundle in milliseconds

@@ -19,7 +19,6 @@ impl Server {
     /// Returns the bundle ID
     pub async fn write_bundle_context<Req>(
         &self,
-        shared_bundle: bool,
         price_timestamp: u64,
         assembled_timestamp: Option<u64>,
         ctx: &MatchBundleResponseCtx<Req>,
@@ -47,7 +46,6 @@ impl Server {
             gas_sponsorship_info: sponsorship_info,
             is_sponsored,
             nullifier,
-            shared: shared_bundle,
             price_timestamp,
             assembled_timestamp,
         };
@@ -74,7 +72,6 @@ impl Server {
         let bundle_id = generate_malleable_bundle_id(&resp.match_bundle.match_result, &nullifier)?;
         let gas_sponsorship_info = ctx.sponsorship_info();
         let is_sponsored = gas_sponsorship_info.is_some();
-        let shared = req.allow_shared;
         let price_timestamp = req.signed_quote.quote.price.timestamp;
 
         let bundle_ctx = BundleContext {
@@ -84,7 +81,6 @@ impl Server {
             gas_sponsorship_info,
             is_sponsored,
             nullifier,
-            shared,
             price_timestamp,
             assembled_timestamp,
         };

@@ -119,9 +119,8 @@ impl Server {
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
-        let allow_shared = ctx.body.allow_shared;
         let key_desc = ctx.user();
-        self.check_bundle_rate_limit(key_desc, allow_shared).await?;
+        self.check_bundle_rate_limit(key_desc).await?;
 
         // Apply gas sponsorship to the assembly request
         let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
@@ -262,10 +261,9 @@ impl Server {
         ctx: &SponsoredAssembleQuoteResponseCtx,
     ) -> Result<(), AuthServerError> {
         // Record the bundle context in the store
-        let shared = ctx.request().allow_shared;
         let price_timestamp = ctx.request().signed_quote.quote.price.timestamp;
         let assembled_timestamp = get_current_time_millis();
-        self.write_bundle_context(shared, price_timestamp, Some(assembled_timestamp), ctx).await?;
+        self.write_bundle_context(price_timestamp, Some(assembled_timestamp), ctx).await?;
 
         let req = ctx.request();
         if req.updated_order.is_some() {
@@ -273,8 +271,7 @@ impl Server {
         }
 
         let order = &req.signed_quote.quote.order;
-        let shared_bundle = req.allow_shared;
-        self.handle_bundle_response(order, ctx, shared_bundle)
+        self.handle_bundle_response(order, ctx)
     }
 }
 

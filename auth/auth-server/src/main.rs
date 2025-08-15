@@ -80,13 +80,10 @@ pub struct Cli {
     #[arg(long, env = "CHAIN_ID")]
     pub chain_id: Chain,
     /// The bundle rate limit in bundles per minute
-    #[arg(long, env = "BUNDLE_RATE_LIMIT", default_value = "4")]
+    #[arg(long, env = "BUNDLE_RATE_LIMIT", default_value = "200")]
     pub bundle_rate_limit: u64,
-    /// The shared bundle rate limit in bundles per minute
-    #[arg(long, env = "SHARED_BUNDLE_RATE_LIMIT", default_value = "50")]
-    pub shared_bundle_rate_limit: u64,
     /// The quote rate limit in quotes per minute
-    #[arg(long, env = "QUOTE_RATE_LIMIT", default_value = "100")]
+    #[arg(long, env = "QUOTE_RATE_LIMIT", default_value = "500")]
     pub quote_rate_limit: u64,
     /// The path to the file containing token remaps for the given chain
     ///

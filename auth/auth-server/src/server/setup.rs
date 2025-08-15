@@ -65,7 +65,6 @@ impl Server {
         let rate_limiter = AuthServerRateLimiter::new(
             args.quote_rate_limit,
             args.bundle_rate_limit,
-            args.shared_bundle_rate_limit,
             args.max_gas_sponsorship_value,
             &args.execution_cost_redis_url,
         )
