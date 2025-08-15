@@ -253,6 +253,7 @@ impl ChainConfig {
             db_pool.clone(),
             aws_config.clone(),
             gas_sponsor_address,
+            price_reporter.clone(),
         )?;
 
         let quoter_hot_wallet =
