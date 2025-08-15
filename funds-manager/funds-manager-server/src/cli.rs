@@ -207,6 +207,8 @@ pub struct ChainConfig {
     // --- Execution Params --- //
     /// The Lifi API key
     pub lifi_api_key: Option<String>,
+    /// The Bebop API key
+    pub bebop_api_key: Option<String>,
     /// A map from token ticker to the maximum price deviation allowed in a
     /// quote for that token
     #[serde(default)]
@@ -268,6 +270,7 @@ impl ChainConfig {
         let execution_client = ExecutionClient::new(
             chain,
             self.lifi_api_key.clone(),
+            self.bebop_api_key.clone(),
             &self.rpc_url,
             price_reporter.clone(),
             quoter_hot_wallet_private_key,

@@ -50,6 +50,12 @@ const BEBOP_BASE_URL: &str = "https://api.bebop.xyz/router";
 /// The endpoint for getting a quote
 const BEBOP_QUOTE_ENDPOINT: &str = "v1/quote";
 
+/// Our Bebop source name
+const BEBOP_SOURCE: &str = "renegade";
+
+/// The header to specify the API key for an API request
+const BEBOP_API_KEY_HEADER: &str = "source-auth";
+
 // ---------
 // | Types |
 // ---------
@@ -122,6 +128,8 @@ impl ExecutableQuote {
 /// A client for interacting with the Bebop API
 #[derive(Clone)]
 pub struct BebopClient {
+    /// The API key to use for requests
+    api_key: Option<String>,
     /// The underlying HTTP client
     http_client: Client,
     /// The RPC provider
@@ -134,11 +142,16 @@ pub struct BebopClient {
 
 impl BebopClient {
     /// Create a new client
-    pub fn new(rpc_url: &str, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
+    pub fn new(
+        api_key: Option<String>,
+        rpc_url: &str,
+        hot_wallet: PrivateKeySigner,
+        chain: Chain,
+    ) -> Self {
         let hot_wallet_address = hot_wallet.address();
         let rpc_provider = build_provider(rpc_url, Some(hot_wallet));
 
-        Self { http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
+        Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
 
     /// Build a Bebop API URL for a given path
@@ -155,7 +168,12 @@ impl BebopClient {
     ) -> Result<T, ExecutionClientError> {
         let url = self.build_bebop_url(path)?;
 
-        let response = self.http_client.get(url).send().await?;
+        let mut request = self.http_client.get(url);
+        if let Some(api_key) = &self.api_key {
+            request = request.header(BEBOP_API_KEY_HEADER, api_key.as_str());
+        }
+
+        let response = request.send().await?;
         handle_http_response(response).await.map_err(ExecutionClientError::http)
     }
 
@@ -180,6 +198,7 @@ impl BebopClient {
             // as we only want these constraints to be enforced if/when we execute the quote.
             skip_validation: true,
             skip_taker_checks: true,
+            source: BEBOP_SOURCE.to_string(),
         })
     }
 

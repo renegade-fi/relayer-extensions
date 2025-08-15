@@ -46,6 +46,8 @@ pub struct BebopQuoteParams {
     /// The difference between this and `skip_validation` is undocumented
     /// in the Bebop docs.
     pub skip_taker_checks: bool,
+    /// Referral partner that will be associated with the quote (us).
+    pub source: String,
 }
 
 /// The type of approval to use for the quoted order.
