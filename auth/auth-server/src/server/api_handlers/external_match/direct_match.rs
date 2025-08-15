@@ -115,8 +115,7 @@ impl Server {
         ctx: &mut DirectMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
-        // Direct matches are always shared
-        self.check_bundle_rate_limit(ctx.user(), true /* shared */).await?;
+        self.check_bundle_rate_limit(ctx.user()).await?;
         self.route_direct_match_req(ctx).await?;
 
         // Apply gas sponsorship to the match request
@@ -239,7 +238,6 @@ impl Server {
         let price_timestamp = get_current_time_millis();
         // Record the bundle context in the store
         self.write_bundle_context(
-            true, // shared
             price_timestamp,
             None, // assembled_timestamp
             ctx,
@@ -248,6 +246,6 @@ impl Server {
 
         let req = ctx.request();
         let order = &req.external_order;
-        self.handle_bundle_response(order, ctx, true /* shared */)
+        self.handle_bundle_response(order, ctx)
     }
 }

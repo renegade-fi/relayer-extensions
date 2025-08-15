@@ -91,9 +91,8 @@ impl Server {
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
-        let allow_shared = ctx.body.allow_shared;
         let key_desc = ctx.user();
-        self.check_bundle_rate_limit(key_desc, allow_shared).await?;
+        self.check_bundle_rate_limit(key_desc).await?;
         self.route_assembly_req(ctx).await?;
 
         // Apply gas sponsorship to the assembly request
