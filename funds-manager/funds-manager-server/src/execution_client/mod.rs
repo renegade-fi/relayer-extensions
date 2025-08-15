@@ -40,6 +40,7 @@ impl ExecutionClient {
     pub fn new(
         chain: Chain,
         lifi_api_key: Option<String>,
+        bebop_api_key: Option<String>,
         rpc_url: &str,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
@@ -50,7 +51,7 @@ impl ExecutionClient {
 
         let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain);
         let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet.clone(), chain);
-        let bebop = BebopClient::new(rpc_url, quoter_hot_wallet, chain);
+        let bebop = BebopClient::new(bebop_api_key, rpc_url, quoter_hot_wallet, chain);
 
         let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
