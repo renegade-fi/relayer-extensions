@@ -201,19 +201,28 @@ pub fn get_received_amount(
     receipt: &TransactionReceipt,
     token_address: Address,
     recipient: Address,
-) -> Result<U256, FundsManagerError> {
+) -> U256 {
     receipt
         .logs()
         .iter()
-        .filter_map(|log| {
+        .map(|log| {
             if log.address() != token_address {
-                None
-            } else {
-                IERC20::Transfer::decode_log(&log.inner).ok()
+                return U256::ZERO;
             }
+
+            let transfer = match IERC20::Transfer::decode_log(&log.inner) {
+                Ok(transfer) => transfer,
+                // Failure to decode implies the event is not a transfer
+                Err(_) => return U256::ZERO,
+            };
+
+            if transfer.to == recipient {
+                return transfer.value;
+            }
+
+            U256::ZERO
         })
-        .find_map(|transfer| if transfer.to == recipient { Some(transfer.value) } else { None })
-        .ok_or(FundsManagerError::on_chain("no matching transfer event found"))
+        .sum()
 }
 
 // -----------------------
