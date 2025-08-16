@@ -3,7 +3,8 @@
 use alloy_primitives::Address;
 use fireblocks_sdk::{
     apis::{
-        blockchains_assets_beta_api::GetAssetByIdParams, vaults_api::GetPagedVaultAccountsParams,
+        blockchains_assets_beta_api::GetAssetByIdParams,
+        vaults_api::{GetPagedVaultAccountsParams, GetVaultAccountAssetParams},
         Api,
     },
     models::{AssetOnchainBeta, VaultAccount, VaultAsset},
@@ -52,6 +53,30 @@ impl CustodyClient {
         }
 
         Ok(None)
+    }
+
+    /// Get the available balance of a given asset in a vault
+    pub(crate) async fn get_vault_available_balance(
+        &self,
+        vault_id: String,
+        mint: &str,
+    ) -> Result<f64, FundsManagerError> {
+        let asset_id = self
+            .get_asset_id_for_address(mint)
+            .await?
+            .ok_or(FundsManagerError::fireblocks(format!("asset {mint} not found")))?;
+
+        let params = GetVaultAccountAssetParams::builder()
+            .vault_account_id(vault_id)
+            .asset_id(asset_id)
+            .build();
+
+        let vault_asset =
+            self.fireblocks_client.sdk.vaults_api().get_vault_account_asset(params).await?;
+
+        let available: f64 = vault_asset.available.parse().map_err(FundsManagerError::parse)?;
+
+        Ok(available)
     }
 
     /// Get the non-zero token balances of a vault
