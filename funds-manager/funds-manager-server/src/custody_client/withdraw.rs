@@ -169,11 +169,13 @@ impl CustodyClient {
 
         let usdc_mint = self.get_hyperliquid_usdc_mint()?;
 
-        let hl_bal = self.get_erc20_balance(&usdc_mint, &hyperliquid_address).await?;
-        if hl_bal < amount {
+        let hl_available_bal =
+            self.get_vault_available_balance(hyperliquid_vault_id.clone(), &usdc_mint).await?;
+
+        if hl_available_bal < amount {
             // We round up the amount to transfer to account for
             // potential floating point precision issues.
-            let amount_to_transfer = round_up(rounded_amount - hl_bal, USDC_DECIMALS)?;
+            let amount_to_transfer = round_up(rounded_amount - hl_available_bal, USDC_DECIMALS)?;
             let bal = self.get_erc20_balance(&usdc_mint, &hot_wallet.address).await?;
             if bal < amount_to_transfer {
                 return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
