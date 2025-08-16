@@ -11,7 +11,7 @@ use alloy_primitives::utils::parse_ether;
 use alloy_sol_types::SolCall;
 use renegade_common::types::{
     chain::Chain,
-    token::{get_all_tokens, Token},
+    token::{get_all_tokens, Token, USD_TICKER},
 };
 use tracing::{error, info};
 
@@ -60,7 +60,10 @@ impl CustodyClient {
 
         let mut tokens = Vec::new();
 
-        let all_tokens_on_chain = get_all_tokens().into_iter().filter(|t| t.chain == self.chain);
+        // Get all tokens on the chain that are not USD
+        let all_tokens_on_chain = get_all_tokens()
+            .into_iter()
+            .filter(|t| t.chain == self.chain && t.get_ticker().unwrap_or_default() != USD_TICKER);
 
         for token in all_tokens_on_chain {
             // Get the gas sponsor's balance of the token
