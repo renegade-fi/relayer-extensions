@@ -108,6 +108,7 @@ impl Server {
             price_reporter_client.clone(),
             gas_cost_sampler.clone(),
             args.chain_id,
+            gas_sponsor_address,
         )
         .expect("failed to build on-chain event listener");
         chain_listener.start().expect("failed to start on-chain event listener");

@@ -8,7 +8,7 @@ use alloy::{
     rpc::types::{Filter, trace::geth::CallFrame},
     sol_types::SolEvent,
 };
-use alloy_primitives::TxHash;
+use alloy_primitives::{Address, TxHash};
 use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
@@ -87,6 +87,8 @@ pub struct OnChainEventListenerExecutor {
     config: OnChainEventListenerConfig,
     /// The bundle store to use for retrieving bundle contexts
     bundle_store: BundleStore,
+    /// The address of the gas sponsor contract
+    pub(crate) gas_sponsor_address: Address,
     /// The chain for which the executor is configured
     pub(crate) chain: Chain,
     /// The rate limiter
@@ -106,8 +108,17 @@ impl OnChainEventListenerExecutor {
         price_reporter_client: PriceReporterClient,
         gas_cost_sampler: Arc<GasCostSampler>,
         chain: Chain,
+        gas_sponsor_address: Address,
     ) -> Self {
-        Self { config, bundle_store, rate_limiter, price_reporter_client, gas_cost_sampler, chain }
+        Self {
+            config,
+            bundle_store,
+            rate_limiter,
+            price_reporter_client,
+            gas_cost_sampler,
+            chain,
+            gas_sponsor_address,
+        }
     }
 
     /// Shorthand for fetching a reference to the darkpool client
@@ -213,10 +224,24 @@ impl OnChainEventListenerExecutor {
         nullifier: Nullifier,
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
-        // Get the time of settlement
-        let settlement_time = self.get_settlement_timestamp(tx).await?;
+        let maybe_receipt = self
+            .darkpool_client()
+            .provider()
+            .get_transaction_receipt(tx)
+            .await
+            .map_err(OnChainEventListenerError::darkpool)?;
 
-        let matches = self.fetch_external_matches_in_tx(tx).await?;
+        let receipt = match maybe_receipt {
+            Some(receipt) => receipt,
+            None => {
+                return Err(OnChainEventListenerError::darkpool("no receipt found for tx {tx:#x}"));
+            },
+        };
+
+        // Get the time of settlement
+        let settlement_time = self.get_settlement_timestamp(&receipt).await?;
+
+        let matches = self.fetch_external_matches_in_tx(receipt.transaction_hash).await?;
         for external_match in matches {
             let bundle_id = external_match.bundle_id(&nullifier)?;
             if let Some(bundle_ctx) = self.bundle_store.read(&bundle_id).await? {
@@ -229,13 +254,14 @@ impl OnChainEventListenerExecutor {
                 self.record_external_match_spread_cost(&bundle_ctx, &api_match).await?;
 
                 // Record settlement metrics
-                self.record_settlement_metrics(tx, &bundle_ctx, &api_match).await?;
+                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match).await?;
 
                 // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
                     self.record_settled_match_sponsorship(
                         &bundle_ctx,
                         &api_match,
+                        &receipt,
                         gas_sponsorship_info,
                     )
                     .await?;
