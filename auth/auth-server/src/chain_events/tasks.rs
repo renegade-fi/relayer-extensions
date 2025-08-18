@@ -1,13 +1,15 @@
 //! Helpers for executing subroutines in the on-chain event listener
 use alloy::providers::Provider;
-use alloy_primitives::TxHash;
+use alloy::rpc::types::TransactionReceipt;
+use alloy_primitives::{Address, U256};
+use alloy_sol_types::SolEvent;
 use auth_server_api::GasSponsorshipInfo;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
-use crate::chain_events::utils::GPv2Settlement;
+use crate::chain_events::utils::{GPv2Settlement, IERC20};
 use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
@@ -45,12 +47,12 @@ impl OnChainEventListenerExecutor {
     /// Record settlement metrics for a bundle
     pub async fn record_settlement_metrics(
         &self,
-        tx: TxHash,
+        receipt: &TransactionReceipt,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
     ) -> Result<(), AuthServerError> {
         let mut labels = self.get_labels(ctx);
-        let is_settled_via_cowswap = self.detect_cowswap_settlement(tx).await?;
+        let is_settled_via_cowswap = self.detect_cowswap_settlement(&receipt).await;
         labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
 
         record_volume_with_tags(
@@ -144,6 +146,7 @@ impl OnChainEventListenerExecutor {
         &self,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
+        receipt: &TransactionReceipt,
         gas_sponsorship_info: &GasSponsorshipInfo,
     ) -> Result<(), AuthServerError> {
         let refund_asset = if gas_sponsorship_info.refund_native_eth {
@@ -159,8 +162,16 @@ impl OnChainEventListenerExecutor {
             .get_nominal_price(&refund_asset.get_addr(), self.chain)
             .await?;
 
-        let nominal_amount = BigDecimal::from_u128(gas_sponsorship_info.refund_amount)
-            .expect("u128 should be representable as BigDecimal");
+        // We fetch the actual refund amount in the transaction. This is resilient
+        // against:
+        // 1. Bundle ID collisions resulting in us fetching incorrect gas sponsorship
+        //   info
+        // 2. Insufficient funds in the gas sponsor, resulting in a fallback to an
+        //   unsponsored match
+        let actual_refund_amount =
+            self.get_actual_refund_amount(receipt, refund_asset.get_alloy_address()).await;
+
+        let nominal_amount: BigDecimal = actual_refund_amount.into();
 
         let value_bigdecimal = nominal_amount * nominal_price;
 
@@ -171,8 +182,9 @@ impl OnChainEventListenerExecutor {
         self.rate_limiter.record_gas_sponsorship(&ctx.key_description, value).await?;
         self.record_gas_sponsorship_metrics(
             value,
-            gas_sponsorship_info,
-            match_result,
+            gas_sponsorship_info.refund_native_eth,
+            actual_refund_amount,
+            refund_asset,
             ctx.key_description.clone(),
             ctx.request_id.clone(),
             ctx.sdk_version.clone(),
@@ -186,8 +198,9 @@ impl OnChainEventListenerExecutor {
     async fn record_gas_sponsorship_metrics(
         &self,
         gas_sponsorship_value: f64,
-        gas_sponsorship_info: &GasSponsorshipInfo,
-        match_result: &ApiExternalMatchResult,
+        refund_native_eth: bool,
+        refund_amount: U256,
+        refund_asset: Token,
         key: String,
         request_id: String,
         sdk_version: String,
@@ -199,26 +212,21 @@ impl OnChainEventListenerExecutor {
         // - Refund amount (whole units)
         // - Gas prices (L1 & L2)
 
-        let (refund_asset_ticker, refund_amount_whole) = if gas_sponsorship_info.refund_native_eth {
-            // WETH uses the same decimals as ETH, so we use it to obtain the refund amount
-            // in whole units
-            let weth = Token::from_ticker(WETH_TICKER);
-            let refund_amount_whole = weth.convert_to_decimal(gas_sponsorship_info.refund_amount);
-            (ETH_TICKER.to_string(), refund_amount_whole)
+        let (remaining_value, remaining_time) =
+            self.rate_limiter.remaining_gas_sponsorship_value_and_time(key.clone()).await;
+
+        let refund_asset_ticker = if refund_native_eth {
+            ETH_TICKER.to_string()
         } else {
-            let refund_asset = match match_result.direction {
-                OrderSide::Buy => Token::from_addr(&match_result.base_mint),
-                OrderSide::Sell => Token::from_addr(&match_result.quote_mint),
-            };
-            let refund_amount_whole =
-                refund_asset.convert_to_decimal(gas_sponsorship_info.refund_amount);
-
-            let refund_asset_ticker = refund_asset
+            refund_asset
                 .get_ticker()
-                .ok_or(AuthServerError::gas_cost_sampler(REFUND_ASSET_TICKER_ERROR_MSG))?;
-
-            (refund_asset_ticker, refund_amount_whole)
+                .ok_or(AuthServerError::gas_cost_sampler(REFUND_ASSET_TICKER_ERROR_MSG))?
         };
+
+        let refund_amount_u128 =
+            refund_amount.try_into().map_err(AuthServerError::gas_sponsorship)?;
+
+        let refund_amount_whole = refund_asset.convert_to_decimal(refund_amount_u128);
 
         let estimate = self
             .gas_cost_sampler
@@ -298,36 +306,28 @@ impl OnChainEventListenerExecutor {
 
     /// Returns true iff this settlement tx emitted at least one CowSwap `Trade`
     /// event—i.e. it was filled via a CowSwap batch auction.
-    async fn detect_cowswap_settlement(&self, tx: TxHash) -> Result<bool, AuthServerError> {
-        let provider = self.darkpool_client().provider();
-        let receipt = provider
-            .get_transaction_receipt(tx)
-            .await
-            .map_err(AuthServerError::darkpool_client)?
-            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?;
-
+    async fn detect_cowswap_settlement(&self, receipt: &TransactionReceipt) -> bool {
         // If we can decode any `Trade` log, it came from CowSwap Settlement
-        let is_settled_via_cowswap = receipt.decoded_log::<GPv2Settlement::Trade>().is_some();
-        Ok(is_settled_via_cowswap)
+        receipt.decoded_log::<GPv2Settlement::Trade>().is_some()
     }
 
     /// Returns the timestamp of the settlement of a bundle in milliseconds
     pub(crate) async fn get_settlement_timestamp(
         &self,
-        tx: TxHash,
+        receipt: &TransactionReceipt,
     ) -> Result<u64, AuthServerError> {
         let provider = self.darkpool_client().provider();
-        let receipt =
-            provider.get_transaction_receipt(tx).await.map_err(AuthServerError::darkpool_client)?;
+
         let block_number = receipt
-            .ok_or_else(|| AuthServerError::darkpool_client("receipt not found"))?
             .block_number
             .ok_or_else(|| AuthServerError::darkpool_client("receipt has no block_number"))?;
+
         let block = provider
             .get_block(block_number.into())
             .await
             .map_err(AuthServerError::darkpool_client)?
             .ok_or_else(|| AuthServerError::darkpool_client("block not found"))?;
+
         let settlement_time = block.header.timestamp * 1000; // Convert to milliseconds
 
         Ok(settlement_time)
@@ -343,5 +343,32 @@ impl OnChainEventListenerExecutor {
     ) {
         let delta = t2.saturating_sub(t1);
         metrics::gauge!(metric_name, labels).set(delta as f64);
+    }
+
+    /// Get the actual refund amount sent by the gas sponsor for a given
+    /// settlement transaction
+    async fn get_actual_refund_amount(
+        &self,
+        receipt: &TransactionReceipt,
+        refund_mint: Address,
+    ) -> U256 {
+        let mut total_sent = U256::ZERO;
+        for log in receipt.logs() {
+            if log.address() != refund_mint {
+                continue;
+            }
+
+            let transfer = match IERC20::Transfer::decode_log(&log.inner) {
+                Ok(transfer) => transfer,
+                // Failure to decode implies the event is not a transfer
+                Err(_) => continue,
+            };
+
+            if transfer.from == self.gas_sponsor_address {
+                total_sent += transfer.value;
+            }
+        }
+
+        total_sent
     }
 }

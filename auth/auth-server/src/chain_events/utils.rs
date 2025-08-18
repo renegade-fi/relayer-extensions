@@ -15,3 +15,9 @@ sol! {
         );
     }
 }
+
+sol! {
+    contract IERC20 {
+        event Transfer(address indexed from, address indexed to, uint256 value);
+    }
+}

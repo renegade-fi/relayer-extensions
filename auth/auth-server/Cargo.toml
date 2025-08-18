@@ -45,6 +45,7 @@ rand = "0.8.5"
 alloy = { workspace = true, features = ["provider-ws"] }
 alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
 alloy-sol-types = { workspace = true }
+ruint = { version = "1.16", default-features = false, features = ["bigdecimal"] }
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
