@@ -1,6 +1,6 @@
 //! Base ABI helpers
 
-use alloy_sol_types::SolCall;
+use alloy_sol_types::{SolCall, sol};
 use renegade_darkpool_client::{base::conversion::ToCircuitType, conversion::u256_to_amount};
 use renegade_solidity_abi::IDarkpool::{
     processAtomicMatchSettleCall, processMalleableAtomicMatchSettleCall,
@@ -10,6 +10,17 @@ use crate::{
     chain_events::{abis::ExternalMatch, error::OnChainEventListenerError},
     server::helpers::get_selector,
 };
+
+// -------
+// | ABI |
+// -------
+
+// The ABI for gas sponsorship events
+sol! {
+    contract GasSponsorContract {
+        event SponsoredExternalMatch(uint256 amount, address token, uint256 indexed nonce);
+    }
+}
 
 /// Parse an external match from darkpool calldata
 pub(crate) fn parse_external_match(

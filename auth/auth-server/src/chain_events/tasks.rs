@@ -1,7 +1,7 @@
 //! Helpers for executing subroutines in the on-chain event listener
 use alloy::providers::Provider;
 use alloy::rpc::types::TransactionReceipt;
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_sol_types::SolEvent;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -9,7 +9,8 @@ use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
 
-use crate::chain_events::utils::{GPv2Settlement, IERC20};
+use crate::chain_events::abis::GasSponsorContract::SponsoredExternalMatch;
+use crate::chain_events::utils::GPv2Settlement;
 use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
@@ -168,8 +169,7 @@ impl OnChainEventListenerExecutor {
         //   info
         // 2. Insufficient funds in the gas sponsor, resulting in a fallback to an
         //   unsponsored match
-        let actual_refund_amount =
-            self.get_actual_refund_amount(receipt, refund_asset.get_alloy_address()).await;
+        let actual_refund_amount = self.get_actual_refund_amount(receipt).await;
 
         let nominal_amount: BigDecimal = actual_refund_amount.into();
 
@@ -347,28 +347,17 @@ impl OnChainEventListenerExecutor {
 
     /// Get the actual refund amount sent by the gas sponsor for a given
     /// settlement transaction
-    async fn get_actual_refund_amount(
-        &self,
-        receipt: &TransactionReceipt,
-        refund_mint: Address,
-    ) -> U256 {
-        let mut total_sent = U256::ZERO;
+    async fn get_actual_refund_amount(&self, receipt: &TransactionReceipt) -> U256 {
         for log in receipt.logs() {
-            if log.address() != refund_mint {
+            if log.address() != self.gas_sponsor_address {
                 continue;
             }
 
-            let transfer = match IERC20::Transfer::decode_log(&log.inner) {
-                Ok(transfer) => transfer,
-                // Failure to decode implies the event is not a transfer
-                Err(_) => continue,
+            if let Ok(sponsorship_log) = SponsoredExternalMatch::decode_log(&log.inner) {
+                return sponsorship_log.amount;
             };
-
-            if transfer.from == self.gas_sponsor_address {
-                total_sent += transfer.value;
-            }
         }
 
-        total_sent
+        U256::ZERO
     }
 }

@@ -1,7 +1,7 @@
 //! Arbitrum ABI helpers
 
 use alloy_primitives::U256;
-use alloy_sol_types::SolCall;
+use alloy_sol_types::{SolCall, sol};
 use renegade_darkpool_client::{
     arbitrum::{
         abi::{
@@ -28,6 +28,17 @@ use crate::{
     chain_events::{abis::ExternalMatch, error::OnChainEventListenerError},
     server::helpers::get_selector,
 };
+
+// -------
+// | ABI |
+// -------
+
+// The ABI for gas sponsorship events
+sol! {
+    contract GasSponsorContract {
+        event SponsoredExternalMatch(uint256 indexed amount, address indexed token, uint256 indexed nonce);
+    }
+}
 
 /// Parse an external match from darkpool calldata
 pub(crate) fn parse_external_match(

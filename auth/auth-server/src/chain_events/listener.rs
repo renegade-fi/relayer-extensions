@@ -224,18 +224,19 @@ impl OnChainEventListenerExecutor {
         nullifier: Nullifier,
         tx: TxHash,
     ) -> Result<(), OnChainEventListenerError> {
-        let receipt = self
+        let maybe_receipt = self
             .darkpool_client()
             .provider()
             .get_transaction_receipt(tx)
             .await
             .map_err(OnChainEventListenerError::darkpool)?;
 
-        if receipt.is_none() {
-            return Err(OnChainEventListenerError::darkpool("no receipt found for tx {tx:#x}"));
-        }
-
-        let receipt = receipt.unwrap();
+        let receipt = match maybe_receipt {
+            Some(receipt) => receipt,
+            None => {
+                return Err(OnChainEventListenerError::darkpool("no receipt found for tx {tx:#x}"));
+            },
+        };
 
         // Get the time of settlement
         let settlement_time = self.get_settlement_timestamp(&receipt).await?;
