@@ -35,7 +35,7 @@ const INCR_LIMIT_LUA: &str = r#"
     end
 
     -- If the new increment would overflow the rate limit, rollback
-    if newLimit > limit then
+    if tonumber(newLimit) > limit then
         redis.call("INCRBYFLOAT", KEYS[1], -delta)
         return -1
     else
@@ -80,9 +80,25 @@ impl RedisRateLimiter {
         self.redis.clone()
     }
 
+    /// Load the rate limit script into Redis
+    pub(crate) async fn load_scripts(&self) -> Result<(), AuthServerError> {
+        let mut conn = self.redis().clone();
+        let script = Script::new(INCR_LIMIT_LUA);
+        script.load_async(&mut conn).await?;
+        Ok(())
+    }
+
     // --------------------
     // | Rate Limit Logic |
     // --------------------
+
+    /// Returns whether the rate limit has been exceeded for a given user key
+    pub async fn rate_limit_exceeded(&self, user_key: &str) -> Result<bool, AuthServerError> {
+        let key = self.build_key(user_key);
+        let consumed: f64 = self.redis().get::<_, Option<f64>>(key).await?.unwrap_or(0.);
+        let exceeded = consumed >= self.max_tokens;
+        Ok(exceeded)
+    }
 
     /// Returns the current number of rate limit tokens consumed in the current
     /// refill interval
@@ -116,6 +132,26 @@ impl RedisRateLimiter {
         if consumed == -1. {
             return Err(AuthServerError::RateLimit);
         }
+
+        Ok(consumed)
+    }
+
+    /// Increment the number of rate limit tokens consumed in the current
+    /// interval without checking for overflow
+    ///
+    /// Returns the new consumed value
+    pub async fn increment_consumed_no_check(
+        &self,
+        user_key: &str,
+        amount: f64,
+    ) -> Result<f64, AuthServerError> {
+        let key = self.build_key(user_key);
+        let ttl = self.get_ttl_seconds();
+        let consumed: f64 = redis::pipe()
+            .incr(&key, amount)
+            .expire_at(&key, ttl)
+            .query_async(&mut self.redis())
+            .await?;
 
         Ok(consumed)
     }

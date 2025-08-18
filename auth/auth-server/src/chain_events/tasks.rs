@@ -22,8 +22,8 @@ use crate::{
             EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME, EXTERNAL_MATCH_SETTLEMENT_DELAY,
             GAS_SPONSORED_METRIC_TAG, GAS_SPONSORSHIP_VALUE, KEY_DESCRIPTION_METRIC_TAG,
             L1_COST_PER_BYTE_TAG, L2_BASE_FEE_TAG, REFUND_AMOUNT_TAG, REFUND_ASSET_TAG,
-            REMAINING_TIME_TAG, REMAINING_VALUE_TAG, REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG,
-            SETTLED_VIA_COWSWAP_TAG, SETTLEMENT_STATUS_TAG, SIDE_TAG,
+            REQUEST_ID_METRIC_TAG, SDK_VERSION_METRIC_TAG, SETTLED_VIA_COWSWAP_TAG,
+            SETTLEMENT_STATUS_TAG, SIDE_TAG,
         },
     },
 };
@@ -165,8 +165,7 @@ impl OnChainEventListenerExecutor {
             "failed to convert gas sponsorship value to f64",
         ))?;
 
-        self.rate_limiter.record_gas_sponsorship(ctx.key_description.clone(), value).await;
-
+        self.rate_limiter.record_gas_sponsorship(&ctx.key_description, value).await?;
         self.record_gas_sponsorship_metrics(
             value,
             gas_sponsorship_info,
@@ -196,9 +195,6 @@ impl OnChainEventListenerExecutor {
         // - Refund asset
         // - Refund amount (whole units)
         // - Gas prices (L1 & L2)
-
-        let (remaining_value, remaining_time) =
-            self.rate_limiter.remaining_gas_sponsorship_value_and_time(key.clone()).await;
 
         let (refund_asset_ticker, refund_amount_whole) = if gas_sponsorship_info.refund_native_eth {
             // WETH uses the same decimals as ETH, so we use it to obtain the refund amount
@@ -231,8 +227,6 @@ impl OnChainEventListenerExecutor {
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), key),
             (REQUEST_ID_METRIC_TAG.to_string(), request_id),
             (SDK_VERSION_METRIC_TAG.to_string(), sdk_version),
-            (REMAINING_VALUE_TAG.to_string(), remaining_value.to_string()),
-            (REMAINING_TIME_TAG.to_string(), remaining_time.as_secs().to_string()),
             (REFUND_ASSET_TAG.to_string(), refund_asset_ticker),
             (REFUND_AMOUNT_TAG.to_string(), refund_amount_whole.to_string()),
             (L2_BASE_FEE_TAG.to_string(), estimate.l2_base_fee.to_string()),

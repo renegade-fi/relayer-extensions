@@ -20,10 +20,7 @@
 //! The latter is measured by waiting for nullifier spend events on-chain. This
 //! is also when we record the gas sponsorship value for sponsored bundles.
 
-use std::time::Duration;
-
 use chrono::TimeDelta;
-use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
 use redis::aio::ConnectionManager as RedisConnection;
 use tracing::{error, instrument, warn};
 
@@ -41,16 +38,19 @@ use crate::{
 use super::Server;
 
 mod execution_cost_rate_limiter;
-mod gas_sponsorship_rate_limiter;
 mod redis_rate_limiter;
 
 /// The bundle rate limiter key prefix
 const BUNDLE_RATE_LIMITER_KEY_PREFIX: &str = "bundle_rate_limit";
 /// The quote rate limiter key prefix
 const QUOTE_RATE_LIMITER_KEY_PREFIX: &str = "quote_rate_limit";
+/// The gas sponsorship rate limiter key prefix
+const GAS_SPONSORSHIP_RATE_LIMITER_KEY_PREFIX: &str = "gas_sponsorship_rate_limit";
 
 /// One minute time delta
 const ONE_MINUTE: TimeDelta = TimeDelta::minutes(1);
+/// One day time delta
+const ONE_DAY: TimeDelta = TimeDelta::days(1);
 
 // -----------------------------
 // | Server Rate Limit Methods |
@@ -88,15 +88,18 @@ impl Server {
     /// Returns a boolean indicating whether or not the gas sponsorship rate
     /// limit has been exceeded.
     #[instrument(skip(self))]
-    pub async fn check_gas_sponsorship_rate_limit(&self, key_description: &str) -> bool {
-        if !self.rate_limiter.check_gas_sponsorship(key_description).await {
+    pub async fn check_gas_sponsorship_rate_limit(
+        &self,
+        key_description: &str,
+    ) -> Result<bool, AuthServerError> {
+        if !self.rate_limiter.check_gas_sponsorship(key_description).await? {
             warn!(
                 key_description = key_description,
                 "Gas sponsorship rate limit exceeded for key: {key_description}"
             );
-            return false;
+            return Ok(false);
         }
-        true
+        Ok(true)
     }
 
     /// Check the execution cost rate limiter
@@ -118,7 +121,7 @@ pub struct AuthServerRateLimiter {
     /// The bundle rate limiter
     bundle_rate_limiter: RedisRateLimiter,
     /// The gas sponsorship rate limiter
-    gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter,
+    gas_sponsorship_rate_limiter: RedisRateLimiter,
     /// The execution cost rate limiter
     execution_cost_rate_limiter: ExecutionCostRateLimiter,
 }
@@ -132,16 +135,22 @@ impl AuthServerRateLimiter {
         auth_server_redis_url: &str,
         execution_cost_redis_url: &str,
     ) -> Result<Self, AuthServerError> {
+        // Create the rate limiters
         let conn = create_redis_client(auth_server_redis_url).await?;
         let quote_rate_limiter = Self::new_quote_rate_limiter(quote_rate_limit, conn.clone());
-        let bundle_rate_limiter = Self::new_bundle_rate_limiter(bundle_rate_limit, conn);
-
+        let bundle_rate_limiter = Self::new_bundle_rate_limiter(bundle_rate_limit, conn.clone());
+        let gas_sponsorship_rate_limiter =
+            Self::new_gas_sponsorship_rate_limiter(max_gas_sponsorship_value, conn);
         let execution_cost_rate_limiter =
             ExecutionCostRateLimiter::new(execution_cost_redis_url).await?;
+
+        // Load the rate limit scripts, this only needs to be called on one of the rate
+        // limiters.
+        quote_rate_limiter.load_scripts().await?;
         Ok(Self {
             quote_rate_limiter,
             bundle_rate_limiter,
-            gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter::new(max_gas_sponsorship_value),
+            gas_sponsorship_rate_limiter,
             execution_cost_rate_limiter,
         })
     }
@@ -166,6 +175,19 @@ impl AuthServerRateLimiter {
         )
     }
 
+    /// Create a new gas sponsorship rate limiter
+    pub fn new_gas_sponsorship_rate_limiter(
+        max_value: f64,
+        conn: RedisConnection,
+    ) -> RedisRateLimiter {
+        RedisRateLimiter::new(
+            GAS_SPONSORSHIP_RATE_LIMITER_KEY_PREFIX.to_string(),
+            max_value,
+            ONE_DAY,
+            conn,
+        )
+    }
+
     // ----------------------
     // | Rate Limit Methods |
     // ----------------------
@@ -175,7 +197,14 @@ impl AuthServerRateLimiter {
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
     pub async fn check_quote_token(&self, user_id: &str) -> bool {
-        self.quote_rate_limiter.increment_consumed(user_id, 1.0).await.is_ok()
+        match self.quote_rate_limiter.increment_consumed(user_id, 1.0).await {
+            Ok(_) => true,
+            Err(AuthServerError::RateLimit) => false,
+            Err(e) => {
+                error!("Error incrementing quote token: {e}");
+                false
+            },
+        }
     }
 
     /// Consume a bundle token from bucket if available
@@ -183,35 +212,38 @@ impl AuthServerRateLimiter {
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
     pub async fn check_bundle_token(&self, user_id: &str) -> bool {
-        self.bundle_rate_limiter.increment_consumed(user_id, 1.0).await.is_ok()
+        match self.bundle_rate_limiter.increment_consumed(user_id, 1.0).await {
+            Ok(_) => true,
+            Err(AuthServerError::RateLimit) => false,
+            Err(e) => {
+                error!("Error incrementing bundle token: {e}");
+                false
+            },
+        }
     }
 
     /// Increment the number of tokens available to a given user
-    #[allow(unused_must_use)]
-    pub async fn add_bundle_token(&self, user_id: &str) {
-        self.bundle_rate_limiter.decrement_consumed(user_id, 1.0).await;
+    pub async fn add_bundle_token(&self, user_id: &str) -> Result<(), AuthServerError> {
+        self.bundle_rate_limiter.decrement_consumed(user_id, 1.0).await.map(|_| ())
     }
 
     /// Check if the given user has any remaining gas sponsorship budget
-    pub async fn check_gas_sponsorship(&self, user_id: &str) -> bool {
-        self.gas_sponsorship_rate_limiter.has_remaining_value(user_id).await
+    pub async fn check_gas_sponsorship(&self, user_id: &str) -> Result<bool, AuthServerError> {
+        let exceeded = self.gas_sponsorship_rate_limiter.rate_limit_exceeded(user_id).await?;
+        Ok(!exceeded)
     }
 
     /// Record a gas sponsorship value for a given user.
     ///
     /// If the user does not have any remaining gas sponsorship budget, this
     /// method will do nothing.
-    pub async fn record_gas_sponsorship(&self, user_id: String, value: f64) {
-        self.gas_sponsorship_rate_limiter.record_sponsorship(user_id, value).await;
-    }
-
-    /// Get the remaining value and time for a given user's gas sponsorship
-    /// bucket.
-    pub async fn remaining_gas_sponsorship_value_and_time(
+    pub async fn record_gas_sponsorship(
         &self,
-        user_id: String,
-    ) -> (f64, Duration) {
-        self.gas_sponsorship_rate_limiter.remaining_value_and_time(user_id).await
+        user_id: &str,
+        value: f64,
+    ) -> Result<(), AuthServerError> {
+        self.gas_sponsorship_rate_limiter.increment_consumed_no_check(user_id, value).await?;
+        Ok(())
     }
 
     /// Check if execution costs have been exceeded for the given ticker
