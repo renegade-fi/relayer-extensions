@@ -22,13 +22,20 @@
 
 use std::time::Duration;
 
+use chrono::TimeDelta;
 use gas_sponsorship_rate_limiter::GasSponsorshipRateLimiter;
+use redis::aio::ConnectionManager as RedisConnection;
 use tracing::{error, instrument, warn};
-use user_rate_limiter::ApiTokenRateLimiter;
 
 use crate::{
     error::AuthServerError,
-    server::rate_limiter::execution_cost_rate_limiter::ExecutionCostRateLimiter,
+    server::{
+        db::create_redis_client,
+        rate_limiter::{
+            execution_cost_rate_limiter::ExecutionCostRateLimiter,
+            redis_rate_limiter::RedisRateLimiter,
+        },
+    },
 };
 
 use super::Server;
@@ -36,7 +43,14 @@ use super::Server;
 mod execution_cost_rate_limiter;
 mod gas_sponsorship_rate_limiter;
 mod redis_rate_limiter;
-mod user_rate_limiter;
+
+/// The bundle rate limiter key prefix
+const BUNDLE_RATE_LIMITER_KEY_PREFIX: &str = "bundle_rate_limit";
+/// The quote rate limiter key prefix
+const QUOTE_RATE_LIMITER_KEY_PREFIX: &str = "quote_rate_limit";
+
+/// One minute time delta
+const ONE_MINUTE: TimeDelta = TimeDelta::minutes(1);
 
 // -----------------------------
 // | Server Rate Limit Methods |
@@ -47,9 +61,9 @@ impl Server {
     #[instrument(skip(self))]
     pub async fn check_quote_rate_limit(
         &self,
-        key_description: String,
+        key_description: &str,
     ) -> Result<(), AuthServerError> {
-        if !self.rate_limiter.check_quote_token(key_description.clone()).await {
+        if !self.rate_limiter.check_quote_token(key_description).await {
             warn!("Quote rate limit exceeded for key: {key_description}");
             return Err(AuthServerError::RateLimit);
         }
@@ -60,9 +74,9 @@ impl Server {
     #[instrument(skip(self))]
     pub async fn check_bundle_rate_limit(
         &self,
-        key_description: String,
+        key_description: &str,
     ) -> Result<(), AuthServerError> {
-        if !self.rate_limiter.check_bundle_token(key_description.clone()).await {
+        if !self.rate_limiter.check_bundle_token(key_description).await {
             warn!("Bundle rate limit exceeded for key: {key_description}");
             return Err(AuthServerError::RateLimit);
         }
@@ -100,9 +114,9 @@ impl Server {
 #[derive(Clone)]
 pub struct AuthServerRateLimiter {
     /// The quote rate limiter
-    quote_rate_limiter: ApiTokenRateLimiter,
+    quote_rate_limiter: RedisRateLimiter,
     /// The bundle rate limiter
-    bundle_rate_limiter: ApiTokenRateLimiter,
+    bundle_rate_limiter: RedisRateLimiter,
     /// The gas sponsorship rate limiter
     gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter,
     /// The execution cost rate limiter
@@ -115,38 +129,67 @@ impl AuthServerRateLimiter {
         quote_rate_limit: u64,
         bundle_rate_limit: u64,
         max_gas_sponsorship_value: f64,
+        auth_server_redis_url: &str,
         execution_cost_redis_url: &str,
     ) -> Result<Self, AuthServerError> {
+        let conn = create_redis_client(auth_server_redis_url).await?;
+        let quote_rate_limiter = Self::new_quote_rate_limiter(quote_rate_limit, conn.clone());
+        let bundle_rate_limiter = Self::new_bundle_rate_limiter(bundle_rate_limit, conn);
+
         let execution_cost_rate_limiter =
             ExecutionCostRateLimiter::new(execution_cost_redis_url).await?;
         Ok(Self {
-            quote_rate_limiter: ApiTokenRateLimiter::new(quote_rate_limit),
-            bundle_rate_limiter: ApiTokenRateLimiter::new(bundle_rate_limit),
+            quote_rate_limiter,
+            bundle_rate_limiter,
             gas_sponsorship_rate_limiter: GasSponsorshipRateLimiter::new(max_gas_sponsorship_value),
             execution_cost_rate_limiter,
         })
     }
 
+    /// Create a new quote rate limiter
+    pub fn new_quote_rate_limiter(max_tokens: u64, conn: RedisConnection) -> RedisRateLimiter {
+        RedisRateLimiter::new(
+            QUOTE_RATE_LIMITER_KEY_PREFIX.to_string(),
+            max_tokens as f64,
+            ONE_MINUTE,
+            conn,
+        )
+    }
+
+    /// Create a new bundle rate limiter
+    pub fn new_bundle_rate_limiter(max_tokens: u64, conn: RedisConnection) -> RedisRateLimiter {
+        RedisRateLimiter::new(
+            BUNDLE_RATE_LIMITER_KEY_PREFIX.to_string(),
+            max_tokens as f64,
+            ONE_MINUTE,
+            conn,
+        )
+    }
+
+    // ----------------------
+    // | Rate Limit Methods |
+    // ----------------------
+
     /// Consume a quote token from bucket if available
     ///
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
-    pub async fn check_quote_token(&self, user_id: String) -> bool {
-        self.quote_rate_limiter.check(user_id).await
+    pub async fn check_quote_token(&self, user_id: &str) -> bool {
+        self.quote_rate_limiter.increment_consumed(user_id, 1.0).await.is_ok()
     }
 
     /// Consume a bundle token from bucket if available
     ///
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
-    pub async fn check_bundle_token(&self, user_id: String) -> bool {
-        self.bundle_rate_limiter.check(user_id).await
+    pub async fn check_bundle_token(&self, user_id: &str) -> bool {
+        self.bundle_rate_limiter.increment_consumed(user_id, 1.0).await.is_ok()
     }
 
     /// Increment the number of tokens available to a given user
     #[allow(unused_must_use)]
-    pub async fn add_bundle_token(&self, user_id: String) {
-        self.bundle_rate_limiter.add_token(user_id).await
+    pub async fn add_bundle_token(&self, user_id: &str) {
+        self.bundle_rate_limiter.decrement_consumed(user_id, 1.0).await;
     }
 
     /// Check if the given user has any remaining gas sponsorship budget

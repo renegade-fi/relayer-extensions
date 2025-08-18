@@ -116,7 +116,7 @@ impl Server {
     #[instrument(skip_all)]
     async fn quote_pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
         // Check the rate limit
-        self.check_quote_rate_limit(ctx.user()).await?;
+        self.check_quote_rate_limit(&ctx.user()).await?;
         self.route_quote_req(ctx).await?;
 
         // Apply gas sponsorship to the quote request

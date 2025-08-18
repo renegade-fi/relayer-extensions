@@ -115,7 +115,7 @@ impl Server {
         ctx: &mut DirectMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
-        self.check_bundle_rate_limit(ctx.user()).await?;
+        self.check_bundle_rate_limit(&ctx.user()).await?;
         self.route_direct_match_req(ctx).await?;
 
         // Apply gas sponsorship to the match request

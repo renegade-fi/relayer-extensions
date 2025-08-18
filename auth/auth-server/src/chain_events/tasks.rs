@@ -131,7 +131,7 @@ impl OnChainEventListenerExecutor {
     }
 
     /// Increment the token balance for a given API user
-    pub async fn add_bundle_rate_limit_token(&self, key_description: String) {
+    pub async fn add_bundle_rate_limit_token(&self, key_description: &str) {
         self.rate_limiter.add_bundle_token(key_description).await;
     }
 
