@@ -84,15 +84,6 @@ impl RedisRateLimiter {
     // | Rate Limit Logic |
     // --------------------
 
-    /// Check if the rate limit has been exceeded for a given sub-key
-    ///
-    /// Returns `true` if the rate limit has been exceeded, otherwise `false`
-    pub async fn rate_limit_exceeded(&self, user_key: &str) -> Result<bool, AuthServerError> {
-        let consumed = self.get_consumed(user_key).await?;
-        let exceeded = consumed >= self.max_tokens;
-        Ok(exceeded)
-    }
-
     /// Returns the current number of rate limit tokens consumed in the current
     /// refill interval
     pub async fn get_consumed(&self, user_key: &str) -> Result<f64, AuthServerError> {
@@ -127,6 +118,27 @@ impl RedisRateLimiter {
         }
 
         Ok(consumed)
+    }
+
+    /// Decrement the number of rate limit tokens consumed in the current
+    /// interval
+    ///
+    /// We don't use a Lua script for this operation as it's less latency
+    /// sensitive than the increment operation. The decrement operation isn't
+    /// part of a user request hot path
+    pub async fn decrement_consumed(
+        &self,
+        user_key: &str,
+        amount: f64,
+    ) -> Result<f64, AuthServerError> {
+        let consumed = self.get_consumed(user_key).await?;
+        // Subtract the amount, saturating at 0
+        let mut new_consumed = consumed - amount;
+        new_consumed = f64::max(new_consumed, 0.);
+
+        let key = self.build_key(user_key);
+        let _: () = self.redis().set(key, new_consumed).await?;
+        Ok(new_consumed)
     }
 
     // -----------
