@@ -221,7 +221,7 @@ impl OnChainEventListenerExecutor {
             let bundle_id = external_match.bundle_id(&nullifier)?;
             if let Some(bundle_ctx) = self.bundle_store.read(&bundle_id).await? {
                 // Increase rate limit
-                self.add_bundle_rate_limit_token(bundle_ctx.key_description.clone()).await;
+                self.add_bundle_rate_limit_token(&bundle_ctx.key_description).await;
 
                 let api_match: ApiExternalMatchResult = external_match.match_result().into();
 

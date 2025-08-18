@@ -119,7 +119,7 @@ impl Server {
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
-        let key_desc = ctx.user();
+        let key_desc = &ctx.user();
         self.check_bundle_rate_limit(key_desc).await?;
 
         // Apply gas sponsorship to the assembly request

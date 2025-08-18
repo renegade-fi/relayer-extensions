@@ -105,7 +105,7 @@ pub struct Cli {
     pub price_reporter_url: String,
     /// The URL of the Redis cluster
     #[arg(long, env = "REDIS_URL", default_value = "redis://localhost:6379")]
-    pub gas_sponsorship_redis_url: String,
+    pub redis_url: String,
     /// The URL of the execution cost Redis cluster
     #[arg(long, env = "EXECUTION_COST_REDIS_URL", default_value = "redis://localhost:6379")]
     pub execution_cost_redis_url: String,
