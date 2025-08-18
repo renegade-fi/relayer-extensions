@@ -57,5 +57,5 @@ RUN apt-get update && \
 # Copy the binary from the build stage
 COPY --from=builder /build/target/release/auth-server /bin/auth-server
 
-ENV RUST_LOG="info,warp::filters::trace=warn"
+ENV RUST_LOG="info,warp::filters::trace=warn,price_reporter_client=info"
 ENTRYPOINT ["/bin/auth-server"]
