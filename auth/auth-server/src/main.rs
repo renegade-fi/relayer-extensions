@@ -14,6 +14,7 @@
 #![feature(trivial_bounds)]
 #![feature(let_chains)]
 #![feature(duration_constructors)]
+#![feature(int_roundings)]
 
 mod bundle_store;
 mod chain_events;
