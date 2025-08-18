@@ -307,6 +307,12 @@ impl ExecutionClient {
         let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
 
         let usdc_target_balance = purchase_values.iter().map(|(_, value)| value).sum();
+
+        if usdc_target_balance == 0.0 {
+            info!("No purchases needed, skipping swap into USDC");
+            return Ok(vec![]);
+        }
+
         let exclude_tokens = purchase_values.iter().map(|(token, _)| token.get_addr()).collect();
 
         let swap_request = SwapIntoTargetTokenRequest {
