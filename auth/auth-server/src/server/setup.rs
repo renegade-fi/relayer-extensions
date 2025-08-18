@@ -73,7 +73,7 @@ impl Server {
 
         let price_reporter_client = PriceReporterClient::new(
             args.price_reporter_url.clone(),
-            false, // exit_on_stale
+            true, // exit_on_stale
         )?;
 
         // Setup quote metrics

@@ -147,7 +147,7 @@ impl RedisRateLimiter {
     ) -> Result<f64, AuthServerError> {
         let key = self.build_key(user_key);
         let ttl = self.get_ttl_seconds();
-        let consumed: f64 = redis::pipe()
+        let (consumed, _): (f64, bool) = redis::pipe()
             .incr(&key, amount)
             .expire_at(&key, ttl)
             .query_async(&mut self.redis())
