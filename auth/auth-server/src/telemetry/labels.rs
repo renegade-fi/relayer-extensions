@@ -109,12 +109,6 @@ pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
 
 /// Metric tag to indicate that a match had its gas costs sponsored
 pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";
-/// Metric tag indicating the remaining value in a gas sponsorship rate limit
-/// bucket
-pub const REMAINING_VALUE_TAG: &str = "remaining_value";
-/// Metric tag indicating the remaining time (in seconds) in a gas sponsorship
-/// rate limit bucket
-pub const REMAINING_TIME_TAG: &str = "remaining_time";
 /// Metric tag indicating the refund asset
 pub const REFUND_ASSET_TAG: &str = "refund_asset";
 /// Metric tag indicating the refund amount (in whole units)

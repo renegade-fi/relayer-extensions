@@ -51,7 +51,7 @@ impl Server {
             query_params.get_or_default();
 
         // Check gas sponsorship rate limit
-        let rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await;
+        let rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await?;
         let expected_quote_amount = self.get_expected_quote_amount(order).await?;
         let order_too_small = expected_quote_amount < self.min_sponsored_order_quote_amount;
 
