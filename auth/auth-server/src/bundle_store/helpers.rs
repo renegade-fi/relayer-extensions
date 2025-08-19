@@ -6,8 +6,8 @@ use renegade_constants::Scalar;
 
 use crate::error::AuthServerError;
 
-/// Generates a deterministic bundle ID by hashing together the nullifier
-/// and the match amounts.
+/// Generates a deterministic bundle ID by hashing together the nullifier,
+/// match amounts, and order direction.
 ///
 /// This approach is prone to collisions because there is no single unique
 /// customer identifier shared by both the on‑chain listener and the HTTP
@@ -29,10 +29,12 @@ pub fn generate_bundle_id(
 ) -> Result<String, AuthServerError> {
     let quote_amt = match_result.quote_amount;
     let base_amt = match_result.base_amount;
+    let direction = match_result.direction as u8;
 
     let mut bytes = nullifier.to_bytes_be();
     bytes.extend(Scalar::from(quote_amt).to_bytes_be());
     bytes.extend(Scalar::from(base_amt).to_bytes_be());
+    bytes.push(direction);
     Ok(hex::encode(keccak256::<&[u8]>(&bytes)))
 }
 
