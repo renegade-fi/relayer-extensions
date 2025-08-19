@@ -212,9 +212,6 @@ impl OnChainEventListenerExecutor {
         // - Refund amount (whole units)
         // - Gas prices (L1 & L2)
 
-        let (remaining_value, remaining_time) =
-            self.rate_limiter.remaining_gas_sponsorship_value_and_time(key.clone()).await;
-
         let refund_asset_ticker = if refund_native_eth {
             ETH_TICKER.to_string()
         } else {
