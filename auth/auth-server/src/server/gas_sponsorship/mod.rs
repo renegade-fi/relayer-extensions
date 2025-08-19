@@ -3,6 +3,7 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
+use alloy_primitives::U256;
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SignedGasSponsorshipInfo,
     SponsoredMalleableMatchResponse, SponsoredMatchResponse, SponsoredQuoteResponse,
@@ -71,6 +72,7 @@ impl Server {
         &self,
         mut external_match_resp: ExternalMatchResponse,
         gas_sponsorship_info: GasSponsorshipInfo,
+        sponsorship_nonce: U256,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         let refund_native_eth = gas_sponsorship_info.refund_native_eth;
         let refund_address = gas_sponsorship_info.get_refund_address();
@@ -81,6 +83,7 @@ impl Server {
             refund_address,
             refund_native_eth,
             refund_amount,
+            sponsorship_nonce,
         )?;
 
         let mut tx = external_match_resp.match_bundle.settlement_tx;
@@ -111,6 +114,7 @@ impl Server {
         &self,
         mut external_match_resp: MalleableExternalMatchResponse,
         gas_sponsorship_info: GasSponsorshipInfo,
+        sponsorship_nonce: U256,
     ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
         let refund_native_eth = gas_sponsorship_info.refund_native_eth;
         let refund_address = gas_sponsorship_info.get_refund_address();
@@ -121,6 +125,7 @@ impl Server {
             refund_address,
             refund_native_eth,
             refund_amount,
+            sponsorship_nonce,
         )?;
 
         let mut tx = external_match_resp.match_bundle.settlement_tx;

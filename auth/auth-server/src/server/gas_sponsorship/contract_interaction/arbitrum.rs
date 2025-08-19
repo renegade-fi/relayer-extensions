@@ -3,7 +3,6 @@
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{SolCall, sol};
-use rand::Rng;
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
 use renegade_darkpool_client::arbitrum::abi::Darkpool::{
     processAtomicMatchSettleCall, processAtomicMatchSettleWithReceiverCall,
@@ -206,10 +205,12 @@ impl Server {
         refund_address: Address,
         refund_native_eth: bool,
         refund_amount: U256,
+        nonce: U256,
     ) -> Result<Bytes, AuthServerError> {
-        let (nonce, signature) = gen_signed_sponsorship_nonce(
+        let signature = sign_sponsorship_nonce(
             refund_address,
             refund_amount,
+            nonce,
             &self.gas_sponsor_auth_key,
         )?;
 
@@ -255,11 +256,13 @@ impl Server {
         refund_address: Address,
         refund_native_eth: bool,
         refund_amount: U256,
+        nonce: U256,
     ) -> Result<Bytes, AuthServerError> {
         // Sign a sponsorship permit
-        let (nonce, signature) = gen_signed_sponsorship_nonce(
+        let signature = sign_sponsorship_nonce(
             refund_address,
             refund_amount,
+            nonce,
             &self.gas_sponsor_auth_key,
         )?;
 
@@ -303,26 +306,21 @@ impl Server {
 // | Helpers |
 // -----------
 
-/// Generate a random nonce for gas sponsorship, signing it along with
-/// the provided refund address and the refund amount
-fn gen_signed_sponsorship_nonce(
+/// Sign the provided sponsorship nonce, along with
+/// the refund address and the refund amount
+fn sign_sponsorship_nonce(
     refund_address: Address,
     refund_amount: U256,
+    nonce: U256,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(U256, Bytes), AuthServerError> {
-    // Generate a random sponsorship nonce
-    let mut rng = rand::thread_rng();
-    let mut nonce_bytes = [0u8; U256::BYTES];
-    rng.fill(&mut nonce_bytes);
-
+) -> Result<Bytes, AuthServerError> {
     // Construct & sign the message
     let mut message = Vec::new();
-    message.extend_from_slice(&nonce_bytes);
+    message.extend_from_slice(&nonce.to_be_bytes::<{ U256::BYTES }>());
     message.extend_from_slice(refund_address.as_ref());
     message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
-    let nonce = U256::from_be_bytes(nonce_bytes);
 
-    Ok((nonce, signature))
+    Ok(signature)
 }

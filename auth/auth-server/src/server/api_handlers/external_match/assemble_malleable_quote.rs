@@ -48,7 +48,7 @@ impl SponsoredAssembleMalleableQuoteResponseCtx {
             request: ctx.request,
             status: ctx.status,
             response: Some(sponsored_resp),
-            sponsorship_info: ctx.sponsorship_info,
+            sponsorship_info_with_nonce: ctx.sponsorship_info_with_nonce,
             request_id: ctx.request_id,
         }
     }
@@ -141,7 +141,7 @@ impl Server {
         ctx: &AssembleMalleableQuoteResponseCtx,
     ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
         let resp = ctx.response();
-        let sponsorship_info = ctx.sponsorship_info();
+        let sponsorship_info = ctx.sponsorship_info_with_nonce();
         if sponsorship_info.is_none() {
             return Ok(SponsoredMalleableMatchResponse {
                 match_bundle: resp.match_bundle,
@@ -150,8 +150,10 @@ impl Server {
         }
 
         // Construct the sponsored match response
-        let info = sponsorship_info.unwrap();
-        let sponsored_match_resp = self.construct_sponsored_malleable_match_response(resp, info)?;
+        let (info, nonce) = sponsorship_info.unwrap();
+        let sponsored_match_resp =
+            self.construct_sponsored_malleable_match_response(resp, info, nonce)?;
+
         Ok(sponsored_match_resp)
     }
 

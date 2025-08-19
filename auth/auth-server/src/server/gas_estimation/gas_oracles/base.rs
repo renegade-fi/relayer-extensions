@@ -13,9 +13,6 @@ use super::GasPriceEstimation;
 pub const GAS_ORACLE_ADDRESS: Address =
     Address(FixedBytes(hex!("0x420000000000000000000000000000000000000F")));
 
-/// The error message returned when no basefee is found for the latest block
-const ERR_NO_BASEFEE: &str = "no basefee found for latest block";
-
 sol! {
     #[sol(rpc)]
     contract GasOracle {

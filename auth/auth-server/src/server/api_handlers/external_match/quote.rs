@@ -75,7 +75,7 @@ impl SponsoredQuoteResponseCtx {
             request: ctx.request,
             status: ctx.status,
             response: Some(sponsored_resp),
-            sponsorship_info: ctx.sponsorship_info,
+            sponsorship_info_with_nonce: ctx.sponsorship_info_with_nonce,
             request_id: ctx.request_id,
         }
     }
@@ -201,13 +201,16 @@ impl Server {
         ctx: &QuoteResponseCtx,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
         let resp = ctx.response();
-        if ctx.sponsorship_info().is_none() {
+        let sponsorship_info = ctx.sponsorship_info();
+        if sponsorship_info.is_none() {
             return Ok(SponsoredQuoteResponse {
                 signed_quote: resp.signed_quote,
                 gas_sponsorship_info: None,
             });
         }
 
+        // The sponsorship nonce generated for the quote response is ignored.
+        // A new nonce will be generated when the quote is assembled.
         let sponsorship_info = ctx.sponsorship_info().unwrap();
         self.construct_sponsored_quote_response(resp, sponsorship_info)
     }

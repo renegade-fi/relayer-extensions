@@ -10,7 +10,6 @@ use crate::bundle_store::{BundleContext, helpers::generate_bundle_id};
 use crate::error::AuthServerError;
 use crate::server::api_handlers::external_match::SponsoredAssembleMalleableQuoteResponseCtx;
 use crate::telemetry::abi_helpers::{
-    extract_nonce_from_malleable_match_bundle, extract_nonce_from_match_bundle,
     extract_nullifier_from_malleable_match_bundle, extract_nullifier_from_match_bundle,
 };
 
@@ -30,7 +29,6 @@ impl Server {
         let resp = ctx.response();
         // Extract the nullifier from the original match bundle
         let nullifier = extract_nullifier_from_match_bundle(&resp.match_bundle)?;
-        let nonce = extract_nonce_from_match_bundle(&resp.match_bundle)?;
 
         // Determine the match result to derive ID, accounting for sponsorship
         let match_result_for_id = self.get_match_result_for_id(&resp);
@@ -39,7 +37,7 @@ impl Server {
         let bundle_id = generate_bundle_id(&match_result_for_id, &nullifier)?;
 
         // Create bundle context
-        let gas_sponsorship_info = ctx.sponsorship_info().zip(nonce);
+        let gas_sponsorship_info = ctx.sponsorship_info_with_nonce();
         let is_sponsored = gas_sponsorship_info.is_some();
         let bundle_ctx = BundleContext {
             key_description: ctx.user(),
@@ -71,10 +69,9 @@ impl Server {
 
         // Generate bundle ID and context
         let nullifier = extract_nullifier_from_malleable_match_bundle(&resp.match_bundle)?;
-        let nonce = extract_nonce_from_malleable_match_bundle(&resp.match_bundle)?;
         let bundle_id = generate_malleable_bundle_id(&resp.match_bundle.match_result, &nullifier)?;
 
-        let gas_sponsorship_info = ctx.sponsorship_info().zip(nonce);
+        let gas_sponsorship_info = ctx.sponsorship_info_with_nonce();
         let is_sponsored = gas_sponsorship_info.is_some();
         let price_timestamp = req.signed_quote.quote.price.timestamp;
 
