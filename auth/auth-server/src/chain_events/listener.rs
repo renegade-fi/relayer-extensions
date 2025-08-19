@@ -254,7 +254,7 @@ impl OnChainEventListenerExecutor {
                 self.record_external_match_spread_cost(&bundle_ctx, &api_match).await?;
 
                 // Record settlement metrics
-                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match).await?;
+                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match)?;
 
                 // Record sponsorship metrics
                 if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {

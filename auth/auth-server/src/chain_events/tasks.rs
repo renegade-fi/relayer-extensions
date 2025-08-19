@@ -46,14 +46,14 @@ const REFUND_ASSET_TICKER_ERROR_MSG: &str = "failed to get refund asset ticker";
 
 impl OnChainEventListenerExecutor {
     /// Record settlement metrics for a bundle
-    pub async fn record_settlement_metrics(
+    pub fn record_settlement_metrics(
         &self,
         receipt: &TransactionReceipt,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
     ) -> Result<(), AuthServerError> {
         let mut labels = self.get_labels(ctx);
-        let is_settled_via_cowswap = self.detect_cowswap_settlement(&receipt).await;
+        let is_settled_via_cowswap = self.detect_cowswap_settlement(receipt);
         labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
 
         record_volume_with_tags(
@@ -169,7 +169,7 @@ impl OnChainEventListenerExecutor {
         //   info
         // 2. Insufficient funds in the gas sponsor, resulting in a fallback to an
         //   unsponsored match
-        let actual_refund_amount = self.get_actual_refund_amount(receipt).await;
+        let actual_refund_amount = self.get_actual_refund_amount(receipt);
 
         let nominal_amount: BigDecimal = actual_refund_amount.into();
 
@@ -195,6 +195,7 @@ impl OnChainEventListenerExecutor {
     }
 
     /// Record the dollar value of sponsored gas for a settled match
+    #[allow(clippy::too_many_arguments)]
     async fn record_gas_sponsorship_metrics(
         &self,
         gas_sponsorship_value: f64,
@@ -303,7 +304,7 @@ impl OnChainEventListenerExecutor {
 
     /// Returns true iff this settlement tx emitted at least one CowSwap `Trade`
     /// event—i.e. it was filled via a CowSwap batch auction.
-    async fn detect_cowswap_settlement(&self, receipt: &TransactionReceipt) -> bool {
+    fn detect_cowswap_settlement(&self, receipt: &TransactionReceipt) -> bool {
         // If we can decode any `Trade` log, it came from CowSwap Settlement
         receipt.decoded_log::<GPv2Settlement::Trade>().is_some()
     }
@@ -344,7 +345,7 @@ impl OnChainEventListenerExecutor {
 
     /// Get the actual refund amount sent by the gas sponsor for a given
     /// settlement transaction
-    async fn get_actual_refund_amount(&self, receipt: &TransactionReceipt) -> U256 {
+    fn get_actual_refund_amount(&self, receipt: &TransactionReceipt) -> U256 {
         for log in receipt.logs() {
             if log.address() != self.gas_sponsor_address {
                 continue;
