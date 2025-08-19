@@ -1,5 +1,6 @@
 //! Telemetry helpers for Base specific ABI functionality
 
+use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, MalleableAtomicMatchApiBundle};
 use renegade_circuit_types::wallet::Nullifier;
@@ -57,5 +58,42 @@ fn extract_nullifier_from_settlement_tx_calldata(
             Ok(u256_to_scalar(nullifier))
         },
         _ => Err(AuthServerError::serde("Invalid selector for settlement tx")),
+    }
+}
+
+/// Extract the gas sponsorship nonce from a match bundle
+pub fn extract_nonce_from_match_bundle(
+    match_bundle: &AtomicMatchApiBundle,
+) -> Result<Option<U256>, AuthServerError> {
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nonce_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extract the gas sponsorship nonce from a malleable match bundle
+pub fn extract_nonce_from_malleable_match_bundle(
+    match_bundle: &MalleableAtomicMatchApiBundle,
+) -> Result<Option<U256>, AuthServerError> {
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nonce_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extract the gas sponsorship nonce from settlement tx calldata
+fn extract_nonce_from_settlement_tx_calldata(
+    tx_data: &[u8],
+) -> Result<Option<U256>, AuthServerError> {
+    let selector = get_selector(tx_data)?;
+
+    match selector {
+        sponsorAtomicMatchSettleCall::SELECTOR => {
+            let call = sponsorAtomicMatchSettleCall::abi_decode(tx_data)?;
+
+            Ok(Some(call.nonce))
+        },
+        sponsorMalleableAtomicMatchSettleCall::SELECTOR => {
+            let call = sponsorMalleableAtomicMatchSettleCall::abi_decode(tx_data)?;
+
+            Ok(Some(call.nonce))
+        },
+        _ => Ok(None),
     }
 }

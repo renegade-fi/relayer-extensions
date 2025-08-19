@@ -1,5 +1,6 @@
 //! Telemetry helpers for Arbitrum specific ABI functionality
 
+use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use renegade_api::http::external_match::{AtomicMatchApiBundle, MalleableAtomicMatchApiBundle};
 use renegade_circuit_types::wallet::Nullifier;
@@ -89,4 +90,47 @@ pub fn extract_nullifier_from_settlement_tx_calldata(
     let nullifier = Scalar::new(match_payload.valid_reblind_statement.original_shares_nullifier);
 
     Ok(nullifier)
+}
+
+/// Extract the gas sponsorship nonce from a match bundle
+pub fn extract_nonce_from_match_bundle(
+    match_bundle: &AtomicMatchApiBundle,
+) -> Result<Option<U256>, AuthServerError> {
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nonce_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extract the gas sponsorship nonce from a malleable match bundle
+pub fn extract_nonce_from_malleable_match_bundle(
+    match_bundle: &MalleableAtomicMatchApiBundle,
+) -> Result<Option<U256>, AuthServerError> {
+    let tx_data = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    extract_nonce_from_settlement_tx_calldata(tx_data)
+}
+
+/// Extracts the gas sponsorship nonce from a match bundle's settlement
+/// transaction
+pub fn extract_nonce_from_settlement_tx_calldata(
+    tx_data: &[u8],
+) -> Result<Option<U256>, AuthServerError> {
+    let selector = get_selector(tx_data)?;
+
+    // Retrieve serialized match payload from the transaction data
+    let nonce = match selector {
+        sponsorAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
+            sponsorAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
+                .map_err(AuthServerError::serde)?
+                .nonce
+        },
+        sponsorMalleableAtomicMatchSettleWithRefundOptionsCall::SELECTOR => {
+            sponsorMalleableAtomicMatchSettleWithRefundOptionsCall::abi_decode(tx_data)
+                .map_err(AuthServerError::serde)?
+                .nonce
+        },
+        _ => {
+            return Ok(None);
+        },
+    };
+
+    Ok(Some(nonce))
 }
