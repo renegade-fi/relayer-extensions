@@ -5,6 +5,7 @@ mod assemble_quote;
 mod direct_match;
 mod quote;
 
+use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
@@ -146,8 +147,8 @@ pub struct ResponseContext<
     ///
     /// May be `None` if the relayer returned a non-200 status code
     pub response: Option<Resp>,
-    /// The gas sponsorship info for the request
-    pub sponsorship_info: Option<GasSponsorshipInfo>,
+    /// The gas sponsorship info for the request, along with a nonce
+    pub sponsorship_info_with_nonce: Option<(GasSponsorshipInfo, U256)>,
     /// Unique ID for this request-response flow
     pub request_id: Uuid,
 }
@@ -163,6 +164,11 @@ impl<
         body: Option<Resp>,
         request: RequestContext<Req>,
     ) -> Result<ResponseContext<Req, Resp>, AuthServerError> {
+        // Generate a random nonce for the sponsorship info, if it's present.
+        // In the case of quote responses, this will be ignored.
+        let sponsorship_info_with_nonce =
+            request.sponsorship_info.map(|info| (info, U256::random()));
+
         Ok(ResponseContext {
             path: request.path,
             query_str: request.query_str,
@@ -172,7 +178,7 @@ impl<
             request: request.body,
             status,
             response: body,
-            sponsorship_info: request.sponsorship_info,
+            sponsorship_info_with_nonce,
             request_id: request.request_id,
         })
     }
@@ -206,7 +212,12 @@ impl<
 
     /// Get a reference to the gas sponsorship info
     pub fn sponsorship_info(&self) -> Option<GasSponsorshipInfo> {
-        self.sponsorship_info.clone()
+        self.sponsorship_info_with_nonce.as_ref().map(|(info, _)| info.clone())
+    }
+
+    /// Get a reference to the gas sponsorship info & nonce
+    pub fn sponsorship_info_with_nonce(&self) -> Option<(GasSponsorshipInfo, U256)> {
+        self.sponsorship_info_with_nonce.clone()
     }
 
     /// Whether the response body should stringify numeric types

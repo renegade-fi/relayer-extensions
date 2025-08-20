@@ -77,7 +77,7 @@ impl SponsoredAssembleQuoteResponseCtx {
             request: ctx.request,
             status: ctx.status,
             response: Some(sponsored_resp),
-            sponsorship_info: ctx.sponsorship_info,
+            sponsorship_info_with_nonce: ctx.sponsorship_info_with_nonce,
             request_id: ctx.request_id,
         }
     }
@@ -224,7 +224,7 @@ impl Server {
         ctx: &AssembleQuoteResponseCtx,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
         let resp = ctx.response();
-        let gas_sponsorship_info = ctx.sponsorship_info();
+        let gas_sponsorship_info = ctx.sponsorship_info_with_nonce();
         if gas_sponsorship_info.is_none() {
             return Ok(SponsoredMatchResponse {
                 match_bundle: resp.match_bundle,
@@ -234,9 +234,9 @@ impl Server {
         }
 
         info!("Sponsoring match bundle via gas sponsor");
-        let sponsorship_info = gas_sponsorship_info.unwrap();
+        let (sponsorship_info, nonce) = gas_sponsorship_info.unwrap();
         let sponsored_match_resp =
-            self.construct_sponsored_match_response(resp, sponsorship_info)?;
+            self.construct_sponsored_match_response(resp, sponsorship_info, nonce)?;
 
         Ok(sponsored_match_resp)
     }

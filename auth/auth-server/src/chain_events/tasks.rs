@@ -149,6 +149,7 @@ impl OnChainEventListenerExecutor {
         match_result: &ApiExternalMatchResult,
         receipt: &TransactionReceipt,
         gas_sponsorship_info: &GasSponsorshipInfo,
+        nonce: U256,
     ) -> Result<(), AuthServerError> {
         let refund_asset = if gas_sponsorship_info.refund_native_eth {
             Token::from_ticker(WETH_TICKER)
@@ -164,12 +165,9 @@ impl OnChainEventListenerExecutor {
             .await?;
 
         // We fetch the actual refund amount in the transaction. This is resilient
-        // against:
-        // 1. Bundle ID collisions resulting in us fetching incorrect gas sponsorship
-        //   info
-        // 2. Insufficient funds in the gas sponsor, resulting in a fallback to an
-        //   unsponsored match
-        let actual_refund_amount = self.get_actual_refund_amount(receipt);
+        // against the case of insufficient funds in the gas sponsor, resulting in a
+        // fallback to an unsponsored match
+        let actual_refund_amount = self.get_actual_refund_amount(receipt, nonce);
 
         let nominal_amount: BigDecimal = actual_refund_amount.into();
 
@@ -345,13 +343,15 @@ impl OnChainEventListenerExecutor {
 
     /// Get the actual refund amount sent by the gas sponsor for a given
     /// settlement transaction
-    fn get_actual_refund_amount(&self, receipt: &TransactionReceipt) -> U256 {
+    fn get_actual_refund_amount(&self, receipt: &TransactionReceipt, nonce: U256) -> U256 {
         for log in receipt.logs() {
             if log.address() != self.gas_sponsor_address {
                 continue;
             }
 
-            if let Ok(sponsorship_log) = SponsoredExternalMatch::decode_log(&log.inner) {
+            if let Ok(sponsorship_log) = SponsoredExternalMatch::decode_log(&log.inner)
+                && sponsorship_log.nonce == nonce
+            {
                 return sponsorship_log.amount;
             };
         }

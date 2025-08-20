@@ -257,12 +257,13 @@ impl OnChainEventListenerExecutor {
                 self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match)?;
 
                 // Record sponsorship metrics
-                if let Some(gas_sponsorship_info) = &bundle_ctx.gas_sponsorship_info {
+                if let Some((gas_sponsorship_info, nonce)) = &bundle_ctx.gas_sponsorship_info {
                     self.record_settled_match_sponsorship(
                         &bundle_ctx,
                         &api_match,
                         &receipt,
                         gas_sponsorship_info,
+                        *nonce,
                     )
                     .await?;
                 }

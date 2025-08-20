@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
 use renegade_circuit_types::wallet::Nullifier;
 use tokio::sync::RwLock;
@@ -21,9 +22,9 @@ pub struct BundleContext {
     pub request_id: String,
     /// The SDK version that requested the bundle
     pub sdk_version: String,
-    /// The gas sponsorship info for the bundle
-    #[allow(dead_code)]
-    pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
+    /// The gas sponsorship info for the bundle, along with the sponsorship
+    /// nonce
+    pub gas_sponsorship_info: Option<(GasSponsorshipInfo, U256)>,
     /// Whether the bundle was sponsored
     pub is_sponsored: bool,
     /// The nullifier that was nullified as a result of the bundle being settled

@@ -97,17 +97,20 @@ fn sponsored_malleable_atomic_match_calldata(
 // ---------------
 
 impl Server {
-    /// Generate the calldata for sponsoring the given match via the gas sponsor
+    /// Generate the calldata for sponsoring the given match via the gas
+    /// sponsor
     pub(crate) fn generate_gas_sponsor_calldata(
         &self,
         external_match_resp: &ExternalMatchResponse,
         refund_address: Address,
         refund_native_eth: bool,
         refund_amount: U256,
+        nonce: U256,
     ) -> Result<Bytes, AuthServerError> {
-        let (nonce, signature) = gen_signed_sponsorship_nonce(
+        let signature = sign_sponsorship_nonce(
             refund_address,
             refund_amount,
+            nonce,
             &self.gas_sponsor_auth_key,
         )?;
 
@@ -140,11 +143,13 @@ impl Server {
         refund_address: Address,
         refund_native_eth: bool,
         refund_amount: U256,
+        nonce: U256,
     ) -> Result<Bytes, AuthServerError> {
         // Sign a sponsorship permit
-        let (nonce, signature) = gen_signed_sponsorship_nonce(
+        let signature = sign_sponsorship_nonce(
             refund_address,
             refund_amount,
+            nonce,
             &self.gas_sponsor_auth_key,
         )?;
 
@@ -178,17 +183,16 @@ impl Server {
 // | Helpers |
 // -----------
 
-/// Generate a random nonce for gas sponsorship, signing it along with
-/// the provided refund address and the refund amount
-fn gen_signed_sponsorship_nonce(
+/// Sign the provided sponsorship nonce, along with
+/// the refund address and the refund amount
+fn sign_sponsorship_nonce(
     refund_address: Address,
     refund_amount: U256,
+    nonce: U256,
     gas_sponsor_auth_key: &SigningKey,
-) -> Result<(U256, Bytes), AuthServerError> {
-    // Generate a random sponsorship nonce then sign the message
-    let nonce = U256::random();
+) -> Result<Bytes, AuthServerError> {
     let message = (nonce, refund_address, refund_amount).abi_encode();
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
 
-    Ok((nonce, signature))
+    Ok(signature)
 }
