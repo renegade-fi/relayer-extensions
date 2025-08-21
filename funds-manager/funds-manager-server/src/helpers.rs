@@ -31,9 +31,9 @@ use crate::{
     error::FundsManagerError,
 };
 
-/// An annotated constant used to indicate that only one confirmation is
+/// An annotated constant used to indicate that two confirmations are
 /// required for a transaction
-pub(crate) const ONE_CONFIRMATION: u64 = 1;
+pub(crate) const TWO_CONFIRMATIONS: u64 = 2;
 /// The maximum number of retries for a transaction
 const TX_MAX_RETRIES: u32 = 5;
 /// The minimum delay between retries
@@ -185,7 +185,7 @@ pub(crate) async fn approve_erc20_allowance(
     // Otherwise, approve the allowance
     let approval_amount = amount * APPROVAL_AMPLIFIER;
     let tx = erc20.approve(spender, approval_amount).into_transaction_request();
-    let receipt = send_tx_with_retry(tx, &rpc_provider, ONE_CONFIRMATION).await?;
+    let receipt = send_tx_with_retry(tx, &rpc_provider, TWO_CONFIRMATIONS).await?;
 
     info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
     Ok(())

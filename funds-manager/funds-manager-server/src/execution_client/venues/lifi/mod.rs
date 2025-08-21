@@ -31,7 +31,7 @@ use crate::{
     },
     helpers::{
         approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
-        handle_http_response, send_tx_with_retry, to_chain_id, ONE_CONFIRMATION,
+        handle_http_response, send_tx_with_retry, to_chain_id, TWO_CONFIRMATIONS,
     },
 };
 
@@ -262,7 +262,7 @@ impl LifiClient {
         &self,
         tx: TransactionRequest,
     ) -> Result<TransactionReceipt, ExecutionClientError> {
-        send_tx_with_retry(tx, &self.rpc_provider, ONE_CONFIRMATION)
+        send_tx_with_retry(tx, &self.rpc_provider, TWO_CONFIRMATIONS)
             .await
             .map_err(ExecutionClientError::onchain)
     }
