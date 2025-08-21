@@ -38,7 +38,7 @@ use tracing::{debug, info};
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
     helpers::{
-        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, ONE_CONFIRMATION,
+        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS,
     },
 };
 use crate::{
@@ -355,7 +355,7 @@ impl CustodyClient {
 
         info!("Transferring {amount} ETH to {to:#x}");
         let tx = TransactionRequest::default().with_to(to).with_value(amount_units);
-        send_tx_with_retry(tx, &client, ONE_CONFIRMATION).await
+        send_tx_with_retry(tx, &client, TWO_CONFIRMATIONS).await
     }
 
     /// Get the erc20 balance of an address
