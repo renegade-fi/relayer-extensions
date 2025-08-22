@@ -1,5 +1,5 @@
 # === Chef === #
-FROM --platform=arm64 rust:latest AS chef
+FROM --platform=arm64 rust:1.89-trixie AS chef
 
 # Create a build dir and add local dependencies
 WORKDIR /build
@@ -45,7 +45,7 @@ WORKDIR /build
 RUN cargo build --release -p renegade-price-reporter
 
 # === Release === #
-FROM --platform=arm64 debian:bookworm-slim
+FROM --platform=arm64 debian:trixie-slim
 
 RUN apt-get update && \
     apt-get install -y libssl-dev ca-certificates
