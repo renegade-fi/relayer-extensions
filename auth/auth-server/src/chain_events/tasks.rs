@@ -161,7 +161,7 @@ impl OnChainEventListenerExecutor {
         };
         let nominal_price = self
             .price_reporter_client
-            .get_nominal_price(&refund_asset.get_addr(), self.chain)
+            .get_decimal_adjusted_price(&refund_asset.get_addr(), self.chain)
             .await?;
 
         // We fetch the actual refund amount in the transaction. This is resilient

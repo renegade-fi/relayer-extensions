@@ -103,9 +103,9 @@ impl PriceReporterClient {
         self.get_price(&mint, weth_token.get_chain()).await
     }
 
-    /// Get the nominal price of a token, i.e. whole units of USDC per nominal
-    /// unit of TOKEN
-    pub async fn get_nominal_price(
+    /// Get the decimal-adjusted price of a token, i.e. whole units of USDC per
+    /// nominal unit of TOKEN
+    pub async fn get_decimal_adjusted_price(
         &self,
         mint: &str,
         chain: Chain,
@@ -119,7 +119,6 @@ impl PriceReporterClient {
         })?;
 
         let adjustment: BigDecimal = BigInt::from(10).pow(decimals as u32).into();
-
         Ok(price / adjustment)
     }
 
