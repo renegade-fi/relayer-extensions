@@ -179,7 +179,7 @@ impl CustodyClient {
         amount: f64,
         signer: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let client = self.get_signing_provider(signer);
+        let client = self.get_signing_provider(signer).await?;
         let calldata = self.get_eth_transfer_calldata();
         let amount_units = parse_ether(&amount.to_string()).map_err(FundsManagerError::parse)?;
 

@@ -316,14 +316,17 @@ impl CustodyClient {
     // --- JSON RPC --- //
 
     /// Get an instance of a signer with the http provider attached
-    fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
-        build_provider(&self.rpc_url, Some(wallet))
+    async fn get_signing_provider(
+        &self,
+        wallet: PrivateKeySigner,
+    ) -> Result<DynProvider, FundsManagerError> {
+        build_provider(&self.rpc_url, Some(wallet)).await
     }
 
     /// Get a basic provider for the configured RPC URL, i.e. one that is unable
     /// to sign transactions
-    fn get_basic_provider(&self) -> DynProvider {
-        build_provider(&self.rpc_url, None /* wallet */)
+    async fn get_basic_provider(&self) -> Result<DynProvider, FundsManagerError> {
+        build_provider(&self.rpc_url, None /* wallet */).await
     }
 
     /// Get the native token balance of an address
@@ -331,6 +334,7 @@ impl CustodyClient {
         let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
         let balance = self
             .get_basic_provider()
+            .await?
             .get_balance(address)
             .await
             .map_err(FundsManagerError::on_chain)?;
@@ -347,7 +351,7 @@ impl CustodyClient {
         amount: f64,
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let client = self.get_signing_provider(wallet);
+        let client = self.get_signing_provider(wallet).await?;
 
         let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
         let amount_units =
@@ -364,7 +368,7 @@ impl CustodyClient {
         token_address: &str,
         address: &str,
     ) -> Result<f64, FundsManagerError> {
-        get_erc20_balance(token_address, address, self.get_basic_provider()).await
+        get_erc20_balance(token_address, address, self.get_basic_provider().await?).await
     }
 
     /// Perform an erc20 transfer
@@ -376,7 +380,7 @@ impl CustodyClient {
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Setup the provider
-        let client = self.get_signing_provider(wallet);
+        let client = self.get_signing_provider(wallet).await?;
         let token_address = Address::from_str(mint).map_err(FundsManagerError::parse)?;
         let token = IERC20::new(token_address, client.clone());
 

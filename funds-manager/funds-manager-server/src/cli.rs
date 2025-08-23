@@ -194,6 +194,8 @@ pub struct ChainConfig {
     // --- Darkpool Params --- //
     /// The RPC url to use
     pub rpc_url: String,
+    /// The WebSocket RPC url to use
+    pub ws_rpc_url: String,
     /// The address of the darkpool contract
     pub darkpool_address: String,
     /// The address of the gas sponsor contract
@@ -251,7 +253,7 @@ impl ChainConfig {
             chain_id,
             fireblocks_api_key,
             fireblocks_api_secret,
-            self.rpc_url.clone(),
+            self.ws_rpc_url.clone(),
             db_pool.clone(),
             aws_config.clone(),
             gas_sponsor_address,
@@ -271,18 +273,21 @@ impl ChainConfig {
             chain,
             self.lifi_api_key.clone(),
             self.bebop_api_key.clone(),
-            &self.rpc_url,
+            &self.ws_rpc_url,
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
             self.max_price_deviations.clone(),
-        );
+        )
+        .await
+        .map_err(FundsManagerError::custom)?;
 
         // Build a metrics recorder
         let darkpool_address =
             Address::from_str(&self.darkpool_address).map_err(FundsManagerError::parse)?;
 
         let metrics_recorder =
-            MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain, darkpool_address);
+            MetricsRecorder::new(price_reporter.clone(), &self.ws_rpc_url, chain, darkpool_address)
+                .await?;
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)

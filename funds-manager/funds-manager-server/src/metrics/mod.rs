@@ -5,7 +5,7 @@ use alloy_primitives::Address;
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
-use crate::helpers::build_provider;
+use crate::{error::FundsManagerError, helpers::build_provider};
 
 pub mod cost;
 pub mod labels;
@@ -26,14 +26,14 @@ pub struct MetricsRecorder {
 
 impl MetricsRecorder {
     /// Create a new metrics recorder
-    pub fn new(
+    pub async fn new(
         price_reporter: PriceReporterClient,
         rpc_url: &str,
         chain: Chain,
         darkpool_address: Address,
-    ) -> Self {
-        let provider = build_provider(rpc_url, None /* wallet */);
+    ) -> Result<Self, FundsManagerError> {
+        let provider = build_provider(rpc_url, None /* wallet */).await?;
 
-        MetricsRecorder { price_reporter, provider, chain, darkpool_address }
+        Ok(MetricsRecorder { price_reporter, provider, chain, darkpool_address })
     }
 }
