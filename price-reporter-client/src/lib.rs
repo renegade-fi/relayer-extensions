@@ -103,9 +103,9 @@ impl PriceReporterClient {
         self.get_price(&mint, weth_token.get_chain()).await
     }
 
-    /// Get the nominal price of a token, i.e. whole units of USDC per nominal
-    /// unit of TOKEN
-    pub async fn get_nominal_price(
+    /// Get the decimal-adjusted price of a token, i.e. decimal adjusted units
+    /// of USDC per atomic unit of TOKEN
+    pub async fn get_price_usd(
         &self,
         mint: &str,
         chain: Chain,
@@ -119,8 +119,32 @@ impl PriceReporterClient {
         })?;
 
         let adjustment: BigDecimal = BigInt::from(10).pow(decimals as u32).into();
-
         Ok(price / adjustment)
+    }
+
+    /// Get the decimal-adjusted price of a token, i.e. atomic unit of USDC per
+    /// atomic unit of TOKEN
+    pub async fn get_decimal_adjusted_price(
+        &self,
+        mint: &str,
+        chain: Chain,
+    ) -> Result<BigDecimal, PriceReporterClientError> {
+        let price_f64 = self.get_price(mint, chain).await?;
+        let price = BigDecimal::from_f64(price_f64)
+            .ok_or(PriceReporterClientError::conversion(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
+
+        let base_decimals =
+            Token::from_addr_on_chain(mint, chain).get_decimals().ok_or_else(|| {
+                PriceReporterClientError::custom(format!("Token {mint} has no decimals"))
+            })?;
+        let usdc_decimals = Token::usdc().get_decimals().expect("USDC has no decimals");
+
+        // Adjust the price
+        let adjustment_decimals = usdc_decimals as i32 - base_decimals as i32;
+        let adjustment = 10f64.powi(adjustment_decimals);
+        let adjustment_bigdecimal = BigDecimal::from_f64(adjustment)
+            .ok_or(PriceReporterClientError::conversion(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
+        Ok(price * adjustment_bigdecimal)
     }
 
     /// Fetch the current price of a token from the price reporter.

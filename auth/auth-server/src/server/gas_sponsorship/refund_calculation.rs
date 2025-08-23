@@ -80,7 +80,7 @@ impl Server {
             .ok_or(AuthServerError::gas_sponsorship(ERR_PRICE_BIGDECIMAL_CONVERSION))?;
 
         let buy_token_price =
-            self.price_reporter_client.get_nominal_price(&buy_mint, self.chain).await?;
+            self.price_reporter_client.get_price_usd(&buy_mint, self.chain).await?;
 
         let conversion_rate = eth_price / buy_token_price;
 

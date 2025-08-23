@@ -159,10 +159,8 @@ impl OnChainEventListenerExecutor {
                 OrderSide::Sell => Token::from_addr(&match_result.quote_mint),
             }
         };
-        let nominal_price = self
-            .price_reporter_client
-            .get_nominal_price(&refund_asset.get_addr(), self.chain)
-            .await?;
+        let nominal_price =
+            self.price_reporter_client.get_price_usd(&refund_asset.get_addr(), self.chain).await?;
 
         // We fetch the actual refund amount in the transaction. This is resilient
         // against the case of insufficient funds in the gas sponsor, resulting in a

@@ -18,7 +18,7 @@ use renegade_api::websocket::WebsocketMessage;
 use serde::Deserialize;
 use tokio::{net::TcpStream, sync::RwLock, task::JoinHandle};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use tracing::{error, info, warn};
+use tracing::{debug, error, warn};
 
 use super::{construct_price_topic, error::PriceReporterClientError, get_base_mint_from_topic};
 
@@ -217,7 +217,7 @@ impl MultiPriceStream {
                         let mint = get_base_mint_from_topic(&price_message.topic)?;
                         state.update_price(mint, price_message.price).await;
                     } else {
-                        warn!("Received invalid price message: {text}");
+                        debug!("Received invalid price message: {text}");
                     }
                 },
                 Message::Close(_) => {
@@ -253,7 +253,7 @@ async fn connect_and_subscribe(
             serde_json::to_string(&message).map_err(PriceReporterClientError::parsing)?,
         );
 
-        info!("Subscribing to price stream for {mint}...");
+        debug!("Subscribing to price stream for {mint}...");
         write.send(message_ser).await.map_err(PriceReporterClientError::websocket)?;
     }
 
