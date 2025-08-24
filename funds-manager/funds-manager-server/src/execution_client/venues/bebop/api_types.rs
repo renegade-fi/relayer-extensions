@@ -70,7 +70,7 @@ impl BebopQuoteResponse {
     pub fn best_route(&self) -> Result<&BebopRoute, ExecutionClientError> {
         self.routes
             .iter()
-            .find(|route| route.route_source == self.best_price)
+            .find(|route| route.route_source == BebopRouteSource::PMMv3)
             .ok_or(ExecutionClientError::custom("Winning Bebop route not found"))
     }
 
