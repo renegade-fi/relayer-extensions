@@ -1,8 +1,6 @@
 //! Defines the transaction driver which is responsible for scheduling
 //! transactions to be submitted on-chain.
 
-//
-
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::time::{sleep_until, Instant};
 
@@ -15,7 +13,7 @@ use crate::uniswapx::executor_client::ExecutorClient;
 pub struct TxDriver {
     /// The sender for the transaction scheduler.
     scheduler: UnboundedSender<(String, Instant)>,
-    /// The transaction store to use to record the transactions.
+    /// The transaction store
     tx_store: TxStore,
 }
 
