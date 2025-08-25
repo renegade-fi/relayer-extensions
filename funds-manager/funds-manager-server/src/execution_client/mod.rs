@@ -37,34 +37,35 @@ pub struct ExecutionClient {
 
 impl ExecutionClient {
     /// Create a new client
-    pub async fn new(
+    pub fn new(
         chain: Chain,
         lifi_api_key: Option<String>,
         bebop_api_key: Option<String>,
-        rpc_url: &str,
+        base_provider: DynProvider,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
         max_price_deviations: MaxPriceDeviations,
-    ) -> Result<Self, ExecutionClientError> {
+    ) -> Self {
         let hot_wallet_address = quoter_hot_wallet.address();
-        let rpc_provider = build_provider(rpc_url, None /* wallet */)
-            .await
-            .map_err(ExecutionClientError::onchain)?;
 
-        let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain).await?;
-        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet.clone(), chain).await?;
-        let bebop = BebopClient::new(bebop_api_key, rpc_url, quoter_hot_wallet, chain).await?;
+        let rpc_provider = build_provider(base_provider.clone(), None /* wallet */);
+
+        let lifi =
+            LifiClient::new(lifi_api_key, base_provider.clone(), quoter_hot_wallet.clone(), chain);
+
+        let cowswap = CowswapClient::new(base_provider.clone(), quoter_hot_wallet.clone(), chain);
+        let bebop = BebopClient::new(bebop_api_key, base_provider, quoter_hot_wallet, chain);
 
         let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
-        Ok(Self {
+        Self {
             chain,
             rpc_provider,
             price_reporter,
             hot_wallet_address,
             venues,
             max_price_deviations,
-        })
+        }
     }
 
     /// Get the erc20 balance of an address, as a U256

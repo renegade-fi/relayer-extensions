@@ -190,16 +190,10 @@ pub struct CowswapClient {
 
 impl CowswapClient {
     /// Create a new client
-    pub async fn new(
-        rpc_url: &str,
-        hot_wallet: PrivateKeySigner,
-        chain: Chain,
-    ) -> Result<Self, ExecutionClientError> {
-        let rpc_provider = build_provider(rpc_url, Some(hot_wallet.clone()))
-            .await
-            .map_err(ExecutionClientError::onchain)?;
+    pub fn new(base_provider: DynProvider, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
+        let rpc_provider = build_provider(base_provider, Some(hot_wallet.clone()));
 
-        Ok(Self { http_client: Client::new(), hot_wallet, chain, rpc_provider })
+        Self { http_client: Client::new(), hot_wallet, chain, rpc_provider }
     }
 
     /// Send a POST request to the Cowswap API

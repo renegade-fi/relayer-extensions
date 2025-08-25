@@ -127,8 +127,9 @@ pub struct CustodyClient {
     chain_id: u64,
     /// The Fireblocks API client
     fireblocks_client: Arc<FireblocksClient>,
-    /// The RPC URL to use for the custody client
-    rpc_url: String,
+    /// The base RPC provider to use for the custody client.
+    /// Should already have an active connection to the RPC URL.
+    base_provider: DynProvider,
     /// The database connection pool
     db_pool: Arc<DbPool>,
     /// The AWS config
@@ -148,7 +149,7 @@ impl CustodyClient {
         chain_id: u64,
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
-        rpc_url: String,
+        base_provider: DynProvider,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
@@ -161,7 +162,7 @@ impl CustodyClient {
             chain,
             chain_id,
             fireblocks_client,
-            rpc_url,
+            base_provider,
             db_pool,
             aws_config,
             gas_sponsor_address,
@@ -316,17 +317,14 @@ impl CustodyClient {
     // --- JSON RPC --- //
 
     /// Get an instance of a signer with the http provider attached
-    async fn get_signing_provider(
-        &self,
-        wallet: PrivateKeySigner,
-    ) -> Result<DynProvider, FundsManagerError> {
-        build_provider(&self.rpc_url, Some(wallet)).await
+    fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
+        build_provider(self.base_provider.clone(), Some(wallet))
     }
 
     /// Get a basic provider for the configured RPC URL, i.e. one that is unable
     /// to sign transactions
-    async fn get_basic_provider(&self) -> Result<DynProvider, FundsManagerError> {
-        build_provider(&self.rpc_url, None /* wallet */).await
+    fn get_basic_provider(&self) -> DynProvider {
+        build_provider(self.base_provider.clone(), None /* wallet */)
     }
 
     /// Get the native token balance of an address
@@ -334,7 +332,6 @@ impl CustodyClient {
         let address = Address::from_str(address).map_err(FundsManagerError::parse)?;
         let balance = self
             .get_basic_provider()
-            .await?
             .get_balance(address)
             .await
             .map_err(FundsManagerError::on_chain)?;
@@ -351,7 +348,7 @@ impl CustodyClient {
         amount: f64,
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
-        let client = self.get_signing_provider(wallet).await?;
+        let client = self.get_signing_provider(wallet);
 
         let to = Address::from_str(to).map_err(FundsManagerError::parse)?;
         let amount_units =
@@ -368,7 +365,7 @@ impl CustodyClient {
         token_address: &str,
         address: &str,
     ) -> Result<f64, FundsManagerError> {
-        get_erc20_balance(token_address, address, self.get_basic_provider().await?).await
+        get_erc20_balance(token_address, address, self.get_basic_provider()).await
     }
 
     /// Perform an erc20 transfer
@@ -380,7 +377,7 @@ impl CustodyClient {
         wallet: PrivateKeySigner,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Setup the provider
-        let client = self.get_signing_provider(wallet).await?;
+        let client = self.get_signing_provider(wallet);
         let token_address = Address::from_str(mint).map_err(FundsManagerError::parse)?;
         let token = IERC20::new(token_address, client.clone());
 
