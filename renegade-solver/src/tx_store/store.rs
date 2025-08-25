@@ -26,6 +26,24 @@ pub struct L2Position {
     pub flashblock: u64,
 }
 
+impl L2Position {
+    /// Returns true if this position equals the given coordinates.
+    pub fn equals(&self, l2_block: u64, flashblock: u64) -> bool {
+        self.l2_block == l2_block && self.flashblock == flashblock
+    }
+
+    /// Given an estimated flashblocks per block, return the L2 position after
+    /// subtracting the given number of flashblocks, respecting the block
+    /// boundaries.
+    pub fn sub_flashblocks(&self, flashblocks: u64, flashblocks_per_block: u64) -> Self {
+        let idx = self.l2_block * flashblocks_per_block + self.flashblock;
+        let idx = idx.saturating_sub(flashblocks);
+        let l2_block = idx / flashblocks_per_block;
+        let flashblock = idx % flashblocks_per_block;
+        Self { l2_block, flashblock }
+    }
+}
+
 /// Timing information for when a transaction becomes eligible to send.
 #[derive(Clone, Debug)]
 pub struct TxTiming {
@@ -164,8 +182,8 @@ impl TxStore {
         for mut entry in self.by_id.iter_mut() {
             if let Some(h) = entry.status.tx_hash {
                 if tx_hashes.contains(&h) {
-                    entry.status.observed_position = Some(position.clone());
-                    out.push((entry.key().clone(), h));
+                    tx.status.observed = Some(*position);
+                    out.push((id.clone(), h));
                 }
             }
         }
