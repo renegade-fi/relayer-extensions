@@ -22,6 +22,7 @@ use crate::flashblocks::types::{
     ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1, FlashblocksPayloadV1,
 };
 
+/// A trait for receiving flashblocks.
 pub trait FlashblocksReceiver {
     fn on_flashblock_received(&self, flashblock: Flashblock);
 }
@@ -37,6 +38,7 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Clone)]
+/// A flashblock received from the flashblocks websocket.
 pub struct Flashblock {
     pub payload_id: PayloadId,
     pub index: u64,
@@ -46,12 +48,13 @@ pub struct Flashblock {
     pub received_at: Instant,
 }
 
-// Simplify actor messages to just handle shutdown
+/// Simplify actor messages to just handle shutdown.
 #[derive(Debug)]
 enum ActorMessage {
     BestPayload { payload: Flashblock },
 }
 
+/// A subscriber that listens for flashblocks and forwards them to a receiver.
 pub struct FlashblocksSubscriber<Receiver> {
     flashblocks_state: Arc<Receiver>,
     ws_url: Url,
@@ -61,10 +64,13 @@ impl<Receiver> FlashblocksSubscriber<Receiver>
 where
     Receiver: FlashblocksReceiver + Send + Sync + 'static,
 {
+    /// Creates a new `FlashblocksSubscriber` with the given receiver and
+    /// websocket URL.
     pub fn new(flashblocks_state: Arc<Receiver>, ws_url: Url) -> Self {
         Self { ws_url, flashblocks_state }
     }
 
+    /// Starts the subscriber.
     pub fn start(self) {
         info!(
             message = "Starting Flashblocks subscription",
@@ -143,6 +149,7 @@ where
     }
 }
 
+/// Decodes a flashblock message and returns a `Flashblock` struct.
 fn try_decode_message(bytes: &[u8]) -> eyre::Result<Flashblock> {
     let text = try_parse_message(bytes)?;
 
@@ -170,6 +177,7 @@ fn try_decode_message(bytes: &[u8]) -> eyre::Result<Flashblock> {
     })
 }
 
+/// Parses a brotli-compressed message.
 fn try_parse_message(bytes: &[u8]) -> eyre::Result<String> {
     if let Ok(text) = String::from_utf8(bytes.to_vec()) {
         if text.trim_start().starts_with("{") {
