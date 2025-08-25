@@ -21,9 +21,6 @@ pub struct Cli {
     /// The URL of the UniswapX API
     #[arg(long, env = "UNISWAPX_URL")]
     pub uniswapx_url: String,
-    /// The URL of the price reporter service
-    #[arg(long, env = "PRICE_REPORTER_URL")]
-    pub price_reporter_url: String,
     /// The API key for the Renegade external match API
     #[arg(long, env = "RENEGADE_API_KEY")]
     pub renegade_api_key: String,
@@ -38,9 +35,12 @@ pub struct Cli {
     /// The address of the executor contract
     #[arg(long, env = "EXECUTOR_ADDRESS")]
     pub contract_address: String,
-    /// The RPC URL for blockchain interaction
-    #[arg(long, env = "RPC_URL")]
-    pub rpc_url: String,
+    /// The Flashblocks WebSocket URL
+    #[arg(long, env = "FB_WEBSOCKET_URL")]
+    pub fb_websocket_url: String,
+    /// The WebSocket URL for real-time block monitoring
+    #[arg(long, env = "RPC_WEBSOCKET_URL")]
+    pub rpc_websocket_url: String,
     /// The private key for signing transactions
     #[arg(long, env = "PRIVATE_KEY")]
     pub private_key: String,

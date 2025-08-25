@@ -15,14 +15,18 @@ keywords = ["solver", "renegade", "protocol", "intents", "darkpool"]
 clap = { version = "4.0", features = ["derive", "env"] }
 reqwest = "0.12"
 tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 tracing = "0.1"
 warp = "0.3"
 
 # === Ethereum Libraries === #
-alloy = { workspace = true, features = ["essentials"] }
+alloy = { workspace = true , features = ["full"] }
 alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
 alloy-sol-types = { workspace = true }
 alloy-contract = { workspace = true }
+alloy-rpc-types-eth = { version = "1.0.23" }
+alloy-rpc-types-engine = { version = "1.0.23", default-features = false, features = ["serde"]}
+alloy-serde = { version = "1.0.23" }
 
 # === Renegade Dependencies === #
 renegade-common = { workspace = true }
@@ -33,10 +37,12 @@ renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk" }
 renegade-util = { workspace = true, features = [
     "telemetry",
 ] }
-price-reporter-client = { path = "../price-reporter-client" }
 
 # === Misc Dependencies === #
 bimap = "0.6"
+brotli = "8.0.1"
+eyre = "0.6"
+futures-util = "0.3.31"
 lru = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
