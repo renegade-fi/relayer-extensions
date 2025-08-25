@@ -109,7 +109,7 @@ impl UniswapXSolver {
     ///
     /// TODO: Loosen and remove this method's checks in follow-ups
     fn temporary_order_filter(&self, order: &PriorityOrder) -> SolverResult<bool> {
-        // For now, we only support orders with 1 output token
+        // For now, we only support orders with the same token for all outputs
         if !order.outputs.is_empty() {
             let first_output_token = order.outputs[0].token;
             for output in order.outputs.iter() {
