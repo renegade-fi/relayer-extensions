@@ -8,68 +8,107 @@
 /// See [UniswapX's documentation](https://docs.uniswapx.org/docs/priority-fee)
 /// for more details.
 use alloy_primitives::U256;
+use renegade_sdk::types::AtomicMatchApiBundle;
+use tracing::warn;
 
+use crate::error::SolverResult;
+use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::uniswapx::abis::priority_order::MPS;
+use crate::uniswapx::abis::uniswapx::PriorityOrderReactor::PriorityOrder;
 
-/// Compute the priority fee in wei
-pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_sell: bool) -> U256 {
-    // Check if we can provide improvement over the order minimum
-    let improvement = if is_sell {
-        renegade_price >= priority_order_price
+/// Compute the priority fee based on the improvement the Renegade bundle
+/// provides over the worst-cast PriorityOrder
+///
+/// Returns the priority fee in wei as `U256`.
+pub fn compute_priority_fee(
+    order: &PriorityOrder,
+    bundle: &AtomicMatchApiBundle,
+) -> SolverResult<U256> {
+    // Determine which side (input or output) scales
+    let input_scaled = order.is_input_scaled();
+    let output_scaled = order.is_output_scaled();
+
+    // Calculate improvement fraction and get the scaling rate (k)
+    let (improvement_fraction, mps_per_priority_fee_wei): (f64, u128) = if input_scaled {
+        // Input side scales → expect venue to use *less* input than worst-case
+        let order_input_amt = u256_to_u128(order.input.amount)? as f64;
+        let venue_input_amt = bundle.send.amount as f64;
+        let scaling_rate = u256_to_u128(order.input.mpsPerPriorityFeeWei)?;
+
+        let improvement = calculate_input_improvement(order_input_amt, venue_input_amt);
+
+        (improvement, scaling_rate)
+    } else if output_scaled {
+        // Output side scales → expect venue to give *more* output than worst-case
+        let order_output_amt = u256_to_u128(order.total_output_amount())? as f64;
+        let venue_output_amt = bundle.receive.amount as f64;
+        let scaling_rate = u256_to_u128(order.outputs[0].mpsPerPriorityFeeWei)?;
+
+        let improvement = calculate_output_improvement(order_output_amt, venue_output_amt);
+
+        (improvement, scaling_rate)
     } else {
-        renegade_price <= priority_order_price
+        // TODO: Implement bidding strategy for static orders
+        warn!("Neither side scales, no priority fee adjustment");
+        return Ok(U256::ZERO);
     };
 
-    if !improvement {
-        tracing::info!(
-            "Renegade price: {} | UniswapX price: {} | Improvement: 0 bps",
-            renegade_price,
-            priority_order_price,
-        );
-        return U256::ZERO;
+    let priority_fee_wei =
+        improvement_to_priority_fee(improvement_fraction, mps_per_priority_fee_wei);
+
+    Ok(priority_fee_wei)
+}
+
+/// Calculate the improvement of the input side
+fn calculate_input_improvement(order_amount: f64, venue_amount: f64) -> f64 {
+    if venue_amount >= order_amount {
+        return 0.0;
     }
 
-    // Calculate improvement as a percentage of the order minimum price
-    let abs_diff = (renegade_price - priority_order_price).abs();
-    let improvement_percent = abs_diff / priority_order_price;
+    1.0 - (venue_amount / order_amount)
+}
 
-    // Convert to milli-bps
-    let priority_fee_mps = improvement_percent * (MPS as f64);
+/// Calculate the improvement of the output side
+fn calculate_output_improvement(order_amount: f64, venue_amount: f64) -> f64 {
+    if venue_amount <= order_amount {
+        return 0.0;
+    }
 
-    let priority_fee_wei = U256::from(priority_fee_mps as u128);
-    tracing::info!(
-        "Renegade price: {} | UniswapX price: {} | Improvement: {} bps | Priority fee: {} wei",
-        renegade_price,
-        priority_order_price,
-        improvement_percent * 10000.0,
-        priority_fee_mps
-    );
+    (venue_amount / order_amount) - 1.0
+}
 
-    priority_fee_wei
+/// Convert improvement fraction to milli-bps then divide by the scaling rate
+/// Formula: priority_fee_wei = (improvement_fraction * MPS) /
+/// mps_per_priority_fee_wei
+fn improvement_to_priority_fee(improvement: f64, scaling_rate: u128) -> U256 {
+    let priority_fee_wei_f64 = improvement * (MPS as f64) / (scaling_rate as f64);
+    let priority_fee_wei = priority_fee_wei_f64.floor() as u128;
+
+    U256::from(priority_fee_wei)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{calculate_output_improvement, improvement_to_priority_fee};
+    use alloy_primitives::U256;
 
+    // Example from [docs](https://docs.uniswap.org/contracts/uniswapx/guides/priority/priorityorderreactor#example-implementation)
+    // Alice sells 1 ETH, min 1000 USDC. Desired execution: 1090 USDC
+    // => improvement = 900 bps = 0.09 = 900_000 mps
+    // With 1 mps per wei, priority fee = 900_000 wei.
     #[test]
-    fn test_priority_fee_calculation_docs_example() {
-        // Example from UniswapX docs:
-        // Alice sells 1 ETH for minimum 1000 USDC
-        // Fair market rate: 1100 USDC per ETH
-        // Filler offers 1090 USDC (10% margin from 100 USDC profit)
-        // Expected: 900 bps improvement = 900,000 mps = 900,000 wei
+    fn docs_example_output_scaled_priority_fee() {
+        let order_output_usdc = 1000.0_f64;
+        let venue_output_usdc = 1090.0_f64;
+        let mps_per_priority_fee_wei: u128 = 1;
 
-        let priority_order_price = 1000.0; // minimum 1000 USDC
-        let renegade_price = 1090.0; // filler's offered price
-        let is_sell = true; // selling ETH for USDC
+        let improvement = calculate_output_improvement(order_output_usdc, venue_output_usdc);
+        assert!(
+            (improvement - 0.09).abs() < 1e-12,
+            "improvement fraction should be 0.09 (900 bps)"
+        );
 
-        let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
-
-        // Expected calculation:
-        // improvement = (1090 - 1000) / 1000 = 0.09 = 9%
-        // bps = 0.09 * 10,000 = 900 bps
-        // mps = 900 * 1000 = 900,000 mps
-        assert_eq!(priority_fee_wei, U256::from(900_000u128));
+        let priority_fee = improvement_to_priority_fee(improvement, mps_per_priority_fee_wei);
+        assert_eq!(priority_fee, U256::from(900_000u128), "priority fee should be 900,000 wei");
     }
 }
