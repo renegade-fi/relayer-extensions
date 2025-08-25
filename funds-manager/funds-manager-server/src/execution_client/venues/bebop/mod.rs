@@ -142,18 +142,16 @@ pub struct BebopClient {
 
 impl BebopClient {
     /// Create a new client
-    pub async fn new(
+    pub fn new(
         api_key: Option<String>,
-        rpc_url: &str,
+        base_provider: DynProvider,
         hot_wallet: PrivateKeySigner,
         chain: Chain,
-    ) -> Result<Self, ExecutionClientError> {
+    ) -> Self {
         let hot_wallet_address = hot_wallet.address();
-        let rpc_provider = build_provider(rpc_url, Some(hot_wallet))
-            .await
-            .map_err(ExecutionClientError::onchain)?;
+        let rpc_provider = build_provider(base_provider, Some(hot_wallet));
 
-        Ok(Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain })
+        Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
 
     /// Build a Bebop API URL for a given path
