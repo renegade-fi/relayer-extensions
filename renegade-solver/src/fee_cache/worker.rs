@@ -24,20 +24,23 @@ impl FeeCacheWorker {
     pub fn start(&self) {
         let provider = self.provider.clone();
         let fee_cache = self.fee_cache.clone();
-        tokio::spawn(async move {
-            match provider.subscribe_blocks().await {
-                Ok(subscription) => {
-                    info!("listening for blocks via websocket");
-                    let mut stream = subscription.into_stream();
-                    while let Some(header) = stream.next().await {
-                        if let Some(base) = header.base_fee_per_gas {
-                            fee_cache.set_base_fee_per_gas(base);
-                        }
+        tokio::spawn(Self::watch_blocks(provider, fee_cache));
+    }
+
+    /// Watch for blocks and update the fee cache via a websocket stream.
+    async fn watch_blocks(provider: DynProvider, fee_cache: FeeCache) {
+        match provider.subscribe_blocks().await {
+            Ok(subscription) => {
+                info!("listening for blocks via websocket");
+                let mut stream = subscription.into_stream();
+                while let Some(header) = stream.next().await {
+                    if let Some(base) = header.base_fee_per_gas {
+                        fee_cache.set_base_fee_per_gas(base);
                     }
-                    warn!("block stream ended");
-                },
-                Err(e) => error!("subscription error: {e}"),
-            }
-        });
+                }
+                warn!("block stream ended");
+            },
+            Err(e) => error!("subscription error: {e}"),
+        }
     }
 }

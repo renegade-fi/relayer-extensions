@@ -3132,6 +3132,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "postcard",
+ "rand 0.8.5",
  "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "ruint",
  "serde",
@@ -7425,25 +7426,37 @@ dependencies = [
 
 [[package]]
 name = "renegade-sdk"
-version = "0.1.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77656fb817f157896c0859241d70b5c665ed5a5fb019e4edd1f9f04f2e759449"
+version = "0.1.17"
+source = "git+https://github.com/renegade-fi/rust-sdk#c631ee9bcb1463c98afa1c140b899b053e778ee5"
 dependencies = [
  "alloy",
  "alloy-rpc-types-eth",
  "base64 0.22.1",
  "bigdecimal 0.4.8",
+ "circuit-types",
+ "common",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "darkpool-client",
+ "external-api",
  "eyre",
+ "futures-util",
  "hmac",
+ "k256",
  "num-bigint",
  "num-integer",
  "num-traits",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "reqwest 0.12.22",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.20.1",
+ "tracing",
  "url",
+ "util",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -9172,8 +9185,10 @@ checksum = "212d5dcb2a1ce06d81107c3d0ffa3121fe974b73f068c8282cb1c32328113b6c"
 dependencies = [
  "futures-util",
  "log",
+ "native-tls",
  "rustls 0.21.12",
  "tokio",
+ "tokio-native-tls",
  "tokio-rustls 0.24.1",
  "tungstenite 0.20.1",
  "webpki-roots 0.25.4",
@@ -9526,6 +9541,7 @@ dependencies = [
  "http 0.2.12",
  "httparse",
  "log",
+ "native-tls",
  "rand 0.8.5",
  "rustls 0.21.12",
  "sha1",
