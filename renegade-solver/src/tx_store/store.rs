@@ -147,14 +147,13 @@ impl TxStore {
         let base = self.fee_cache.base_fee_per_gas().ok_or_else(|| {
             TxStoreError::TxRequestInvalid("base_fee_per_gas unavailable".to_string())
         })? as u128;
-        // 1.2 * base
-        let buffed_base_fee = base.saturating_mul(12) / 10;
-        // 1.2 * base + tip
 
         let tip = tx.request.max_priority_fee_per_gas.ok_or_else(|| {
             TxStoreError::TxRequestInvalid("max_priority_fee_per_gas must be set".to_string())
         })?;
 
+        // Add 20% buffer to the base fee.
+        let buffed_base_fee = base.saturating_mul(12) / 10;
         let max_fee = buffed_base_fee.saturating_add(tip);
 
         let mut out = tx.request.clone();
