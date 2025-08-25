@@ -28,11 +28,11 @@ impl MetricsRecorder {
     /// Create a new metrics recorder
     pub fn new(
         price_reporter: PriceReporterClient,
-        rpc_url: &str,
+        base_provider: DynProvider,
         chain: Chain,
         darkpool_address: Address,
     ) -> Self {
-        let provider = build_provider(rpc_url, None /* wallet */);
+        let provider = build_provider(base_provider, None /* wallet */);
 
         MetricsRecorder { price_reporter, provider, chain, darkpool_address }
     }

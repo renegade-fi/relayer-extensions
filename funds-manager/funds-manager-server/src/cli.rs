@@ -15,9 +15,15 @@ use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 use crate::{
-    custody_client::CustodyClient, db::DbPool, error::FundsManagerError,
-    execution_client::ExecutionClient, helpers::fetch_s3_object, metrics::MetricsRecorder,
-    mux_darkpool_client::MuxDarkpoolClient, relayer_client::RelayerClient, Indexer,
+    custody_client::CustodyClient,
+    db::DbPool,
+    error::FundsManagerError,
+    execution_client::ExecutionClient,
+    helpers::{base_ws_provider, fetch_s3_object},
+    metrics::MetricsRecorder,
+    mux_darkpool_client::MuxDarkpoolClient,
+    relayer_client::RelayerClient,
+    Indexer,
 };
 
 // -------------
@@ -194,6 +200,8 @@ pub struct ChainConfig {
     // --- Darkpool Params --- //
     /// The RPC url to use
     pub rpc_url: String,
+    /// The WebSocket RPC url to use
+    pub ws_rpc_url: String,
     /// The address of the darkpool contract
     pub darkpool_address: String,
     /// The address of the gas sponsor contract
@@ -242,6 +250,9 @@ impl ChainConfig {
             MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
         let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::on_chain)?;
 
+        // Build a base provider w/ a websocket connection to the RPC URL
+        let base_provider = base_ws_provider(&self.ws_rpc_url).await?;
+
         // Build a custody client
         let gas_sponsor_address =
             Address::from_str(&self.gas_sponsor_address).map_err(FundsManagerError::parse)?;
@@ -251,7 +262,7 @@ impl ChainConfig {
             chain_id,
             fireblocks_api_key,
             fireblocks_api_secret,
-            self.rpc_url.clone(),
+            base_provider.clone(),
             db_pool.clone(),
             aws_config.clone(),
             gas_sponsor_address,
@@ -271,7 +282,7 @@ impl ChainConfig {
             chain,
             self.lifi_api_key.clone(),
             self.bebop_api_key.clone(),
-            &self.rpc_url,
+            base_provider.clone(),
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
             self.max_price_deviations.clone(),
@@ -282,7 +293,7 @@ impl ChainConfig {
             Address::from_str(&self.darkpool_address).map_err(FundsManagerError::parse)?;
 
         let metrics_recorder =
-            MetricsRecorder::new(price_reporter.clone(), &self.rpc_url, chain, darkpool_address);
+            MetricsRecorder::new(price_reporter.clone(), base_provider, chain, darkpool_address);
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)

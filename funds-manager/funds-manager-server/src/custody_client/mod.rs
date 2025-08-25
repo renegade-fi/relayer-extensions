@@ -127,8 +127,9 @@ pub struct CustodyClient {
     chain_id: u64,
     /// The Fireblocks API client
     fireblocks_client: Arc<FireblocksClient>,
-    /// The RPC URL to use for the custody client
-    rpc_url: String,
+    /// The base RPC provider to use for the custody client.
+    /// Should already have an active connection to the RPC URL.
+    base_provider: DynProvider,
     /// The database connection pool
     db_pool: Arc<DbPool>,
     /// The AWS config
@@ -148,7 +149,7 @@ impl CustodyClient {
         chain_id: u64,
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
-        rpc_url: String,
+        base_provider: DynProvider,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
@@ -161,7 +162,7 @@ impl CustodyClient {
             chain,
             chain_id,
             fireblocks_client,
-            rpc_url,
+            base_provider,
             db_pool,
             aws_config,
             gas_sponsor_address,
@@ -317,13 +318,13 @@ impl CustodyClient {
 
     /// Get an instance of a signer with the http provider attached
     fn get_signing_provider(&self, wallet: PrivateKeySigner) -> DynProvider {
-        build_provider(&self.rpc_url, Some(wallet))
+        build_provider(self.base_provider.clone(), Some(wallet))
     }
 
     /// Get a basic provider for the configured RPC URL, i.e. one that is unable
     /// to sign transactions
     fn get_basic_provider(&self) -> DynProvider {
-        build_provider(&self.rpc_url, None /* wallet */)
+        build_provider(self.base_provider.clone(), None /* wallet */)
     }
 
     /// Get the native token balance of an address

@@ -41,17 +41,20 @@ impl ExecutionClient {
         chain: Chain,
         lifi_api_key: Option<String>,
         bebop_api_key: Option<String>,
-        rpc_url: &str,
+        base_provider: DynProvider,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
         max_price_deviations: MaxPriceDeviations,
     ) -> Self {
         let hot_wallet_address = quoter_hot_wallet.address();
-        let rpc_provider = build_provider(rpc_url, None /* wallet */);
 
-        let lifi = LifiClient::new(lifi_api_key, rpc_url, quoter_hot_wallet.clone(), chain);
-        let cowswap = CowswapClient::new(rpc_url, quoter_hot_wallet.clone(), chain);
-        let bebop = BebopClient::new(bebop_api_key, rpc_url, quoter_hot_wallet, chain);
+        let rpc_provider = build_provider(base_provider.clone(), None /* wallet */);
+
+        let lifi =
+            LifiClient::new(lifi_api_key, base_provider.clone(), quoter_hot_wallet.clone(), chain);
+
+        let cowswap = CowswapClient::new(base_provider.clone(), quoter_hot_wallet.clone(), chain);
+        let bebop = BebopClient::new(bebop_api_key, base_provider, quoter_hot_wallet, chain);
 
         let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
