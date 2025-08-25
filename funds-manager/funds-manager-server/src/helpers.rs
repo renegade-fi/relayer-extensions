@@ -4,9 +4,10 @@
 use std::{str::FromStr, time::Duration};
 
 use alloy::{
+    network::Ethereum,
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
-        DynProvider, Provider, ProviderBuilder,
+        DynProvider, PendingTransactionBuilder, Provider, ProviderBuilder, WsConnect,
     },
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
@@ -19,6 +20,7 @@ use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
+use futures::StreamExt;
 use rand::Rng;
 use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
@@ -26,10 +28,7 @@ use reqwest::Response;
 use serde::Deserialize;
 use tracing::{error, info, instrument};
 
-use crate::{
-    cli::{Environment, BLOCK_POLLING_INTERVAL},
-    error::FundsManagerError,
-};
+use crate::{cli::Environment, error::FundsManagerError};
 
 /// An annotated constant used to indicate that two confirmations are
 /// required for a transaction
@@ -71,30 +70,35 @@ sol! {
 // | ETH JSON RPC |
 // ----------------
 
-/// Build a provider for the given RPC url, using simple nonce management
+/// Construct a base provider w/ a websocket connection to the given RPC URL
+pub async fn base_ws_provider(ws_rpc_url: &str) -> Result<DynProvider, FundsManagerError> {
+    let ws = WsConnect::new(ws_rpc_url);
+    ProviderBuilder::default()
+        .connect_ws(ws)
+        .await
+        .map_err(FundsManagerError::on_chain)
+        .map(|provider| provider.erased())
+}
+
+/// Build a provider for the given base provider, using simple nonce management
 /// and other sensible defaults
 ///
 /// We do not use the default fillers because we want to use the simple
 /// nonce manager, which fetches the most recent nonce for each tx. We
 /// use different instantiations of the client throughout the codebase,
 /// so the cached nonce manager will get out of sync.
-pub fn build_provider(url: &str, wallet: Option<PrivateKeySigner>) -> DynProvider {
-    let url = url.parse().expect("invalid RPC URL");
+pub fn build_provider(base_provider: DynProvider, wallet: Option<PrivateKeySigner>) -> DynProvider {
     let builder = ProviderBuilder::default()
         .with_simple_nonce_management()
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
         .filler(BlobGasFiller);
 
-    let provider = if let Some(wallet) = wallet {
-        builder.wallet(wallet).connect_http(url).erased()
+    if let Some(wallet) = wallet {
+        builder.wallet(wallet).connect_provider(base_provider).erased()
     } else {
-        builder.connect_http(url).erased()
-    };
-
-    provider.client().set_poll_interval(BLOCK_POLLING_INTERVAL);
-
-    provider
+        builder.connect_provider(base_provider).erased()
+    }
 }
 
 /// Send a transaction, retrying on failure
@@ -117,14 +121,50 @@ pub async fn send_tx_with_retry(
         };
 
         // If the handler falls through we wait
-        let mut pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
-        pending_tx.set_required_confirmations(required_confirmations);
-        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+        let pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
+        let receipt =
+            get_receipt_with_confirmations(pending_tx, client, required_confirmations).await?;
+
         backfill_trace_field("tx_hash", receipt.transaction_hash.to_string());
         return Ok(receipt);
     }
 
     Err(FundsManagerError::on_chain("Transaction failed after retries"))
+}
+
+/// Await the receipt of a transaction on-chain with the given number of
+/// confirmations
+async fn get_receipt_with_confirmations(
+    mut pending_tx: PendingTransactionBuilder<Ethereum>,
+    client: &DynProvider,
+    required_confirmations: u64,
+) -> Result<TransactionReceipt, FundsManagerError> {
+    pending_tx.set_required_confirmations(required_confirmations);
+    let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
+
+    // TEMP: Alloy `required_confirmations` is empirically ignored. So for now,
+    // we manually watch blocks until the correct # of confirmations is reached.
+
+    let receipt_block =
+        receipt.block_number.ok_or(FundsManagerError::on_chain("No block number in receipt"))?;
+
+    // This method requires us to use a websocket provider
+    let block_subscription =
+        client.subscribe_blocks().await.map_err(FundsManagerError::on_chain)?;
+
+    let mut block_stream = block_subscription.into_stream();
+    while let Some(block) = block_stream.next().await {
+        if block.number >= receipt_block + required_confirmations - 1 {
+            let sub_id = block_stream.id();
+            if let Err(e) = client.unsubscribe(*sub_id).await {
+                error!("Failed to unsubscribe from block subscription {sub_id}: {e}");
+            }
+
+            break;
+        }
+    }
+
+    Ok(receipt)
 }
 
 /// Get the erc20 balance of an address, as a U256

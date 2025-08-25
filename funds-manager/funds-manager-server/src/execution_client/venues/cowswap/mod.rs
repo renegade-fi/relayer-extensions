@@ -190,8 +190,8 @@ pub struct CowswapClient {
 
 impl CowswapClient {
     /// Create a new client
-    pub fn new(rpc_url: &str, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
-        let rpc_provider = build_provider(rpc_url, Some(hot_wallet.clone()));
+    pub fn new(base_provider: DynProvider, hot_wallet: PrivateKeySigner, chain: Chain) -> Self {
+        let rpc_provider = build_provider(base_provider, Some(hot_wallet.clone()));
 
         Self { http_client: Client::new(), hot_wallet, chain, rpc_provider }
     }

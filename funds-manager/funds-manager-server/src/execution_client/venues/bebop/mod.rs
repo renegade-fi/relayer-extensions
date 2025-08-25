@@ -144,12 +144,12 @@ impl BebopClient {
     /// Create a new client
     pub fn new(
         api_key: Option<String>,
-        rpc_url: &str,
+        base_provider: DynProvider,
         hot_wallet: PrivateKeySigner,
         chain: Chain,
     ) -> Self {
         let hot_wallet_address = hot_wallet.address();
-        let rpc_provider = build_provider(rpc_url, Some(hot_wallet));
+        let rpc_provider = build_provider(base_provider, Some(hot_wallet));
 
         Self { api_key, http_client: Client::new(), rpc_provider, hot_wallet_address, chain }
     }
