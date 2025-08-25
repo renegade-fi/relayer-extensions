@@ -101,7 +101,6 @@ impl TxStore {
         timing: TxTiming,
     ) -> TxStoreResult<()> {
         let tx = TxContext { id: id.to_string(), request, timing, status: TxStatus::default() };
-        Self::validate_template(&tx.request)?;
         let mut inner = self.inner.write().unwrap();
 
         inner.by_id.insert(tx.id.clone(), tx);
@@ -134,9 +133,6 @@ impl TxStore {
     }
 
     /// Resolves the transaction template into a concrete request with fee caps.
-    ///
-    /// - Validates presence of max_priority_fee_per_gas in the template.
-    /// - Computes max_fee_per_gas from current base fee and tip.
     pub fn resolve_fee_caps(&self, id: &str) -> TxStoreResult<TransactionRequest> {
         let tx = {
             let inner = self.inner.read().unwrap();
@@ -146,7 +142,25 @@ impl TxStore {
                 .cloned()
                 .ok_or_else(|| TxStoreError::TxNotFound { id: id.to_string() })?
         };
-        self.compute_fee_caps(&tx)
+
+        // Read latest base fee from cache.
+        let base = self.fee_cache.base_fee_per_gas().ok_or_else(|| {
+            TxStoreError::TxRequestInvalid("base_fee_per_gas unavailable".to_string())
+        })? as u128;
+        // 1.2 * base
+        let buffed_base_fee = base.saturating_mul(12) / 10;
+        // 1.2 * base + tip
+
+        let tip = tx.request.max_priority_fee_per_gas.ok_or_else(|| {
+            TxStoreError::TxRequestInvalid("max_priority_fee_per_gas must be set".to_string())
+        })?;
+
+        let max_fee = buffed_base_fee.saturating_add(tip);
+
+        let mut out = tx.request.clone();
+        out.max_fee_per_gas = Some(max_fee);
+
+        Ok(out)
     }
 
     /// Attaches or updates the transaction hash for a queued transaction.
@@ -176,46 +190,5 @@ impl TxStore {
             }
         }
         out
-    }
-
-    // -------------------
-    // | Private helpers |
-    // -------------------
-
-    /// Validates the shape of a transaction template before enqueueing.
-    fn validate_template(req: &TransactionRequest) -> TxStoreResult<()> {
-        if req.to.is_none() {
-            return Err(TxStoreError::TxRequestInvalid("to must be set".to_string()));
-        }
-        if req.max_priority_fee_per_gas.is_none() {
-            return Err(TxStoreError::TxRequestInvalid(
-                "max_priority_fee_per_gas must be set".to_string(),
-            ));
-        }
-        if req.max_fee_per_gas.is_some() {
-            return Err(TxStoreError::TxRequestInvalid(
-                "max_fee_per_gas should not be preset".to_string(),
-            ));
-        }
-        if req.nonce.is_some() {
-            return Err(TxStoreError::TxRequestInvalid("nonce should not be preset".to_string()));
-        }
-        Ok(())
-    }
-
-    /// Computes fee caps for a queued transaction using the current base fee.
-    fn compute_fee_caps(&self, tx: &TxContext) -> TxStoreResult<TransactionRequest> {
-        let tip = tx.request.max_priority_fee_per_gas.ok_or_else(|| {
-            TxStoreError::TxRequestInvalid("max_priority_fee_per_gas must be set".to_string())
-        })?;
-
-        let base = self.fee_cache.base_fee_per_gas().ok_or_else(|| {
-            TxStoreError::TxRequestInvalid("base_fee_per_gas unavailable".to_string())
-        })? as u128;
-
-        let mut out = tx.request.clone();
-        // max_fee = 1.2 * base + tip (with saturation safety)
-        out.max_fee_per_gas = Some((base.saturating_mul(6) / 5).saturating_add(tip));
-        Ok(out)
     }
 }
