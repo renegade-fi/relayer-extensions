@@ -1,8 +1,8 @@
 //! Triggered transaction store for L2 transactions.
 //!
 //! Tracks queued transactions keyed by ID, the L2 trigger at which they should
-//! be sent, and their inclusion status. Provides fee-cap resolution on demand
-//! using a FeeCache.
+//! be sent, and their inclusion status. Resolves fee caps on demand using a
+//! `FeeCache`. Hash-based queries are performed by linear scan (no index).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -30,7 +30,7 @@ impl L2Position {
     }
 }
 
-/// Timing information for when a transaction should be sent.
+/// Timing information for when a transaction becomes eligible to send.
 #[derive(Clone, Debug)]
 pub struct TxTiming {
     /// The trigger position at which the transaction becomes eligible to send.
@@ -40,13 +40,13 @@ pub struct TxTiming {
 }
 
 impl TxTiming {
-    /// Returns true if the given position matches this timing's trigger.
+    /// Returns true if the provided position matches this timing's trigger.
     pub fn triggers_at(&self, l2_block: u64, flashblock: u64) -> bool {
         self.trigger.equals(l2_block, flashblock)
     }
 }
 
-/// Status signals captured as the transaction progresses through the chain.
+/// Status information captured as the transaction progresses through the chain.
 #[derive(Clone, Debug, Default)]
 pub struct TxStatus {
     /// The hash of the broadcast transaction (if known).
@@ -72,8 +72,6 @@ pub struct TxContext {
 struct StoreInner {
     /// Transactions by ID.
     by_id: HashMap<String, TxContext>,
-    /// Index of IDs by tx hash (for quick inclusion updates).
-    by_hash: HashMap<B256, HashSet<String>>,
 }
 
 /// A thread-safe store for transactions that are sent on specific L2 triggers.
@@ -86,29 +84,16 @@ pub struct TxStore {
 }
 
 impl TxStore {
-    /// Create a new `TxStore` with the given fee cache.
+    /// Creates a new `TxStore` with the given fee cache.
     pub fn new(fee_cache: FeeCache) -> Self {
         Self { inner: Arc::new(RwLock::new(StoreInner::default())), fee_cache }
     }
 
-    // -------------------
-    // | Public API       |
-    // -------------------
+    // --------------
+    // | Public API |
+    // --------------
 
-    /// Enqueue a transaction into the store.
-    pub fn enqueue(&self, tx: TxContext) -> TxStoreResult<()> {
-        Self::validate_template(&tx.request)?;
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(h) = tx.status.tx_hash {
-            Self::update_hash_index(&mut inner, &tx.id, None, Some(h));
-        }
-
-        inner.by_id.insert(tx.id.clone(), tx);
-        Ok(())
-    }
-
-    /// Enqueue a transaction with the given timing.
+    /// Enqueues a transaction with the given timing.
     pub fn enqueue_with_timing(
         &self,
         id: &str,
@@ -116,11 +101,15 @@ impl TxStore {
         timing: TxTiming,
     ) -> TxStoreResult<()> {
         let tx = TxContext { id: id.to_string(), request, timing, status: TxStatus::default() };
-        self.enqueue(tx)
+        Self::validate_template(&tx.request)?;
+        let mut inner = self.inner.write().unwrap();
+
+        inner.by_id.insert(tx.id.clone(), tx);
+        Ok(())
     }
 
-    /// Returns the transactions that are due to send at the given trigger
-    /// position, along with the time they should be sent.
+    /// Returns the transactions that are due to send at the specified trigger
+    /// position, along with the time each should be sent (after buffering).
     pub fn due_at(
         &self,
         l2_block: u64,
@@ -144,7 +133,7 @@ impl TxStore {
             .collect()
     }
 
-    /// Resolve the transaction template into a concrete request with fee caps.
+    /// Resolves the transaction template into a concrete request with fee caps.
     ///
     /// - Validates presence of max_priority_fee_per_gas in the template.
     /// - Computes max_fee_per_gas from current base fee and tip.
@@ -160,48 +149,33 @@ impl TxStore {
         self.compute_fee_caps(&tx)
     }
 
-    /// Attach or update the tx hash for a queued transaction.
+    /// Attaches or updates the transaction hash for a queued transaction.
     pub fn record_tx_hash(&self, id: &str, tx_hash: B256) {
         let mut inner = self.inner.write().unwrap();
         if let Some(tx) = inner.by_id.get_mut(id) {
-            let old = tx.status.tx_hash;
             tx.status.tx_hash = Some(tx_hash);
-            Self::update_hash_index(&mut inner, id, old, Some(tx_hash));
         }
     }
 
-    /// Mark transactions as observed included at the given position by their
-    /// hashes. Returns (id, hash) pairs that matched.
+    /// Marks transactions as observed included at the given position if their
+    /// hashes match the provided set. Returns the `(id, hash)` pairs that
+    /// matched.
     pub fn record_inclusions(
         &self,
         position: &L2Position,
         tx_hashes: &HashSet<B256>,
     ) -> Vec<(String, B256)> {
-        // Collect matches under a read lock
-        let matches: Vec<(String, B256)> = {
-            let inner = self.inner.read().unwrap();
-            let mut out: Vec<(String, B256)> = Vec::new();
-            for h in tx_hashes {
-                if let Some(ids) = inner.by_hash.get(h) {
-                    for id in ids {
-                        out.push((id.clone(), *h));
-                    }
-                }
-            }
-            out
-        };
-
-        // Update observations under a single write lock
-        if !matches.is_empty() {
-            let mut inner = self.inner.write().unwrap();
-            for (id, _) in &matches {
-                if let Some(tx) = inner.by_id.get_mut(id) {
+        let mut inner = self.inner.write().unwrap();
+        let mut out: Vec<(String, B256)> = Vec::new();
+        for (id, tx) in inner.by_id.iter_mut() {
+            if let Some(h) = tx.status.tx_hash {
+                if tx_hashes.contains(&h) {
                     tx.status.observed = Some(position.clone());
+                    out.push((id.clone(), h));
                 }
             }
         }
-
-        matches
+        out
     }
 
     // -------------------
@@ -229,7 +203,7 @@ impl TxStore {
         Ok(())
     }
 
-    /// Compute fee caps for a queued transaction using the current base fee.
+    /// Computes fee caps for a queued transaction using the current base fee.
     fn compute_fee_caps(&self, tx: &TxContext) -> TxStoreResult<TransactionRequest> {
         let tip = tx.request.max_priority_fee_per_gas.ok_or_else(|| {
             TxStoreError::TxRequestInvalid("max_priority_fee_per_gas must be set".to_string())
@@ -243,20 +217,5 @@ impl TxStore {
         // max_fee = 1.2 * base + tip (with saturation safety)
         out.max_fee_per_gas = Some((base.saturating_mul(6) / 5).saturating_add(tip));
         Ok(out)
-    }
-
-    /// Maintain the by-hash index when a tx's hash changes.
-    fn update_hash_index(inner: &mut StoreInner, id: &str, old: Option<B256>, new: Option<B256>) {
-        if let Some(h) = old {
-            if let Some(set) = inner.by_hash.get_mut(&h) {
-                set.remove(id);
-            }
-            if inner.by_hash.get(&h).is_some_and(|s| s.is_empty()) {
-                inner.by_hash.remove(&h);
-            }
-        }
-        if let Some(h) = new {
-            inner.by_hash.entry(h).or_default().insert(id.to_string());
-        }
     }
 }
