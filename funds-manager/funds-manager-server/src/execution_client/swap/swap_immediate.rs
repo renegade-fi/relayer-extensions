@@ -35,6 +35,31 @@ const PRICE_DEVIATION_INCREASE: f64 = 0.2; // 20%
 /// allowed
 const MAX_PRICE_DEVIATION_INCREASE: f64 = 4.0; // 4x
 
+// ---------
+// | Types |
+// ---------
+
+/// The unsuccessful control flow branches that can occur during the execution
+/// of a decaying swap
+#[derive(Debug, Clone)]
+enum SwapControlFlow {
+    /// Break out of the loop with no swap outcome
+    NoSwap,
+    /// Continue the loop with a higher price deviation tolerance
+    IncreasePriceDeviation,
+    /// Continue the loop with a smaller swap size.
+    /// Includes the gas cost incurred in the swap attempt.
+    DecreaseSwapSize(U256),
+    /// Break out of the loop with an error
+    Error(ExecutionClientError),
+}
+
+impl From<ExecutionClientError> for SwapControlFlow {
+    fn from(e: ExecutionClientError) -> Self {
+        SwapControlFlow::Error(e)
+    }
+}
+
 impl ExecutionClient {
     /// Attempt to execute a swap, retrying failed swaps with
     /// decreased quotes down to a minimum trade size.
@@ -59,56 +84,83 @@ impl ExecutionClient {
         let mut cumulative_gas_cost = U256::ZERO;
         let mut max_price_deviation_multiplier = 1.0;
         loop {
-            if !self.can_execute_swap(&params).await? {
-                return Ok(None);
-            }
-
-            let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
-            if maybe_executable_quote.is_none() {
-                warn!("No quote found for swap");
-                return Ok(None);
-            }
-
-            let executable_quote = maybe_executable_quote.unwrap();
-
-            if self
-                .exceeds_price_deviation(&executable_quote.quote, max_price_deviation_multiplier)
-                .await?
+            match self
+                .execute_swap_step(&params, max_price_deviation_multiplier, cumulative_gas_cost)
+                .await
             {
-                adjust_for_price_deviation(&mut params, &mut max_price_deviation_multiplier);
-                if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
-                    warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
-                    return Ok(None);
-                }
+                Ok(outcome) => return Ok(Some(outcome)),
+                Err(SwapControlFlow::NoSwap) => return Ok(None),
+                Err(SwapControlFlow::Error(e)) => return Err(e),
+                Err(SwapControlFlow::IncreasePriceDeviation) => {
+                    max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
+                    info!(
+                        "Increasing price deviation tolerance to {max_price_deviation_multiplier}x"
+                    );
 
-                continue;
+                    if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
+                        warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
+                        return Ok(None);
+                    }
+                },
+                Err(SwapControlFlow::DecreaseSwapSize(gas_cost)) => {
+                    info!("Decreasing swap size by {SWAP_DECAY_FACTOR}x");
+                    params.from_amount /= SWAP_DECAY_FACTOR;
+                    cumulative_gas_cost += gas_cost;
+                },
             }
-
-            // Execute the quote
-            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
-                self.execute_quote(&executable_quote).await?;
-
-            cumulative_gas_cost += gas_cost;
-
-            // If the swap was successful, return
-            if let Some(tx_hash) = tx_hash {
-                return Ok(Some(DecayingSwapOutcome {
-                    quote: executable_quote.quote,
-                    buy_amount_actual,
-                    tx_hash,
-                    cumulative_gas_cost,
-                }));
-            }
-
-            // Otherwise, decrease the swap size and try again
-            warn!("swap failed, retrying w/ reduced-size quote");
-            params.from_amount /= SWAP_DECAY_FACTOR;
         }
     }
 
     // -----------
     // | Helpers |
     // -----------
+
+    /// Executes a single step of a decaying swap, returning the outcome if the
+    /// swap was successful, and otherwise the control flow branch to take.
+    async fn execute_swap_step(
+        &self,
+        params: &QuoteParams,
+        max_price_deviation_multiplier: f64,
+        cumulative_gas_cost: U256,
+    ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
+        let executable_quote =
+            self.get_executable_quote(params, max_price_deviation_multiplier).await?;
+
+        self.execute_quote(executable_quote, cumulative_gas_cost).await
+    }
+
+    /// Gets an executable quote for a swap, validating the preconditions for
+    /// fetching the quote and the quote itself.
+    async fn get_executable_quote(
+        &self,
+        params: &QuoteParams,
+        max_price_deviation_multiplier: f64,
+    ) -> Result<ExecutableQuote, SwapControlFlow> {
+        if !self.can_execute_swap(params).await? {
+            return Err(SwapControlFlow::NoSwap);
+        }
+
+        let maybe_executable_quote = self.get_best_quote(params).await?;
+        if maybe_executable_quote.is_none() {
+            warn!("No quote found for swap");
+            return Err(SwapControlFlow::NoSwap);
+        }
+
+        let executable_quote = maybe_executable_quote.unwrap();
+
+        if self
+            .exceeds_price_deviation(&executable_quote.quote, max_price_deviation_multiplier)
+            .await?
+        {
+            if params.increase_price_deviation {
+                return Err(SwapControlFlow::IncreasePriceDeviation);
+            }
+
+            return Err(SwapControlFlow::DecreaseSwapSize(U256::ZERO));
+        }
+
+        Ok(executable_quote)
+    }
 
     /// Check whether a swap represented by the quote params meets the criteria
     /// for execution
@@ -159,7 +211,7 @@ impl ExecutionClient {
     )]
     async fn get_best_quote(
         &self,
-        params: QuoteParams,
+        params: &QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
         // If a venue is specified in the params, we only consider that venue
         let venues = if let Some(venue) = params.venue {
@@ -269,15 +321,36 @@ impl ExecutionClient {
     /// Execute a quote on the associated venue
     async fn execute_quote(
         &self,
-        executable_quote: &ExecutableQuote,
-    ) -> Result<ExecutionResult, ExecutionClientError> {
-        match executable_quote.execution_data {
-            QuoteExecutionData::Lifi(_) => self.venues.lifi.execute_quote(executable_quote).await,
-            QuoteExecutionData::Cowswap(_) => {
-                self.venues.cowswap.execute_quote(executable_quote).await
-            },
-            QuoteExecutionData::Bebop(_) => self.venues.bebop.execute_quote(executable_quote).await,
+        executable_quote: ExecutableQuote,
+        mut cumulative_gas_cost: U256,
+    ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
+        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+            match executable_quote.execution_data {
+                QuoteExecutionData::Lifi(_) => {
+                    self.venues.lifi.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Cowswap(_) => {
+                    self.venues.cowswap.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Bebop(_) => {
+                    self.venues.bebop.execute_quote(&executable_quote).await?
+                },
+            };
+
+        cumulative_gas_cost += gas_cost;
+
+        // If the swap was successful, return
+        if let Some(tx_hash) = tx_hash {
+            return Ok(DecayingSwapOutcome {
+                quote: executable_quote.quote,
+                buy_amount_actual,
+                tx_hash,
+                cumulative_gas_cost,
+            });
         }
+
+        // Otherwise, decrease the swap size
+        Err(SwapControlFlow::DecreaseSwapSize(gas_cost))
     }
 }
 
@@ -294,19 +367,4 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
         VENUE_TAG => quote.venue.to_string(),
     )
     .set(deviation);
-}
-
-/// Adjust the given quote params in the case that the resulting quote exceeds
-/// the price deviation tolerance.
-///
-/// Concretely, this means increasing the max price deviation multiplier if the
-/// params allow for it, or reducing the swap size otherwise.
-fn adjust_for_price_deviation(params: &mut QuoteParams, max_price_deviation_multiplier: &mut f64) {
-    if params.increase_price_deviation {
-        *max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
-        info!("Price deviation exceeded, increasing price deviation tolerance by {max_price_deviation_multiplier}x");
-    } else {
-        info!("Price deviation exceeded, reducing swap size by {SWAP_DECAY_FACTOR}x");
-        params.from_amount /= SWAP_DECAY_FACTOR;
-    }
 }
