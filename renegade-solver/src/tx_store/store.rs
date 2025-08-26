@@ -9,16 +9,17 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use alloy::rpc::types::TransactionRequest;
-use alloy_primitives::B256;
+use alloy_primitives::{TxHash, B256};
 
 use crate::fee_cache::FeeCache;
 use crate::tx_store::error::{TxStoreError, TxStoreResult};
 use dashmap::DashMap;
 
+/// Alias for the order hash type.
 type OrderHash = String;
 
 /// A position on the L2 chain (block and flashblock).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub struct L2Position {
     /// The L2 block number.
     pub l2_block: u64,
@@ -27,11 +28,6 @@ pub struct L2Position {
 }
 
 impl L2Position {
-    /// Returns true if this position equals the given coordinates.
-    pub fn equals(&self, l2_block: u64, flashblock: u64) -> bool {
-        self.l2_block == l2_block && self.flashblock == flashblock
-    }
-
     /// Given an estimated flashblocks per block, return the L2 position after
     /// subtracting the given number of flashblocks, respecting the block
     /// boundaries.
@@ -180,10 +176,11 @@ impl TxStore {
     ) -> Vec<(String, TxHash)> {
         let mut out: Vec<(String, B256)> = Vec::new();
         for mut entry in self.by_id.iter_mut() {
+            let id = entry.key().clone();
             if let Some(h) = entry.status.tx_hash {
                 if tx_hashes.contains(&h) {
-                    tx.status.observed = Some(*position);
-                    out.push((id.clone(), h));
+                    entry.status.observed_position = Some(*position);
+                    out.push((id, h));
                 }
             }
         }

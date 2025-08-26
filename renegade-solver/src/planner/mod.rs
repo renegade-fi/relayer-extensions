@@ -16,9 +16,13 @@ pub struct Measurements {
     pub ws_lag_flashblocks: u64,
 }
 
+/// The default value for the `send_to_inclusion_ms` field.
 const DEFAULT_SEND_TO_INCLUSION_MS: u64 = 400;
+/// The default value for the `flashblock_duration_ms` field.
 const DEFAULT_FLASHBLOCK_DURATION_MS: u64 = 200;
+/// The default value for the `block_duration_ms` field.
 const DEFAULT_BLOCK_DURATION_MS: u64 = 2000;
+/// The default value for the `ws_lag_flashblocks` field.
 const DEFAULT_WS_LAG_FLASHBLOCKS: u64 = 2;
 
 impl Default for Measurements {
