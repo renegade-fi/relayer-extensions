@@ -1,59 +1,37 @@
 //! Defines `ExecutorClient` helpers that allow for interacting with the
 //! executor contract
-use alloy::rpc::types::TransactionReceipt;
-use alloy_sol_types::SolCall;
-use renegade_solidity_abi::IDarkpool::{
-    processAtomicMatchSettleCall, MatchAtomicLinkingProofs, MatchAtomicProofs, PartyMatchPayload,
-    SignedOrder, ValidMatchSettleAtomicStatement,
+use crate::uniswapx::{
+    abis::conversion::u256_to_u128,
+    executor_client::{errors::ExecutorError, ExecutorClient},
 };
-
+use alloy::rpc::types::TransactionRequest;
 use alloy_primitives::U256;
+use alloy_sol_types::SolCall;
+use renegade_sdk::types::AtomicMatchApiBundle;
+use renegade_solidity_abi::IDarkpool::{processAtomicMatchSettleCall, SignedOrder};
 
-use crate::uniswapx::executor_client::{errors::ExecutorError, ExecutorClient};
+/// Gas limit for the `executeAtomicMatchSettle` function
+const ATOMIC_MATCH_SETTLE_GAS_LIMIT: u64 = 10_000_000;
 
 impl ExecutorClient {
-    // -----------
-    // | GETTERS |
-    // -----------
-
-    /// Parse calldata for Darkpool's processAtomicMatchSettle
-    fn parse_calldata_for_execute_atomic_match_settle(
+    /// Build a TransactionRequest to submit a fill to the executor contract
+    pub fn build_atomic_match_settle_tx_request(
         &self,
-        calldata: &[u8],
-    ) -> Result<
-        (
-            PartyMatchPayload,
-            ValidMatchSettleAtomicStatement,
-            MatchAtomicProofs,
-            MatchAtomicLinkingProofs,
-        ),
-        ExecutorError,
-    > {
-        let calldata = processAtomicMatchSettleCall::abi_decode(calldata)?;
-        let internal_party_payload = calldata.internalPartyPayload;
-        let match_settle_statement = calldata.matchSettleStatement;
-        let proofs = calldata.proofs;
-        let linking_proofs = calldata.linkingProofs;
-
-        Ok((internal_party_payload, match_settle_statement, proofs, linking_proofs))
-    }
-
-    // -----------
-    // | SETTERS |
-    // -----------
-
-    /// Executes a UniswapX order with atomic match settlement
-    pub async fn execute_atomic_match_settle(
-        &self,
-        calldata: &[u8],
+        bundle: AtomicMatchApiBundle,
         signed_order: SignedOrder,
         priority_fee_wei: U256,
-    ) -> Result<TransactionReceipt, ExecutorError> {
-        // Parse the calldata for the executeAtomicMatchSettle call
-        let (internal_party_payload, match_settle_statement, proofs, linking_proofs) =
-            self.parse_calldata_for_execute_atomic_match_settle(calldata)?;
+    ) -> Result<TransactionRequest, ExecutorError> {
+        let darkpool_calldata =
+            bundle.settlement_tx.input.data.expect("No calldata found in bundle transaction");
 
-        // Build the call to the executeAtomicMatchSettle function
+        let processAtomicMatchSettleCall {
+            internalPartyPayload: internal_party_payload,
+            matchSettleStatement: match_settle_statement,
+            proofs,
+            linkingProofs: linking_proofs,
+            ..
+        } = processAtomicMatchSettleCall::abi_decode(darkpool_calldata.as_ref())?;
+
         let call = self.contract.executeAtomicMatchSettle(
             signed_order,
             internal_party_payload,
@@ -62,9 +40,10 @@ impl ExecutorClient {
             linking_proofs,
         );
 
-        // Submit on-chain
-        let receipt = self.send_tx(call, priority_fee_wei).await?;
+        let mut tx = call.into_transaction_request();
+        tx.max_priority_fee_per_gas = Some(u256_to_u128(priority_fee_wei)?);
+        tx.gas = Some(ATOMIC_MATCH_SETTLE_GAS_LIMIT);
 
-        Ok(receipt)
+        Ok(tx)
     }
 }

@@ -2,13 +2,14 @@
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::{cli::Cli, error::SolverResult, uniswapx::uniswap_api::types::OrderEntity};
+use crate::{
+    cli::Cli, error::SolverResult, tx_store::store::TxStore,
+    uniswapx::uniswap_api::types::OrderEntity,
+};
 use alloy::primitives::Address;
 use bimap::BiMap;
 use executor_client::ExecutorClient;
 use lru::LruCache;
-use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;
@@ -23,7 +24,7 @@ mod solve;
 mod uniswap_api;
 
 /// The interval at which to poll for new orders
-const POLLING_INTERVAL: Duration = Duration::from_secs(1);
+const POLLING_INTERVAL: Duration = Duration::from_millis(50);
 
 /// The maximum number of orders to cache
 ///
@@ -76,16 +77,14 @@ pub struct UniswapXSolver {
     /// The Renegade client
     renegade_client: ExternalMatchClient,
     /// The executor client for submitting solutions
-    executor_client: Arc<ExecutorClient>,
-    /// The price reporter client for price data
-    price_reporter_client: PriceReporterClient,
+    executor_client: ExecutorClient,
     /// LRU cache of order hashes we've already tried to handle
     ///
     /// An order is placed in the cache even if processing the order fails, this
     /// cache is for deduplicating requests rather than tracking order status.
     order_cache: OrderCache,
-    /// The chain the solver is running on
-    chain_id: Chain,
+    /// The TxStore for storing solutions
+    tx_store: TxStore,
 }
 
 impl UniswapXSolver {
@@ -97,10 +96,9 @@ impl UniswapXSolver {
     pub async fn new(
         cli: Cli,
         executor_client: ExecutorClient,
-        price_reporter_client: PriceReporterClient,
+        tx_store: TxStore,
     ) -> SolverResult<Self> {
-        let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, chain_id, .. } =
-            cli;
+        let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
 
         // TODO: Add support for other chains
         let renegade_client =
@@ -111,11 +109,10 @@ impl UniswapXSolver {
             base_url,
             http_client: ReqwestClient::new(),
             renegade_client,
-            executor_client: Arc::new(executor_client),
-            price_reporter_client,
+            executor_client,
             supported_tokens,
             order_cache: new_order_cache(),
-            chain_id,
+            tx_store,
         })
     }
 
