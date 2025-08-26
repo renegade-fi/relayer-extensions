@@ -11,10 +11,7 @@ use alloy::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
-use funds_manager_api::{
-    quoters::{QuoteParams, SupportedExecutionVenue},
-    u256_try_into_u64,
-};
+use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
@@ -71,8 +68,6 @@ pub struct BebopQuoteExecutionData {
     pub value: U256,
     /// The calldata for the swap
     pub data: Bytes,
-    /// The gas limit for the swap
-    pub gas_limit: U256,
     /// The approval target for the swap
     pub approval_target: Address,
     /// The source of the solution for the quote
@@ -103,19 +98,11 @@ impl ExecutableQuote {
         let from = bebop_quote.get_from_address()?;
         let value = bebop_quote.get_value()?;
         let data = bebop_quote.get_data()?;
-        let gas_limit = bebop_quote.get_gas_limit()?;
         let approval_target = bebop_quote.get_approval_target()?;
         let route_source = bebop_quote.get_route_source()?;
 
-        let execution_data = BebopQuoteExecutionData {
-            to,
-            from,
-            value,
-            data,
-            gas_limit,
-            approval_target,
-            route_source,
-        };
+        let execution_data =
+            BebopQuoteExecutionData { to, from, value, data, approval_target, route_source };
 
         Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Bebop(execution_data) })
     }
@@ -239,17 +226,13 @@ impl BebopClient {
             .ok_or(ExecutionClientError::onchain("No basefee found"))?
             as u128;
 
-        let gas_limit =
-            u256_try_into_u64(execution_data.gas_limit).map_err(ExecutionClientError::onchain)?;
-
         let tx = TransactionRequest::default()
             .with_to(execution_data.to)
             .with_from(execution_data.from)
             .with_value(execution_data.value)
             .with_input(execution_data.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
-            .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit * 2);
+            .with_max_priority_fee_per_gas(latest_basefee * 2);
 
         Ok(tx)
     }
