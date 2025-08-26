@@ -1,11 +1,16 @@
 //! Extensions for PriorityOrder, PriorityInput, and PriorityOutput
 //!
 //! Scaling logic is copied from UniswapX's [`PriorityFeeLib.sol` library](https://github.com/Uniswap/UniswapX/blob/4c01ff07cb16df7ad7f5c2b8e9253005c1259275/src/lib/PriorityFeeLib.sol).
+use std::cmp::min;
+
 use alloy_primitives::U256;
 use renegade_common::types::token::Token;
+use renegade_sdk::{
+    types::{ExternalOrder, OrderSide},
+    ExternalOrderBuilder,
+};
 
 use super::{conversion::u256_to_u128, uniswapx::PriorityOrderReactor::PriorityOrder};
-
 use crate::{
     error::SolverResult,
     uniswapx::{
@@ -14,7 +19,7 @@ use crate::{
             error::{FixedPointMathError, FixedPointResult},
             mul_div_down, mul_div_up,
         },
-        NATIVE_ETH_ADDRESS, WETH_TICKER,
+        NATIVE_ETH_ADDRESS, NATIVE_ETH_ADDRESS_RENEGADE, WETH_TICKER,
     },
 };
 
@@ -80,14 +85,44 @@ impl PriorityOrder {
         Ok(decimal_corrected_amt)
     }
 
-    /// Calculate the order price from this PriorityOrder
-    ///
-    /// Assumes one side of the order is USDC and there is only one output token
+    /// Returns the decimal corrected price in quote per base
     pub fn get_price(&self) -> SolverResult<f64> {
-        let quote_decimal_corrected_amt = self.quote_amt_decimal_corrected()?;
-        let base_decimal_corrected_amt = self.base_amt_decimal_corrected()?;
-        let price = quote_decimal_corrected_amt / base_decimal_corrected_amt;
-        Ok(price)
+        let quote_amt = self.quote_amt_decimal_corrected()?;
+        let base_amt = self.base_amt_decimal_corrected()?;
+        Ok(quote_amt / base_amt)
+    }
+
+    /// Returns `true` if the input amount changes once a priority fee is
+    /// applied
+    pub fn is_input_scaled(&self) -> bool {
+        !self.input.mpsPerPriorityFeeWei.is_zero()
+    }
+
+    /// Returns `true` if the aggregate output amount changes once a priority
+    /// fee is applied
+    pub fn is_output_scaled(&self) -> bool {
+        self.outputs.iter().any(|o| !o.mpsPerPriorityFeeWei.is_zero())
+    }
+
+    /// Returns `true` if the base side scales
+    fn is_base_scaled(&self) -> bool {
+        if self.is_sell() {
+            self.is_input_scaled()
+        } else {
+            self.is_output_scaled()
+        }
+    }
+
+    /// Returns the amount that stays invariant after scaling. If neither side
+    /// scales, the output amount is returned.
+    ///
+    /// Assumes only one side was scaled
+    fn invariant_amount(&self) -> U256 {
+        if self.is_output_scaled() {
+            self.input.amount
+        } else {
+            self.total_output_amount()
+        }
     }
 
     /// Returns aggregate unscaled output amount
@@ -97,16 +132,16 @@ impl PriorityOrder {
         self.outputs.iter().map(|o| o.amount).sum()
     }
 
-    /// Returns the aggregate scaled output amounts
-    pub fn total_scaled_output_amount(&self, priority_fee_wei: U256) -> FixedPointResult {
-        self.outputs.iter().map(|o| o.scale(priority_fee_wei)).sum()
-    }
-
     /// Returns the output token address
     ///
     /// Assumes all outputs have the same token
     pub fn output_token(&self) -> Token {
         Token::from_addr(&self.outputs[0].token.to_string())
+    }
+
+    /// Returns the auction start block
+    pub fn auction_start_block(&self) -> U256 {
+        min(self.auctionStartBlock, self.cosignerData.auctionTargetBlock)
     }
 
     /// Map Native ETH to WETH
@@ -115,6 +150,48 @@ impl PriorityOrder {
             NATIVE_ETH_ADDRESS => Token::from_ticker(WETH_TICKER).get_addr(),
             _ => token,
         }
+    }
+
+    /// Map Native ETH to Renegade ETH
+    ///
+    /// Renegade uses a canonical address for native ETH, which is different
+    /// from the zero address used by UniswapX.
+    fn map_native_eth_to_renegade_eth(&self, token: String) -> String {
+        if token == NATIVE_ETH_ADDRESS {
+            NATIVE_ETH_ADDRESS_RENEGADE.to_string()
+        } else {
+            token
+        }
+    }
+
+    /// Build an ExternalOrder for this PriorityOrder (pre-scaling)
+    ///
+    /// Chooses between `exact_base_output` and `exact_quote_output` based on
+    /// which side will remain invariant when scaling is later applied. If
+    /// neither side scales, the quote amount is treated as invariant.
+    pub fn to_external_order(&self) -> SolverResult<ExternalOrder> {
+        let is_sell = self.is_sell();
+        let base_token = self.base_token();
+        let quote_token = self.quote_token();
+        // Map UniswapX native ETH address to Renegade native ETH address
+        let base_mint = self.map_native_eth_to_renegade_eth(base_token.get_addr());
+        let quote_mint = quote_token.get_addr();
+
+        let builder = ExternalOrderBuilder::new()
+            .base_mint(&base_mint)
+            .quote_mint(&quote_mint)
+            .side(if is_sell { OrderSide::Sell } else { OrderSide::Buy });
+
+        // Determine amount of invariant side
+        let invariant_amount = u256_to_u128(self.invariant_amount())?;
+
+        // Build order with exact invariant amount
+        let order = if self.is_base_scaled() {
+            builder.exact_quote_output(invariant_amount).build()?
+        } else {
+            builder.exact_base_output(invariant_amount).build()?
+        };
+        Ok(order)
     }
 }
 

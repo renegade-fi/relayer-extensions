@@ -1,7 +1,6 @@
 //! Error types for the solver
 
 use alloy::primitives::U256;
-use price_reporter_client::error::PriceReporterClientError;
 use renegade_sdk::ExternalMatchClientError;
 use serde_json::json;
 use thiserror::Error;
@@ -12,8 +11,9 @@ use warp::{
     Rejection,
 };
 
-use crate::uniswapx::{
-    executor_client::errors::ExecutorError, fixed_point::error::FixedPointMathError,
+use crate::{
+    tx_store::error::TxStoreError,
+    uniswapx::{executor_client::errors::ExecutorError, fixed_point::error::FixedPointMathError},
 };
 
 /// Type alias for Results using SolverError
@@ -40,15 +40,15 @@ pub enum SolverError {
     /// Conversion error from U256 to u128
     #[error("Invalid u256 to u128 conversion: {0}")]
     InvalidU256(U256),
-    /// Error from the price reporter client
-    #[error("Price reporter client error: {0}")]
-    PriceReporter(#[from] PriceReporterClientError),
     /// Error from the renegade client
     #[error("Renegade client error: {0}")]
     Renegade(#[from] ExternalMatchClientError),
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Serialization(#[from] serde_json::Error),
+    /// TxStore error
+    #[error("TxStore error: {0}")]
+    TxStore(#[from] TxStoreError),
 }
 
 impl SolverError {

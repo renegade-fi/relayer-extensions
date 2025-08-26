@@ -1,20 +1,10 @@
 //! Renegade external match API helpers
 #![allow(deprecated)]
-
-use alloy::primitives::Address;
 use renegade_common::types::token::Token;
-use renegade_sdk::{
-    types::{AtomicMatchApiBundle, ExternalOrder, OrderSide},
-    ExternalMatchOptions, ExternalOrderBuilder,
-};
+use renegade_sdk::types::{AtomicMatchApiBundle, ExternalOrder, OrderSide};
+use renegade_sdk::ExternalMatchOptions;
 
-use crate::{
-    error::SolverResult,
-    uniswapx::{
-        abis::uniswapx::PriorityOrderReactor::PriorityOrder, UniswapXSolver, NATIVE_ETH_ADDRESS,
-        NATIVE_ETH_ADDRESS_RENEGADE, WETH_TICKER,
-    },
-};
+use crate::{error::SolverResult, uniswapx::UniswapXSolver};
 
 impl UniswapXSolver {
     /// Fetch a match bundle for one leg of a trade
@@ -32,17 +22,22 @@ impl UniswapXSolver {
         Ok(maybe_bundle.map(|b| b.match_bundle))
     }
 
-    /// Get the price of a token from the price reporter client
-    ///
-    /// Assumes one side of the order is USDC and there is only one output token
-    pub(crate) async fn get_renegade_price(&self, order: &PriorityOrder) -> SolverResult<f64> {
-        let mint = match order.base_token().get_addr().as_str() {
-            NATIVE_ETH_ADDRESS => Token::from_ticker(WETH_TICKER).get_addr(),
-            _ => order.base_token().get_addr(),
+    /// Get the price of a bundle
+    pub(crate) fn get_bundle_price(&self, bundle: &AtomicMatchApiBundle) -> SolverResult<f64> {
+        let quote_amt = match bundle.match_result.direction {
+            OrderSide::Buy => bundle.send.amount,
+            OrderSide::Sell => bundle.receive.amount,
         };
+        let base_amt = match bundle.match_result.direction {
+            OrderSide::Buy => bundle.receive.amount,
+            OrderSide::Sell => bundle.send.amount,
+        };
+        let quote_token = Token::from_addr(&bundle.match_result.quote_mint);
+        let base_token = Token::from_addr(&bundle.receive.mint);
+        let quote_amt = quote_token.convert_to_decimal(quote_amt);
+        let base_amt = base_token.convert_to_decimal(base_amt);
 
-        let price = self.price_reporter_client.get_price(&mint, self.chain_id).await?;
-        Ok(price)
+        Ok(quote_amt / base_amt)
     }
 
     // -----------
@@ -55,64 +50,5 @@ impl UniswapXSolver {
     /// be disabled
     fn get_external_match_options() -> ExternalMatchOptions {
         ExternalMatchOptions::new().with_gas_estimation(false)
-    }
-
-    /// Map Native ETH to Renegade native ETH address
-    fn map_native_eth_to_renegade_eth(&self, token: String) -> String {
-        match token.as_str() {
-            NATIVE_ETH_ADDRESS => NATIVE_ETH_ADDRESS_RENEGADE.to_string(),
-            _ => token,
-        }
-    }
-
-    /// Build an order for the given token pair
-    pub(crate) fn build_order(
-        &self,
-        input_token: Address,
-        output_token: Address,
-        output_amount: u128,
-    ) -> SolverResult<ExternalOrder> {
-        let is_buy_side = self.is_usdc(input_token);
-        if is_buy_side {
-            // Base is output token, quote is input token
-            self.build_buy_order(output_token, input_token, output_amount)
-        } else {
-            // Base is input token, quote is output token
-            self.build_sell_order(input_token, output_token, output_amount)
-        }
-    }
-
-    /// Build a buy order for the given token pair
-    fn build_buy_order(
-        &self,
-        base: Address,
-        quote: Address,
-        output_amount: u128,
-    ) -> SolverResult<ExternalOrder> {
-        let base = self.map_native_eth_to_renegade_eth(base.to_string());
-        let order = ExternalOrderBuilder::new()
-            .base_mint(&base)
-            .quote_mint(&quote.to_string())
-            .exact_base_output(output_amount)
-            .side(OrderSide::Buy)
-            .build()?;
-        Ok(order)
-    }
-
-    /// Build a sell order for the given token pair
-    fn build_sell_order(
-        &self,
-        base: Address,
-        quote: Address,
-        output_amount: u128,
-    ) -> SolverResult<ExternalOrder> {
-        let base = self.map_native_eth_to_renegade_eth(base.to_string());
-        let order = ExternalOrderBuilder::new()
-            .base_mint(&base)
-            .quote_mint(&quote.to_string())
-            .exact_quote_output(output_amount)
-            .side(OrderSide::Sell)
-            .build()?;
-        Ok(order)
     }
 }

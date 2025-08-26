@@ -8,6 +8,7 @@ struct FeeCacheInner {
     base_fee_per_gas: AtomicU64,
 }
 
+#[derive(Clone)]
 /// A value-type handle to the fee cache. Clones are cheap and share state.
 pub struct FeeCache(Arc<FeeCacheInner>);
 

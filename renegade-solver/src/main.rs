@@ -10,20 +10,30 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use price_reporter_client::PriceReporterClient;
 use renegade_config::setup_token_remaps;
 use serde_json::json;
 use tracing::{info, info_span};
 use warp::Filter;
 
 use crate::{
+    chain_events::listener::ChainEventsListener,
     cli::Cli,
     error::{handle_rejection, SolverError},
+    fee_cache::{worker::FeeCacheWorker, FeeCache},
+    flashblocks::FlashblocksListener,
+    tx_driver::driver::TxDriver,
+    tx_store::store::TxStore,
     uniswapx::{executor_client::ExecutorClient, UniswapXSolver},
 };
 
+mod chain_events;
 mod cli;
 mod error;
+mod fee_cache;
+mod flashblocks;
+mod planner;
+mod tx_driver;
+mod tx_store;
 mod uniswapx;
 
 /// Main entrypoint for the renegade solver server
@@ -33,18 +43,30 @@ async fn main() {
     cli.configure_telemetry();
     setup_token_mapping(&cli).await.expect("Failed to setup token mapping");
 
-    // Construct a darkpool executor client that will be used to submit txs
-    let executor_client = ExecutorClient::new(&cli).expect("Failed to create executor client");
+    // Create the executor client
+    let executor_client =
+        ExecutorClient::new(&cli).await.expect("Failed to create executor client");
 
-    // Create the price reporter client
-    let price_reporter_client = PriceReporterClient::new(
-        cli.price_reporter_url.clone(),
-        true, // exit_on_stale
-    )
-    .expect("Failed to create price reporter client");
+    // Create the base fee cache
+    let fee_cache = FeeCache::new();
+
+    // Create the base fee cache worker
+    let fee_updater = FeeCacheWorker::new(executor_client.provider(), fee_cache.clone());
+    fee_updater.start();
+
+    // Create the TxStore
+    let tx_store = TxStore::new(fee_cache.clone());
+
+    // Create flashblocks listener and start the subscription
+    let tx_driver = TxDriver::new(tx_store.clone(), &executor_client);
+    let chain_listener = ChainEventsListener::new(tx_store.clone());
+
+    let flashblocks_listener =
+        FlashblocksListener::new(vec![Box::new(tx_driver), Box::new(chain_listener)], &cli);
+    flashblocks_listener.start();
 
     // Create the UniswapX solver and begin its polling loop
-    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client, price_reporter_client)
+    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client.clone(), tx_store.clone())
         .await
         .expect("Failed to create UniswapX solver");
     uniswapx.spawn_polling_loop();

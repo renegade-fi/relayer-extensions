@@ -2,88 +2,55 @@
 
 use alloy::primitives::Address;
 use alloy_primitives::U256;
-use renegade_sdk::types::{AtomicMatchApiBundle, ExternalOrder};
-use renegade_solidity_abi::IDarkpool::SignedOrder;
+use renegade_sdk::types::AtomicMatchApiBundle;
 use tracing::info;
 
+use crate::planner::compute_send_plan;
+use crate::planner::Measurements;
+use crate::tx_store::store::L2Position;
+use crate::tx_store::store::TxTiming;
+use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::{
-    error::{SolverError, SolverResult},
+    error::SolverResult,
     uniswapx::{
-        abis::{conversion::u256_to_u128, uniswapx::PriorityOrderReactor::PriorityOrder},
-        priority_fee::compute_priority_fee,
-        uniswap_api::types::OrderEntity,
-        UniswapXSolver,
+        abis::uniswapx::PriorityOrderReactor::PriorityOrder, priority_fee::compute_priority_fee,
+        uniswap_api::types::OrderEntity, UniswapXSolver,
     },
 };
 
 impl UniswapXSolver {
-    /// Solve a set of orders and submit solutions to the reactor
+    /// Solve a set of orders and write solution calldata to the TxStore
     pub(crate) async fn solve_order(&self, api_order: OrderEntity) -> SolverResult<()> {
         // Decode the ABI encoded order
-        // The order amounts in the raw API response are currently incorrect, so we need
-        // to pull them from the ABI encoded order
         let order = api_order.decode_priority_order()?;
-        let signed_order = api_order.decode_signed_order()?;
 
         // Check if the order is serviceable
         if !self.is_order_serviceable(&order)? || !self.temporary_order_filter(&order)? {
             return Ok(());
         }
 
-        // Print order details if it's serviceable
-        let input = &order.input;
-        info!(
-            "Found serviceable order for {} {}, mps_in: {} -> {} {}, mps_out: {}",
-            input.amount,
-            input.token,
-            input.mpsPerPriorityFeeWei,
-            order.total_output_amount(),
-            order.output_token().get_alloy_address(),
-            order.outputs[0].mpsPerPriorityFeeWei
-        );
-
-        // Compute priority fee
-        let priority_order_price = order.get_price()?;
-        let renegade_price = self.get_renegade_price(&order).await?;
-        let is_sell = order.is_sell();
-        let priority_fee_wei = compute_priority_fee(priority_order_price, renegade_price, is_sell);
-
-        // Scale the order
-        let scaled_input = order.input.scale(priority_fee_wei)?;
-        let scaled_output = order.total_scaled_output_amount(priority_fee_wei)?;
-        info!(
-            "Input scaled from {} to {}, amount scaled by {:.2}x",
-            input.amount,
-            scaled_input,
-            u256_to_u128(scaled_input)? as f64 / u256_to_u128(input.amount)? as f64
-        );
-        info!(
-            "Output scaled from {} to {}, amount scaled by {:.2}x",
-            order.total_output_amount(),
-            scaled_output,
-            u256_to_u128(scaled_output)? as f64 / u256_to_u128(order.total_output_amount())? as f64
-        );
+        self.log_serviceable_order_summary(&api_order)?;
 
         // Find a solution for the order
-        let external_order = self.build_scaled_order(&order, priority_fee_wei)?;
+        let external_order = order.to_external_order()?;
         let renegade_bundle = self.solve_renegade_leg(external_order).await?;
         if let Some(bundle) = renegade_bundle {
-            info!(
-                "Found renegade solution with input amount: {}, output amount: {}",
-                bundle.send.amount, bundle.receive.amount
-            );
-            let input_delta = bundle.send.amount as i128 - u256_to_u128(scaled_input)? as i128;
-            if input_delta > 0 {
-                info!("Input delta: {}", input_delta);
-            }
-            // Negative delta means the renegade bundle is smaller than the order
-            let output_delta = bundle.receive.amount as i128 - u256_to_u128(scaled_output)? as i128;
-            if output_delta < 0 {
-                info!("Output delta: {}", output_delta);
-            }
+            self.log_renegade_solution_found(&bundle);
 
-            // Submit the solution to the reactor
-            self.submit_solution(&bundle, signed_order, priority_fee_wei).await?;
+            // Compute priority fee
+            let uniswapx_price = order.get_price()?;
+            let renegade_price = self.get_bundle_price(&bundle)?;
+            let is_sell = order.is_sell();
+            let mut priority_fee_wei =
+                compute_priority_fee(uniswapx_price, renegade_price, is_sell);
+
+            self.log_computed_priority_fee(priority_fee_wei);
+
+            // Add baseline priority fee
+            priority_fee_wei = priority_fee_wei.saturating_add(order.baselinePriorityFeeWei);
+
+            // Write to TxStore
+            self.write_tx_record(&api_order, bundle, priority_fee_wei)?;
         } else {
             info!("No renegade solution found");
         }
@@ -91,47 +58,34 @@ impl UniswapXSolver {
         Ok(())
     }
 
-    /// Submit a solution to the executor
-    async fn submit_solution(
+    /// Write a tx record to the TxStore
+    fn write_tx_record(
         &self,
-        bundle: &AtomicMatchApiBundle,
-        signed_order: SignedOrder,
+        api_order: &OrderEntity,
+        bundle: AtomicMatchApiBundle,
         priority_fee_wei: U256,
     ) -> SolverResult<()> {
-        if let Some(calldata) = &bundle.settlement_tx.input.data {
-            let receipt = self
-                .executor_client
-                .execute_atomic_match_settle(calldata.as_ref(), signed_order, priority_fee_wei)
-                .await?;
-            info!("Filled order with tx hash: {}", receipt.transaction_hash);
-        }
+        let order = api_order.decode_priority_order()?;
+        let signed_order = api_order.decode_signed_order()?;
+        let order_hash = api_order.order_hash.clone();
+        let auction_start_block = order.auction_start_block();
 
-        Ok(())
-    }
-
-    /// Build an ExternalOrder from a PriorityOrder with scaled input and output
-    /// amounts
-    fn build_scaled_order(
-        &self,
-        order: &PriorityOrder,
-        priority_fee_wei: U256,
-    ) -> SolverResult<ExternalOrder> {
-        let scaled_input = order.input.scale(priority_fee_wei)?;
-        let scaled_output = order.total_scaled_output_amount(priority_fee_wei)?;
-
-        // Assert only one of {scaled_input, scaled_output} was scaled
-        if scaled_input != order.input.amount && scaled_output != order.total_output_amount() {
-            return Err(SolverError::InputOutputScaling);
-        }
-
-        let scaled_output_u128 = u256_to_u128(scaled_output)?;
-        let order = self.build_order(
-            order.input.token,
-            order.output_token().get_alloy_address(),
-            scaled_output_u128,
+        let tx = self.executor_client.build_atomic_match_settle_tx_request(
+            bundle,
+            signed_order,
+            priority_fee_wei,
         )?;
 
-        Ok(order)
+        let start_block = u256_to_u128(auction_start_block)? as u64;
+        let target = L2Position { l2_block: start_block, flashblock: 1 };
+
+        let plan = compute_send_plan(target, &Measurements::default());
+        let timing: TxTiming = plan.into();
+        self.tx_store.enqueue_with_timing(&order_hash, tx, timing.clone())?;
+
+        self.log_writing_tx_record(&order_hash, priority_fee_wei, &timing);
+
+        Ok(())
     }
 
     /// A temporary (more restrictive) set of order filters while we keep the
@@ -201,5 +155,56 @@ impl UniswapXSolver {
         let output_known_not_usdc = self.is_token_supported(output_token) && !output_usdc;
         let serviceable = input_known_not_usdc || output_known_not_usdc;
         Ok(serviceable)
+    }
+}
+
+impl UniswapXSolver {
+    /// Log a concise summary of a serviceable order
+    fn log_serviceable_order_summary(&self, api_order: &OrderEntity) -> SolverResult<()> {
+        let order = api_order.decode_priority_order()?;
+        let order_hash = api_order.order_hash.clone();
+        let auction_start_block = order.auction_start_block();
+
+        let input = &order.input;
+        info!(
+            "Serviceable order: input {} {} (mps_in: {}), output {} {} (mps_out: {}), hash: {}, auction_start_block: {}",
+            input.amount,
+            input.token,
+            input.mpsPerPriorityFeeWei,
+            order.total_output_amount(),
+            order.output_token().get_alloy_address(),
+            order.outputs[0].mpsPerPriorityFeeWei,
+            order_hash,
+            auction_start_block
+        );
+        Ok(())
+    }
+
+    /// Log details when a Renegade solution is found
+    fn log_renegade_solution_found(&self, bundle: &AtomicMatchApiBundle) {
+        info!(
+            "Found renegade solution with input amount: {}, output amount: {}",
+            bundle.send.amount, bundle.receive.amount
+        );
+    }
+
+    /// Log the computed priority fee in wei and ETH
+    fn log_computed_priority_fee(&self, priority_fee_wei: U256) {
+        info!(
+            "Computed priority fee: {} wei ({} ETH)",
+            priority_fee_wei,
+            priority_fee_wei.to_string().parse::<f64>().unwrap_or(0.0) / 1e18
+        );
+    }
+
+    /// Log that we are writing the tx record along with trigger metadata
+    fn log_writing_tx_record(&self, order_hash: &str, priority_fee_wei: U256, timing: &TxTiming) {
+        info!(
+            trigger_l2 = ?timing.trigger.l2_block,
+            trigger_flashblock = ?timing.trigger.flashblock,
+            order_hash = ?order_hash,
+            priority_fee_wei = ?priority_fee_wei,
+            "Writing tx record"
+        );
     }
 }
