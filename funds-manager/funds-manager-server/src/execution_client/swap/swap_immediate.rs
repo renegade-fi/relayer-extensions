@@ -48,8 +48,10 @@ enum SwapControlFlow {
     /// Continue the loop with a higher price deviation tolerance
     IncreasePriceDeviation,
     /// Continue the loop with a smaller swap size.
-    /// Includes the gas cost incurred in the swap attempt.
-    DecreaseSwapSize(U256),
+    DecreaseSwapSize {
+        /// The gas cost incurred in the swap attempt.
+        gas_cost: U256,
+    },
     /// Break out of the loop with an error
     Error(ExecutionClientError),
 }
@@ -102,7 +104,7 @@ impl ExecutionClient {
                         return Ok(None);
                     }
                 },
-                Err(SwapControlFlow::DecreaseSwapSize(gas_cost)) => {
+                Err(SwapControlFlow::DecreaseSwapSize { gas_cost }) => {
                     info!("Decreasing swap size by {SWAP_DECAY_FACTOR}x");
                     params.from_amount /= SWAP_DECAY_FACTOR;
                     cumulative_gas_cost += gas_cost;
@@ -156,7 +158,7 @@ impl ExecutionClient {
                 return Err(SwapControlFlow::IncreasePriceDeviation);
             }
 
-            return Err(SwapControlFlow::DecreaseSwapSize(U256::ZERO));
+            return Err(SwapControlFlow::DecreaseSwapSize { gas_cost: U256::ZERO });
         }
 
         Ok(executable_quote)
@@ -350,7 +352,7 @@ impl ExecutionClient {
         }
 
         // Otherwise, decrease the swap size
-        Err(SwapControlFlow::DecreaseSwapSize(gas_cost))
+        Err(SwapControlFlow::DecreaseSwapSize { gas_cost })
     }
 }
 

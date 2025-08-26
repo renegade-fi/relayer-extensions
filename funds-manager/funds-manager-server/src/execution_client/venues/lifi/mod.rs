@@ -13,7 +13,7 @@ use alloy::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
-use funds_manager_api::{quoters::QuoteParams, u256_try_into_u64};
+use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
@@ -94,8 +94,6 @@ pub struct LifiQuoteExecutionData {
     pub value: U256,
     /// The calldata for the swap
     pub data: Bytes,
-    /// The gas limit for the swap
-    pub gas_limit: U256,
     /// The tool (venue) providing the route
     pub tool: String,
 }
@@ -124,10 +122,9 @@ impl ExecutableQuote {
         let from = lifi_quote.get_from_address()?;
         let value = lifi_quote.get_value()?;
         let data = lifi_quote.get_data()?;
-        let gas_limit = lifi_quote.get_gas_limit()?;
         let tool = lifi_quote.get_tool();
 
-        let execution_data = LifiQuoteExecutionData { to, from, value, data, gas_limit, tool };
+        let execution_data = LifiQuoteExecutionData { to, from, value, data, tool };
 
         Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Lifi(execution_data) })
     }
@@ -241,17 +238,13 @@ impl LifiClient {
             .ok_or(ExecutionClientError::onchain("No basefee found"))?
             as u128;
 
-        let gas_limit =
-            u256_try_into_u64(execution_data.gas_limit).map_err(ExecutionClientError::onchain)?;
-
         let tx = TransactionRequest::default()
             .with_to(execution_data.to)
             .with_from(execution_data.from)
             .with_value(execution_data.value)
             .with_input(execution_data.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
-            .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit);
+            .with_max_priority_fee_per_gas(latest_basefee * 2);
 
         Ok(tx)
     }
