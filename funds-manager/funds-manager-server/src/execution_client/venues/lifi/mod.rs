@@ -25,7 +25,7 @@ use crate::{
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
             lifi::api_types::{LifiQuote, LifiQuoteParams},
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
@@ -72,12 +72,6 @@ const DEFAULT_TIMING_STRATEGY: &str = "minWaitTime-600-4-300";
 /// See https://docs.li.fi/api-reference/get-a-quote-for-a-token-transfer#parameter-order for
 /// more details.
 const DEFAULT_ORDER_PREFERENCE: &str = "CHEAPEST";
-
-/// The default denied exchanges for a Lifi quote.
-///
-/// See <https://docs.li.fi/api-reference/get-a-quote-for-a-token-transfer#parameter-deny-exchanges>
-/// for more details.
-const DEFAULT_DENIED_EXCHANGES: [&str; 1] = ["sushiswap"];
 
 // ---------
 // | Types |
@@ -184,8 +178,18 @@ impl LifiClient {
 
     /// Construct Lifi quote parameters from a venue-agnostic quote params
     /// object, with reasonable defaults.
-    fn construct_quote_params(&self, params: QuoteParams) -> LifiQuoteParams {
-        let deny_exchanges = DEFAULT_DENIED_EXCHANGES.into_iter().map(String::from).collect();
+    fn construct_quote_params(
+        &self,
+        params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> LifiQuoteParams {
+        let deny_exchanges = excluded_quote_sources
+            .iter()
+            .filter_map(|source| match source {
+                CrossVenueQuoteSource::LifiExchange(exchange) => Some(exchange.clone()),
+                _ => None,
+            })
+            .collect();
 
         LifiQuoteParams {
             from_token: params.from_token,
@@ -275,8 +279,9 @@ impl ExecutionVenue for LifiClient {
     async fn get_quotes(
         &self,
         params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
-        let lifi_params = self.construct_quote_params(params);
+        let lifi_params = self.construct_quote_params(params, excluded_quote_sources);
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string =
             qs_config.serialize_string(&lifi_params).map_err(ExecutionClientError::parse)?;
