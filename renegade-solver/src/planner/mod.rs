@@ -5,7 +5,8 @@ use crate::tx_store::store::{L2Position, TxTiming};
 /// The measurements used to compute the transaction placement.
 #[derive(Clone, Debug)]
 pub struct Measurements {
-    /// The estimated time to inclusion in milliseconds.
+    /// Measured from the time the transaction is sent to the network to the
+    /// time it is observed in a block.
     pub send_to_inclusion_ms: u64,
     /// The duration of a single flashblock window in milliseconds.
     pub flashblock_duration_ms: u64,
@@ -15,13 +16,18 @@ pub struct Measurements {
     pub ws_lag_flashblocks: u64,
 }
 
+const DEFAULT_SEND_TO_INCLUSION_MS: u64 = 400;
+const DEFAULT_FLASHBLOCK_DURATION_MS: u64 = 200;
+const DEFAULT_BLOCK_DURATION_MS: u64 = 2000;
+const DEFAULT_WS_LAG_FLASHBLOCKS: u64 = 2;
+
 impl Default for Measurements {
     fn default() -> Self {
         Self {
-            send_to_inclusion_ms: 400,
-            flashblock_duration_ms: 200,
-            block_duration_ms: 2000,
-            ws_lag_flashblocks: 2,
+            send_to_inclusion_ms: DEFAULT_SEND_TO_INCLUSION_MS,
+            flashblock_duration_ms: DEFAULT_FLASHBLOCK_DURATION_MS,
+            block_duration_ms: DEFAULT_BLOCK_DURATION_MS,
+            ws_lag_flashblocks: DEFAULT_WS_LAG_FLASHBLOCKS,
         }
     }
 }
