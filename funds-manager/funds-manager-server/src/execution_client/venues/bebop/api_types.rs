@@ -9,7 +9,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use renegade_common::types::{chain::Chain, token::Token};
 use serde::{Deserialize, Serialize};
 
-use crate::execution_client::error::ExecutionClientError;
+use crate::execution_client::{error::ExecutionClientError, venues::quote::CrossVenueQuoteSource};
 
 /// The subset of Bebop quote request query parameters that we support.
 ///
@@ -154,6 +154,18 @@ impl BebopQuoteResponse {
     /// Get the route source (JAMv2 vs PMMv3) for the quote
     pub fn get_route_source(&self) -> Result<BebopRouteSource, ExecutionClientError> {
         self.best_route().map(|route| route.route_source)
+    }
+
+    /// Get the cross-venue source of the quote
+    pub fn get_cross_venue_source(&self) -> Result<CrossVenueQuoteSource, ExecutionClientError> {
+        self.get_route_source().map(|route_source| match route_source {
+            BebopRouteSource::JAMv2 => CrossVenueQuoteSource::BebopJAMv2(
+                "TODO: Parse solver from API response".to_string(),
+            ),
+            BebopRouteSource::PMMv3 => {
+                CrossVenueQuoteSource::BebopPMMv3("TODO: Parse maker from API response".to_string())
+            },
+        })
     }
 }
 

@@ -108,6 +108,7 @@ impl ExecutableQuote {
         let buy_token = lifi_quote.get_buy_token(chain);
         let sell_amount = lifi_quote.get_sell_amount()?;
         let buy_amount = lifi_quote.get_buy_amount()?;
+        let source = lifi_quote.get_cross_venue_source();
 
         let quote = ExecutionQuote {
             sell_token,
@@ -115,6 +116,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Lifi,
+            source,
             chain,
         };
 
@@ -322,7 +324,7 @@ impl ExecutionVenue for LifiClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({:#x}) reverted", tx_hash);
+                    warn!("tx ({tx_hash:#x}) reverted");
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use funds_manager_api::serialization::u256_string_serialization;
 
-use crate::execution_client::error::ExecutionClientError;
+use crate::execution_client::{error::ExecutionClientError, venues::quote::CrossVenueQuoteSource};
 
 /// The subset of Lifi quote request query parameters that we support
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -163,5 +163,10 @@ impl LifiQuote {
     /// Get the tool (venue) providing the route
     pub fn get_tool(&self) -> String {
         self.tool.clone()
+    }
+
+    /// Get the cross-venue source of the quote
+    pub fn get_cross_venue_source(&self) -> CrossVenueQuoteSource {
+        CrossVenueQuoteSource::LifiExchange(self.tool.clone())
     }
 }

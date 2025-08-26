@@ -32,6 +32,8 @@ pub struct ExecutionQuote {
     pub buy_amount: U256,
     /// The venue that provided the quote
     pub venue: SupportedExecutionVenue,
+    /// The source of the quote
+    pub source: CrossVenueQuoteSource,
     /// The chain for which the quote was generated
     pub chain: Chain,
 }
@@ -192,4 +194,17 @@ pub struct ExecutableQuote {
     pub quote: ExecutionQuote,
     /// The venue-specific auxiliary data needed to execute the quote
     pub execution_data: QuoteExecutionData,
+}
+
+/// The different sources of quotes, across all venues
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CrossVenueQuoteSource {
+    /// A quote from a specific exchange via Lifi
+    LifiExchange(String),
+    /// A quote from a specific solver via Bebop JAMv2
+    BebopJAMv2(String),
+    /// A quote from a specific private market maker via Bebop PMMv3
+    BebopPMMv3(String),
+    /// A quote from Cowswap
+    Cowswap,
 }

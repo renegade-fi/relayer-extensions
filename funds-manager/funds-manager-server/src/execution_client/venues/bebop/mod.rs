@@ -84,6 +84,7 @@ impl ExecutableQuote {
         let buy_token = bebop_quote.buy_token(chain)?;
         let sell_amount = bebop_quote.sell_amount()?;
         let buy_amount = bebop_quote.buy_amount()?;
+        let source = bebop_quote.get_cross_venue_source()?;
 
         let quote = ExecutionQuote {
             sell_token,
@@ -91,6 +92,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Bebop,
+            source,
             chain,
         };
 
@@ -310,7 +312,7 @@ impl ExecutionVenue for BebopClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({:#x}) reverted", tx_hash);
+                    warn!("tx ({tx_hash:#x}) reverted");
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },

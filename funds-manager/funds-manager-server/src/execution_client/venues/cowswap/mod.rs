@@ -30,7 +30,7 @@ use crate::{
                     OrderQuoteResponse, SigningScheme, Trade,
                 },
             },
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
@@ -140,6 +140,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Cowswap,
+            source: CrossVenueQuoteSource::Cowswap,
             chain,
         };
 
