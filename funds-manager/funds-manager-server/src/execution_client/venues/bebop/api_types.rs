@@ -46,6 +46,10 @@ pub struct BebopQuoteParams {
     /// The difference between this and `skip_validation` is undocumented
     /// in the Bebop docs.
     pub skip_taker_checks: bool,
+    /// A comma-separated list of route types to include in the response.
+    ///
+    /// Valid values are: `Jam`, `PMM`
+    pub include_routes: String,
     /// Referral partner that will be associated with the quote (us).
     pub source: String,
 }
@@ -159,12 +163,8 @@ impl BebopQuoteResponse {
     /// Get the cross-venue source of the quote
     pub fn get_cross_venue_source(&self) -> Result<CrossVenueQuoteSource, ExecutionClientError> {
         self.get_route_source().map(|route_source| match route_source {
-            BebopRouteSource::JAMv2 => CrossVenueQuoteSource::BebopJAMv2(
-                "TODO: Parse solver from API response".to_string(),
-            ),
-            BebopRouteSource::PMMv3 => {
-                CrossVenueQuoteSource::BebopPMMv3("TODO: Parse maker from API response".to_string())
-            },
+            BebopRouteSource::JAMv2 => CrossVenueQuoteSource::BebopJAMv2,
+            BebopRouteSource::PMMv3 => CrossVenueQuoteSource::BebopPMMv3,
         })
     }
 }

@@ -12,10 +12,11 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
+use futures::future::join_all;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::{
     execution_client::{
@@ -25,7 +26,7 @@ use crate::{
             bebop::api_types::{
                 ApprovalType, BebopQuoteParams, BebopQuoteResponse, BebopRouteSource,
             },
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
         },
     },
@@ -171,9 +172,16 @@ impl BebopClient {
     fn construct_quote_params(
         &self,
         params: QuoteParams,
+        source: CrossVenueQuoteSource,
     ) -> Result<BebopQuoteParams, ExecutionClientError> {
         let sell_tokens = get_checksummed_address(&params.from_token)?;
         let buy_tokens = get_checksummed_address(&params.to_token)?;
+
+        let include_routes = match source {
+            CrossVenueQuoteSource::BebopJAMv2 => BebopRouteSource::JAMv2.to_string(),
+            CrossVenueQuoteSource::BebopPMMv3 => BebopRouteSource::PMMv3.to_string(),
+            _ => return Err(ExecutionClientError::onchain("Invalid Bebop quote source")),
+        };
 
         Ok(BebopQuoteParams {
             sell_tokens,
@@ -187,6 +195,7 @@ impl BebopClient {
             // as we only want these constraints to be enforced if/when we execute the quote.
             skip_validation: true,
             skip_taker_checks: true,
+            include_routes,
             source: BEBOP_SOURCE.to_string(),
         })
     }
@@ -264,19 +273,36 @@ impl ExecutionVenue for BebopClient {
 
     /// Get a quote from the Bebop API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
-        let quote_params = self.construct_quote_params(params)?;
-        let query_string =
-            serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
+        let quote_futures = [CrossVenueQuoteSource::BebopJAMv2, CrossVenueQuoteSource::BebopPMMv3]
+            .into_iter()
+            .map(|source| {
+                let params = params.clone();
+                async move {
+                    let quote_params = self.construct_quote_params(params.clone(), source)?;
+                    let query_string =
+                        serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
 
-        let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
-        let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
-        let executable_quote = ExecutableQuote::from_bebop_quote(quote_response, self.chain)?;
+                    let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
+                    let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
+                    ExecutableQuote::from_bebop_quote(quote_response, self.chain)
+                }
+            });
 
-        Ok(executable_quote)
+        let quote_results = join_all(quote_futures).await;
+
+        let mut executable_quotes = Vec::new();
+        for result in quote_results {
+            match result {
+                Ok(quote) => executable_quotes.push(quote),
+                Err(e) => error!("Error getting Bebop quote: {e}"),
+            }
+        }
+
+        Ok(executable_quotes)
     }
 
     /// Execute a quote from the Bebop API

@@ -420,10 +420,10 @@ impl ExecutionVenue for CowswapClient {
 
     /// Get a quote from the Cowswap API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         let slippage_tolerance = params.slippage_tolerance;
         let quote_request = self.construct_quote_params(params);
         let quote_response: OrderQuoteResponse =
@@ -436,7 +436,7 @@ impl ExecutionVenue for CowswapClient {
             &self.hot_wallet,
         );
 
-        Ok(executable_quote)
+        Ok(vec![executable_quote])
     }
 
     /// Execute a quote from the Cowswap API

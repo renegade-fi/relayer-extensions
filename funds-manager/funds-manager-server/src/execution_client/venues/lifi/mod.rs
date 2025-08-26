@@ -272,10 +272,10 @@ impl ExecutionVenue for LifiClient {
 
     /// Get a quote from the Lifi API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         let lifi_params = self.construct_quote_params(params);
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string =
@@ -292,7 +292,8 @@ impl ExecutionVenue for LifiClient {
             },
         };
 
-        ExecutableQuote::from_lifi_quote(resp, self.chain)
+        let quote = ExecutableQuote::from_lifi_quote(resp, self.chain)?;
+        Ok(vec![quote])
     }
 
     /// Execute a quote from the Lifi API

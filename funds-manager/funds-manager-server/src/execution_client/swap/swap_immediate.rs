@@ -142,7 +142,7 @@ impl ExecutionClient {
             return Err(SwapControlFlow::NoSwap);
         }
 
-        let maybe_executable_quote = self.get_best_quote(params).await?;
+        let maybe_executable_quote = self.fetch_best_quote(params).await?;
         if maybe_executable_quote.is_none() {
             warn!("No quote found for swap");
             return Err(SwapControlFlow::NoSwap);
@@ -202,7 +202,7 @@ impl ExecutionClient {
         Ok(approx_quote_amount)
     }
 
-    /// Get the best quote for a swap, across all execution venues
+    /// Fetch the best quote for a swap, across all execution venues
     #[instrument(
         skip_all,
         fields(
@@ -211,10 +211,20 @@ impl ExecutionClient {
             from_amount = %params.from_amount
         )
     )]
-    async fn get_best_quote(
+    async fn fetch_best_quote(
         &self,
         params: &QuoteParams,
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        let all_quotes = self.fetch_all_quotes(params).await?;
+
+        self.select_best_quote(all_quotes)
+    }
+
+    /// Fetch quotes across all venues
+    async fn fetch_all_quotes(
+        &self,
+        params: &QuoteParams,
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         // If a venue is specified in the params, we only consider that venue
         let venues = if let Some(venue) = params.venue {
             vec![self.venues.get_venue(venue)]
@@ -226,25 +236,39 @@ impl ExecutionClient {
         let quote_futures = venues.into_iter().map(|venue| {
             let params = params.clone();
             async move {
-                let quote_res = venue.get_quote(params).await;
+                let quote_res = venue.get_quotes(params).await;
                 (venue, quote_res)
             }
         });
         let quote_results = join_all(quote_futures).await;
 
-        let mut maybe_best_quote = None;
-        for (venue, quote_res) in quote_results {
-            let venue_specifier = venue.venue_specifier();
-            if let Err(e) = quote_res {
+        let mut all_quotes = Vec::new();
+        for (venue, quotes_res) in quote_results {
+            if let Err(e) = quotes_res {
+                let venue_specifier = venue.venue_specifier();
                 warn!("Error getting quote from {venue_specifier}: {e}");
                 continue;
             }
 
-            let quote = quote_res.unwrap();
+            let quotes = quotes_res.unwrap();
+            all_quotes.extend(quotes);
+        }
+
+        Ok(all_quotes)
+    }
+
+    /// Select the best quote from a list of quotes
+    fn select_best_quote(
+        &self,
+        all_quotes: Vec<ExecutableQuote>,
+    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        let mut maybe_best_quote = None;
+        for quote in all_quotes {
             let quote_price = quote.quote.get_price(None /* buy_amount */);
             let is_sell = quote.quote.is_sell();
+            let quote_source = &quote.quote.source;
 
-            info!("{venue_specifier} quote price: {quote_price} (is_sell: {is_sell})");
+            info!("{quote_source} quote price: {quote_price} (is_sell: {is_sell})");
 
             if maybe_best_quote.is_none() {
                 maybe_best_quote = Some(quote);
