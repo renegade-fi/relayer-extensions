@@ -450,7 +450,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "auto_impl",
- "dashmap",
+ "dashmap 6.1.0",
  "either",
  "futures",
  "futures-utils-wasm",
@@ -1465,7 +1465,7 @@ dependencies = [
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "contracts-common",
  "darkpool-client",
- "dashmap",
+ "dashmap 6.1.0",
  "diesel",
  "diesel-async",
  "external-api",
@@ -3315,6 +3315,19 @@ dependencies = [
  "darling_core 0.21.1",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core 0.9.11",
 ]
 
 [[package]]
@@ -7610,6 +7623,7 @@ dependencies = [
  "common",
  "config",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "dashmap 5.5.3",
  "eyre",
  "futures-util",
  "lru 0.12.5",
