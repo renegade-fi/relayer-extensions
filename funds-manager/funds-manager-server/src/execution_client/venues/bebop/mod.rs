@@ -297,21 +297,31 @@ impl ExecutionVenue for BebopClient {
 
         info!("Executing Bebop {} quote", bebop_execution_data.route_source);
 
-        let receipt = self.send_tx(tx).await?;
-        let gas_cost = get_gas_cost(&receipt);
-        let tx_hash = receipt.transaction_hash;
+        match self.send_tx(tx).await {
+            Ok(receipt) => {
+                let gas_cost = get_gas_cost(&receipt);
+                let tx_hash = receipt.transaction_hash;
 
-        if receipt.status() {
-            let recipient = bebop_execution_data.from;
-            let buy_token_address = quote.buy_token.get_alloy_address();
-            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient);
+                if receipt.status() {
+                    let recipient = bebop_execution_data.from;
+                    let buy_token_address = quote.buy_token.get_alloy_address();
+                    let buy_amount_actual =
+                        get_received_amount(&receipt, buy_token_address, recipient);
 
-            Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
-        } else {
-            warn!("tx ({:#x}) failed", tx_hash);
-            // For an unsuccessful swap, we exclude the TX hash and report
-            // an actual buy amount of zero, but we still include the gas cost
-            Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+                    Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
+                } else {
+                    warn!("tx ({:#x}) reverted", tx_hash);
+                    Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+                }
+            },
+            Err(e) => {
+                warn!("swap tx failed to send: {e}");
+                Ok(ExecutionResult {
+                    buy_amount_actual: U256::ZERO,
+                    gas_cost: U256::ZERO,
+                    tx_hash: None,
+                })
+            },
         }
     }
 }
