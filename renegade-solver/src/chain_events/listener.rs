@@ -34,7 +34,7 @@ impl FlashblocksReceiver for ChainEventsListener {
 
         // Log each match
         for (_id, hash) in matches {
-            info!(l2_block = ?position.l2_block, observed_fb = ?position.flashblock, ?hash, "Transaction included");
+            info!("Transaction included", l2_block = ?position.l2_block, observed_fb = ?position.flashblock, ?hash);
         }
     }
 }
