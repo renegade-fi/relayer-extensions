@@ -21,7 +21,7 @@ impl TxDriver {
     /// Creates a new `TxDriver` with the given transaction store and executor
     /// client.
     pub fn new(tx_store: TxStore, executor: &ExecutorClient) -> Self {
-        let (tx, mut rx) = unbounded_channel::<(String, Instant)>();
+        let (tx, mut rx) = unbounded_channel();
         let tx_store_clone = tx_store.clone();
         let executor_client_clone = executor.clone();
 
@@ -38,25 +38,43 @@ impl TxDriver {
         executor_client: ExecutorClient,
     ) {
         while let Some((tx_id, at)) = rx.recv().await {
-            sleep_until(at).await;
+            let tx_store_clone = tx_store.clone();
+            let executor_client_clone = executor_client.clone();
+            tokio::spawn(Self::handle_scheduled_tx(
+                tx_id,
+                at,
+                tx_store_clone,
+                executor_client_clone,
+            ));
+        }
+    }
 
-            match tx_store.resolve_fee_caps(&tx_id) {
-                Ok(tx) => {
-                    tracing::info!(id = %tx_id, "taking the shot");
-                    match executor_client.send_tx(tx).await {
-                        Ok(tx_hash) => {
-                            tx_store.record_tx_hash(&tx_id, tx_hash);
-                            tracing::info!(id = %tx_id, tx_hash = %tx_hash, "shot out");
-                        },
-                        Err(err) => {
-                            tracing::warn!(%err, id = %tx_id, "error sending tx");
-                        },
-                    }
-                },
-                Err(err) => {
-                    tracing::warn!(%err, id = %tx_id, "unable to hydrate tx with base fee");
-                },
-            }
+    /// Handles a single scheduled transaction: waits until the target time and
+    /// submits it.
+    async fn handle_scheduled_tx(
+        tx_id: String,
+        at: Instant,
+        tx_store: TxStore,
+        executor_client: ExecutorClient,
+    ) {
+        sleep_until(at).await;
+
+        match tx_store.resolve_fee_caps(&tx_id) {
+            Ok(tx) => {
+                tracing::info!("taking the shot", id = %tx_id);
+                match executor_client.send_tx(tx).await {
+                    Ok(tx_hash) => {
+                        tx_store.record_tx_hash(&tx_id, tx_hash);
+                        tracing::info!("shot out", id = %tx_id, tx_hash = %tx_hash);
+                    },
+                    Err(err) => {
+                        tracing::warn!("error sending tx", %err, id = %tx_id);
+                    },
+                }
+            },
+            Err(err) => {
+                tracing::warn!("unable to hydrate tx with base fee", %err, id = %tx_id);
+            },
         }
     }
 }

@@ -6,5 +6,11 @@ use thiserror::Error;
 pub enum DriverError {
     /// The chain client error.
     #[error("chain client error: {0}")]
-    Chain(#[from] eyre::Report),
+    Chain(String),
+}
+
+impl From<eyre::Report> for DriverError {
+    fn from(err: eyre::Report) -> Self {
+        DriverError::Chain(err.to_string())
+    }
 }

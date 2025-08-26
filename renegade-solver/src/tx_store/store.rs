@@ -15,6 +15,8 @@ use crate::fee_cache::FeeCache;
 use crate::tx_store::error::{TxStoreError, TxStoreResult};
 use dashmap::DashMap;
 
+type OrderHash = String;
+
 /// A position on the L2 chain (block and flashblock).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct L2Position {
@@ -55,7 +57,7 @@ pub struct TxStatus {
 pub struct TxContext {
     /// The ID of the transaction. In practice, this is the order hash of the
     /// UniswapX order.
-    pub id: String,
+    pub id: OrderHash,
     /// The template request for the transaction (no nonce/max_fee_per_gas set).
     pub request: TransactionRequest,
     /// The timing information for when to send.
@@ -68,7 +70,7 @@ pub struct TxContext {
 #[derive(Clone)]
 pub struct TxStore {
     /// The inner store.
-    by_id: Arc<DashMap<String, TxContext>>,
+    by_id: Arc<DashMap<OrderHash, TxContext>>,
     /// Fee source to compute max_fee_per_gas at send time.
     fee_cache: FeeCache,
 }
@@ -86,7 +88,7 @@ impl TxStore {
     /// Enqueues a transaction with the given timing.
     pub fn enqueue_with_timing(
         &self,
-        id: &str,
+        id: &OrderHash,
         request: TransactionRequest,
         timing: TxTiming,
     ) -> TxStoreResult<()> {
@@ -119,7 +121,7 @@ impl TxStore {
     }
 
     /// Resolves the transaction template into a concrete request with fee caps.
-    pub fn resolve_fee_caps(&self, id: &str) -> TxStoreResult<TransactionRequest> {
+    pub fn resolve_fee_caps(&self, id: &OrderHash) -> TxStoreResult<TransactionRequest> {
         let tx_ref =
             self.by_id.get(id).ok_or_else(|| TxStoreError::TxNotFound { id: id.to_string() })?;
 
@@ -143,7 +145,7 @@ impl TxStore {
     }
 
     /// Attaches or updates the transaction hash for a queued transaction.
-    pub fn record_tx_hash(&self, id: &str, tx_hash: B256) {
+    pub fn record_tx_hash(&self, id: &OrderHash, tx_hash: B256) {
         if let Some(mut tx) = self.by_id.get_mut(id) {
             tx.status.tx_hash = Some(tx_hash);
         }
