@@ -146,11 +146,6 @@ impl BebopQuoteResponse {
         self.best_route().map(|route| route.quote.tx.data.clone())
     }
 
-    /// Get the gas limit for the quote
-    pub fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
-        self.best_route().map(|route| route.quote.tx.gas)
-    }
-
     /// Get the approval target for the quote
     pub fn get_approval_target(&self) -> Result<Address, ExecutionClientError> {
         self.best_route().map(|route| route.quote.approval_target)
@@ -206,5 +201,4 @@ pub struct BebopTxData {
     to: Address,
     value: U256,
     data: Bytes,
-    gas: U256,
 }

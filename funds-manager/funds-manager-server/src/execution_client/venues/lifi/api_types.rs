@@ -68,8 +68,6 @@ struct LifiTransactionRequest {
     data: String,
     /// Amount of native token to send (in hex)
     value: String,
-    /// Gas limit in hex
-    gas_limit: String,
 }
 
 /// Quote estimate details from LiFi API
@@ -160,12 +158,6 @@ impl LifiQuote {
         hex::decode(self.transaction_request.data.trim_start_matches("0x"))
             .map_err(ExecutionClientError::quote_conversion)
             .map(Bytes::from)
-    }
-
-    /// Get the gas limit for the swap
-    pub fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(self.transaction_request.gas_limit.trim_start_matches("0x"), 16)
-            .map_err(ExecutionClientError::quote_conversion)
     }
 
     /// Get the tool (venue) providing the route
