@@ -276,21 +276,25 @@ impl ExecutionVenue for BebopClient {
     async fn get_quotes(
         &self,
         params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
-        let quote_futures = [CrossVenueQuoteSource::BebopJAMv2, CrossVenueQuoteSource::BebopPMMv3]
-            .into_iter()
-            .map(|source| {
-                let params = params.clone();
-                async move {
-                    let quote_params = self.construct_quote_params(params.clone(), source)?;
-                    let query_string =
-                        serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
+        let bebop_quote_sources =
+            [CrossVenueQuoteSource::BebopJAMv2, CrossVenueQuoteSource::BebopPMMv3]
+                .into_iter()
+                .filter(|source| !excluded_quote_sources.contains(source));
 
-                    let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
-                    let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
-                    ExecutableQuote::from_bebop_quote(quote_response, self.chain)
-                }
-            });
+        let quote_futures = bebop_quote_sources.into_iter().map(|source| {
+            let params = params.clone();
+            async move {
+                let quote_params = self.construct_quote_params(params.clone(), source)?;
+                let query_string =
+                    serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
+
+                let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
+                let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
+                ExecutableQuote::from_bebop_quote(quote_response, self.chain)
+            }
+        });
 
         let quote_results = join_all(quote_futures).await;
 

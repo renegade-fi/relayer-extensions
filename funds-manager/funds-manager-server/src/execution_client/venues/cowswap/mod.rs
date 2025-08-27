@@ -423,7 +423,12 @@ impl ExecutionVenue for CowswapClient {
     async fn get_quotes(
         &self,
         params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
+        if excluded_quote_sources.contains(&CrossVenueQuoteSource::Cowswap) {
+            return Ok(vec![]);
+        }
+
         let slippage_tolerance = params.slippage_tolerance;
         let quote_request = self.construct_quote_params(params);
         let quote_response: OrderQuoteResponse =
