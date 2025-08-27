@@ -25,7 +25,7 @@ use crate::{
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
             lifi::api_types::{LifiQuote, LifiQuoteParams},
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
@@ -73,12 +73,6 @@ const DEFAULT_TIMING_STRATEGY: &str = "minWaitTime-600-4-300";
 /// more details.
 const DEFAULT_ORDER_PREFERENCE: &str = "CHEAPEST";
 
-/// The default denied exchanges for a Lifi quote.
-///
-/// See <https://docs.li.fi/api-reference/get-a-quote-for-a-token-transfer#parameter-deny-exchanges>
-/// for more details.
-const DEFAULT_DENIED_EXCHANGES: [&str; 1] = ["sushiswap"];
-
 // ---------
 // | Types |
 // ---------
@@ -108,6 +102,7 @@ impl ExecutableQuote {
         let buy_token = lifi_quote.get_buy_token(chain);
         let sell_amount = lifi_quote.get_sell_amount()?;
         let buy_amount = lifi_quote.get_buy_amount()?;
+        let source = lifi_quote.get_cross_venue_source();
 
         let quote = ExecutionQuote {
             sell_token,
@@ -115,6 +110,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Lifi,
+            source,
             chain,
         };
 
@@ -182,8 +178,18 @@ impl LifiClient {
 
     /// Construct Lifi quote parameters from a venue-agnostic quote params
     /// object, with reasonable defaults.
-    fn construct_quote_params(&self, params: QuoteParams) -> LifiQuoteParams {
-        let deny_exchanges = DEFAULT_DENIED_EXCHANGES.into_iter().map(String::from).collect();
+    fn construct_quote_params(
+        &self,
+        params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> LifiQuoteParams {
+        let deny_exchanges = excluded_quote_sources
+            .iter()
+            .filter_map(|source| match source {
+                CrossVenueQuoteSource::LifiExchange(exchange) => Some(exchange.clone()),
+                _ => None,
+            })
+            .collect();
 
         LifiQuoteParams {
             from_token: params.from_token,
@@ -270,11 +276,12 @@ impl ExecutionVenue for LifiClient {
 
     /// Get a quote from the Lifi API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
-        let lifi_params = self.construct_quote_params(params);
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
+        let lifi_params = self.construct_quote_params(params, excluded_quote_sources);
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string =
             qs_config.serialize_string(&lifi_params).map_err(ExecutionClientError::parse)?;
@@ -290,7 +297,8 @@ impl ExecutionVenue for LifiClient {
             },
         };
 
-        ExecutableQuote::from_lifi_quote(resp, self.chain)
+        let quote = ExecutableQuote::from_lifi_quote(resp, self.chain)?;
+        Ok(vec![quote])
     }
 
     /// Execute a quote from the Lifi API
@@ -322,7 +330,7 @@ impl ExecutionVenue for LifiClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({:#x}) reverted", tx_hash);
+                    warn!("tx ({tx_hash:#x}) reverted");
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },
