@@ -2,12 +2,14 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::time::Duration;
 
 use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::TxHash;
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use renegade_api::http::wallet::RedeemNoteRequest;
 use renegade_circuit_types::note::Note;
+use renegade_common::types::chain::Chain;
 use renegade_common::types::wallet::derivation::{
     derive_blinder_seed, derive_share_seed, derive_wallet_id, derive_wallet_keychain,
 };
@@ -167,6 +169,18 @@ impl Indexer {
         tx_hash: &str,
         note: &Note,
     ) -> Result<(), FundsManagerError> {
+        if matches!(self.chain, Chain::BaseMainnet | Chain::BaseSepolia) {
+            // On Base, the redemption task completes upon inclusion of the redemption TX
+            // in a flashblock, but the nullifier will only be spent on-chain after
+            // inclusion in a full block.
+            //
+            // As such, we add a small sleep here to give time for construction of the full
+            // block. This is preferred over listening for the `NullifierSpent`
+            // event, as we are not latency-sensitive in this code path and
+            // prefer to minimize RPC costs.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+
         let nullifier = note.nullifier();
         if !self
             .darkpool_client

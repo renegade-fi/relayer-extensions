@@ -52,6 +52,7 @@ renegade-circuits = { package = "circuits", workspace = true }
 renegade-circuit-types = { package = "circuit-types", workspace = true }
 renegade-crypto = { workspace = true }
 renegade-util = { package = "util", workspace = true }
+renegade-solidity-abi = { workspace = true }
 
 # === Misc Dependencies === #
 async-trait = "0.1"
