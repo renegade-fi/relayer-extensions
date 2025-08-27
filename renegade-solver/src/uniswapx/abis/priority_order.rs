@@ -176,11 +176,10 @@ impl PriorityOrder {
         // Map UniswapX native ETH address to Renegade native ETH address
         let base_mint = self.map_native_eth_to_renegade_eth(base_token.get_addr());
         let quote_mint = quote_token.get_addr();
+        let side = if is_sell { OrderSide::Sell } else { OrderSide::Buy };
 
-        let builder = ExternalOrderBuilder::new()
-            .base_mint(&base_mint)
-            .quote_mint(&quote_mint)
-            .side(if is_sell { OrderSide::Sell } else { OrderSide::Buy });
+        let builder =
+            ExternalOrderBuilder::new().base_mint(&base_mint).quote_mint(&quote_mint).side(side);
 
         // Determine amount of invariant side
         let invariant_amount = u256_to_u128(self.invariant_amount())?;
