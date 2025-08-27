@@ -12,20 +12,17 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
-use futures::future::join_all;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{error, info, instrument, warn};
+use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
-            bebop::api_types::{
-                ApprovalType, BebopQuoteParams, BebopQuoteResponse, BebopRouteSource,
-            },
+            bebop::api_types::{ApprovalType, BebopQuoteParams, BebopQuoteResponse},
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
         },
@@ -71,43 +68,48 @@ pub struct BebopQuoteExecutionData {
     pub data: Bytes,
     /// The approval target for the swap
     pub approval_target: Address,
-    /// The source of the solution for the quote
-    pub route_source: BebopRouteSource,
 }
 
 impl ExecutableQuote {
-    /// Convert a Bebop quote into an executable quote
+    /// Convert a Bebop quote into executable quotes for each source
     pub fn from_bebop_quote(
         bebop_quote: BebopQuoteResponse,
+        bebop_quote_sources: &[CrossVenueQuoteSource],
         chain: Chain,
-    ) -> Result<Self, ExecutionClientError> {
-        let sell_token = bebop_quote.sell_token(chain)?;
-        let buy_token = bebop_quote.buy_token(chain)?;
-        let sell_amount = bebop_quote.sell_amount()?;
-        let buy_amount = bebop_quote.buy_amount()?;
-        let source = bebop_quote.get_cross_venue_source()?;
+    ) -> Result<Vec<Self>, ExecutionClientError> {
+        let mut executable_quotes = Vec::new();
 
-        let quote = ExecutionQuote {
-            sell_token,
-            buy_token,
-            sell_amount,
-            buy_amount,
-            venue: SupportedExecutionVenue::Bebop,
-            source,
-            chain,
-        };
+        for source in bebop_quote_sources {
+            let sell_token = bebop_quote.sell_token(chain, source)?;
+            let buy_token = bebop_quote.buy_token(chain, source)?;
+            let sell_amount = bebop_quote.sell_amount(source)?;
+            let buy_amount = bebop_quote.buy_amount(source)?;
 
-        let to = bebop_quote.get_to_address()?;
-        let from = bebop_quote.get_from_address()?;
-        let value = bebop_quote.get_value()?;
-        let data = bebop_quote.get_data()?;
-        let approval_target = bebop_quote.get_approval_target()?;
-        let route_source = bebop_quote.get_route_source()?;
+            let quote = ExecutionQuote {
+                sell_token,
+                buy_token,
+                sell_amount,
+                buy_amount,
+                venue: SupportedExecutionVenue::Bebop,
+                source: source.clone(),
+                chain,
+            };
 
-        let execution_data =
-            BebopQuoteExecutionData { to, from, value, data, approval_target, route_source };
+            let to = bebop_quote.get_to_address(source)?;
+            let from = bebop_quote.get_from_address(source)?;
+            let value = bebop_quote.get_value(source)?;
+            let data = bebop_quote.get_data(source)?;
+            let approval_target = bebop_quote.get_approval_target(source)?;
 
-        Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Bebop(execution_data) })
+            let execution_data = BebopQuoteExecutionData { to, from, value, data, approval_target };
+
+            executable_quotes.push(ExecutableQuote {
+                quote,
+                execution_data: QuoteExecutionData::Bebop(execution_data),
+            });
+        }
+
+        Ok(executable_quotes)
     }
 }
 
@@ -172,16 +174,9 @@ impl BebopClient {
     fn construct_quote_params(
         &self,
         params: QuoteParams,
-        source: CrossVenueQuoteSource,
     ) -> Result<BebopQuoteParams, ExecutionClientError> {
         let sell_tokens = get_checksummed_address(&params.from_token)?;
         let buy_tokens = get_checksummed_address(&params.to_token)?;
-
-        let include_routes = match source {
-            CrossVenueQuoteSource::BebopJAMv2 => BebopRouteSource::JAMv2.to_string(),
-            CrossVenueQuoteSource::BebopPMMv3 => BebopRouteSource::PMMv3.to_string(),
-            _ => return Err(ExecutionClientError::onchain("Invalid Bebop quote source")),
-        };
 
         Ok(BebopQuoteParams {
             sell_tokens,
@@ -195,7 +190,6 @@ impl BebopClient {
             // as we only want these constraints to be enforced if/when we execute the quote.
             skip_validation: true,
             skip_taker_checks: true,
-            include_routes,
             source: BEBOP_SOURCE.to_string(),
         })
     }
@@ -278,33 +272,21 @@ impl ExecutionVenue for BebopClient {
         params: QuoteParams,
         excluded_quote_sources: &[CrossVenueQuoteSource],
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
-        let bebop_quote_sources =
+        let bebop_quote_sources: Vec<CrossVenueQuoteSource> =
             [CrossVenueQuoteSource::BebopJAMv2, CrossVenueQuoteSource::BebopPMMv3]
                 .into_iter()
-                .filter(|source| !excluded_quote_sources.contains(source));
+                .filter(|source| !excluded_quote_sources.contains(source))
+                .collect();
 
-        let quote_futures = bebop_quote_sources.into_iter().map(|source| {
-            let params = params.clone();
-            async move {
-                let quote_params = self.construct_quote_params(params.clone(), source)?;
-                let query_string =
-                    serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
+        let quote_params = self.construct_quote_params(params)?;
+        let query_string =
+            serde_qs::to_string(&quote_params).map_err(ExecutionClientError::parse)?;
 
-                let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
-                let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
-                ExecutableQuote::from_bebop_quote(quote_response, self.chain)
-            }
-        });
+        let path = format!("{BEBOP_QUOTE_ENDPOINT}?{query_string}");
+        let quote_response: BebopQuoteResponse = self.send_get_request(&path).await?;
 
-        let quote_results = join_all(quote_futures).await;
-
-        let mut executable_quotes = Vec::new();
-        for result in quote_results {
-            match result {
-                Ok(quote) => executable_quotes.push(quote),
-                Err(e) => error!("Error getting Bebop quote: {e}"),
-            }
-        }
+        let executable_quotes =
+            ExecutableQuote::from_bebop_quote(quote_response, &bebop_quote_sources, self.chain)?;
 
         Ok(executable_quotes)
     }
@@ -327,7 +309,7 @@ impl ExecutionVenue for BebopClient {
 
         let tx = self.build_swap_tx(&bebop_execution_data).await?;
 
-        info!("Executing Bebop {} quote", bebop_execution_data.route_source);
+        info!("Executing {} quote", quote.source);
 
         match self.send_tx(tx).await {
             Ok(receipt) => {
