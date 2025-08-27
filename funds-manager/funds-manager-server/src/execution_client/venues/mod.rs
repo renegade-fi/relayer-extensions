@@ -7,7 +7,10 @@ use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 use crate::execution_client::{
     error::ExecutionClientError,
     venues::{
-        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, quote::ExecutableQuote,
+        bebop::BebopClient,
+        cowswap::CowswapClient,
+        lifi::LifiClient,
+        quote::{CrossVenueQuoteSource, ExecutableQuote},
     },
 };
 
@@ -63,9 +66,15 @@ pub trait ExecutionVenue: Sync {
     /// Get the name of the venue
     fn venue_specifier(&self) -> SupportedExecutionVenue;
 
-    /// Get a quote from the venue
-    async fn get_quote(&self, params: QuoteParams)
-        -> Result<ExecutableQuote, ExecutionClientError>;
+    /// Get quotes from the venue, excluding those from the given list of
+    /// sources.
+    ///
+    /// Each quote should represent a unique variant of `CrossVenueQuoteSource`.
+    async fn get_quotes(
+        &self,
+        params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError>;
 
     /// Execute a quote from the venue
     async fn execute_quote(

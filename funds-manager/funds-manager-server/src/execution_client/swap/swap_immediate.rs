@@ -11,7 +11,7 @@ use crate::{
         error::ExecutionClientError,
         swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
         venues::{
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
         },
         ExecutionClient,
@@ -34,13 +34,57 @@ const PRICE_DEVIATION_INCREASE: f64 = 0.2; // 20%
 /// The maximum multiple of the default price deviation tolerance that will be
 /// allowed
 const MAX_PRICE_DEVIATION_INCREASE: f64 = 4.0; // 4x
+/// The maximum number of times we'll retry a swap by excluding the failing
+/// quote source before falling back to decaying the swap size
+const MAX_RETRIES_WITH_EXCLUSION: usize = 5;
+
+// ---------
+// | Types |
+// ---------
+
+/// The unsuccessful control flow branches that can occur during the execution
+/// of a decaying swap
+#[derive(Debug, Clone)]
+enum SwapControlFlow {
+    /// Break out of the loop with no swap outcome
+    NoSwap,
+    /// Continue the loop with a higher price deviation tolerance
+    IncreasePriceDeviation,
+    /// Continue the loop with a smaller swap size.
+    DecreaseSwapSize {
+        /// The gas cost incurred in the swap attempt.
+        gas_cost: U256,
+    },
+    /// Continue the loop while excluding quotes from the given source
+    ExcludeQuoteSource {
+        /// The source of the quote to exclude
+        source: CrossVenueQuoteSource,
+        /// The gas cost incurred in the swap attempt.
+        gas_cost: U256,
+    },
+    /// Break out of the loop with an error
+    Error(ExecutionClientError),
+}
+
+impl From<ExecutionClientError> for SwapControlFlow {
+    fn from(e: ExecutionClientError) -> Self {
+        SwapControlFlow::Error(e)
+    }
+}
 
 impl ExecutionClient {
-    /// Attempt to execute a swap, retrying failed swaps with
-    /// decreased quotes down to a minimum trade size.
-    ///
-    /// If specified in the params, quotes which exceed the max deviation from
-    /// reference price will be retried with a higher deviation tolerance.
+    /// Attempt to execute a swap, with the following control flow:
+    /// 1. Fetch quotes from all sources (see `CrossVenueQuoteSource`) across
+    ///    all venues, unless an individual venue is specified in the params.
+    /// 2. Select the best quote from those fetched.
+    /// 3. If the quote exceeds the max deviation from reference price, retry
+    ///    from step 1 with a decreased swap size, unless the
+    ///    `increase_price_deviation` flag is set, in which case we retry with a
+    ///    higher deviation tolerance.
+    /// 4. Execute the quote, and if the swap fails, retry from step 1, but
+    ///    exclude the failed quote's source from subsequent quote fetches.
+    /// 5. After the maximum number of retries w/ source exclusion is reached,
+    ///    subsequent retries will be attempted with a decreased swap size.
     ///
     /// Returns the quote, transaction receipt, and cumulative gas cost of all
     /// attempted swaps
@@ -58,57 +102,106 @@ impl ExecutionClient {
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let mut cumulative_gas_cost = U256::ZERO;
         let mut max_price_deviation_multiplier = 1.0;
+        let mut excluded_quote_sources = Vec::new();
+        let mut num_swaps_with_exclusion = 0;
         loop {
-            if !self.can_execute_swap(&params).await? {
-                return Ok(None);
-            }
-
-            let maybe_executable_quote = self.get_best_quote(params.clone()).await?;
-            if maybe_executable_quote.is_none() {
-                warn!("No quote found for swap");
-                return Ok(None);
-            }
-
-            let executable_quote = maybe_executable_quote.unwrap();
-
-            if self
-                .exceeds_price_deviation(&executable_quote.quote, max_price_deviation_multiplier)
-                .await?
-            {
-                adjust_for_price_deviation(&mut params, &mut max_price_deviation_multiplier);
-                if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
-                    warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
-                    return Ok(None);
-                }
-
-                continue;
-            }
-
-            // Execute the quote
-            let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
-                self.execute_quote(&executable_quote).await?;
-
-            cumulative_gas_cost += gas_cost;
-
-            // If the swap was successful, return
-            if let Some(tx_hash) = tx_hash {
-                return Ok(Some(DecayingSwapOutcome {
-                    quote: executable_quote.quote,
-                    buy_amount_actual,
-                    tx_hash,
+            match self
+                .execute_swap_step(
+                    &params,
+                    max_price_deviation_multiplier,
                     cumulative_gas_cost,
-                }));
-            }
+                    &excluded_quote_sources,
+                    &mut num_swaps_with_exclusion,
+                )
+                .await
+            {
+                Ok(outcome) => return Ok(Some(outcome)),
+                Err(SwapControlFlow::NoSwap) => return Ok(None),
+                Err(SwapControlFlow::Error(e)) => return Err(e),
+                Err(SwapControlFlow::IncreasePriceDeviation) => {
+                    max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
+                    info!(
+                        "Increasing price deviation tolerance to {max_price_deviation_multiplier}x"
+                    );
 
-            // Otherwise, decrease the swap size and try again
-            warn!("swap failed, retrying w/ reduced-size quote");
-            params.from_amount /= SWAP_DECAY_FACTOR;
+                    if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
+                        warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
+                        return Ok(None);
+                    }
+                },
+                Err(SwapControlFlow::DecreaseSwapSize { gas_cost }) => {
+                    info!("Decreasing swap size by {SWAP_DECAY_FACTOR}x");
+                    params.from_amount /= SWAP_DECAY_FACTOR;
+                    cumulative_gas_cost += gas_cost;
+
+                    // Decreasing the swap size constitutes a meaningful change in the quote
+                    // parameters. As such, we reset the excluded quote sources
+                    // and the number of swaps with exclusion.
+                    excluded_quote_sources.clear();
+                    num_swaps_with_exclusion = 0;
+                },
+                Err(SwapControlFlow::ExcludeQuoteSource { source, gas_cost }) => {
+                    cumulative_gas_cost += gas_cost;
+                    excluded_quote_sources.push(source);
+                },
+            }
         }
     }
 
     // -----------
     // | Helpers |
     // -----------
+
+    /// Executes a single step of a decaying swap, returning the outcome if the
+    /// swap was successful, and otherwise the control flow branch to take.
+    async fn execute_swap_step(
+        &self,
+        params: &QuoteParams,
+        max_price_deviation_multiplier: f64,
+        cumulative_gas_cost: U256,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+        num_swaps_with_exclusion: &mut usize,
+    ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
+        let executable_quote = self
+            .get_executable_quote(params, max_price_deviation_multiplier, excluded_quote_sources)
+            .await?;
+
+        self.execute_quote(executable_quote, cumulative_gas_cost, num_swaps_with_exclusion).await
+    }
+
+    /// Gets an executable quote for a swap, validating the preconditions for
+    /// fetching the quote and the quote itself.
+    async fn get_executable_quote(
+        &self,
+        params: &QuoteParams,
+        max_price_deviation_multiplier: f64,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<ExecutableQuote, SwapControlFlow> {
+        if !self.can_execute_swap(params).await? {
+            return Err(SwapControlFlow::NoSwap);
+        }
+
+        let maybe_executable_quote = self.fetch_best_quote(params, excluded_quote_sources).await?;
+        if maybe_executable_quote.is_none() {
+            warn!("No quote found for swap");
+            return Err(SwapControlFlow::NoSwap);
+        }
+
+        let executable_quote = maybe_executable_quote.unwrap();
+
+        if self
+            .exceeds_price_deviation(&executable_quote.quote, max_price_deviation_multiplier)
+            .await?
+        {
+            if params.increase_price_deviation {
+                return Err(SwapControlFlow::IncreasePriceDeviation);
+            }
+
+            return Err(SwapControlFlow::DecreaseSwapSize { gas_cost: U256::ZERO });
+        }
+
+        Ok(executable_quote)
+    }
 
     /// Check whether a swap represented by the quote params meets the criteria
     /// for execution
@@ -148,7 +241,7 @@ impl ExecutionClient {
         Ok(approx_quote_amount)
     }
 
-    /// Get the best quote for a swap, across all execution venues
+    /// Fetch the best quote for a swap, across all execution venues
     #[instrument(
         skip_all,
         fields(
@@ -157,10 +250,22 @@ impl ExecutionClient {
             from_amount = %params.from_amount
         )
     )]
-    async fn get_best_quote(
+    async fn fetch_best_quote(
         &self,
-        params: QuoteParams,
+        params: &QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        let all_quotes = self.fetch_all_quotes(params, excluded_quote_sources).await?;
+
+        self.select_best_quote(all_quotes)
+    }
+
+    /// Fetch quotes across all venues
+    async fn fetch_all_quotes(
+        &self,
+        params: &QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         // If a venue is specified in the params, we only consider that venue
         let venues = if let Some(venue) = params.venue {
             vec![self.venues.get_venue(venue)]
@@ -172,25 +277,39 @@ impl ExecutionClient {
         let quote_futures = venues.into_iter().map(|venue| {
             let params = params.clone();
             async move {
-                let quote_res = venue.get_quote(params).await;
+                let quote_res = venue.get_quotes(params, excluded_quote_sources).await;
                 (venue, quote_res)
             }
         });
         let quote_results = join_all(quote_futures).await;
 
-        let mut maybe_best_quote = None;
-        for (venue, quote_res) in quote_results {
-            let venue_specifier = venue.venue_specifier();
-            if let Err(e) = quote_res {
+        let mut all_quotes = Vec::new();
+        for (venue, quotes_res) in quote_results {
+            if let Err(e) = quotes_res {
+                let venue_specifier = venue.venue_specifier();
                 warn!("Error getting quote from {venue_specifier}: {e}");
                 continue;
             }
 
-            let quote = quote_res.unwrap();
+            let quotes = quotes_res.unwrap();
+            all_quotes.extend(quotes);
+        }
+
+        Ok(all_quotes)
+    }
+
+    /// Select the best quote from a list of quotes
+    fn select_best_quote(
+        &self,
+        all_quotes: Vec<ExecutableQuote>,
+    ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
+        let mut maybe_best_quote = None;
+        for quote in all_quotes {
             let quote_price = quote.quote.get_price(None /* buy_amount */);
             let is_sell = quote.quote.is_sell();
+            let quote_source = &quote.quote.source;
 
-            info!("{venue_specifier} quote price: {quote_price} (is_sell: {is_sell})");
+            info!("{quote_source} quote price: {quote_price} (is_sell: {is_sell})");
 
             if maybe_best_quote.is_none() {
                 maybe_best_quote = Some(quote);
@@ -269,15 +388,48 @@ impl ExecutionClient {
     /// Execute a quote on the associated venue
     async fn execute_quote(
         &self,
-        executable_quote: &ExecutableQuote,
-    ) -> Result<ExecutionResult, ExecutionClientError> {
-        match executable_quote.execution_data {
-            QuoteExecutionData::Lifi(_) => self.venues.lifi.execute_quote(executable_quote).await,
-            QuoteExecutionData::Cowswap(_) => {
-                self.venues.cowswap.execute_quote(executable_quote).await
-            },
-            QuoteExecutionData::Bebop(_) => self.venues.bebop.execute_quote(executable_quote).await,
+        executable_quote: ExecutableQuote,
+        mut cumulative_gas_cost: U256,
+        num_swaps_with_exclusion: &mut usize,
+    ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
+        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+            match executable_quote.execution_data {
+                QuoteExecutionData::Lifi(_) => {
+                    self.venues.lifi.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Cowswap(_) => {
+                    self.venues.cowswap.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Bebop(_) => {
+                    self.venues.bebop.execute_quote(&executable_quote).await?
+                },
+            };
+
+        cumulative_gas_cost += gas_cost;
+
+        // If the swap was successful, return
+        if let Some(tx_hash) = tx_hash {
+            return Ok(DecayingSwapOutcome {
+                quote: executable_quote.quote,
+                buy_amount_actual,
+                tx_hash,
+                cumulative_gas_cost,
+            });
         }
+
+        *num_swaps_with_exclusion += 1;
+
+        if *num_swaps_with_exclusion < MAX_RETRIES_WITH_EXCLUSION {
+            // We first retry the swap by excluding the failing quote source
+            return Err(SwapControlFlow::ExcludeQuoteSource {
+                source: executable_quote.quote.source,
+                gas_cost,
+            });
+        }
+
+        // Once the maximum number of retries via source exclusion is reached,
+        // we fall back to decaying the swap size
+        Err(SwapControlFlow::DecreaseSwapSize { gas_cost })
     }
 }
 
@@ -294,19 +446,4 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
         VENUE_TAG => quote.venue.to_string(),
     )
     .set(deviation);
-}
-
-/// Adjust the given quote params in the case that the resulting quote exceeds
-/// the price deviation tolerance.
-///
-/// Concretely, this means increasing the max price deviation multiplier if the
-/// params allow for it, or reducing the swap size otherwise.
-fn adjust_for_price_deviation(params: &mut QuoteParams, max_price_deviation_multiplier: &mut f64) {
-    if params.increase_price_deviation {
-        *max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
-        info!("Price deviation exceeded, increasing price deviation tolerance by {max_price_deviation_multiplier}x");
-    } else {
-        info!("Price deviation exceeded, reducing swap size by {SWAP_DECAY_FACTOR}x");
-        params.from_amount /= SWAP_DECAY_FACTOR;
-    }
 }

@@ -30,7 +30,7 @@ use crate::{
                     OrderQuoteResponse, SigningScheme, Trade,
                 },
             },
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
@@ -140,6 +140,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Cowswap,
+            source: CrossVenueQuoteSource::Cowswap,
             chain,
         };
 
@@ -419,10 +420,15 @@ impl ExecutionVenue for CowswapClient {
 
     /// Get a quote from the Cowswap API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
+        if excluded_quote_sources.contains(&CrossVenueQuoteSource::Cowswap) {
+            return Ok(vec![]);
+        }
+
         let slippage_tolerance = params.slippage_tolerance;
         let quote_request = self.construct_quote_params(params);
         let quote_response: OrderQuoteResponse =
@@ -435,7 +441,7 @@ impl ExecutionVenue for CowswapClient {
             &self.hot_wallet,
         );
 
-        Ok(executable_quote)
+        Ok(vec![executable_quote])
     }
 
     /// Execute a quote from the Cowswap API

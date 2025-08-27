@@ -1,5 +1,7 @@
 //! Type definitions for execution quotes
 
+use std::fmt::Display;
+
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
 use renegade_common::types::{
@@ -32,6 +34,8 @@ pub struct ExecutionQuote {
     pub buy_amount: U256,
     /// The venue that provided the quote
     pub venue: SupportedExecutionVenue,
+    /// The source of the quote
+    pub source: CrossVenueQuoteSource,
     /// The chain for which the quote was generated
     pub chain: Chain,
 }
@@ -192,4 +196,28 @@ pub struct ExecutableQuote {
     pub quote: ExecutionQuote,
     /// The venue-specific auxiliary data needed to execute the quote
     pub execution_data: QuoteExecutionData,
+}
+
+/// The different sources of quotes, across all venues
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CrossVenueQuoteSource {
+    /// A quote from a specific exchange via Lifi
+    LifiExchange(String),
+    /// A Bebop JAMv2 quote
+    BebopJAMv2,
+    /// A Bebop PMMv3 quote
+    BebopPMMv3,
+    /// A quote from Cowswap
+    Cowswap,
+}
+
+impl Display for CrossVenueQuoteSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CrossVenueQuoteSource::LifiExchange(tool) => write!(f, "Lifi ({tool})"),
+            CrossVenueQuoteSource::BebopJAMv2 => write!(f, "Bebop JAMv2"),
+            CrossVenueQuoteSource::BebopPMMv3 => write!(f, "Bebop PMMv3"),
+            CrossVenueQuoteSource::Cowswap => write!(f, "Cowswap"),
+        }
+    }
 }

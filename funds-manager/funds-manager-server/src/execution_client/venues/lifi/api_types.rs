@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use funds_manager_api::serialization::u256_string_serialization;
 
-use crate::execution_client::error::ExecutionClientError;
+use crate::execution_client::{error::ExecutionClientError, venues::quote::CrossVenueQuoteSource};
 
 /// The subset of Lifi quote request query parameters that we support
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -68,8 +68,6 @@ struct LifiTransactionRequest {
     data: String,
     /// Amount of native token to send (in hex)
     value: String,
-    /// Gas limit in hex
-    gas_limit: String,
 }
 
 /// Quote estimate details from LiFi API
@@ -162,14 +160,13 @@ impl LifiQuote {
             .map(Bytes::from)
     }
 
-    /// Get the gas limit for the swap
-    pub fn get_gas_limit(&self) -> Result<U256, ExecutionClientError> {
-        U256::from_str_radix(self.transaction_request.gas_limit.trim_start_matches("0x"), 16)
-            .map_err(ExecutionClientError::quote_conversion)
-    }
-
     /// Get the tool (venue) providing the route
     pub fn get_tool(&self) -> String {
         self.tool.clone()
+    }
+
+    /// Get the cross-venue source of the quote
+    pub fn get_cross_venue_source(&self) -> CrossVenueQuoteSource {
+        CrossVenueQuoteSource::LifiExchange(self.tool.clone())
     }
 }

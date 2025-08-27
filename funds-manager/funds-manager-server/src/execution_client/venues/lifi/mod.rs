@@ -13,7 +13,7 @@ use alloy::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
-use funds_manager_api::{quoters::QuoteParams, u256_try_into_u64};
+use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
@@ -25,7 +25,7 @@ use crate::{
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
             lifi::api_types::{LifiQuote, LifiQuoteParams},
-            quote::{ExecutableQuote, ExecutionQuote, QuoteExecutionData},
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
@@ -73,12 +73,6 @@ const DEFAULT_TIMING_STRATEGY: &str = "minWaitTime-600-4-300";
 /// more details.
 const DEFAULT_ORDER_PREFERENCE: &str = "CHEAPEST";
 
-/// The default denied exchanges for a Lifi quote.
-///
-/// See <https://docs.li.fi/api-reference/get-a-quote-for-a-token-transfer#parameter-deny-exchanges>
-/// for more details.
-const DEFAULT_DENIED_EXCHANGES: [&str; 1] = ["sushiswap"];
-
 // ---------
 // | Types |
 // ---------
@@ -94,8 +88,6 @@ pub struct LifiQuoteExecutionData {
     pub value: U256,
     /// The calldata for the swap
     pub data: Bytes,
-    /// The gas limit for the swap
-    pub gas_limit: U256,
     /// The tool (venue) providing the route
     pub tool: String,
 }
@@ -110,6 +102,7 @@ impl ExecutableQuote {
         let buy_token = lifi_quote.get_buy_token(chain);
         let sell_amount = lifi_quote.get_sell_amount()?;
         let buy_amount = lifi_quote.get_buy_amount()?;
+        let source = lifi_quote.get_cross_venue_source();
 
         let quote = ExecutionQuote {
             sell_token,
@@ -117,6 +110,7 @@ impl ExecutableQuote {
             sell_amount,
             buy_amount,
             venue: SupportedExecutionVenue::Lifi,
+            source,
             chain,
         };
 
@@ -124,10 +118,9 @@ impl ExecutableQuote {
         let from = lifi_quote.get_from_address()?;
         let value = lifi_quote.get_value()?;
         let data = lifi_quote.get_data()?;
-        let gas_limit = lifi_quote.get_gas_limit()?;
         let tool = lifi_quote.get_tool();
 
-        let execution_data = LifiQuoteExecutionData { to, from, value, data, gas_limit, tool };
+        let execution_data = LifiQuoteExecutionData { to, from, value, data, tool };
 
         Ok(ExecutableQuote { quote, execution_data: QuoteExecutionData::Lifi(execution_data) })
     }
@@ -185,8 +178,18 @@ impl LifiClient {
 
     /// Construct Lifi quote parameters from a venue-agnostic quote params
     /// object, with reasonable defaults.
-    fn construct_quote_params(&self, params: QuoteParams) -> LifiQuoteParams {
-        let deny_exchanges = DEFAULT_DENIED_EXCHANGES.into_iter().map(String::from).collect();
+    fn construct_quote_params(
+        &self,
+        params: QuoteParams,
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> LifiQuoteParams {
+        let deny_exchanges = excluded_quote_sources
+            .iter()
+            .filter_map(|source| match source {
+                CrossVenueQuoteSource::LifiExchange(exchange) => Some(exchange.clone()),
+                _ => None,
+            })
+            .collect();
 
         LifiQuoteParams {
             from_token: params.from_token,
@@ -241,17 +244,13 @@ impl LifiClient {
             .ok_or(ExecutionClientError::onchain("No basefee found"))?
             as u128;
 
-        let gas_limit =
-            u256_try_into_u64(execution_data.gas_limit).map_err(ExecutionClientError::onchain)?;
-
         let tx = TransactionRequest::default()
             .with_to(execution_data.to)
             .with_from(execution_data.from)
             .with_value(execution_data.value)
             .with_input(execution_data.data.clone())
             .with_max_fee_per_gas(latest_basefee * 2)
-            .with_max_priority_fee_per_gas(latest_basefee * 2)
-            .with_gas_limit(gas_limit);
+            .with_max_priority_fee_per_gas(latest_basefee * 2);
 
         Ok(tx)
     }
@@ -277,11 +276,12 @@ impl ExecutionVenue for LifiClient {
 
     /// Get a quote from the Lifi API
     #[instrument(skip_all)]
-    async fn get_quote(
+    async fn get_quotes(
         &self,
         params: QuoteParams,
-    ) -> Result<ExecutableQuote, ExecutionClientError> {
-        let lifi_params = self.construct_quote_params(params);
+        excluded_quote_sources: &[CrossVenueQuoteSource],
+    ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
+        let lifi_params = self.construct_quote_params(params, excluded_quote_sources);
         let qs_config = serde_qs::Config::new().array_format(serde_qs::ArrayFormat::Unindexed);
         let query_string =
             qs_config.serialize_string(&lifi_params).map_err(ExecutionClientError::parse)?;
@@ -297,7 +297,8 @@ impl ExecutionVenue for LifiClient {
             },
         };
 
-        ExecutableQuote::from_lifi_quote(resp, self.chain)
+        let quote = ExecutableQuote::from_lifi_quote(resp, self.chain)?;
+        Ok(vec![quote])
     }
 
     /// Execute a quote from the Lifi API
@@ -316,21 +317,31 @@ impl ExecutionVenue for LifiClient {
 
         info!("Executing Lifi quote from {}", lifi_execution_data.tool);
 
-        let receipt = self.send_tx(tx).await?;
-        let gas_cost = get_gas_cost(&receipt);
-        let tx_hash = receipt.transaction_hash;
+        match self.send_tx(tx).await {
+            Ok(receipt) => {
+                let gas_cost = get_gas_cost(&receipt);
+                let tx_hash = receipt.transaction_hash;
 
-        if receipt.status() {
-            let recipient = lifi_execution_data.from;
-            let buy_token_address = quote.buy_token.get_alloy_address();
-            let buy_amount_actual = get_received_amount(&receipt, buy_token_address, recipient);
+                if receipt.status() {
+                    let recipient = lifi_execution_data.from;
+                    let buy_token_address = quote.buy_token.get_alloy_address();
+                    let buy_amount_actual =
+                        get_received_amount(&receipt, buy_token_address, recipient);
 
-            Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
-        } else {
-            warn!("tx ({:#x}) failed", tx_hash);
-            // For an unsuccessful swap, we exclude the TX hash and report
-            // an actual buy amount of zero, but we still include the gas cost
-            Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+                    Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
+                } else {
+                    warn!("tx ({tx_hash:#x}) reverted");
+                    Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+                }
+            },
+            Err(e) => {
+                warn!("swap tx failed to send: {e}");
+                Ok(ExecutionResult {
+                    buy_amount_actual: U256::ZERO,
+                    gas_cost: U256::ZERO,
+                    tx_hash: None,
+                })
+            },
         }
     }
 }
