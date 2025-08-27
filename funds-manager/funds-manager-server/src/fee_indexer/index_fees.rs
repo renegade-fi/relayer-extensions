@@ -15,12 +15,13 @@ use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_biguint, scalar_to_u128};
 use renegade_darkpool_client::{
     arbitrum::{
-        abi::Darkpool::{settleOfflineFeeCall, NotePosted},
+        abi::Darkpool::{settleOfflineFeeCall as ArbSettleOfflineFeeCall, NotePosted},
         contract_types::types::ValidOfflineFeeSettlementStatement as ContractValidOfflineFeeSettlementStatement,
         helpers::deserialize_calldata,
     },
     conversion::u256_to_scalar,
 };
+use renegade_solidity_abi::IDarkpool::settleOfflineFeeCall as BaseSettleOfflineFeeCall;
 use renegade_util::err_str;
 use tracing::{info, warn};
 
@@ -178,14 +179,19 @@ impl Indexer {
 
         let calldata: Vec<u8> = tx.inner.input().to_vec();
         let selector: [u8; SELECTOR_LEN] = calldata[..SELECTOR_LEN].try_into().unwrap();
+
         let encryption = match selector {
-            <settleOfflineFeeCall as SolCall>::SELECTOR => {
-                parse_note_ciphertext_from_settle_offline_fee(&calldata)?
+            <ArbSettleOfflineFeeCall as SolCall>::SELECTOR => {
+                parse_note_ciphertext_from_arb_settle_offline_fee(&calldata)?
+            },
+            <BaseSettleOfflineFeeCall as SolCall>::SELECTOR => {
+                parse_note_ciphertext_from_base_settle_offline_fee(&calldata)?
             },
             sel => {
+                let selector_hex = hex::encode(sel);
                 return Err(FundsManagerError::on_chain(format!(
-                    "invalid selector when parsing note: {sel:?}"
-                )))
+                    "invalid selector when parsing note from tx {tx_hash:#x}: 0x{selector_hex}"
+                )));
             },
         };
 
@@ -237,12 +243,14 @@ impl Indexer {
 // | Helpers |
 // -----------
 
-/// Parse a note from calldata of a `settleOfflineFee` call
+/// Parse a note from calldata of a `settleOfflineFee` call on the Arbitrum
+/// darkpool
 // TODO: Move to renegade_darkpool_client
-fn parse_note_ciphertext_from_settle_offline_fee(
+fn parse_note_ciphertext_from_arb_settle_offline_fee(
     calldata: &[u8],
 ) -> Result<ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>, FundsManagerError> {
-    let call = settleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::on_chain)?;
+    let call =
+        ArbSettleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::on_chain)?;
 
     let statement = deserialize_calldata::<ContractValidOfflineFeeSettlementStatement>(
         &call.valid_offline_fee_settlement_statement,
@@ -258,4 +266,28 @@ fn parse_note_ciphertext_from_settle_offline_fee(
         [Scalar::new(ciphertext.1), Scalar::new(ciphertext.2), Scalar::new(ciphertext.3)];
 
     Ok(ElGamalCiphertext { ephemeral_key: key_encryption, ciphertext: symmetric_ciphertext })
+}
+
+/// Parse a note from calldata of a `settleOfflineFee` call on the Base
+/// darkpool
+fn parse_note_ciphertext_from_base_settle_offline_fee(
+    calldata: &[u8],
+) -> Result<ElGamalCiphertext<NOTE_CIPHERTEXT_SIZE>, FundsManagerError> {
+    let call =
+        BaseSettleOfflineFeeCall::abi_decode(calldata).map_err(FundsManagerError::on_chain)?;
+
+    let statement = call.statement;
+    let note_ciphertext = statement.noteCiphertext;
+
+    let x = u256_to_scalar(note_ciphertext.ephemeralKey.x);
+    let y = u256_to_scalar(note_ciphertext.ephemeralKey.y);
+
+    let ephemeral_key = BabyJubJubPoint { x, y };
+    let ciphertext = [
+        u256_to_scalar(note_ciphertext.ciphertext[0]),
+        u256_to_scalar(note_ciphertext.ciphertext[1]),
+        u256_to_scalar(note_ciphertext.ciphertext[2]),
+    ];
+
+    Ok(ElGamalCiphertext { ephemeral_key, ciphertext })
 }
