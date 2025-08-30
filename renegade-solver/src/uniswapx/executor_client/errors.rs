@@ -1,6 +1,7 @@
 //! Possible errors thrown by the executor client
 
 use alloy::providers::PendingTransactionError;
+use alloy::signers::Error as SignerError;
 use alloy_contract::Error as ContractError;
 use alloy_primitives::U256;
 use alloy_sol_types::Error as SolTypeError;
@@ -37,6 +38,9 @@ pub enum ExecutorError {
     #[error("RPC error: {0}")]
     /// An error interacting with the lower level rpc client
     Rpc(String),
+    #[error("Signer error: {0}")]
+    /// An error interacting with the signer
+    Signer(SignerError),
 }
 
 impl ExecutorError {
@@ -73,5 +77,11 @@ impl From<SolTypeError> for ExecutorError {
 impl From<U256> for ExecutorError {
     fn from(u: U256) -> Self {
         ExecutorError::InvalidU256(u)
+    }
+}
+
+impl From<SignerError> for ExecutorError {
+    fn from(e: SignerError) -> Self {
+        Self::Signer(e)
     }
 }

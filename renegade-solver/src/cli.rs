@@ -1,6 +1,8 @@
 //! The CLI for the renegade solver
 
+use alloy_primitives::ChainId;
 use clap::Parser;
+
 use renegade_common::types::chain::Chain;
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
@@ -80,5 +82,14 @@ impl Cli {
             Some(metrics_config),
         )
         .expect("Failed to configure telemetry");
+    }
+}
+
+/// Map a Chain enum to its numeric chain ID
+pub fn chain_to_chain_id(c: &Chain) -> ChainId {
+    match c {
+        Chain::ArbitrumOne => 42161u64, // Arbitrum One Mainnet
+        Chain::BaseMainnet => 8453u64,  // Base Mainnet
+        _ => panic!("Unsupported chain: only ArbitrumOne and BaseMainnet are allowed"),
     }
 }

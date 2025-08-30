@@ -2,16 +2,14 @@
 
 use alloy::primitives::Address;
 use alloy_primitives::U256;
+use alloy_rpc_types_eth::TransactionRequest;
 use renegade_sdk::types::AtomicMatchApiBundle;
 use tracing::info;
 
-use crate::planner::compute_send_plan;
-use crate::planner::Measurements;
 use crate::tx_store::store::L2Position;
-use crate::tx_store::store::TxTiming;
 use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::{
-    error::SolverResult,
+    error::{SolverError, SolverResult},
     uniswapx::{
         abis::uniswapx::PriorityOrderReactor::PriorityOrder, priority_fee::compute_priority_fee,
         uniswap_api::types::OrderEntity, UniswapXSolver,
@@ -41,16 +39,10 @@ impl UniswapXSolver {
             let uniswapx_price = order.get_price()?;
             let renegade_price = self.get_bundle_price(&bundle)?;
             let is_sell = order.is_sell();
-            let mut priority_fee_wei =
-                compute_priority_fee(uniswapx_price, renegade_price, is_sell);
+            let priority_fee_wei = compute_priority_fee(uniswapx_price, renegade_price, is_sell);
 
-            self.log_computed_priority_fee(priority_fee_wei);
-
-            // Add baseline priority fee
-            priority_fee_wei = priority_fee_wei.saturating_add(order.baselinePriorityFeeWei);
-
-            // Write to TxStore
-            self.write_tx_record(&api_order, bundle, priority_fee_wei)?;
+            // Enqueue the transaction for submission
+            self.enqueue(&api_order, bundle, priority_fee_wei)?;
         } else {
             info!("No renegade solution found");
         }
@@ -58,8 +50,8 @@ impl UniswapXSolver {
         Ok(())
     }
 
-    /// Write a tx record to the TxStore
-    fn write_tx_record(
+    /// Enqueue a transaction for submission
+    fn enqueue(
         &self,
         api_order: &OrderEntity,
         bundle: AtomicMatchApiBundle,
@@ -70,20 +62,69 @@ impl UniswapXSolver {
         let order_hash = api_order.order_hash.clone();
         let auction_start_block = order.auction_start_block();
 
-        let tx = self.executor_client.build_atomic_match_settle_tx_request(
+        // Build the transaction request template
+        let mut tx = self.executor_client.build_atomic_match_settle_tx_request(
             bundle,
             signed_order,
             priority_fee_wei,
         )?;
 
+        // Add baseline priority fee
+        let priority_fee_wei = priority_fee_wei.saturating_add(order.baselinePriorityFeeWei);
+        // Hydrate the transaction request with the latest base fee and nonce
+        self.hydrate_tx_request(&mut tx, priority_fee_wei)?;
+
+        // Sign the transaction and get hash
+        let (raw_tx_bytes, tx_hash) = self.executor_client.sign_transaction(tx)?;
+
+        // Compute timing
         let start_block = u256_to_u128(auction_start_block)? as u64;
         let target = L2Position { l2_block: start_block, flashblock: 1 };
+        let timing = self.planner.plan_timing(target);
 
-        let plan = compute_send_plan(target, &Measurements::default());
-        let timing: TxTiming = plan.into();
-        self.tx_store.enqueue_with_timing(&order_hash, tx, timing.clone())?;
+        // Store pre-computed transaction
+        self.tx_store.enqueue(&order_hash, raw_tx_bytes, tx_hash, target, timing.clone());
 
-        self.log_writing_tx_record(&order_hash, priority_fee_wei, &timing);
+        tracing::info!(
+            message = "tx enqueued",
+            id = order_hash.to_string(),
+            tx_hash = tx_hash.to_string(),
+            trigger_block = timing.trigger.l2_block,
+            trigger_flashblock = timing.trigger.flashblock,
+            target_block = target.l2_block,
+            target_flashblock = target.flashblock,
+            buffer_ms = timing.buffer_ms
+        );
+
+        Ok(())
+    }
+
+    /// Hydrate a transaction request with the latest base fee and nonce from
+    /// the cache
+    fn hydrate_tx_request(
+        &self,
+        tx: &mut TransactionRequest,
+        priority_fee_wei: U256,
+    ) -> SolverResult<()> {
+        let base_fee = self
+            .fee_cache
+            .base_fee_per_gas()
+            .ok_or_else(|| SolverError::Custom("base_fee_per_gas unavailable".to_string()))?
+            as u128;
+        let nonce = self
+            .fee_cache
+            .pending_nonce()
+            .ok_or_else(|| SolverError::Custom("pending nonce unavailable".to_string()))?;
+
+        // Add 20% buffer to base fee
+        let buffed_base_fee = base_fee.saturating_mul(12) / 10;
+        let priority_fee_u128 = u256_to_u128(priority_fee_wei)?;
+        let max_fee = buffed_base_fee.saturating_add(priority_fee_u128);
+
+        // Complete the transaction
+        tx.max_fee_per_gas = Some(max_fee);
+        tx.nonce = Some(nonce);
+        tx.chain_id = Some(self.executor_client.chain_id);
 
         Ok(())
     }
@@ -185,26 +226,6 @@ impl UniswapXSolver {
         info!(
             "Found renegade solution with input amount: {}, output amount: {}",
             bundle.send.amount, bundle.receive.amount
-        );
-    }
-
-    /// Log the computed priority fee in wei and ETH
-    fn log_computed_priority_fee(&self, priority_fee_wei: U256) {
-        info!(
-            "Computed priority fee: {} wei ({} ETH)",
-            priority_fee_wei,
-            priority_fee_wei.to_string().parse::<f64>().unwrap_or(0.0) / 1e18
-        );
-    }
-
-    /// Log that we are writing the tx record along with trigger metadata
-    fn log_writing_tx_record(&self, order_hash: &str, priority_fee_wei: U256, timing: &TxTiming) {
-        info!(
-            trigger_l2 = ?timing.trigger.l2_block,
-            trigger_flashblock = ?timing.trigger.flashblock,
-            order_hash = ?order_hash,
-            priority_fee_wei = ?priority_fee_wei,
-            "Writing tx record"
         );
     }
 }

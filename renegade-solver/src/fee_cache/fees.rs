@@ -6,6 +6,8 @@ use std::sync::Arc;
 struct FeeCacheInner {
     /// The base fee per gas.
     base_fee_per_gas: AtomicU64,
+    /// The pending nonce for the signer address.
+    pending_nonce: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -15,7 +17,10 @@ pub struct FeeCache(Arc<FeeCacheInner>);
 impl FeeCache {
     /// Create a new cache
     pub fn new() -> Self {
-        Self(Arc::new(FeeCacheInner { base_fee_per_gas: AtomicU64::default() }))
+        Self(Arc::new(FeeCacheInner {
+            base_fee_per_gas: AtomicU64::default(),
+            pending_nonce: AtomicU64::default(),
+        }))
     }
 
     /// Sets the base fee per gas.
@@ -26,6 +31,19 @@ impl FeeCache {
     /// Gets the base fee per gas.
     pub fn base_fee_per_gas(&self) -> Option<u64> {
         match self.0.base_fee_per_gas.load(Ordering::Relaxed) {
+            0 => None,
+            v => Some(v),
+        }
+    }
+
+    /// Sets the pending nonce for the signer address.
+    pub fn set_pending_nonce(&self, nonce: u64) {
+        self.0.pending_nonce.store(nonce, Ordering::Relaxed);
+    }
+
+    /// Gets the pending nonce for the signer address.
+    pub fn pending_nonce(&self) -> Option<u64> {
+        match self.0.pending_nonce.load(Ordering::Relaxed) {
             0 => None,
             v => Some(v),
         }

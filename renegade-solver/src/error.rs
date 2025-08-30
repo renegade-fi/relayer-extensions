@@ -49,6 +49,9 @@ pub enum SolverError {
     /// TxStore error
     #[error("TxStore error: {0}")]
     TxStore(#[from] TxStoreError),
+    /// Custom error
+    #[error("Custom error: {0}")]
+    Custom(String),
 }
 
 impl SolverError {

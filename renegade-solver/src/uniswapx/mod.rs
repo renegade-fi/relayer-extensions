@@ -3,8 +3,8 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
-    cli::Cli, error::SolverResult, tx_store::store::TxStore,
-    uniswapx::uniswap_api::types::OrderEntity,
+    cli::Cli, error::SolverResult, fee_cache::fees::FeeCache, planner::TxPlanner,
+    tx_store::store::TxStore, uniswapx::uniswap_api::types::OrderEntity,
 };
 use alloy::primitives::Address;
 use bimap::BiMap;
@@ -85,6 +85,10 @@ pub struct UniswapXSolver {
     order_cache: OrderCache,
     /// The TxStore for storing solutions
     tx_store: TxStore,
+    /// The TxPlanner for planning transactions
+    planner: TxPlanner,
+    /// The fee cache for getting current base fee and nonce
+    fee_cache: FeeCache,
 }
 
 impl UniswapXSolver {
@@ -97,6 +101,8 @@ impl UniswapXSolver {
         cli: Cli,
         executor_client: ExecutorClient,
         tx_store: TxStore,
+        planner: TxPlanner,
+        fee_cache: FeeCache,
     ) -> SolverResult<Self> {
         let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
 
@@ -113,6 +119,8 @@ impl UniswapXSolver {
             supported_tokens,
             order_cache: new_order_cache(),
             tx_store,
+            planner,
+            fee_cache,
         })
     }
 
