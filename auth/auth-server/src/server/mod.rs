@@ -66,8 +66,6 @@ pub struct Server {
     /// The rate limiter
     pub rate_limiter: AuthServerRateLimiter,
     /// The quote metrics recorder
-    // Removed: quote comparison feature
-    // pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
     /// Rate at which to sample metrics (0.0 to 1.0)
     pub metrics_sampling_rate: f64,
     /// The address of the gas sponsor address

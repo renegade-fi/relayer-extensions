@@ -40,8 +40,6 @@ pub const EXTERNAL_MATCH_ASSEMBLY_DELAY: &str = "external_match_assembly_delay";
 pub const EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY: &str =
     "external_match_assembly_to_settlement_delay";
 
-// Quote comparison metrics removed
-
 /// Metric describing the value of gas sponsorship for a given request
 pub const GAS_SPONSORSHIP_VALUE: &str = "gas_sponsorship_value";
 
@@ -74,8 +72,6 @@ pub const BASE_ASSET_METRIC_TAG: &str = "base_asset";
 pub const REQUEST_PATH_METRIC_TAG: &str = "request_path";
 /// Metric tag for the SDK version of the request
 pub const SDK_VERSION_METRIC_TAG: &str = "sdk_version";
-
-// Quote comparison tags removed
 
 /// Metric tag to indicate that a match had its gas costs sponsored
 pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";

@@ -72,7 +72,7 @@ impl Server {
             true, // exit_on_stale
         )?;
 
-        // Quote comparison removed
+        
 
         let gas_sponsor_address = parse_gas_sponsor_address(&args)?;
         let gas_cost_sampler = Arc::new(
@@ -196,7 +196,7 @@ fn parse_auth_server_keys(
     Ok((encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key))
 }
 
-// Quote comparison setup removed
+ 
 
 /// Parse the gas sponsor address from the CLI args
 fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {

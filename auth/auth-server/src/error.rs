@@ -122,7 +122,7 @@ impl AuthServerError {
         Self::Signing(msg.to_string())
     }
 
-    // Removed: quote comparison error constructor
+    
 
     /// Create a new custom error
     #[allow(clippy::needless_pass_by_value)]
