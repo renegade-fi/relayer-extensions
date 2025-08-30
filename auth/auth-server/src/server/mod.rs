@@ -65,7 +65,6 @@ pub struct Server {
     pub client: Client,
     /// The rate limiter
     pub rate_limiter: AuthServerRateLimiter,
-    /// The quote metrics recorder
     /// Rate at which to sample metrics (0.0 to 1.0)
     pub metrics_sampling_rate: f64,
     /// The address of the gas sponsor address
