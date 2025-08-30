@@ -33,7 +33,7 @@ impl UniswapXSolver {
             OrderSide::Sell => bundle.send.amount,
         };
         let quote_token = Token::from_addr(&bundle.match_result.quote_mint);
-        let base_token = Token::from_addr(&bundle.receive.mint);
+        let base_token = Token::from_addr(&bundle.match_result.base_mint);
         let quote_amt = quote_token.convert_to_decimal(quote_amt);
         let base_amt = base_token.convert_to_decimal(base_amt);
 
