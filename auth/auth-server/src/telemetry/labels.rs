@@ -40,19 +40,6 @@ pub const EXTERNAL_MATCH_ASSEMBLY_DELAY: &str = "external_match_assembly_delay";
 pub const EXTERNAL_MATCH_ASSEMBLY_TO_SETTLEMENT_DELAY: &str =
     "external_match_assembly_to_settlement_delay";
 
-/// Metric describing the difference in price between our quote and the source
-/// quote, in basis points
-pub const QUOTE_PRICE_DIFF_BPS_METRIC: &str = "quote.price_diff_bps";
-/// Metric describing the difference in output value net of gas between our
-/// quote and the source quote, in basis points
-pub const QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC: &str = "quote.output_net_of_gas_diff_bps";
-/// Metric describing the difference in output value net of fee between our
-/// quote and the source quote, in basis points
-pub const QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC: &str = "quote.output_net_of_fee_diff_bps";
-/// Metric describing the difference in output value net of gas and fee between
-/// our quote and the source quote, in basis points
-pub const QUOTE_NET_OUTPUT_DIFF_BPS_METRIC: &str = "quote.net_output_diff_bps";
-
 /// Metric describing the value of gas sponsorship for a given request
 pub const GAS_SPONSORSHIP_VALUE: &str = "gas_sponsorship_value";
 
@@ -86,26 +73,8 @@ pub const REQUEST_PATH_METRIC_TAG: &str = "request_path";
 /// Metric tag for the SDK version of the request
 pub const SDK_VERSION_METRIC_TAG: &str = "sdk_version";
 
-/// Metric tag for identifying the source of a quote (our server or competitor)
-pub const SOURCE_NAME_TAG: &str = "source_name";
 /// Metric tag for identifying the order side (buy/sell)
 pub const SIDE_TAG: &str = "side";
-/// Metric tag for our quoted price
-pub const OUR_PRICE_TAG: &str = "our_price";
-/// Metric tag for the comparison source's price
-pub const SOURCE_PRICE_TAG: &str = "source_price";
-/// Metric tag for our output net of gas
-pub const OUR_OUTPUT_NET_OF_GAS_TAG: &str = "our_output_net_of_gas";
-/// Metric tag for the comparison source's output net of gas
-pub const SOURCE_OUTPUT_NET_OF_GAS_TAG: &str = "source_output_net_of_gas";
-/// Metric tag for our output net of fee
-pub const OUR_OUTPUT_NET_OF_FEE_TAG: &str = "our_output_net_of_fee";
-/// Metric tag for the comparison source's output net of fee
-pub const SOURCE_OUTPUT_NET_OF_FEE_TAG: &str = "source_output_net_of_fee";
-/// Metric tag for our output net of gas and fee
-pub const OUR_NET_OUTPUT_TAG: &str = "our_net_output";
-/// Metric tag for the comparison source's output net of gas and fee
-pub const SOURCE_NET_OUTPUT_TAG: &str = "source_net_output";
 
 /// Metric tag to indicate that a match had its gas costs sponsored
 pub const GAS_SPONSORED_METRIC_TAG: &str = "gas_sponsored";

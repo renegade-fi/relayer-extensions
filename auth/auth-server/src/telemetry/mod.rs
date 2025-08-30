@@ -5,8 +5,6 @@ use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics:
 use crate::{Cli, error::AuthServerError};
 pub mod helpers;
 pub mod labels;
-pub mod quote_comparison;
-pub mod sources;
 
 /// The threshold beyond which to ignore a quote's fill ratio
 ///
