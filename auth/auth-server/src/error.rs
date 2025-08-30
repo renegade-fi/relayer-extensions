@@ -122,8 +122,6 @@ impl AuthServerError {
         Self::Signing(msg.to_string())
     }
 
-    
-
     /// Create a new custom error
     #[allow(clippy::needless_pass_by_value)]
     pub fn custom<T: ToString>(msg: T) -> Self {

@@ -185,8 +185,6 @@ impl Server {
             (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
         ];
 
-        
-
         // Record metrics
         record_external_match_metrics(order, &match_bundle, &labels)?;
         Ok(())
