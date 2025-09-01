@@ -71,8 +71,8 @@ impl UniswapXSolver {
 
         // Add baseline priority fee
         let priority_fee_wei = priority_fee_wei.saturating_add(order.baselinePriorityFeeWei);
-        // Hydrate the transaction request with the latest base fee and nonce
-        self.hydrate_tx_request(&mut tx, priority_fee_wei)?;
+        // Set the transaction's latest base fee and nonce
+        self.set_tx_fee(&mut tx, priority_fee_wei)?;
 
         // Sign the transaction and get hash
         let (raw_tx_bytes, tx_hash) = self.executor_client.sign_transaction(tx)?;
@@ -99,13 +99,9 @@ impl UniswapXSolver {
         Ok(())
     }
 
-    /// Hydrate a transaction request with the latest base fee and nonce from
+    /// Set the transaction's latest base fee and nonce from the cache
     /// the cache
-    fn hydrate_tx_request(
-        &self,
-        tx: &mut TransactionRequest,
-        priority_fee_wei: U256,
-    ) -> SolverResult<()> {
+    fn set_tx_fee(&self, tx: &mut TransactionRequest, priority_fee_wei: U256) -> SolverResult<()> {
         let base_fee = self
             .fee_cache
             .base_fee_per_gas()
