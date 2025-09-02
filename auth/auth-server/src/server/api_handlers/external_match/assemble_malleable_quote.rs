@@ -165,7 +165,7 @@ impl Server {
     fn record_assemble_malleable_metrics(&self, ctx: SponsoredAssembleMalleableQuoteResponseCtx) {
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone.record_assemble_malleable_metrics_helper(&ctx).await {
+            if let Err(e) = server_clone.record_assemble_malleable_metrics_helper(&ctx) {
                 warn!("Error handling assemble metrics: {e}");
             }
         });
@@ -173,13 +173,13 @@ impl Server {
 
     /// A helper function to record metrics for the assemble malleable quote
     /// endpoint
-    async fn record_assemble_malleable_metrics_helper(
+    fn record_assemble_malleable_metrics_helper(
         &self,
         ctx: &SponsoredAssembleMalleableQuoteResponseCtx,
     ) -> Result<(), AuthServerError> {
         // Record the bundle context in the store
         let assembled_timestamp = get_current_time_millis();
-        self.write_malleable_bundle_context(Some(assembled_timestamp), ctx).await?;
+        self.write_malleable_bundle_context(Some(assembled_timestamp), ctx)?;
 
         // TODO: Record metrics
         Ok(())

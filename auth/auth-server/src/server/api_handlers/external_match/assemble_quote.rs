@@ -256,21 +256,21 @@ impl Server {
     fn record_assemble_metrics(&self, ctx: SponsoredAssembleQuoteResponseCtx) {
         let server_clone = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = server_clone.record_assemble_metrics_helper(&ctx).await {
+            if let Err(e) = server_clone.record_assemble_metrics_helper(&ctx) {
                 warn!("Error handling assemble metrics: {e}");
             }
         });
     }
 
     /// A helper function to record metrics for the assemble quote endpoint
-    async fn record_assemble_metrics_helper(
+    fn record_assemble_metrics_helper(
         &self,
         ctx: &SponsoredAssembleQuoteResponseCtx,
     ) -> Result<(), AuthServerError> {
         // Record the bundle context in the store
         let price_timestamp = ctx.request().signed_quote.quote.price.timestamp;
         let assembled_timestamp = get_current_time_millis();
-        self.write_bundle_context(price_timestamp, Some(assembled_timestamp), ctx).await?;
+        self.write_bundle_context(price_timestamp, Some(assembled_timestamp), ctx)?;
 
         let req = ctx.request();
         if req.updated_order.is_some() {

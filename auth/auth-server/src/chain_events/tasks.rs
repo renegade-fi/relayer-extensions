@@ -310,7 +310,7 @@ impl OnChainEventListenerExecutor {
         &self,
         receipt: &TransactionReceipt,
     ) -> Result<u64, AuthServerError> {
-        let provider = self.darkpool_client().provider();
+        let provider = self.darkpool_client.provider();
 
         let block_number = receipt
             .block_number

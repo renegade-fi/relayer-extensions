@@ -1,23 +1,25 @@
 //! Defines the bundle store and associated types
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+
+use std::sync::Arc;
 
 use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
-use renegade_circuit_types::wallet::Nullifier;
-use tokio::sync::RwLock;
+use dashmap::DashMap;
 
-use crate::error::AuthServerError;
+/// The bundle ID type
+pub type BundleId = U256;
 
-pub mod helpers;
+// ------------------
+// | Bundle Context |
+// ------------------
 
 /// Context of an external match bundle
 #[derive(Clone, Debug)]
-pub struct BundleContext {
+pub(crate) struct BundleContext {
     /// The key description that settled the bundle
     pub key_description: String,
+    /// The bundle ID
+    pub bundle_id: BundleId,
     /// The request ID of the bundle
     pub request_id: String,
     /// The SDK version that requested the bundle
@@ -27,69 +29,41 @@ pub struct BundleContext {
     pub gas_sponsorship_info: Option<(GasSponsorshipInfo, U256)>,
     /// Whether the bundle was sponsored
     pub is_sponsored: bool,
-    /// The nullifier that was nullified as a result of the bundle being settled
-    pub nullifier: Nullifier,
     /// The timestamp of the price of the match in milliseconds
     pub price_timestamp: u64,
     /// The timestamp of the assembly of the bundle in milliseconds
     pub assembled_timestamp: Option<u64>,
 }
 
-struct StoreInner {
-    /// The mapping from bundle ID to bundle context
-    by_id: HashMap<String, BundleContext>,
-    /// The mapping from nullifier to bundle IDs
-    ///
-    /// This is used to efficiently cleanup the store when a nullifier is spent
-    by_null: HashMap<Nullifier, HashSet<String>>,
-}
-
-impl StoreInner {
-    /// Create a new inner store
-    pub fn new() -> Self {
-        Self { by_id: HashMap::new(), by_null: HashMap::new() }
-    }
-}
+// ---------
+// | Store |
+// ---------
 
 /// A thread-safe store for tracking bundle contexts by ID and nullifier.
 #[derive(Clone)]
 pub struct BundleStore {
-    /// The inner store
-    inner: Arc<RwLock<StoreInner>>,
+    /// The mapping from bundle ID to bundle context
+    by_id: Arc<DashMap<BundleId, BundleContext>>,
 }
 
 impl BundleStore {
     /// Create a new bundle store
     pub fn new() -> Self {
-        Self { inner: Arc::new(RwLock::new(StoreInner::new())) }
+        Self { by_id: Arc::new(DashMap::new()) }
     }
 
     /// Write a bundle to the store
-    pub async fn write(
-        &self,
-        bundle_id: String,
-        ctx: BundleContext,
-    ) -> Result<(), AuthServerError> {
-        let mut inner = self.inner.write().await;
-        inner.by_id.insert(bundle_id.clone(), ctx.clone());
-        inner.by_null.entry(ctx.nullifier).or_default().insert(bundle_id);
-        Ok(())
+    pub fn write(&self, ctx: BundleContext) {
+        self.by_id.insert(ctx.bundle_id, ctx);
     }
 
     /// Read a bundle from the store by its ID
-    pub async fn read(&self, bundle_id: &str) -> Result<Option<BundleContext>, AuthServerError> {
-        let inner = self.inner.read().await;
-        Ok(inner.by_id.get(bundle_id).cloned())
+    pub fn read(&self, bundle_id: &BundleId) -> Option<BundleContext> {
+        self.by_id.get(bundle_id).map(|ptr| ptr.value().clone())
     }
 
-    /// Cleanup (remove) all bundles that were indexed with the given nullifier
-    pub async fn cleanup_by_nullifier(&self, nullifier: &Nullifier) -> Result<(), AuthServerError> {
-        let mut inner = self.inner.write().await;
-        if let Some(bundle_ids) = inner.by_null.remove(nullifier) {
-            for bundle_id in bundle_ids {
-                inner.by_id.remove(&bundle_id);
-            }
-        }
-        Ok(())
+    /// Cleanup (remove) the bundle with the given ID
+    pub fn remove_bundle(&self, bundle_id: &BundleId) {
+        self.by_id.remove(bundle_id);
     }
 }

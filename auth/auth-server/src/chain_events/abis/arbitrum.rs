@@ -37,6 +37,7 @@ use crate::{
 sol! {
     contract GasSponsorContract {
         event SponsoredExternalMatch(uint256 indexed amount, address indexed token, uint256 indexed nonce);
+        event NonceUsed(uint256 indexed nonce);
     }
 }
 
