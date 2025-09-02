@@ -127,7 +127,7 @@ impl Server {
         &self,
         order: &mut ExternalOrder,
         ctx: &RequestContext<Req>,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError>
+    ) -> Result<GasSponsorshipInfo, AuthServerError>
     where
         Req: Serialize + for<'de> Deserialize<'de>,
     {
@@ -144,13 +144,11 @@ impl Server {
         // Subtract the refund amount from the exact output amount requested in the
         // order, so that the relayer produces a smaller quote which will
         // match the exact output amount after the refund is issued
-        if let Some(ref gas_sponsorship_info) = gas_sponsorship_info
-            && requires_exact_output_amount_update(order, gas_sponsorship_info)
-        {
+        if requires_exact_output_amount_update(order, &gas_sponsorship_info) {
             info!(
                 "Adjusting exact output amount requested in order to account for gas sponsorship"
             );
-            apply_gas_sponsorship_to_exact_output_amount(order, gas_sponsorship_info);
+            apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info);
         }
 
         Ok(gas_sponsorship_info)

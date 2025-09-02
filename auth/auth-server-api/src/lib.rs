@@ -101,10 +101,15 @@ impl GasSponsorshipInfo {
         Ok(Self { refund_amount, refund_native_eth, refund_address })
     }
 
+    /// Construct a new gas sponsorship info representing a zero refund
+    pub fn zero() -> Self {
+        Self { refund_amount: 0, refund_native_eth: false, refund_address: None }
+    }
+
     /// Whether this sponsorship implies an update to the effective price /
     /// receive amount of the associated match result
     pub fn requires_match_result_update(&self) -> bool {
-        !self.refund_native_eth && self.refund_address.is_none()
+        !self.refund_native_eth && self.refund_address.is_none() && self.refund_amount > 0
     }
 
     /// Get the refund amount as an alloy U256
