@@ -176,12 +176,16 @@ impl Server {
 
     /// Apply gas sponsorship to the given match request, returning the
     /// resulting `ExternalMatchRequest` and the generated gas sponsorship
-    /// info, if any
+    /// info.
+    ///
+    /// We use the gas sponsorship nonce to track bundle attribution, so we
+    /// always return a `GasSponsorshipInfo` instance, even if the trade is
+    /// not sponsored.
     #[instrument(skip_all)]
     async fn sponsor_direct_match_request(
         &self,
         ctx: &mut DirectMatchRequestCtx,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+    ) -> Result<GasSponsorshipInfo, AuthServerError> {
         let ctx_clone = ctx.clone();
         let req = ctx.body_mut();
         let gas_sponsorship_info =

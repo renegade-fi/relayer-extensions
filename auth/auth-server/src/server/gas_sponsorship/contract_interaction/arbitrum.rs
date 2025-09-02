@@ -318,7 +318,9 @@ fn sign_sponsorship_nonce(
     let mut message = Vec::new();
     message.extend_from_slice(&nonce.to_be_bytes::<{ U256::BYTES }>());
     message.extend_from_slice(refund_address.as_ref());
-    message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
+    if refund_amount > 0 {
+        message.extend_from_slice(&refund_amount.to_be_bytes::<{ U256::BYTES }>());
+    }
 
     let signature = sign_message(&message, gas_sponsor_auth_key)?.into();
 

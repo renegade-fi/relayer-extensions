@@ -46,7 +46,7 @@ impl Server {
         key_desc: &str,
         order: &ExternalOrder,
         query_params: &GasSponsorshipQueryParams,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+    ) -> Result<GasSponsorshipInfo, AuthServerError> {
         // Parse query params
         let (sponsorship_disabled, refund_address, refund_native_eth) =
             query_params.get_or_default();
@@ -58,12 +58,11 @@ impl Server {
 
         let sponsor_match = !(rate_limited || sponsorship_disabled || order_too_small);
         if !sponsor_match {
-            return Ok(None);
+            return Ok(GasSponsorshipInfo::zero());
         }
 
         let refund_amount = self.compute_refund_amount_for_order(order, refund_native_eth).await?;
         GasSponsorshipInfo::new(refund_amount, refund_native_eth, refund_address)
-            .map(Some)
             .map_err(AuthServerError::gas_sponsorship)
     }
 

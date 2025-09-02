@@ -95,8 +95,8 @@ impl<Req: Serialize + for<'de> Deserialize<'de>> RequestContext<Req> {
     }
 
     /// Attach gas sponsorship info to the request context
-    pub fn set_sponsorship_info(&mut self, info: Option<GasSponsorshipInfo>) {
-        self.sponsorship_info = info;
+    pub fn set_sponsorship_info(&mut self, info: GasSponsorshipInfo) {
+        self.sponsorship_info = Some(info);
     }
 }
 

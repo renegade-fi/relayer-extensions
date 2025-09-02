@@ -181,12 +181,17 @@ impl Server {
     /// and ensure sponsorship is correctly applied to the updated order, if
     /// present.
     ///
-    /// Returns the assembly request, and the gas sponsorship info, if any.
+    /// We use the gas sponsorship nonce to track bundle attribution, so we
+    /// always return a `GasSponsorshipInfo` instance, even if the trade is
+    /// not sponsored.
+    ///
+    /// Returns the assembly request, and the gas sponsorship info (possibly
+    /// zero)
     #[instrument(skip_all)]
     pub(crate) async fn sponsor_assembly_request(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+    ) -> Result<GasSponsorshipInfo, AuthServerError> {
         let req = ctx.body_mut();
         let redis_key = generate_quote_uuid(&req.signed_quote);
         let gas_sponsorship_info = match self.read_gas_sponsorship_info_from_redis(redis_key).await
@@ -213,7 +218,9 @@ impl Server {
             }
         }
 
-        Ok(gas_sponsorship_info)
+        // Return a zerod gas refund if no info was found
+        let info = gas_sponsorship_info.unwrap_or_else(GasSponsorshipInfo::zero);
+        Ok(info)
     }
 
     /// Potentially apply gas sponsorship to the given

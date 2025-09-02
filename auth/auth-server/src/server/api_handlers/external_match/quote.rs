@@ -178,12 +178,16 @@ impl Server {
     /// ensures that any exact output amount requested in the order is
     /// respected.
     ///
-    /// Returns the gas sponsorship info for the request, if any.
+    /// We use the gas sponsorship nonce to track bundle attribution, so we
+    /// always return a `GasSponsorshipInfo` instance, even if the trade is
+    /// not sponsored.
+    ///
+    /// Returns the gas sponsorship info for the request.
     #[instrument(skip_all)]
     async fn sponsor_quote_request(
         &self,
         ctx: &mut QuoteRequestCtx,
-    ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
+    ) -> Result<GasSponsorshipInfo, AuthServerError> {
         // Apply gas sponsorship to the order
         let ctx_clone = ctx.clone();
         let req = ctx.body_mut();
