@@ -98,19 +98,17 @@ impl Server {
 
         // Start the on-chain event listener
         let chain_listener_config = OnChainEventListenerConfig {
+            chain: args.chain_id,
+            gas_sponsor_address,
             websocket_addr: args.eth_websocket_addr.clone(),
+            bundle_store: bundle_store.clone(),
+            rate_limiter: rate_limiter.clone(),
+            price_reporter_client: price_reporter_client.clone(),
+            gas_cost_sampler: gas_cost_sampler.clone(),
             darkpool_client: darkpool_client.clone(),
         };
-        let mut chain_listener = OnChainEventListener::new(
-            chain_listener_config,
-            bundle_store.clone(),
-            rate_limiter.clone(),
-            price_reporter_client.clone(),
-            gas_cost_sampler.clone(),
-            args.chain_id,
-            gas_sponsor_address,
-        )
-        .expect("failed to build on-chain event listener");
+        let mut chain_listener = OnChainEventListener::new(chain_listener_config)
+            .expect("failed to build on-chain event listener");
         chain_listener.start().expect("failed to start on-chain event listener");
         chain_listener.watch();
 

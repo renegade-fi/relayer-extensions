@@ -1,17 +1,7 @@
 //! The worker implementation for the on-chain event listener
-use alloy_primitives::Address;
-use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
-use std::{sync::Arc, thread::Builder};
+use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
-
-use crate::{
-    bundle_store::BundleStore,
-    server::{
-        gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
-    },
-};
 
 use super::{
     error::OnChainEventListenerError,
@@ -20,24 +10,8 @@ use super::{
 
 impl OnChainEventListener {
     /// Create a new on-chain event listener
-    pub fn new(
-        config: OnChainEventListenerConfig,
-        bundle_store: BundleStore,
-        rate_limiter: AuthServerRateLimiter,
-        price_reporter_client: PriceReporterClient,
-        gas_cost_sampler: Arc<GasCostSampler>,
-        chain: Chain,
-        gas_sponsor_address: Address,
-    ) -> Result<Self, OnChainEventListenerError> {
-        let executor = OnChainEventListenerExecutor::new(
-            config,
-            bundle_store,
-            rate_limiter,
-            price_reporter_client,
-            gas_cost_sampler,
-            chain,
-            gas_sponsor_address,
-        );
+    pub fn new(config: OnChainEventListenerConfig) -> Result<Self, OnChainEventListenerError> {
+        let executor = OnChainEventListenerExecutor::new(config);
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 

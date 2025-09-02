@@ -215,6 +215,11 @@ impl<
         self.sponsorship_info_with_nonce.as_ref().map(|(info, _)| info.clone())
     }
 
+    /// Get the sponsorship nonce
+    pub fn sponsorship_nonce(&self) -> Option<U256> {
+        self.sponsorship_info_with_nonce.as_ref().map(|(_, nonce)| *nonce)
+    }
+
     /// Get a reference to the gas sponsorship info & nonce
     pub fn sponsorship_info_with_nonce(&self) -> Option<(GasSponsorshipInfo, U256)> {
         self.sponsorship_info_with_nonce.clone()
