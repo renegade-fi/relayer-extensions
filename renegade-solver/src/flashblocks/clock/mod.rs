@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::flashblocks::{Flashblock, FlashblocksReceiver};
 
-use self::ema::Ema;
+use self::ema::EmaManager;
 
 mod constants;
 mod ema;
@@ -45,7 +45,7 @@ pub struct FlashblockClockInner {
     /// The last observed L2 block timestamp in milliseconds
     pub last_l2_ts: AtomicU64,
     /// The EMA of the flashblock and L2 block durations.
-    ema: Ema,
+    ema: EmaManager,
 }
 
 impl FlashblockClockInner {
@@ -56,7 +56,7 @@ impl FlashblockClockInner {
             last_l2_idx: AtomicU64::new(0),
             last_flashblock_ts: AtomicU64::new(0),
             last_l2_ts: AtomicU64::new(0),
-            ema: Ema::new(),
+            ema: EmaManager::new(),
         }
     }
 }

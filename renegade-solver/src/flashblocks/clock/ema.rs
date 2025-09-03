@@ -1,47 +1,38 @@
 //! EMA manager that updates estimates once aligned to clean boundaries.
 //! The clock module only needs to call `update()` and get estimates.
 
-use std::sync::atomic::Ordering;
-
-use atomic_float::AtomicF64;
-
 use super::constants::{DEFAULT_FLASHBLOCK_MS, DEFAULT_L2_MS, FLASHBLOCK_WINDOW, L2_WINDOW};
+use crate::arrival_control::ema::Ema;
 
 /// EMA manager for flashblock and L2 timing.
 ///
 /// Maintains two independent EMA estimates for flashblock and L2 block
 /// durations.
-pub(crate) struct Ema {
-    /// The smoothing factor for the flashblock duration.
-    fb_alpha: f64,
-    /// The smoothing factor for the L2 block duration.
-    l2_alpha: f64,
-    /// Current EMA estiamte of the flashblock duration.
-    fb_estimate_f64: AtomicF64,
-    /// Current EMA estiamte of the L2 block duration.
-    l2_estimate_f64: AtomicF64,
+pub(crate) struct EmaManager {
+    /// EMA for the flashblock duration.
+    fb: Ema,
+    /// EMA for the L2 block duration.
+    l2: Ema,
 }
 
-impl Ema {
+impl EmaManager {
     /// Creates a new EMA manager.
     pub fn new() -> Self {
         Self {
-            fb_alpha: alpha_from_window(FLASHBLOCK_WINDOW),
-            l2_alpha: alpha_from_window(L2_WINDOW),
-            fb_estimate_f64: AtomicF64::new(DEFAULT_FLASHBLOCK_MS as f64),
-            l2_estimate_f64: AtomicF64::new(DEFAULT_L2_MS as f64),
+            fb: Ema::from_window_length(FLASHBLOCK_WINDOW as u32, DEFAULT_FLASHBLOCK_MS as f64),
+            l2: Ema::from_window_length(L2_WINDOW as u32, DEFAULT_L2_MS as f64),
         }
     }
 
     /// Returns the current EMA estimate of the flashblock duration.
     pub fn flashblock_duration_ms(&self) -> u64 {
-        let est = self.fb_estimate_f64.load(Ordering::Relaxed);
+        let est = self.fb.last();
         est.round() as u64
     }
 
     /// Returns the current EMA estimate of the L2 block duration.
     pub fn l2_block_duration_ms(&self) -> u64 {
-        let est = self.l2_estimate_f64.load(Ordering::Relaxed);
+        let est = self.l2.last();
         est.round() as u64
     }
 
@@ -75,17 +66,13 @@ impl Ema {
 
     /// Updates the EMA estimate of the flashblock duration.
     fn update_fb_estimate(&self, sample_ms: u64) -> u64 {
-        let old = self.fb_estimate_f64.load(Ordering::Relaxed);
-        let new = self.fb_alpha * (sample_ms as f64) + (1.0 - self.fb_alpha) * old;
-        self.fb_estimate_f64.store(new, Ordering::Relaxed);
+        let new = self.fb.update(sample_ms as f64);
         new.max(1.0).round() as u64
     }
 
     /// Updates the EMA estimate of the L2 block duration.
     fn update_l2_estimate(&self, sample_ms: u64) -> u64 {
-        let old = self.l2_estimate_f64.load(Ordering::Relaxed);
-        let new = self.l2_alpha * (sample_ms as f64) + (1.0 - self.l2_alpha) * old;
-        self.l2_estimate_f64.store(new, Ordering::Relaxed);
+        let new = self.l2.update(sample_ms as f64);
         new.max(1.0).round() as u64
     }
 
@@ -146,10 +133,4 @@ impl Ema {
             None
         }
     }
-}
-
-/// Compute EMA alpha from window length via 2/(N+1).
-fn alpha_from_window(window: usize) -> f64 {
-    let n = window.max(1) as f64;
-    2.0 / (n + 1.0)
 }
