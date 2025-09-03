@@ -27,10 +27,7 @@ impl ChainEventsListener {
 
 impl FlashblocksReceiver for ChainEventsListener {
     fn on_flashblock_received(&self, fb: Flashblock) {
-        let position = L2Position {
-            l2_block: fb.metadata.block_number,
-            flashblock: fb.index,
-        };
+        let position = L2Position { l2_block: fb.metadata.block_number, flashblock: fb.index };
 
         // List of hashes reported in this flashblock's diff
         let fb_hashes: HashSet<_> = fb.diff.transactions.iter().map(keccak256).collect();
@@ -39,8 +36,7 @@ impl FlashblocksReceiver for ChainEventsListener {
         let included_timestamp_ms = get_current_time_millis();
 
         let observed_tuples =
-            self.store
-                .observe_inclusions(&position, included_timestamp_ms, &fb_hashes);
+            self.store.observe_inclusions(&position, included_timestamp_ms, &fb_hashes);
 
         // Feed back update for each observed transaction.
         for (target_timestamp_ms, sent_at_timestamp_ms) in observed_tuples {
@@ -53,11 +49,7 @@ impl FlashblocksReceiver for ChainEventsListener {
                 "observed - target: {}ms",
                 included_timestamp_ms as f64 - target_timestamp_ms as f64
             );
-            tracing::info!(
-                "observed inclusion in {}#{}",
-                position.l2_block,
-                position.flashblock,
-            );
+            tracing::info!("observed inclusion in {}#{}", position.l2_block, position.flashblock,);
         }
     }
 }
