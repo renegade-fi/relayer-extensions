@@ -1,9 +1,5 @@
 //! Defines the error types for the transaction store.
-
 use thiserror::Error;
-
-/// Type alias for Results using TxStoreError
-pub type TxStoreResult<T> = Result<T, TxStoreError>;
 
 /// The generic tx store error
 #[derive(Error, Debug)]

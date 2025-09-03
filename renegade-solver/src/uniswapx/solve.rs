@@ -6,7 +6,7 @@ use alloy_rpc_types_eth::TransactionRequest;
 use renegade_sdk::types::AtomicMatchApiBundle;
 use tracing::info;
 
-use crate::tx_store::store::L2Position;
+use crate::tx_store::store::TxTiming;
 use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::{
     error::{SolverError, SolverResult},
@@ -79,21 +79,23 @@ impl UniswapXSolver {
 
         // Compute timing
         let start_block = u256_to_u128(auction_start_block)? as u64;
-        let target = L2Position { l2_block: start_block, flashblock: 1 };
-        let timing = self.planner.plan_timing(target);
+        let target_timestamp_ms = self.flashblock_clock.target_timestamp_ms(1, start_block);
+        let send_timestamp_ms = self.controller.compute_send_ms(target_timestamp_ms);
 
-        // Store pre-computed transaction
-        self.tx_store.enqueue(&order_hash, raw_tx_bytes, tx_hash, target, timing.clone());
+        // Enqueue the transaction for submission at the given timestamp
+        self.tx_driver.enqueue(send_timestamp_ms, &raw_tx_bytes, &tx_hash);
+
+        // Write the transaction context to the TxStore
+        let timing = TxTiming { send_timestamp_ms, target_timestamp_ms };
+        self.tx_store.write(&order_hash, &tx_hash, &timing);
 
         tracing::info!(
             message = "tx enqueued",
-            id = order_hash.to_string(),
+            id = order_hash,
+            send_timestamp_ms = send_timestamp_ms,
+            start_block = start_block,
+            target_timestamp_ms = target_timestamp_ms,
             tx_hash = tx_hash.to_string(),
-            trigger_block = timing.trigger.l2_block,
-            trigger_flashblock = timing.trigger.flashblock,
-            target_block = target.l2_block,
-            target_flashblock = target.flashblock,
-            buffer_ms = timing.buffer_ms
         );
 
         Ok(())

@@ -16,22 +16,23 @@ use tracing::{info, info_span};
 use warp::Filter;
 
 use crate::{
+    arrival_control::controller::ArrivalController,
     chain_events::listener::ChainEventsListener,
     cli::Cli,
     error::{handle_rejection, SolverError},
     fee_cache::{worker::FeeCacheWorker, FeeCache},
-    flashblocks::FlashblocksListener,
+    flashblocks::{clock::FlashblockClock, FlashblocksListener},
     tx_driver::driver::TxDriver,
     tx_store::store::TxStore,
     uniswapx::{executor_client::ExecutorClient, UniswapXSolver},
 };
 
+mod arrival_control;
 mod chain_events;
 mod cli;
 mod error;
 mod fee_cache;
 mod flashblocks;
-mod planner;
 mod tx_driver;
 mod tx_store;
 mod uniswapx;
@@ -51,24 +52,38 @@ async fn main() {
     let fee_cache = FeeCache::new();
 
     // Create the base fee cache worker
-    let fee_updater = FeeCacheWorker::new(executor_client.provider(), fee_cache.clone());
+    let fee_updater = FeeCacheWorker::new(executor_client.provider(), fee_cache.clone(), &cli);
     fee_updater.start();
 
     // Create the TxStore
-    let tx_store = TxStore::new(fee_cache.clone());
+    let tx_store = TxStore::new();
+
+    // Create the arrival controller
+    let controller = ArrivalController::default();
 
     // Create flashblocks listener and start the subscription
-    let tx_driver = TxDriver::new(tx_store.clone(), &executor_client);
-    let chain_listener = ChainEventsListener::new(tx_store.clone());
+    let flashblock_clock = FlashblockClock::new();
+    let chain_listener = ChainEventsListener::new(tx_store.clone(), controller.clone());
 
-    let flashblocks_listener =
-        FlashblocksListener::new(vec![Box::new(tx_driver), Box::new(chain_listener)], &cli);
+    let flashblocks_listener = FlashblocksListener::new(
+        vec![Box::new(chain_listener), Box::new(flashblock_clock.clone())],
+        &cli,
+    );
     flashblocks_listener.start();
 
+    let tx_driver = TxDriver::new(&executor_client);
     // Create the UniswapX solver and begin its polling loop
-    let uniswapx = UniswapXSolver::new(cli.clone(), executor_client.clone(), tx_store.clone())
-        .await
-        .expect("Failed to create UniswapX solver");
+    let uniswapx = UniswapXSolver::new(
+        cli.clone(),
+        controller.clone(),
+        executor_client.clone(),
+        fee_cache.clone(),
+        flashblock_clock,
+        tx_driver.clone(),
+        tx_store.clone(),
+    )
+    .await
+    .expect("Failed to create UniswapX solver");
     uniswapx.spawn_polling_loop();
 
     // Create the endpoints

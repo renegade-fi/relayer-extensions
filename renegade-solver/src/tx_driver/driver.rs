@@ -1,72 +1,55 @@
-//! Defines the transaction driver which is responsible for scheduling
-//! transactions to be submitted on-chain.
+//! Defines the transaction driver which schedules submissions by timestamp
+//! millis.
 
 use alloy_primitives::{Bytes, TxHash};
 use eyre::Result;
 use tokio::time::{sleep_until, Duration, Instant};
 
-use crate::flashblocks::{Flashblock, FlashblocksReceiver};
-use crate::tx_store::store::{L2Position, TxStore};
-use crate::uniswapx::executor_client::ExecutorClient;
+use crate::{
+    flashblocks::clock::get_current_time_millis, uniswapx::executor_client::ExecutorClient,
+};
 
 /// The driver for the transaction scheduler.
 #[derive(Clone)]
 pub struct TxDriver {
-    /// The transaction store
-    tx_store: TxStore,
     /// Executor client used for sending transactions
     executor_client: ExecutorClient,
 }
 
 impl TxDriver {
-    /// Creates a new `TxDriver` with the given transaction store and executor
+    /// Creates a new `TxDriver` with the given executor
     /// client.
-    pub fn new(tx_store: TxStore, executor: &ExecutorClient) -> Self {
-        Self { tx_store, executor_client: executor.clone() }
+    pub fn new(executor: &ExecutorClient) -> Self {
+        Self { executor_client: executor.clone() }
     }
 
-    /// Send a pre-computed transaction at the specified time
+    /// Send a pre-computed transaction at the specified wall-clock instant.
     async fn send_tx(
-        id: String,
         send_at: Instant,
         raw_tx_bytes: Bytes,
         tx_hash: TxHash,
         executor_client: ExecutorClient,
     ) -> Result<()> {
-        // Wait until the send time
         sleep_until(send_at).await;
-
-        // Send the pre-signed transaction
         executor_client.send_raw(raw_tx_bytes).await?;
-
-        tracing::info!(message = "shot out", id = %id, tx_hash = %tx_hash);
+        tracing::info!(message = "shot out", tx_hash = %tx_hash);
         Ok(())
     }
-}
 
-impl FlashblocksReceiver for TxDriver {
-    fn on_flashblock_received(&self, fb: Flashblock) {
-        let position = L2Position { l2_block: fb.metadata.block_number, flashblock: fb.index };
-        let ready_txns = self.tx_store.due_at(&position);
+    /// Queue a transaction to be sent at the given timestamp milliseconds.
+    pub fn enqueue(&self, send_timestamp_ms: u64, raw_tx_bytes: &Bytes, tx_hash: &TxHash) {
+        let now_ms = get_current_time_millis();
+        let delay_ms = send_timestamp_ms.saturating_sub(now_ms);
+        let send_at = Instant::now() + Duration::from_millis(delay_ms);
 
-        for (id, buffer_ms, raw_tx_bytes, tx_hash) in ready_txns {
-            let executor_client = self.executor_client.clone();
-            let buffer_duration = Duration::from_millis(buffer_ms);
-            let send_at = fb.received_at.checked_add(buffer_duration).unwrap();
+        let executor_client = self.executor_client.clone();
+        let raw_tx_bytes = raw_tx_bytes.clone();
+        let tx_hash = *tx_hash;
 
-            tokio::spawn(async move {
-                if let Err(err) = Self::send_tx(
-                    id.clone(),
-                    send_at.into(),
-                    raw_tx_bytes,
-                    tx_hash,
-                    executor_client,
-                )
-                .await
-                {
-                    tracing::warn!(message = "send_tx failed", id = %id, err = %err);
-                }
-            });
-        }
+        tokio::spawn(async move {
+            if let Err(err) = Self::send_tx(send_at, raw_tx_bytes, tx_hash, executor_client).await {
+                tracing::warn!("Tx submission failed with error: {}", err);
+            }
+        });
     }
 }

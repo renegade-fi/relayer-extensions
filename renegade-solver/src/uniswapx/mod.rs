@@ -3,7 +3,8 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
-    cli::Cli, error::SolverResult, fee_cache::fees::FeeCache, planner::TxPlanner,
+    arrival_control::controller::ArrivalController, cli::Cli, error::SolverResult,
+    fee_cache::fees::FeeCache, flashblocks::clock::FlashblockClock, tx_driver::driver::TxDriver,
     tx_store::store::TxStore, uniswapx::uniswap_api::types::OrderEntity,
 };
 use alloy::primitives::Address;
@@ -83,12 +84,16 @@ pub struct UniswapXSolver {
     /// An order is placed in the cache even if processing the order fails, this
     /// cache is for deduplicating requests rather than tracking order status.
     order_cache: OrderCache,
-    /// The TxStore for storing solutions
-    tx_store: TxStore,
-    /// The TxPlanner for planning transactions
-    planner: TxPlanner,
+    /// The ArrivalController for planning transactions
+    controller: ArrivalController,
     /// The fee cache for getting current base fee and nonce
     fee_cache: FeeCache,
+    /// The flashblock clock for computing target timestamps
+    flashblock_clock: FlashblockClock,
+    /// The tx driver for submitting transactions
+    tx_driver: TxDriver,
+    /// The TxStore for storing solutions
+    tx_store: TxStore,
 }
 
 impl UniswapXSolver {
@@ -99,10 +104,12 @@ impl UniswapXSolver {
     /// Create a new UniswapX solver
     pub async fn new(
         cli: Cli,
+        controller: ArrivalController,
         executor_client: ExecutorClient,
-        tx_store: TxStore,
-        planner: TxPlanner,
         fee_cache: FeeCache,
+        flashblock_clock: FlashblockClock,
+        tx_driver: TxDriver,
+        tx_store: TxStore,
     ) -> SolverResult<Self> {
         let Cli { uniswapx_url: base_url, renegade_api_key, renegade_api_secret, .. } = cli;
 
@@ -114,13 +121,15 @@ impl UniswapXSolver {
         Ok(Self {
             base_url,
             http_client: ReqwestClient::new(),
-            renegade_client,
-            executor_client,
-            supported_tokens,
             order_cache: new_order_cache(),
-            tx_store,
-            planner,
+            renegade_client,
+            controller,
+            executor_client,
             fee_cache,
+            flashblock_clock,
+            supported_tokens,
+            tx_driver,
+            tx_store,
         })
     }
 
