@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use renegade_util::get_current_time_millis;
+
 use crate::flashblocks::{Flashblock, FlashblocksReceiver};
 
 use self::ema::EmaManager;
@@ -113,25 +115,21 @@ impl FlashblockClock {
 
     /// Snapshot the current state of the clock.
     pub fn snapshot(&self) -> FlashblockClockSnapshot {
+        let inner = &self.0;
+        let ema = &inner.ema;
         FlashblockClockSnapshot {
-            flashblock_duration_ms: self.0.ema.flashblock_duration_ms(),
-            l2_block_duration_ms: self.0.ema.l2_block_duration_ms(),
-            last_l2_idx: self.0.last_l2_idx.load(Ordering::Relaxed),
-            last_l2_ts: self.0.last_l2_ts.load(Ordering::Relaxed),
-            last_flashblock_idx: self.0.last_flashblock_idx.load(Ordering::Relaxed),
-            last_flashblock_ts: self.0.last_flashblock_ts.load(Ordering::Relaxed),
+            flashblock_duration_ms: ema.flashblock_duration_ms(),
+            l2_block_duration_ms: ema.l2_block_duration_ms(),
+            last_l2_idx: inner.last_l2_idx.load(Ordering::Relaxed),
+            last_l2_ts: inner.last_l2_ts.load(Ordering::Relaxed),
+            last_flashblock_idx: inner.last_flashblock_idx.load(Ordering::Relaxed),
+            last_flashblock_ts: inner.last_flashblock_ts.load(Ordering::Relaxed),
         }
     }
 }
 
-/// Returns the current unix timestamp in milliseconds, represented as u64.
-pub fn get_current_time_millis() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).expect("negative timestamp").as_millis() as u64
-}
-
 impl FlashblocksReceiver for FlashblockClock {
     fn on_flashblock_received(&self, fb: Flashblock) {
-        let now = get_current_time_millis();
         let current_fb_idx = fb.index;
         let current_l2_idx = fb.metadata.block_number;
 
@@ -140,22 +138,29 @@ impl FlashblocksReceiver for FlashblockClock {
             last_l2_ts,
             last_flashblock_idx,
             last_flashblock_ts,
-            flashblock_duration_ms: _,
-            l2_block_duration_ms: _,
+            ..
         } = self.snapshot();
 
         // Update EMA
-        self.0.ema.update_estimates(
+        let ema = &self.0.ema;
+        let now_ms = get_current_time_millis();
+        // Only update if we have valid samples
+        if let Some(fb_sample) = ema.maybe_sample_flashblock_duration(
             last_flashblock_idx,
             last_flashblock_ts,
-            last_l2_idx,
-            last_l2_ts,
             current_fb_idx,
-            current_l2_idx,
-            now,
-        );
+            now_ms,
+        ) {
+            ema.update_fb_estimate(fb_sample);
+        }
+
+        if let Some(l2_sample) =
+            ema.maybe_sample_l2_duration(last_l2_idx, last_l2_ts, current_l2_idx, now_ms)
+        {
+            ema.update_l2_estimate(l2_sample);
+        }
 
         // Update the state of the flashblock clock.
-        self.update_from_observation(current_fb_idx, current_l2_idx, now);
+        self.update_from_observation(current_fb_idx, current_l2_idx, now_ms);
     }
 }

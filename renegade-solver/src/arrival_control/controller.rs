@@ -26,13 +26,13 @@ pub const INITIAL_DELAY_SEED_MS: f64 = 200.0;
 #[derive(Clone)]
 pub struct ArrivalController {
     /// The EMA instance for tracking delay estimates.
-    delay_ema: Arc<Mutex<Ema>>,
+    delay_ema: Arc<Ema>,
 }
 
 impl Default for ArrivalController {
     fn default() -> Self {
         let delay_ema = Ema::from_window_length(DELAY_WINDOW, INITIAL_DELAY_SEED_MS);
-        Self { delay_ema: Arc::new(Mutex::new(delay_ema)) }
+        Self { delay_ema: Arc::new(delay_ema) }
     }
 }
 
@@ -40,7 +40,7 @@ impl ArrivalController {
     /// Compute local timestamp at which to send to target an arrival at
     /// `target_ms`.
     pub fn compute_send_ms(&self, target_ms: u64) -> u64 {
-        let delay_estimate = self.delay_ema.lock().expect("EMA lock poisoned").last();
+        let delay_estimate = self.delay_ema.last();
         target_ms.saturating_sub(delay_estimate.round() as u64)
     }
 
@@ -54,7 +54,7 @@ impl ArrivalController {
     /// We approximate the one-way delay as the time between sending and
     /// observing the packet arrival.
     fn update_delay_estimate(&self, send_ms: u64, actual_ms: u64) {
-        let ema = self.delay_ema.lock().expect("EMA lock poisoned");
+        let ema = self.delay_ema;
         info!("old delay estimate: {}ms", ema.last());
 
         let observed_one_way_delay_ms = actual_ms.saturating_sub(send_ms) as f64;

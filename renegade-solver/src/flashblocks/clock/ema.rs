@@ -25,55 +25,29 @@ impl EmaManager {
     }
 
     /// Returns the current EMA estimate of the flashblock duration.
+    ///
+    /// Note: this rounds to the nearest millisecond.
     pub fn flashblock_duration_ms(&self) -> u64 {
         let est = self.fb.last();
         est.round() as u64
     }
 
     /// Returns the current EMA estimate of the L2 block duration.
+    ///
+    /// Note: this rounds to the nearest millisecond.
     pub fn l2_block_duration_ms(&self) -> u64 {
         let est = self.l2.last();
         est.round() as u64
     }
 
-    #[allow(clippy::too_many_arguments)]
-    /// Updates the EMA estimates of the flashblock and L2 block durations.
-    pub fn update_estimates(
-        &self,
-        last_flashblock_idx: u64,
-        last_flashblock_ts: u64,
-        last_l2_idx: u64,
-        last_l2_ts: u64,
-        current_flashblock_idx: u64,
-        current_l2_idx: u64,
-        now_ms: u64,
-    ) {
-        // Only update if we have valid samples
-        if let Some(fb_sample) = self.try_sample_flashblock(
-            last_flashblock_idx,
-            last_flashblock_ts,
-            current_flashblock_idx,
-            now_ms,
-        ) {
-            self.update_fb_estimate(fb_sample);
-        }
-
-        if let Some(l2_sample) = self.try_sample_l2(last_l2_idx, last_l2_ts, current_l2_idx, now_ms)
-        {
-            self.update_l2_estimate(l2_sample);
-        }
-    }
-
     /// Updates the EMA estimate of the flashblock duration.
-    fn update_fb_estimate(&self, sample_ms: u64) -> u64 {
-        let new = self.fb.update(sample_ms as f64);
-        new.max(1.0).round() as u64
+    pub fn update_fb_estimate(&self, sample_ms: u64) {
+        self.fb.update(sample_ms as f64);
     }
 
     /// Updates the EMA estimate of the L2 block duration.
-    fn update_l2_estimate(&self, sample_ms: u64) -> u64 {
-        let new = self.l2.update(sample_ms as f64);
-        new.max(1.0).round() as u64
+    pub fn update_l2_estimate(&self, sample_ms: u64) {
+        self.l2.update(sample_ms as f64);
     }
 
     /// Downsamples observed flashblock durations and checks validity.
@@ -87,23 +61,23 @@ impl EmaManager {
     ///   ignore it.
     ///
     /// Returns the sample if the flashblock is valid.
-    fn try_sample_flashblock(
+    pub fn maybe_sample_flashblock_duration(
         &self,
         last_flashblock_idx: u64,
         last_flashblock_ts: u64,
         current_flashblock_idx: u64,
-        now_ms: u64,
+        current_flashblock_ts: u64,
     ) -> Option<u64> {
         if last_flashblock_idx == 0 || last_flashblock_ts == 0 || current_flashblock_idx == 0 {
             return None;
         }
 
-        let delta = current_flashblock_idx.saturating_sub(last_flashblock_idx);
-        if delta == 0 {
+        let idx_delta = current_flashblock_idx.saturating_sub(last_flashblock_idx);
+        if idx_delta == 0 {
             return None;
         }
-        let dt = now_ms.saturating_sub(last_flashblock_ts);
-        let per_fb = dt / delta;
+        let ts_delta = current_flashblock_ts.saturating_sub(last_flashblock_ts);
+        let per_fb = ts_delta / idx_delta;
         Some(per_fb)
     }
 
@@ -113,21 +87,21 @@ impl EmaManager {
     ///   index.
     ///
     /// Returns the sample if the L2 block is valid.
-    fn try_sample_l2(
+    pub fn maybe_sample_l2_duration(
         &self,
         last_l2_idx: u64,
         last_l2_ts: u64,
         current_l2_idx: u64,
-        now_ms: u64,
+        current_l2_ts: u64,
     ) -> Option<u64> {
         if last_l2_idx == 0 || last_l2_ts == 0 {
             return None;
         }
 
         if current_l2_idx > last_l2_idx {
-            let delta = current_l2_idx - last_l2_idx;
-            let dt_total = now_ms.saturating_sub(last_l2_ts);
-            let per_l2 = dt_total / delta;
+            let idx_delta = current_l2_idx - last_l2_idx;
+            let ts_delta = current_l2_ts.saturating_sub(last_l2_ts);
+            let per_l2 = ts_delta / idx_delta;
             Some(per_l2)
         } else {
             None
