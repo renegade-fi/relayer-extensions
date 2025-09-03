@@ -1,5 +1,6 @@
 //! Defines a listener for flashblocks events.
 
+pub mod clock;
 mod listener;
 pub mod multi_listener;
 pub use listener::{Flashblock, FlashblocksReceiver};
