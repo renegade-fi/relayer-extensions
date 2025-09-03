@@ -39,6 +39,7 @@ renegade-util = { workspace = true, features = [
 ] }
 
 # === Misc Dependencies === #
+atomic_float = "1.1"
 bimap = "0.6"
 brotli = "8.0.1"
 eyre = "0.6"
