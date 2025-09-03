@@ -70,7 +70,6 @@ impl FlashblockClock {
     /// Returns the estimated target timestamp in milliseconds for the given
     /// target flashblock and L2 block.
     pub fn target_timestamp_ms(&self, target_flashblock: u64, target_l2: u64) -> u64 {
-        // Snapshot estimates/anchors.
         let FlashblockClockSnapshot {
             flashblock_duration_ms,
             l2_block_duration_ms,
@@ -136,7 +135,6 @@ impl FlashblocksReceiver for FlashblockClock {
         let current_fb_idx = fb.index;
         let current_l2_idx = fb.metadata.block_number;
 
-        // Update EMA
         let FlashblockClockSnapshot {
             last_l2_idx,
             last_l2_ts,
@@ -145,6 +143,8 @@ impl FlashblocksReceiver for FlashblockClock {
             flashblock_duration_ms: _,
             l2_block_duration_ms: _,
         } = self.snapshot();
+
+        // Update EMA
         self.0.ema.update_estimates(
             last_flashblock_idx,
             last_flashblock_ts,
