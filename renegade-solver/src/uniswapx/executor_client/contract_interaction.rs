@@ -8,7 +8,7 @@ use alloy::rpc::types::TransactionRequest;
 use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use renegade_sdk::types::AtomicMatchApiBundle;
-use renegade_solidity_abi::IDarkpool::{processAtomicMatchSettleCall, SignedOrder};
+use renegade_solidity_abi::IDarkpool::{sponsorAtomicMatchSettleCall, SignedOrder};
 
 /// Gas limit for the `executeAtomicMatchSettle` function
 const ATOMIC_MATCH_SETTLE_GAS_LIMIT: u64 = 10_000_000;
@@ -24,13 +24,13 @@ impl ExecutorClient {
         let darkpool_calldata =
             bundle.settlement_tx.input.data.expect("No calldata found in bundle transaction");
 
-        let processAtomicMatchSettleCall {
-            internalPartyPayload: internal_party_payload,
-            matchSettleStatement: match_settle_statement,
-            proofs,
-            linkingProofs: linking_proofs,
+        let sponsorAtomicMatchSettleCall {
+            internalPartyMatchPayload: internal_party_payload,
+            validMatchSettleAtomicStatement: match_settle_statement,
+            matchProofs: proofs,
+            matchLinkingProofs: linking_proofs,
             ..
-        } = processAtomicMatchSettleCall::abi_decode(darkpool_calldata.as_ref())?;
+        } = sponsorAtomicMatchSettleCall::abi_decode(darkpool_calldata.as_ref())?;
 
         let call = self.contract.executeAtomicMatchSettle(
             signed_order,
