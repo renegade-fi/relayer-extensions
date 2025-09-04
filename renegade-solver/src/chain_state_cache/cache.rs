@@ -1,6 +1,12 @@
 //! Defines a cache for the base fee per gas.
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::Address;
+
+use crate::cli::Cli;
 
 /// The inner cache backing storage.
 struct ChainStateCacheInner {
@@ -8,6 +14,8 @@ struct ChainStateCacheInner {
     base_fee_per_gas: AtomicU64,
     /// The pending nonce for the signer address.
     pending_nonce: AtomicU64,
+    /// Signer whose pending nonce is tracked
+    signer_address: Address,
 }
 
 #[derive(Clone)]
@@ -17,10 +25,13 @@ pub struct ChainStateCache(Arc<ChainStateCacheInner>);
 
 impl ChainStateCache {
     /// Create a new cache
-    pub fn new() -> Self {
+    pub fn new(cli: &Cli) -> Self {
+        let signer = PrivateKeySigner::from_str(&cli.private_key).expect("Failed to parse signer");
+        let signer_address = signer.address();
         Self(Arc::new(ChainStateCacheInner {
             base_fee_per_gas: AtomicU64::default(),
             pending_nonce: AtomicU64::default(),
+            signer_address,
         }))
     }
 
@@ -48,5 +59,10 @@ impl ChainStateCache {
             0 => None,
             v => Some(v),
         }
+    }
+
+    /// Gets the signer address.
+    pub fn signer_address(&self) -> Address {
+        self.0.signer_address
     }
 }

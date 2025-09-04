@@ -1,15 +1,11 @@
 //! Defines a worker that listens for blocks and updates the chain state cache.
 
-use alloy::{
-    providers::{DynProvider, Provider},
-    signers::local::PrivateKeySigner,
-};
+use alloy::providers::{DynProvider, Provider};
 use alloy_primitives::Address;
 use futures_util::StreamExt;
-use std::str::FromStr;
 use tracing::{error, info, warn};
 
-use crate::{chain_state_cache::cache::ChainStateCache, cli::Cli};
+use crate::chain_state_cache::cache::ChainStateCache;
 
 /// The worker that listens for blocks and updates the chain state cache.
 pub struct ChainStateCacheWorker {
@@ -17,24 +13,20 @@ pub struct ChainStateCacheWorker {
     provider: DynProvider,
     /// The chain state cache to update.
     chain_state_cache: ChainStateCache,
-    /// Signer whose pending nonce is tracked
-    signer_address: Address,
 }
 
 impl ChainStateCacheWorker {
     /// Creates a new `FeeCacheWorker` with the given provider and chain state
     /// cache.
-    pub fn new(provider: DynProvider, chain_state_cache: ChainStateCache, cli: &Cli) -> Self {
-        let signer = PrivateKeySigner::from_str(&cli.private_key).expect("Failed to parse signer");
-        let signer_address = signer.address();
-        Self { provider, chain_state_cache, signer_address }
+    pub fn new(provider: DynProvider, chain_state_cache: ChainStateCache) -> Self {
+        Self { provider, chain_state_cache }
     }
 
     /// Starts the worker.
     pub fn start(&self) {
         let provider = self.provider.clone();
         let chain_state_cache = self.chain_state_cache.clone();
-        let signer = self.signer_address;
+        let signer = self.chain_state_cache.signer_address();
         tokio::spawn(Self::watch_blocks(provider, chain_state_cache, signer));
     }
 

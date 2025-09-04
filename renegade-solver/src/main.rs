@@ -49,11 +49,11 @@ async fn main() {
         ExecutorClient::new(&cli).await.expect("Failed to create executor client");
 
     // Create the base chain state cache
-    let chain_state_cache = ChainStateCache::new();
+    let chain_state_cache = ChainStateCache::new(&cli);
 
     // Create the base chain state cache worker
     let chain_state_cache_worker =
-        ChainStateCacheWorker::new(executor_client.provider(), chain_state_cache.clone(), &cli);
+        ChainStateCacheWorker::new(executor_client.provider(), chain_state_cache.clone());
     chain_state_cache_worker.start();
 
     // Create the TxStore
