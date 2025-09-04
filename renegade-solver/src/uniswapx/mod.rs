@@ -3,9 +3,10 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
-    arrival_control::controller::ArrivalController, cli::Cli, error::SolverResult,
-    fee_cache::fees::FeeCache, flashblocks::clock::FlashblockClock, tx_driver::driver::TxDriver,
-    tx_store::store::TxStore, uniswapx::uniswap_api::types::OrderEntity,
+    arrival_control::controller::ArrivalController, chain_state_cache::cache::ChainStateCache,
+    cli::Cli, error::SolverResult, flashblocks::clock::FlashblockClock,
+    tx_driver::driver::TxDriver, tx_store::store::TxStore,
+    uniswapx::uniswap_api::types::OrderEntity,
 };
 use alloy::primitives::Address;
 use bimap::BiMap;
@@ -86,8 +87,8 @@ pub struct UniswapXSolver {
     order_cache: OrderCache,
     /// The ArrivalController for planning transactions
     controller: ArrivalController,
-    /// The fee cache for getting current base fee and nonce
-    fee_cache: FeeCache,
+    /// The chain state cache for getting current base fee and nonce
+    chain_state_cache: ChainStateCache,
     /// The flashblock clock for computing target timestamps
     flashblock_clock: FlashblockClock,
     /// The tx driver for submitting transactions
@@ -106,7 +107,7 @@ impl UniswapXSolver {
         cli: Cli,
         controller: ArrivalController,
         executor_client: ExecutorClient,
-        fee_cache: FeeCache,
+        chain_state_cache: ChainStateCache,
         flashblock_clock: FlashblockClock,
         tx_driver: TxDriver,
         tx_store: TxStore,
@@ -125,7 +126,7 @@ impl UniswapXSolver {
             renegade_client,
             controller,
             executor_client,
-            fee_cache,
+            chain_state_cache,
             flashblock_clock,
             supported_tokens,
             tx_driver,

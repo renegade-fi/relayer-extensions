@@ -2,8 +2,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// The inner cache backing storage. Kept private to hide concurrency details.
-struct FeeCacheInner {
+/// The inner cache backing storage.
+struct ChainStateCacheInner {
     /// The base fee per gas.
     base_fee_per_gas: AtomicU64,
     /// The pending nonce for the signer address.
@@ -11,13 +11,14 @@ struct FeeCacheInner {
 }
 
 #[derive(Clone)]
-/// A value-type handle to the fee cache. Clones are cheap and share state.
-pub struct FeeCache(Arc<FeeCacheInner>);
+/// A value-type handle to the chain state cache. Clones are cheap and share
+/// state.
+pub struct ChainStateCache(Arc<ChainStateCacheInner>);
 
-impl FeeCache {
+impl ChainStateCache {
     /// Create a new cache
     pub fn new() -> Self {
-        Self(Arc::new(FeeCacheInner {
+        Self(Arc::new(ChainStateCacheInner {
             base_fee_per_gas: AtomicU64::default(),
             pending_nonce: AtomicU64::default(),
         }))

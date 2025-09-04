@@ -105,12 +105,12 @@ impl UniswapXSolver {
     /// the cache
     fn set_tx_fee(&self, tx: &mut TransactionRequest, priority_fee_wei: U256) -> SolverResult<()> {
         let base_fee = self
-            .fee_cache
+            .chain_state_cache
             .base_fee_per_gas()
             .ok_or_else(|| SolverError::Custom("base_fee_per_gas unavailable".to_string()))?
             as u128;
         let nonce = self
-            .fee_cache
+            .chain_state_cache
             .pending_nonce()
             .ok_or_else(|| SolverError::Custom("pending nonce unavailable".to_string()))?;
 

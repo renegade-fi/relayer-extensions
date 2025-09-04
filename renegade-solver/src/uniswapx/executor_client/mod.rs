@@ -28,8 +28,8 @@ pub mod errors;
 pub type ExecutorProvider = DynProvider;
 
 /// A configuration struct for the executor client, consists of relevant
-/// contract addresses, and endpoint for setting up an RPC client, and a private
-/// key for signing transactions.
+/// contract addresses, and endpoint for setting up an RPC client, and a signer
+/// for signing transactions.
 pub struct ExecutorConfig {
     /// The address of the executor proxy contract.
     ///
@@ -89,9 +89,8 @@ pub struct ExecutorClient {
 impl ExecutorClient {
     /// Creates a new ExecutorClient from CLI configuration
     pub async fn new(cli: &Cli) -> Result<Self, ExecutorConfigError> {
-        // Parse the private key
-        let signer = PrivateKeySigner::from_str(&cli.private_key)
-            .map_err(err_str!(ExecutorConfigError::AddressParsing))?;
+        // Parse the signer
+        let signer = PrivateKeySigner::from_str(&cli.private_key)?;
 
         // Create the configuration
         // Use explicit WebSocket URL from CLI

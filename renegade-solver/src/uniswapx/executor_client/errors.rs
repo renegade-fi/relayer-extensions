@@ -1,6 +1,7 @@
 //! Possible errors thrown by the executor client
 
 use alloy::providers::PendingTransactionError;
+use alloy::signers::local::LocalSignerError;
 use alloy::signers::Error as SignerError;
 use alloy_contract::Error as ContractError;
 use alloy_primitives::U256;
@@ -15,6 +16,9 @@ pub enum ExecutorConfigError {
     #[error("Failed to parse RPC URL: {0}")]
     /// Error thrown when the RPC client fails to initialize
     RpcClientInitialization(String),
+    #[error("Signer error: {0}")]
+    /// An error interacting with the signer
+    LocalSigner(LocalSignerError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -83,5 +87,11 @@ impl From<U256> for ExecutorError {
 impl From<SignerError> for ExecutorError {
     fn from(e: SignerError) -> Self {
         Self::Signer(e)
+    }
+}
+
+impl From<LocalSignerError> for ExecutorConfigError {
+    fn from(e: LocalSignerError) -> Self {
+        Self::LocalSigner(e)
     }
 }

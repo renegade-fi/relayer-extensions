@@ -18,9 +18,9 @@ use warp::Filter;
 use crate::{
     arrival_control::controller::ArrivalController,
     chain_events::listener::ChainEventsListener,
+    chain_state_cache::{worker::ChainStateCacheWorker, ChainStateCache},
     cli::Cli,
     error::{handle_rejection, SolverError},
-    fee_cache::{worker::FeeCacheWorker, FeeCache},
     flashblocks::{clock::FlashblockClock, FlashblocksListener},
     tx_driver::driver::TxDriver,
     tx_store::store::TxStore,
@@ -29,9 +29,9 @@ use crate::{
 
 mod arrival_control;
 mod chain_events;
+mod chain_state_cache;
 mod cli;
 mod error;
-mod fee_cache;
 mod flashblocks;
 mod tx_driver;
 mod tx_store;
@@ -48,12 +48,13 @@ async fn main() {
     let executor_client =
         ExecutorClient::new(&cli).await.expect("Failed to create executor client");
 
-    // Create the base fee cache
-    let fee_cache = FeeCache::new();
+    // Create the base chain state cache
+    let chain_state_cache = ChainStateCache::new();
 
-    // Create the base fee cache worker
-    let fee_updater = FeeCacheWorker::new(executor_client.provider(), fee_cache.clone(), &cli);
-    fee_updater.start();
+    // Create the base chain state cache worker
+    let chain_state_cache_worker =
+        ChainStateCacheWorker::new(executor_client.provider(), chain_state_cache.clone(), &cli);
+    chain_state_cache_worker.start();
 
     // Create the TxStore
     let tx_store = TxStore::new();
@@ -77,7 +78,7 @@ async fn main() {
         cli.clone(),
         controller.clone(),
         executor_client.clone(),
-        fee_cache.clone(),
+        chain_state_cache.clone(),
         flashblock_clock,
         tx_driver.clone(),
         tx_store.clone(),

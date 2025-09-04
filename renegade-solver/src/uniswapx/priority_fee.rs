@@ -38,11 +38,11 @@ pub fn compute_priority_fee(priority_order_price: f64, renegade_price: f64, is_s
 
     let priority_fee_wei = U256::from(priority_fee_mps as u128);
     tracing::info!(
-        "Renegade price: {} | UniswapX price: {} | Improvement: {} bps | Priority fee: {} wei",
-        renegade_price,
-        priority_order_price,
-        improvement_percent * 10000.0,
-        priority_fee_mps
+        renegade_price = renegade_price,
+        priority_order_price = priority_order_price,
+        improvement_percent = improvement_percent,
+        "Computed priority fee: {:?}",
+        priority_fee_wei
     );
 
     priority_fee_wei
