@@ -3,9 +3,9 @@
 use std::collections::HashSet;
 
 use alloy_primitives::keccak256;
+use renegade_util::get_current_time_millis;
 
 use crate::arrival_control::controller::ArrivalController;
-use crate::flashblocks::clock::get_current_time_millis;
 use crate::flashblocks::{Flashblock, FlashblocksReceiver};
 use crate::tx_store::store::{L2Position, TxStore};
 

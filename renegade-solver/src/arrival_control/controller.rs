@@ -7,7 +7,7 @@
 //!
 //! Send Rule: `s = T - delay_estimate`
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tracing::info;
 
@@ -54,7 +54,7 @@ impl ArrivalController {
     /// We approximate the one-way delay as the time between sending and
     /// observing the packet arrival.
     fn update_delay_estimate(&self, send_ms: u64, actual_ms: u64) {
-        let ema = self.delay_ema;
+        let ema = self.delay_ema.clone();
         info!("old delay estimate: {}ms", ema.last());
 
         let observed_one_way_delay_ms = actual_ms.saturating_sub(send_ms) as f64;

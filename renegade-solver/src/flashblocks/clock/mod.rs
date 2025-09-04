@@ -4,7 +4,6 @@
 //! connection to the Flashblocks block builder.
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use renegade_util::get_current_time_millis;
 

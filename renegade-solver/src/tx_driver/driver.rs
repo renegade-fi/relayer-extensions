@@ -3,11 +3,10 @@
 
 use alloy_primitives::{Bytes, TxHash};
 use eyre::Result;
+use renegade_util::get_current_time_millis;
 use tokio::time::{sleep_until, Duration, Instant};
 
-use crate::{
-    flashblocks::clock::get_current_time_millis, uniswapx::executor_client::ExecutorClient,
-};
+use crate::uniswapx::executor_client::ExecutorClient;
 
 /// The driver for the transaction scheduler.
 #[derive(Clone)]
