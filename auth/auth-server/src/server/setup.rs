@@ -11,11 +11,7 @@ use crate::bundle_store::BundleStore;
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use crate::server::caching::ServerCache;
 use crate::telemetry::configure_telemtry_from_args;
-use crate::{
-    Cli,
-    error::AuthServerError,
-    telemetry::{quote_comparison::handler::QuoteComparisonHandler, sources::QuoteSource},
-};
+use crate::{Cli, error::AuthServerError};
 use aes_gcm::{Aes128Gcm, KeyInit};
 use alloy::hex;
 use alloy::signers::k256::ecdsa::SigningKey;
@@ -76,13 +72,6 @@ impl Server {
             true, // exit_on_stale
         )?;
 
-        // Setup quote metrics
-        let quote_metrics = maybe_setup_quote_metrics(
-            &args,
-            darkpool_client.clone(),
-            price_reporter_client.clone(),
-        );
-
         let gas_sponsor_address = parse_gas_sponsor_address(&args)?;
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
@@ -123,7 +112,6 @@ impl Server {
             cache: ServerCache::new(),
             client: Client::new(),
             rate_limiter,
-            quote_metrics,
             metrics_sampling_rate: args
                 .metrics_sampling_rate
                 .unwrap_or(1.0 /* default no sampling */),
@@ -202,20 +190,6 @@ fn parse_auth_server_keys(
         SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
 
     Ok((encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key))
-}
-
-/// Setup the quote metrics recorder and sources if enabled
-fn maybe_setup_quote_metrics(
-    args: &Cli,
-    darkpool_client: DarkpoolClient,
-    price_reporter: PriceReporterClient,
-) -> Option<Arc<QuoteComparisonHandler>> {
-    if !args.enable_quote_comparison {
-        return None;
-    }
-
-    let odos_source = QuoteSource::odos_default();
-    Some(Arc::new(QuoteComparisonHandler::new(vec![odos_source], darkpool_client, price_reporter)))
 }
 
 /// Parse the gas sponsor address from the CLI args

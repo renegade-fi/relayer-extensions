@@ -18,7 +18,6 @@ use crate::bundle_store::BundleStore;
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::convert_headers;
 use crate::server::caching::ServerCache;
-use crate::telemetry::quote_comparison::handler::QuoteComparisonHandler;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::Address;
@@ -66,8 +65,6 @@ pub struct Server {
     pub client: Client,
     /// The rate limiter
     pub rate_limiter: AuthServerRateLimiter,
-    /// The quote metrics recorder
-    pub quote_metrics: Option<Arc<QuoteComparisonHandler>>,
     /// Rate at which to sample metrics (0.0 to 1.0)
     pub metrics_sampling_rate: f64,
     /// The address of the gas sponsor address

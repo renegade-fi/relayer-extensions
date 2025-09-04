@@ -183,18 +183,6 @@ impl Server {
             (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
         ];
 
-        // Record quote comparisons before settlement, if enabled
-        if let Some(quote_metrics) = self.quote_metrics.clone() {
-            let bundle_clone = match_bundle.clone();
-            let labels_clone = labels.clone();
-
-            // Record quote comparisons concurrently, so as to not interfere with awaiting
-            // settlement
-            tokio::spawn(async move {
-                quote_metrics.record_quote_comparison(&bundle_clone, &labels_clone).await;
-            });
-        }
-
         // Record metrics
         record_external_match_metrics(order, &match_bundle, &labels)?;
         Ok(())
