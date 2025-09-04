@@ -15,7 +15,6 @@ pub struct Ema {
 
 impl Ema {
     /// Construct an EMA with a given smoothing factor α and initial seed value.
-    #[inline]
     pub fn with_alpha(alpha: f64, seed: f64) -> Self {
         assert!(alpha > 0.0 && alpha <= 1.0, "alpha must be in (0,1]");
         Self { alpha, last: AtomicF64::new(seed) }
@@ -26,7 +25,6 @@ impl Ema {
     ///
     /// This makes the EMA roughly comparable to an N-period SMA,
     /// but smoother and more responsive.
-    #[inline]
     pub fn from_window_length(window_length: u32, seed: f64) -> Self {
         assert!(window_length >= 1, "window_length must be >= 1");
         let alpha = 2.0 / (window_length as f64 + 1.0);
@@ -35,7 +33,6 @@ impl Ema {
 
     /// Update the EMA with a new observation, returning the new EMA value.
     /// Applies EMA_t = α·x + (1−α)·EMA_{t−1}.
-    #[inline]
     pub fn update(&self, x: f64) -> f64 {
         let prev = self.last.load(Ordering::Relaxed);
         let a = self.alpha;
@@ -45,7 +42,6 @@ impl Ema {
     }
 
     /// Returns the current EMA estimate.
-    #[inline]
     pub fn last(&self) -> f64 {
         self.last.load(Ordering::Relaxed)
     }

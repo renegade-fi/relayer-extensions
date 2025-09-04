@@ -45,19 +45,19 @@ impl ArrivalController {
     }
 
     /// Update the delay estimate with a new observation.
-    pub fn on_feedback(&self, _target_ms: u64, send_ms: u64, ack_ms: u64) {
+    pub fn on_feedback(&self, _target_ms: u64, send_ms: u64, actual_ms: u64) {
         // Update the delay EMA with the observed delay
-        self.update_delay_estimate(send_ms, ack_ms);
+        self.update_delay_estimate(send_ms, actual_ms);
     }
 
     /// Updates the delay estimate with a new observation.
     /// We approximate the one-way delay as the time between sending and
     /// observing the packet arrival.
-    fn update_delay_estimate(&self, send_ms: u64, ack_ms: u64) {
+    fn update_delay_estimate(&self, send_ms: u64, actual_ms: u64) {
         let ema = self.delay_ema.lock().expect("EMA lock poisoned");
         info!("old delay estimate: {}ms", ema.last());
 
-        let observed_one_way_delay_ms = ack_ms.saturating_sub(send_ms) as f64;
+        let observed_one_way_delay_ms = actual_ms.saturating_sub(send_ms) as f64;
         info!("observed delay: {}ms", observed_one_way_delay_ms);
 
         let new_delay_estimate_ms = ema.update(observed_one_way_delay_ms).max(0.0);
