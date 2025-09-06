@@ -10,7 +10,7 @@ use alloy_primitives::TxHash;
 use dashmap::DashMap;
 
 /// Alias for the order hash type.
-type OrderHash = String;
+pub type OrderHash = String;
 
 /// A position on the L2 chain (block and flashblock).
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -24,12 +24,10 @@ pub struct L2Position {
 /// Timing information using absolute milliseconds since the UNIX epoch.
 #[derive(Clone, Debug)]
 pub struct TxTiming {
-    /// The absolute milliseconds since the UNIX epoch when we plan to send the
-    /// transaction.
-    pub send_timestamp_ms: u64,
-    /// The absolute milliseconds since the UNIX epoch when we target arrival at
-    /// the validator.
-    pub target_timestamp_ms: u64,
+    /// The timestamp when we plan to send the transaction.
+    pub send_ts: u64,
+    /// The timestamp when we target arrival in the block builder's inbox.
+    pub target_ts: u64,
 }
 
 /// Status information captured as the transaction progresses through the chain.
@@ -40,7 +38,9 @@ pub struct TxStatus {
     /// The observed inclusion position (if seen).
     pub observed_position: Option<L2Position>,
     /// The timestamp when we observed inclusion.
-    pub included_timestamp_ms: Option<u64>,
+    pub included_ts: Option<u64>,
+    /// The timestamp when we submitted the transaction.
+    pub submitted_ts: Option<u64>,
 }
 
 /// A pre-computed transaction ready for immediate sending.
@@ -49,6 +49,8 @@ pub struct TxContext {
     /// The ID of the transaction. In practice, this is the order hash of the
     /// UniswapX order.
     pub id: OrderHash,
+    /// The position we target for inclusion.
+    pub target: L2Position,
     /// The timing information for when to send.
     pub timing: TxTiming,
     /// The evolving status of this transaction.
@@ -62,48 +64,57 @@ pub struct TxStore {
     by_id: Arc<DashMap<OrderHash, TxContext>>,
 }
 
-impl TxStore {
-    /// Creates a new `TxStore`.
-    pub fn new() -> Self {
+impl Default for TxStore {
+    fn default() -> Self {
         Self { by_id: Arc::new(DashMap::new()) }
     }
+}
 
+impl TxStore {
     // --------------
     // | Public API |
     // --------------
 
     /// Write a transaction context to the store.
-    pub fn write(&self, id: &OrderHash, tx_hash: &TxHash, timing: &TxTiming) {
+    pub fn write(&self, id: &OrderHash, tx_hash: &TxHash, timing: &TxTiming, target: &L2Position) {
         let tx = TxContext {
             id: id.to_string(),
+            target: *target,
             timing: timing.clone(),
             status: TxStatus {
                 tx_hash: *tx_hash,
                 observed_position: None,
-                included_timestamp_ms: None,
+                included_ts: None,
+                submitted_ts: None,
             },
         };
         self.by_id.insert(tx.id.clone(), tx);
+    }
+
+    /// Record the timestamp when we submitted the transaction.
+    pub fn record_submission(&self, id: &OrderHash, submitted_ts: u64) {
+        self.by_id.get_mut(id).unwrap().status.submitted_ts = Some(submitted_ts);
     }
 
     /// Records observed inclusions and returns context tuples for valid
     /// entries.
     ///
     /// For each transaction whose hash is present in `tx_hashes`, sets
-    /// `observed_position` and returns the (target_timestamp_ms,
-    /// send_timestamp_ms) tuple.
-    pub fn observe_inclusions(
+    /// `observed_position` and `included_ts`.
+    ///
+    /// Returns the transaction context for each valid entry.
+    pub fn read_by_hashes(
         &self,
-        observed: &L2Position,
-        included_timestamp_ms: u64,
         hashes: &HashSet<TxHash>,
-    ) -> Vec<(u64, u64)> {
-        let mut out: Vec<(u64, u64)> = Vec::new();
+        observed: &L2Position,
+        included_ts: u64,
+    ) -> Vec<TxContext> {
+        let mut out: Vec<TxContext> = Vec::new();
         for mut entry in self.by_id.iter_mut() {
             if hashes.contains(&entry.status.tx_hash) {
                 entry.status.observed_position = Some(*observed);
-                entry.status.included_timestamp_ms = Some(included_timestamp_ms);
-                out.push((entry.timing.target_timestamp_ms, entry.timing.send_timestamp_ms));
+                entry.status.included_ts = Some(included_ts);
+                out.push(entry.clone());
             }
         }
         out

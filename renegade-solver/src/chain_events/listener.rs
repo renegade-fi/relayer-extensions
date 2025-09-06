@@ -3,9 +3,7 @@
 use std::collections::HashSet;
 
 use alloy_primitives::keccak256;
-use renegade_util::get_current_time_millis;
 
-use crate::arrival_control::controller::ArrivalController;
 use crate::flashblocks::{Flashblock, FlashblocksReceiver};
 use crate::tx_store::store::{L2Position, TxStore};
 
@@ -14,14 +12,12 @@ use crate::tx_store::store::{L2Position, TxStore};
 pub struct ChainEventsListener {
     /// The transaction store
     store: TxStore,
-    /// Arrival controller (RTT-only feedback in epoch ms)
-    controller: ArrivalController,
 }
 
 impl ChainEventsListener {
     /// Creates a new `ChainEventsListener` with the given store.
-    pub fn new(store: TxStore, controller: ArrivalController) -> Self {
-        Self { store, controller }
+    pub fn new(store: TxStore) -> Self {
+        Self { store }
     }
 }
 
@@ -30,26 +26,21 @@ impl FlashblocksReceiver for ChainEventsListener {
         let position = L2Position { l2_block: fb.metadata.block_number, flashblock: fb.index };
 
         // List of hashes reported in this flashblock's diff
-        let fb_hashes: HashSet<_> = fb.diff.transactions.iter().map(keccak256).collect();
+        let hashes: HashSet<_> = fb.diff.transactions.iter().map(keccak256).collect();
 
         // Mark transactions as observed and capture epoch millis for inclusion.
-        let included_timestamp_ms = get_current_time_millis();
+        let actual_ts = fb.received_at;
 
-        let observed_tuples =
-            self.store.observe_inclusions(&position, included_timestamp_ms, &fb_hashes);
+        let observed_tuples = self.store.read_by_hashes(&hashes, &position, actual_ts);
 
         // Feed back update for each observed transaction.
-        for (target_timestamp_ms, sent_at_timestamp_ms) in observed_tuples {
-            self.controller.on_feedback(
-                target_timestamp_ms,
-                sent_at_timestamp_ms,
-                included_timestamp_ms,
-            );
-            tracing::info!(
-                "observed - target: {}ms",
-                included_timestamp_ms as f64 - target_timestamp_ms as f64
-            );
-            tracing::info!("observed inclusion in {}#{}", position.l2_block, position.flashblock,);
+        for tx in observed_tuples {
+            let predicted_ts = tx.timing.target_ts;
+            let expected_block = tx.target.l2_block;
+            let expected_flashblock = tx.target.flashblock;
+            tracing::info!("actual - predicted: {}ms", actual_ts as f64 - predicted_ts as f64);
+            tracing::info!("expected {}#{}", expected_block, expected_flashblock);
+            tracing::info!("got {}#{}", position.l2_block, position.flashblock,);
         }
     }
 }
