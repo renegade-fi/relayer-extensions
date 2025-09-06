@@ -9,8 +9,6 @@
 
 use std::sync::Arc;
 
-use tracing::info;
-
 use crate::arrival_control::ema::Ema;
 
 /// EMA window length for the delay estimate.
@@ -20,13 +18,13 @@ use crate::arrival_control::ema::Ema;
 pub const DELAY_WINDOW: u32 = 12;
 
 /// Initial seed value (ms) for the delay EMA.
-pub const INITIAL_DELAY_SEED_MS: f64 = 200.0;
+pub const INITIAL_DELAY_SEED_MS: f64 = 100.0;
 
 /// A thread-safe arrival controller.
 #[derive(Clone)]
 pub struct ArrivalController {
     /// The EMA instance for tracking delay estimates.
-    delay_ema: Arc<Ema>,
+    pub delay_ema: Arc<Ema>,
 }
 
 impl Default for ArrivalController {
@@ -38,29 +36,27 @@ impl Default for ArrivalController {
 
 impl ArrivalController {
     /// Compute local timestamp at which to send to target an arrival at
-    /// `target_ms`.
-    pub fn compute_send_ms(&self, target_ms: u64) -> u64 {
-        let delay_estimate = self.delay_ema.last();
-        target_ms.saturating_sub(delay_estimate.round() as u64)
+    /// `target_ts`.
+    pub fn compute_send_ts(&self, target_ts: u64) -> u64 {
+        let lead = self.delay_ema.last();
+        let lead = lead.round() as u64;
+        target_ts.saturating_sub(lead)
     }
 
     /// Update the delay estimate with a new observation.
-    pub fn on_feedback(&self, _target_ms: u64, send_ms: u64, actual_ms: u64) {
+    pub fn on_feedback(&self, submitted_ts: u64, actual_ts: u64) {
         // Update the delay EMA with the observed delay
-        self.update_delay_estimate(send_ms, actual_ms);
+        self.update_delay_estimate(submitted_ts, actual_ts);
     }
 
     /// Updates the delay estimate with a new observation.
     /// We approximate the one-way delay as the time between sending and
     /// observing the packet arrival.
-    fn update_delay_estimate(&self, send_ms: u64, actual_ms: u64) {
+    fn update_delay_estimate(&self, submitted_ts: u64, actual_ts: u64) {
         let ema = self.delay_ema.clone();
-        info!("old delay estimate: {}ms", ema.last());
 
-        let observed_one_way_delay_ms = actual_ms.saturating_sub(send_ms) as f64;
-        info!("observed delay: {}ms", observed_one_way_delay_ms);
+        let observed_one_way_delay_ms = actual_ts.saturating_sub(submitted_ts) as f64;
 
-        let new_delay_estimate_ms = ema.update(observed_one_way_delay_ms).max(0.0);
-        info!("new delay estimate: {}ms", new_delay_estimate_ms);
+        let _ = ema.update(observed_one_way_delay_ms).max(0.0);
     }
 }
