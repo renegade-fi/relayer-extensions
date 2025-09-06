@@ -1,26 +1,31 @@
-//! EMA manager that updates estimates once aligned to clean boundaries.
-//! The clock module only needs to call `update()` and get estimates.
+//! EMA manager for flash(block) duration and residual forecast error.
 
 use super::constants::{DEFAULT_FLASHBLOCK_MS, DEFAULT_L2_MS, FLASHBLOCK_WINDOW, L2_WINDOW};
-use crate::arrival_control::ema::Ema;
+use crate::{
+    arrival_control::ema::Ema,
+    flashblocks::clock::constants::{DEFAULT_FORECAST_ERROR_MS, FORECAST_ERROR_WINDOW},
+};
 
-/// EMA manager for flashblock and L2 timing.
-///
-/// Maintains two independent EMA estimates for flashblock and L2 block
-/// durations.
+/// EMA manager for flash(block) duration and residual forecast error.
 pub(crate) struct EmaManager {
     /// EMA for the flashblock duration.
-    fb: Ema,
+    flashblock_duration: Ema,
     /// EMA for the L2 block duration.
-    l2: Ema,
+    block_duration: Ema,
+    /// EMA for the websocket forecast error.
+    forecast_error: Ema,
 }
 
 impl EmaManager {
     /// Creates a new EMA manager.
     pub fn new() -> Self {
         Self {
-            fb: Ema::from_window_length(FLASHBLOCK_WINDOW as u32, DEFAULT_FLASHBLOCK_MS as f64),
-            l2: Ema::from_window_length(L2_WINDOW as u32, DEFAULT_L2_MS as f64),
+            flashblock_duration: Ema::from_window_length(FLASHBLOCK_WINDOW, DEFAULT_FLASHBLOCK_MS),
+            block_duration: Ema::from_window_length(L2_WINDOW, DEFAULT_L2_MS),
+            forecast_error: Ema::from_window_length(
+                FORECAST_ERROR_WINDOW,
+                DEFAULT_FORECAST_ERROR_MS,
+            ),
         }
     }
 
@@ -28,7 +33,7 @@ impl EmaManager {
     ///
     /// Note: this rounds to the nearest millisecond.
     pub fn flashblock_duration_ms(&self) -> u64 {
-        let est = self.fb.last();
+        let est = self.flashblock_duration.last();
         est.round() as u64
     }
 
@@ -36,18 +41,31 @@ impl EmaManager {
     ///
     /// Note: this rounds to the nearest millisecond.
     pub fn l2_block_duration_ms(&self) -> u64 {
-        let est = self.l2.last();
+        let est = self.block_duration.last();
         est.round() as u64
+    }
+
+    /// Returns the current EMA estimate of the websocket forecast error.
+    pub fn forecast_error_ms(&self) -> f64 {
+        self.forecast_error.last()
     }
 
     /// Updates the EMA estimate of the flashblock duration.
     pub fn update_fb_estimate(&self, sample_ms: u64) {
-        self.fb.update(sample_ms as f64);
+        self.flashblock_duration.update(sample_ms as f64);
     }
 
     /// Updates the EMA estimate of the L2 block duration.
     pub fn update_l2_estimate(&self, sample_ms: u64) {
-        self.l2.update(sample_ms as f64);
+        self.block_duration.update(sample_ms as f64);
+    }
+
+    /// Updates the EMA estimate of the websocket forecast error.
+    ///
+    /// The websocket forecast error is the difference between the actual timestamp and the predicted timestamp.
+    pub fn update_forecast_error_estimate(&self, actual_ts: f64, predicted_ts: f64) {
+        let sample_ts = actual_ts - predicted_ts;
+        self.forecast_error.update(sample_ts);
     }
 
     /// Downsamples observed flashblock durations and checks validity.
