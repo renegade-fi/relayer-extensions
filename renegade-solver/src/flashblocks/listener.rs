@@ -5,13 +5,13 @@
 //! This is copied from https://github.com/base/node-reth/blob/main/crates/flashblocks-rpc/src/subscription.rs
 //! to avoid the dependency on `node-reth`.
 
-use std::time::Instant;
 use std::{io::Read, sync::Arc};
 
 use alloy_primitives::map::foldhash::HashMap;
 use alloy_primitives::{Address, U256};
 use alloy_rpc_types_engine::PayloadId;
 use futures_util::StreamExt;
+use renegade_util::get_current_time_millis;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -45,7 +45,7 @@ pub struct Flashblock {
     pub base: Option<ExecutionPayloadBaseV1>,
     pub diff: ExecutionPayloadFlashblockDeltaV1,
     pub metadata: Metadata,
-    pub received_at: Instant,
+    pub received_at: u64,
 }
 
 /// Simplify actor messages to just handle shutdown.
@@ -173,7 +173,7 @@ fn try_decode_message(bytes: &[u8]) -> eyre::Result<Flashblock> {
         base: payload.base,
         diff: payload.diff,
         metadata,
-        received_at: Instant::now(),
+        received_at: get_current_time_millis(),
     })
 }
 

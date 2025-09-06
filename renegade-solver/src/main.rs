@@ -57,14 +57,14 @@ async fn main() {
     chain_state_cache_worker.start();
 
     // Create the TxStore
-    let tx_store = TxStore::new();
+    let tx_store = TxStore::default();
 
     // Create the arrival controller
     let controller = ArrivalController::default();
 
     // Create flashblocks listener and start the subscription
     let flashblock_clock = FlashblockClock::new();
-    let chain_listener = ChainEventsListener::new(tx_store.clone(), controller.clone());
+    let chain_listener = ChainEventsListener::new(tx_store.clone());
 
     let flashblocks_listener = FlashblocksListener::new(
         vec![Box::new(chain_listener), Box::new(flashblock_clock.clone())],
@@ -72,7 +72,7 @@ async fn main() {
     );
     flashblocks_listener.start();
 
-    let tx_driver = TxDriver::new(&executor_client);
+    let tx_driver = TxDriver::new(&controller, &executor_client, &tx_store);
     // Create the UniswapX solver and begin its polling loop
     let uniswapx = UniswapXSolver::new(
         cli.clone(),
