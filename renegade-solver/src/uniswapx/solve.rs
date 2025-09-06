@@ -6,7 +6,7 @@ use alloy_rpc_types_eth::TransactionRequest;
 use renegade_sdk::types::AtomicMatchApiBundle;
 use tracing::info;
 
-use crate::tx_store::store::TxTiming;
+use crate::tx_store::store::{L2Position, TxTiming};
 use crate::uniswapx::abis::conversion::u256_to_u128;
 use crate::{
     error::{SolverError, SolverResult},
@@ -79,24 +79,28 @@ impl UniswapXSolver {
 
         // Compute timing
         let start_block = u256_to_u128(auction_start_block)? as u64;
-        let target_timestamp_ms = self.flashblock_clock.target_timestamp_ms(1, start_block);
-        let send_timestamp_ms = self.controller.compute_send_ms(target_timestamp_ms);
+        let target = L2Position { l2_block: start_block, flashblock: 1 };
+        if let Some(target_ts) =
+            self.flashblock_clock.predict_adjusted_flashblock_ts(1, start_block)
+        {
+            let send_ts = self.controller.compute_send_ts(target_ts);
 
-        // Enqueue the transaction for submission at the given timestamp
-        self.tx_driver.enqueue(send_timestamp_ms, &raw_tx_bytes, &tx_hash);
+            // Enqueue the transaction for submission at the given timestamp
+            self.tx_driver.enqueue(order_hash.clone(), &raw_tx_bytes, send_ts);
 
-        // Write the transaction context to the TxStore
-        let timing = TxTiming { send_timestamp_ms, target_timestamp_ms };
-        self.tx_store.write(&order_hash, &tx_hash, &timing);
+            // Write the transaction context to the TxStore
+            let timing = TxTiming { send_ts, target_ts };
+            self.tx_store.write(&order_hash, &tx_hash, &timing, &target);
 
-        tracing::info!(
-            message = "tx enqueued",
-            id = order_hash,
-            send_timestamp_ms = send_timestamp_ms,
-            start_block = start_block,
-            target_timestamp_ms = target_timestamp_ms,
-            tx_hash = tx_hash.to_string(),
-        );
+            tracing::info!(
+                message = "tx enqueued",
+                id = order_hash,
+                send_ts = send_ts,
+                start_block = start_block,
+                target_ts = target_ts,
+                tx_hash = tx_hash.to_string(),
+            );
+        }
 
         Ok(())
     }

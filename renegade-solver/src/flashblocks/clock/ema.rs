@@ -62,7 +62,8 @@ impl EmaManager {
 
     /// Updates the EMA estimate of the websocket forecast error.
     ///
-    /// The websocket forecast error is the difference between the actual timestamp and the predicted timestamp.
+    /// The websocket forecast error is the difference between the actual
+    /// timestamp and the predicted timestamp.
     pub fn update_forecast_error_estimate(&self, actual_ts: f64, predicted_ts: f64) {
         let sample_ts = actual_ts - predicted_ts;
         self.forecast_error.update(sample_ts);
