@@ -1,14 +1,15 @@
 //! RFQT Levels endpoint handler
 
 use bytes::Bytes;
-use http::{HeaderMap, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
+use http::{HeaderMap, Method};
+use renegade_api::http::order_book::GET_DEPTH_FOR_ALL_PAIRS_ROUTE;
 use tracing::instrument;
-use warp::reject::Rejection;
+use warp::{reject::Rejection, reply::Json};
 
-use crate::error::AuthServerError;
 use crate::server::Server;
-use crate::server::api_handlers::external_match::BytesResponse;
-use crate::server::api_handlers::rfqt::helpers::{dummy_levels_body, parse_levels_query_params};
+use crate::server::api_handlers::rfqt::helpers::{
+    deserialize_depth_response, parse_levels_query_params, transform_depth_to_levels,
+};
 
 impl Server {
     /// Handle the RFQT Levels endpoint (`GET /rfqt/v3/levels`).
@@ -18,7 +19,7 @@ impl Server {
         path: warp::path::FullPath,
         headers: HeaderMap,
         query_str: String,
-    ) -> Result<BytesResponse, Rejection> {
+    ) -> Result<Json, Rejection> {
         // Authorize request (path + query)
         let path_str = path.as_str();
         let (_key_desc, _key_id) =
@@ -27,14 +28,15 @@ impl Server {
         // Parse query params with validation
         let _params = parse_levels_query_params(&query_str, self.chain)?;
 
-        // Return dummy response with correct shape
-        let body = dummy_levels_body();
+        // Send /v0/order_book_depth request to relayer
+        let resp = self
+            .send_admin_request(Method::GET, GET_DEPTH_FOR_ALL_PAIRS_ROUTE, headers, Bytes::new())
+            .await?;
 
-        let bytes = Bytes::from(serde_json::to_vec(&body).map_err(AuthServerError::serde)?);
+        // Deserialize and transform the response
+        let depth_response = deserialize_depth_response(resp.body())?;
+        let body = transform_depth_to_levels(depth_response);
 
-        let mut resp: Response<Bytes> = Response::new(bytes);
-        *resp.status_mut() = StatusCode::OK;
-        resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        Ok(resp)
+        Ok(warp::reply::json(&body))
     }
 }

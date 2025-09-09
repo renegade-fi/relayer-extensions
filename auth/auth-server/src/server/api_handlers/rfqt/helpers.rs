@@ -6,7 +6,8 @@ use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
 };
-use renegade_common::types::chain::Chain;
+use renegade_api::http::order_book::GetDepthForAllPairsResponse;
+use renegade_common::types::{chain::Chain, token::Token};
 
 use crate::error::AuthServerError;
 
@@ -58,36 +59,51 @@ pub fn parse_quote_request(body: &[u8]) -> Result<RfqtQuoteRequest, AuthServerEr
     serde_json::from_slice(body).map_err(AuthServerError::serde)
 }
 
-// -------------------------
-// | Dummy Response Bodies |
-// -------------------------
+/// Deserialize order book depth response from bytes
+pub fn deserialize_depth_response(
+    body: &[u8],
+) -> Result<GetDepthForAllPairsResponse, AuthServerError> {
+    serde_json::from_slice(body).map_err(AuthServerError::serde)
+}
 
-/// Dummy response body for GET /rfqt/v3/levels
-pub fn dummy_levels_body() -> RfqtLevelsResponse {
+/// Transform order book depth data to RFQT levels format
+pub fn transform_depth_to_levels(
+    depth_response: GetDepthForAllPairsResponse,
+) -> RfqtLevelsResponse {
     let mut pairs = HashMap::new();
+    let usdc_address = Token::usdc().get_addr();
 
-    // WETH/USDC pair
-    pairs.insert(
-        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
-            .to_string(),
-        TokenPairLevels {
-            bids: vec![Level { price: "1600.21".to_string(), amount: "0.55".to_string() }],
-            asks: vec![Level { price: "1601.25".to_string(), amount: "2.1".to_string() }],
-        },
-    );
+    for price_and_depth in depth_response.pairs {
+        let pair_key = format!("{}/{}", price_and_depth.address, usdc_address);
+        let base_token = Token::from_addr(&price_and_depth.address);
+        let price = price_and_depth.price;
 
-    // WETH/USDT pair
-    pairs.insert(
-        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xdac17f958d2ee523a2206206994597c13d831ec7"
-            .to_string(),
-        TokenPairLevels {
-            bids: vec![Level { price: "1600.25".to_string(), amount: "0.5".to_string() }],
-            asks: vec![],
-        },
-    );
+        let mut bids = Vec::new();
+        let mut asks = Vec::new();
+
+        // Convert buy side to bids
+        if price_and_depth.buy.total_quantity > 0 {
+            let buy_amount_decimal =
+                base_token.convert_to_decimal(price_and_depth.buy.total_quantity);
+            bids.push(Level { price: price.to_string(), amount: buy_amount_decimal.to_string() });
+        }
+
+        // Convert sell side to asks
+        if price_and_depth.sell.total_quantity > 0 {
+            let sell_amount_decimal =
+                base_token.convert_to_decimal(price_and_depth.sell.total_quantity);
+            asks.push(Level { price: price.to_string(), amount: sell_amount_decimal.to_string() });
+        }
+
+        pairs.insert(pair_key, TokenPairLevels { bids, asks });
+    }
 
     RfqtLevelsResponse { pairs }
 }
+
+// -------------------------
+// | Dummy Response Bodies |
+// -------------------------
 
 /// Dummy response body for POST /rfqt/v3/quote
 pub fn dummy_quote_response() -> RfqtQuoteResponse {
