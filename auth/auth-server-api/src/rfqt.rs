@@ -33,12 +33,25 @@ pub struct TokenPairLevels {
 }
 
 /// Individual price/amount level
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct Level {
     /// Price (nominal amount in decimal form)
     pub price: String,
     /// Amount (nominal amount in decimal form)
     pub amount: String,
+}
+
+impl serde::Serialize for Level {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeTuple;
+        let mut tuple = serializer.serialize_tuple(2)?;
+        tuple.serialize_element(&self.price)?;
+        tuple.serialize_element(&self.amount)?;
+        tuple.end()
+    }
 }
 
 // --------------------
