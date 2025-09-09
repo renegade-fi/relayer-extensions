@@ -2,3 +2,4 @@
 
 pub mod helpers;
 pub mod levels;
+pub mod quote;

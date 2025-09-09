@@ -421,6 +421,19 @@ async fn main() {
             server.handle_rfqt_levels_request(path, headers, query_str).await
         });
 
+    let rfqt_quote_path = warp::path("rfqt")
+        .and(warp::path("v3"))
+        .and(warp::path("quote"))
+        .and(warp::path::end())
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, server: Arc<Server>| async move {
+            server.handle_rfqt_quote_request(path, headers, body).await
+        });
+
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
@@ -441,6 +454,7 @@ async fn main() {
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
         .or(rfqt_levels_path)
+        .or(rfqt_quote_path)
         .boxed()
         .with(with_tracing())
         .recover(handle_rejection);
