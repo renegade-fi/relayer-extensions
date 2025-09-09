@@ -15,21 +15,13 @@ use crate::{
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,
         EXTERNAL_MATCH_FILL_RATIO, EXTERNAL_MATCH_QUOTE_VOLUME, EXTERNAL_ORDER_BASE_VOLUME,
-        EXTERNAL_ORDER_QUOTE_VOLUME, OUR_NET_OUTPUT_TAG, OUR_OUTPUT_NET_OF_FEE_TAG,
-        OUR_OUTPUT_NET_OF_GAS_TAG, OUR_PRICE_TAG, QUOTE_NET_OUTPUT_DIFF_BPS_METRIC,
-        QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC,
-        QUOTE_PRICE_DIFF_BPS_METRIC, SOURCE_NAME_TAG, SOURCE_NET_OUTPUT_TAG,
-        SOURCE_OUTPUT_NET_OF_FEE_TAG, SOURCE_OUTPUT_NET_OF_GAS_TAG, SOURCE_PRICE_TAG,
-        UNSUCCESSFUL_RELAYER_REQUEST_COUNT,
+        EXTERNAL_ORDER_QUOTE_VOLUME, UNSUCCESSFUL_RELAYER_REQUEST_COUNT,
     },
 };
 
-use super::{
-    labels::{
-        KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS, QUOTE_NOT_FOUND_COUNT,
-        REQUEST_PATH_METRIC_TAG, SIDE_TAG,
-    },
-    quote_comparison::QuoteComparison,
+use super::labels::{
+    KEY_DESCRIPTION_METRIC_TAG, NUM_EXTERNAL_MATCH_REQUESTS, QUOTE_NOT_FOUND_COUNT,
+    REQUEST_PATH_METRIC_TAG, SIDE_TAG,
 };
 
 /// Maximum quote volume (in decimal whole-unit terms) for which we still record
@@ -269,106 +261,4 @@ pub(crate) fn record_quote_not_found(key_description: String, base_mint: &str) {
     ];
 
     metrics::counter!(QUOTE_NOT_FOUND_COUNT, &labels).increment(1);
-}
-
-// --- Quote Comparison --- //
-
-/// Record a single quote comparison metric with all data as tags
-pub(crate) fn record_quote_price_comparison(
-    comparison: &QuoteComparison,
-    side: OrderSide,
-    extra_labels: &[(String, String)],
-) {
-    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
-    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
-
-    let mut labels = vec![
-        (SIDE_TAG.to_string(), side_label.to_string()),
-        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
-        (OUR_PRICE_TAG.to_string(), comparison.our_quote.price().to_string()),
-        (SOURCE_PRICE_TAG.to_string(), comparison.source_quote.price().to_string()),
-    ];
-    labels.extend(extra_labels.iter().cloned());
-    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
-
-    let price_diff_bps = comparison.price_diff_bps(side);
-    metrics::gauge!(QUOTE_PRICE_DIFF_BPS_METRIC, labels.as_slice()).set(price_diff_bps);
-}
-
-/// Record a quote comparison net of gas cost
-pub(crate) fn record_output_value_net_of_gas_comparison(
-    comparison: &QuoteComparison,
-    side: OrderSide,
-    extra_labels: &[(String, String)],
-) {
-    let usdc_per_gas = comparison.usdc_per_gas;
-    let output_diff_bps = comparison.output_value_net_of_gas_diff_bps(usdc_per_gas, side);
-
-    let our_output_net_of_gas = comparison.our_quote.output_net_of_gas(usdc_per_gas, side);
-    let source_output_net_of_gas = comparison.source_quote.output_net_of_gas(usdc_per_gas, side);
-
-    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
-    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
-    let mut labels = vec![
-        (SIDE_TAG.to_string(), side_label.to_string()),
-        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
-        (OUR_OUTPUT_NET_OF_GAS_TAG.to_string(), our_output_net_of_gas.to_string()),
-        (SOURCE_OUTPUT_NET_OF_GAS_TAG.to_string(), source_output_net_of_gas.to_string()),
-    ];
-    labels.extend(extra_labels.iter().cloned());
-    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
-
-    metrics::gauge!(QUOTE_OUTPUT_NET_OF_GAS_DIFF_BPS_METRIC, labels.as_slice())
-        .set(output_diff_bps);
-}
-
-/// Record a quote comparison net of fee
-pub(crate) fn record_output_value_net_of_fee_comparison(
-    comparison: &QuoteComparison,
-    side: OrderSide,
-    extra_labels: &[(String, String)],
-) {
-    let fee_diff_bps = comparison.output_value_net_of_fee_diff_bps(side);
-
-    let our_output_net_of_fee = comparison.our_quote.output_net_of_fee(side);
-    let source_output_net_of_fee = comparison.source_quote.output_net_of_fee(side);
-
-    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
-    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
-    let mut labels = vec![
-        (SIDE_TAG.to_string(), side_label.to_string()),
-        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
-        (OUR_OUTPUT_NET_OF_FEE_TAG.to_string(), our_output_net_of_fee.to_string()),
-        (SOURCE_OUTPUT_NET_OF_FEE_TAG.to_string(), source_output_net_of_fee.to_string()),
-    ];
-    labels.extend(extra_labels.iter().cloned());
-    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
-
-    metrics::gauge!(QUOTE_OUTPUT_NET_OF_FEE_DIFF_BPS_METRIC, labels.as_slice()).set(fee_diff_bps);
-}
-
-/// Record a quote comparison net of gas and fee
-pub(crate) fn record_net_output_value_comparison(
-    comparison: &QuoteComparison,
-    side: OrderSide,
-    extra_labels: &[(String, String)],
-) {
-    let usdc_per_gas = comparison.usdc_per_gas;
-    let net_output_diff_bps = comparison.net_output_value_diff_bps(usdc_per_gas, side);
-
-    let our_net_output = comparison.our_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
-    let source_net_output = comparison.source_quote.output_net_of_gas_and_fee(side, usdc_per_gas);
-
-    let side_label = if side == OrderSide::Sell { "sell" } else { "buy" };
-    let base_token = Token::from_addr(&comparison.our_quote.base_mint);
-    let mut labels = vec![
-        (SIDE_TAG.to_string(), side_label.to_string()),
-        (SOURCE_NAME_TAG.to_string(), comparison.source_quote.name.to_string()),
-        (OUR_NET_OUTPUT_TAG.to_string(), our_net_output.to_string()),
-        (SOURCE_NET_OUTPUT_TAG.to_string(), source_net_output.to_string()),
-    ];
-    labels.extend(extra_labels.iter().cloned());
-    labels = extend_labels_with_base_asset(&base_token.get_addr(), labels);
-
-    metrics::gauge!(QUOTE_NET_OUTPUT_DIFF_BPS_METRIC, labels.as_slice()).set(net_output_diff_bps);
 }
