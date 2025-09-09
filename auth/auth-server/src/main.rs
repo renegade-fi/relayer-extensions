@@ -421,10 +421,7 @@ async fn main() {
             server.handle_rfqt_levels_request(path, headers, query_str).await
         });
 
-    let rfqt_quote_path = warp::path("rfqt")
-        .and(warp::path("v3"))
-        .and(warp::path("quote"))
-        .and(warp::path::end())
+    let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())

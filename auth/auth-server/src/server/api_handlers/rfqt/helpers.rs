@@ -1,6 +1,11 @@
 //! RFQT helpers
 
-use auth_server_api::rfqt::RfqtLevelsQueryParams;
+use std::collections::HashMap;
+
+use auth_server_api::rfqt::{
+    Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
+    RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
+};
 use renegade_common::types::chain::Chain;
 
 use crate::error::AuthServerError;
@@ -45,5 +50,67 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
         Chain::BaseMainnet => 8453,
         Chain::BaseSepolia => 84532,
         Chain::Devnet => 0,
+    }
+}
+
+/// Parse request body into `RfqtQuoteRequest`
+pub fn parse_quote_request(body: &[u8]) -> Result<RfqtQuoteRequest, AuthServerError> {
+    serde_json::from_slice(body).map_err(AuthServerError::serde)
+}
+
+// -------------------------
+// | Dummy Response Bodies |
+// -------------------------
+
+/// Dummy response body for GET /rfqt/v3/levels
+pub fn dummy_levels_body() -> RfqtLevelsResponse {
+    let mut pairs = HashMap::new();
+
+    // WETH/USDC pair
+    pairs.insert(
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            .to_string(),
+        TokenPairLevels {
+            bids: vec![Level { price: "1600.21".to_string(), amount: "0.55".to_string() }],
+            asks: vec![Level { price: "1601.25".to_string(), amount: "2.1".to_string() }],
+        },
+    );
+
+    // WETH/USDT pair
+    pairs.insert(
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xdac17f958d2ee523a2206206994597c13d831ec7"
+            .to_string(),
+        TokenPairLevels {
+            bids: vec![Level { price: "1600.25".to_string(), amount: "0.5".to_string() }],
+            asks: vec![],
+        },
+    );
+
+    RfqtLevelsResponse { pairs }
+}
+
+/// Dummy response body for POST /rfqt/v3/quote
+pub fn dummy_quote_response() -> RfqtQuoteResponse {
+    RfqtQuoteResponse {
+        order: OrderDetails {
+            permitted: TokenAmount {
+                token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
+                amount: "1100000006".to_string(),
+            },
+            spender: "0x7966af62034313d87ede39380bf60f1a84c62be7".to_string(),
+            nonce: "40965050227042607011257170245709898174942929758885760071848663177298536562693".to_string(),
+            deadline: "1711125773".to_string(),
+            consideration: Consideration {
+                token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
+                amount: "1000000000".to_string(),
+                counterparty: "0x003e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
+                partial_fill_allowed: false,
+            },
+        },
+        signature: "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b".to_string(),
+        fee_token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
+        fee_amount_bps: "3.14".to_string(),
+        fee_token_conversion_rate: "13.70".to_string(),
+        maker: "0x135e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
     }
 }

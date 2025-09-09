@@ -1,6 +1,5 @@
 //! RFQT Levels endpoint handler
 
-use auth_server_api::rfqt::dummy_levels_body;
 use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 use tracing::instrument;
@@ -9,7 +8,7 @@ use warp::reject::Rejection;
 use crate::error::AuthServerError;
 use crate::server::Server;
 use crate::server::api_handlers::external_match::BytesResponse;
-use crate::server::api_handlers::rfqt::helpers::parse_levels_query_params;
+use crate::server::api_handlers::rfqt::helpers::{dummy_levels_body, parse_levels_query_params};
 
 impl Server {
     /// Handle the RFQT Levels endpoint (`GET /rfqt/v3/levels`).

@@ -5,10 +5,10 @@ use http::{HeaderMap, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 use tracing::instrument;
 use warp::reject::Rejection;
 
-use super::types::{dummy_quote_response, parse_quote_request};
 use crate::error::AuthServerError;
 use crate::server::Server;
 use crate::server::api_handlers::external_match::BytesResponse;
+use crate::server::api_handlers::rfqt::helpers::{dummy_quote_response, parse_quote_request};
 
 impl Server {
     /// Handle the RFQT Quote endpoint (`POST /rfqt/v3/quote`).
