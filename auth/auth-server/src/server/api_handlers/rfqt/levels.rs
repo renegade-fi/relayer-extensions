@@ -1,3 +1,5 @@
+//! RFQT Levels endpoint handler
+
 use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 use tracing::instrument;
@@ -9,7 +11,7 @@ use crate::server::Server;
 use crate::server::api_handlers::external_match::BytesResponse;
 
 impl Server {
-    /// Handle GET requests to /rfqt/v3/levels
+    /// Handle the RFQT Levels endpoint (`GET /rfqt/v3/levels`).
     #[instrument(skip(self, path, headers))]
     pub async fn handle_rfqt_levels_request(
         &self,
