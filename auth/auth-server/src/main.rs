@@ -412,10 +412,7 @@ async fn main() {
             server.handle_order_book_request(path, headers).await
         });
 
-    let rfqt_levels_path = warp::path("rfqt")
-        .and(warp::path("v3"))
-        .and(warp::path("levels"))
-        .and(warp::path::end())
+    let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_query_string())

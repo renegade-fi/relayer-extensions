@@ -11,7 +11,6 @@ pub fn parse_levels_query_params(
     query_str: &str,
     server_chain: Chain,
 ) -> Result<RfqtLevelsQueryParams, AuthServerError> {
-    // If string is empty, return default (do nothing)
     if query_str.is_empty() {
         return Ok(RfqtLevelsQueryParams::default());
     }
@@ -24,7 +23,6 @@ pub fn parse_levels_query_params(
     // Validate chain ID matches server chain
     validate_chain_id(chain_id, server_chain)?;
 
-    // Return validated chain ID
     Ok(RfqtLevelsQueryParams { chain_id: Some(chain_id) })
 }
 
