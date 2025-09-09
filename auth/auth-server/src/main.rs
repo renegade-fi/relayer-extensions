@@ -416,7 +416,6 @@ async fn main() {
         .and(warp::path("v3"))
         .and(warp::path("levels"))
         .and(warp::path::end())
-        .and(warp::get())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_query_string())

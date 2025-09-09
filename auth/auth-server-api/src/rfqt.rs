@@ -5,10 +5,10 @@ use std::collections::HashMap;
 
 /// Query params for GET /rfqt/v3/levels
 #[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RfqtLevelsQueryParams {
-    /// Chain identifier (1=Ethereum, 137=Polygon, 42161=Arbitrum)
-    #[serde(rename = "chainId")]
-    pub chain_id: Option<String>,
+    /// Chain identifier (1=Ethereum, 137=Polygon, 42161=Arbitrum, 8453=Base)
+    pub chain_id: Option<u64>,
 }
 
 // --------------------
@@ -66,13 +66,4 @@ pub fn dummy_levels_body() -> RfqtLevelsResponse {
     );
 
     RfqtLevelsResponse { pairs }
-}
-
-/// Parse query string into `RfqtLevelsQueryParams` with a best-effort default
-pub fn parse_levels_query_params(query_str: &str) -> RfqtLevelsQueryParams {
-    if query_str.is_empty() {
-        RfqtLevelsQueryParams::default()
-    } else {
-        serde_urlencoded::from_str(query_str).unwrap_or_default()
-    }
 }

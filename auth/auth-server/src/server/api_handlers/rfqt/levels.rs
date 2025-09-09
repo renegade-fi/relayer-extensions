@@ -1,14 +1,15 @@
 //! RFQT Levels endpoint handler
 
+use auth_server_api::rfqt::dummy_levels_body;
 use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 use tracing::instrument;
 use warp::reject::Rejection;
 
-use super::types::{RfqtLevelsQueryParams, dummy_levels_body, parse_levels_query_params};
 use crate::error::AuthServerError;
 use crate::server::Server;
 use crate::server::api_handlers::external_match::BytesResponse;
+use crate::server::api_handlers::rfqt::helpers::parse_levels_query_params;
 
 impl Server {
     /// Handle the RFQT Levels endpoint (`GET /rfqt/v3/levels`).
@@ -24,8 +25,8 @@ impl Server {
         let (_key_desc, _key_id) =
             self.authorize_request(path_str, &query_str, &headers, &[] /* body */).await?;
 
-        // Parse query params
-        let _params: RfqtLevelsQueryParams = parse_levels_query_params(&query_str);
+        // Parse query params with validation
+        let _params = parse_levels_query_params(&query_str, self.chain)?;
 
         // Return dummy response with correct shape
         let body = dummy_levels_body();
