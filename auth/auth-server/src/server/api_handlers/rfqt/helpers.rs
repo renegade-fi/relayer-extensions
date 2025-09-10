@@ -6,7 +6,11 @@ use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
 };
-use renegade_api::http::order_book::GetDepthForAllPairsResponse;
+use renegade_api::http::{
+    external_match::{ExternalMatchRequest, ExternalMatchResponse, ExternalOrder},
+    order_book::GetDepthForAllPairsResponse,
+};
+use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::{chain::Chain, token::Token};
 
 use crate::error::AuthServerError;
@@ -54,11 +58,6 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
     }
 }
 
-/// Parse request body into `RfqtQuoteRequest`
-pub fn parse_quote_request(body: &[u8]) -> Result<RfqtQuoteRequest, AuthServerError> {
-    serde_json::from_slice(body).map_err(AuthServerError::serde)
-}
-
 /// Transform order book depth data to RFQT levels format
 pub fn transform_depth_to_levels(
     depth_response: GetDepthForAllPairsResponse,
@@ -91,6 +90,116 @@ pub fn transform_depth_to_levels(
     }
 
     RfqtLevelsResponse { pairs }
+}
+
+/// Transform an RFQT quote request to an external match request
+pub fn transform_rfqt_to_external_match_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which token is USDC
+    let maker_token = Token::from_addr_biguint(&req.maker_token);
+    let taker_token = Token::from_addr_biguint(&req.taker_token);
+    let maker_is_usdc = maker_token == Token::usdc();
+    let taker_is_usdc = taker_token == Token::usdc();
+
+    if !maker_is_usdc && !taker_is_usdc {
+        return Err(AuthServerError::bad_request("Either maker or taker token must be USDC"));
+    }
+
+    // Route to appropriate handler based on USDC position
+    if taker_is_usdc {
+        transform_taker_usdc_request(req)
+    } else {
+        transform_maker_usdc_request(req)
+    }
+}
+
+/// Transform RFQT request when taker token is USDC
+/// Internally, we treat this as a buy order since taker sends USDC, maker sends
+/// base token
+fn transform_taker_usdc_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which field to set based on provided amounts
+    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
+        // Taker amount is USDC (quote token)
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (0, amount, min_fill_size)
+    } else if let Some(amount) = req.maker_amount {
+        // Maker amount is base token
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (amount, 0, min_fill_size)
+    } else {
+        return Err(AuthServerError::bad_request("No amount provided"));
+    };
+
+    // Create external order
+    let external_order = ExternalOrder {
+        base_mint: req.maker_token,
+        quote_mint: req.taker_token,
+        side: OrderSide::Buy, // Taker is buying base token with USDC
+        base_amount,
+        quote_amount,
+        exact_base_output: 0,
+        exact_quote_output: 0,
+        min_fill_size,
+    };
+
+    Ok(ExternalMatchRequest {
+        do_gas_estimation: false,
+        matching_pool: None,   // Will be set by route_direct_match_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        receiver_address: Some(req.taker),
+        external_order,
+    })
+}
+
+/// Transform RFQT request when maker token is USDC
+/// Internally, we treat this as a sell order since maker sends USDC, taker
+/// sends base token
+fn transform_maker_usdc_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which field to set based on provided amounts
+    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
+        // Taker amount is base token
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (amount, 0, min_fill_size)
+    } else if let Some(amount) = req.maker_amount {
+        // Maker amount is USDC (quote token)
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (0, amount, min_fill_size)
+    } else {
+        return Err(AuthServerError::bad_request("No amount provided"));
+    };
+
+    // Create external order
+    let external_order = ExternalOrder {
+        base_mint: req.taker_token,
+        quote_mint: req.maker_token,
+        side: OrderSide::Sell, // Taker is selling base token for USDC
+        base_amount,
+        quote_amount,
+        exact_base_output: 0,
+        exact_quote_output: 0,
+        min_fill_size,
+    };
+
+    Ok(ExternalMatchRequest {
+        do_gas_estimation: false,
+        matching_pool: None,   // Will be set by route_direct_match_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        receiver_address: Some(req.taker),
+        external_order,
+    })
+}
+
+/// Transform an external match response to an RFQT quote response
+pub fn transform_external_match_to_rfqt_response(
+    _external_resp: ExternalMatchResponse,
+) -> Result<RfqtQuoteResponse, AuthServerError> {
+    // TODO: Extract actual order details from match_bundle
+    Ok(dummy_quote_response())
 }
 
 // -------------------------
