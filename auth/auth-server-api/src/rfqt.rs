@@ -1,5 +1,6 @@
 //! RFQT endpoint types
 
+use alloy_primitives::Bytes;
 use num_bigint::BigUint;
 use renegade_api::deserialize_biguint_from_hex_string;
 use serde::{Deserialize, Serialize};
@@ -115,6 +116,8 @@ pub struct RfqtQuoteResponse {
     pub fee_token_conversion_rate: String,
     /// Signer wallet address
     pub maker: String,
+    /// Calldata for the settlement transaction
+    pub calldata: Bytes,
 }
 
 /// RFQT order details

@@ -227,6 +227,14 @@ pub fn transform_external_match_to_rfqt_response(
         .map(|addr| format!("{:#x}", addr))
         .ok_or(AuthServerError::serde("Missing maker address in settlement transaction"))?;
 
+    // Extract calldata from settlement transaction
+    let calldata = bundle
+        .settlement_tx
+        .input
+        .input()
+        .ok_or(AuthServerError::serde("Missing settlement transaction input"))?
+        .clone();
+
     // Calculate deadline
     let deadline = get_deadline();
 
@@ -260,6 +268,7 @@ pub fn transform_external_match_to_rfqt_response(
         fee_amount_bps: rfqt.fee_amount_bps.to_string(),
         fee_token_conversion_rate: rfqt.fee_token_conversion_rate.to_string(),
         maker,
+        calldata,
     })
 }
 
