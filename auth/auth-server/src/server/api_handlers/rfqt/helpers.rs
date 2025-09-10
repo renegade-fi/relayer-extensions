@@ -12,8 +12,20 @@ use renegade_api::http::{
 };
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::{chain::Chain, token::Token};
+use renegade_util::{get_current_time_millis, hex::biguint_to_hex_addr};
 
 use crate::error::AuthServerError;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The number of seconds to add to the current time to get the deadline for the
+/// RFQT order
+const DEADLINE_OFFSET_SECONDS: u64 = 60;
+
+/// A dummy signature for the RFQT order
+const DUMMY_SIGNATURE: &str = "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b";
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
 /// server chain
@@ -195,38 +207,62 @@ fn transform_maker_usdc_request(
 
 /// Transform an external match response to an RFQT quote response
 pub fn transform_external_match_to_rfqt_response(
-    _external_resp: ExternalMatchResponse,
+    external_match: &ExternalMatchResponse,
+    rfqt: RfqtQuoteRequest,
 ) -> Result<RfqtQuoteResponse, AuthServerError> {
-    // TODO: Extract actual order details from match_bundle
-    Ok(dummy_quote_response())
+    let bundle = &external_match.match_bundle;
+    let maker_token_addr = bundle.receive.mint.clone();
+    let maker_amount = bundle.receive.amount;
+    let taker_token_addr = bundle.send.mint.clone();
+    let taker_amount = bundle.send.amount;
+
+    // TODO: Signature generation
+    let signature = DUMMY_SIGNATURE.to_string();
+
+    // Extract maker address from settlement transaction
+    let settlement_tx_to = &bundle.settlement_tx.to;
+    let maybe_maker_address = settlement_tx_to.as_ref().and_then(|addr| addr.to());
+    let maker = maybe_maker_address
+        .map(|addr| format!("{:#x}", addr))
+        .ok_or(AuthServerError::serde("Missing maker address in settlement transaction"))?;
+
+    // Calculate deadline
+    let deadline = get_deadline();
+
+    // Build permitted token amount
+    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount.to_string() };
+
+    // Build consideration
+    let consideration = Consideration {
+        token: taker_token_addr,
+        amount: taker_amount.to_string(),
+        counterparty: rfqt.taker,
+        partial_fill_allowed: rfqt.partial_fill_allowed,
+    };
+
+    // Build order details
+    let order = OrderDetails {
+        permitted,
+        spender: rfqt.spender,
+        nonce: rfqt.nonce,
+        deadline: deadline.to_string(),
+        consideration,
+    };
+
+    // Build fee-related fields
+    let fee_token = biguint_to_hex_addr(&rfqt.fee_token);
+
+    Ok(RfqtQuoteResponse {
+        order,
+        signature,
+        fee_token,
+        fee_amount_bps: rfqt.fee_amount_bps.to_string(),
+        fee_token_conversion_rate: rfqt.fee_token_conversion_rate.to_string(),
+        maker,
+    })
 }
 
-// -------------------------
-// | Dummy Response Bodies |
-// -------------------------
-
-/// Dummy response body for POST /rfqt/v3/quote
-pub fn dummy_quote_response() -> RfqtQuoteResponse {
-    RfqtQuoteResponse {
-        order: OrderDetails {
-            permitted: TokenAmount {
-                token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
-                amount: "1100000006".to_string(),
-            },
-            spender: "0x7966af62034313d87ede39380bf60f1a84c62be7".to_string(),
-            nonce: "40965050227042607011257170245709898174942929758885760071848663177298536562693".to_string(),
-            deadline: "1711125773".to_string(),
-            consideration: Consideration {
-                token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
-                amount: "1000000000".to_string(),
-                counterparty: "0x003e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
-                partial_fill_allowed: false,
-            },
-        },
-        signature: "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b".to_string(),
-        fee_token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
-        fee_amount_bps: "3.14".to_string(),
-        fee_token_conversion_rate: "13.70".to_string(),
-        maker: "0x135e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
-    }
+/// Get the deadline for the RFQT order
+fn get_deadline() -> u64 {
+    (get_current_time_millis() / 1000) + DEADLINE_OFFSET_SECONDS
 }

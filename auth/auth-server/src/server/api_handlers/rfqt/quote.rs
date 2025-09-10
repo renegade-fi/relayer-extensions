@@ -10,6 +10,8 @@ use renegade_api::http::external_match::{
     ExternalMatchRequest, ExternalMatchResponse, REQUEST_EXTERNAL_MATCH_ROUTE,
 };
 
+use auth_server_api::rfqt::RfqtQuoteRequest;
+
 use crate::error::AuthServerError;
 use crate::http_utils::stringify_formatter::json_deserialize;
 use crate::server::Server;
@@ -37,7 +39,7 @@ impl Server {
 
         // 1. Run the pre-request subroutines
         let mut ctx: RequestContext<ExternalMatchRequest> =
-            self.preprocess_rfqt_quote_request(path, headers, body, query_str).await?;
+            self.preprocess_rfqt_quote_request(path, headers, body.clone(), query_str).await?;
         self.direct_match_pre_request(&mut ctx).await?;
 
         // 2. Proxy the request to the relayer
@@ -53,8 +55,9 @@ impl Server {
         let external_match_body = res.body();
         let external_match_resp: ExternalMatchResponse =
             serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
-
-        let rfqt_response = transform_external_match_to_rfqt_response(external_match_resp)?;
+        let rfqt_request: RfqtQuoteRequest = json_deserialize(&body, true /* stringify */)?;
+        let rfqt_response =
+            transform_external_match_to_rfqt_response(&external_match_resp, rfqt_request)?;
 
         Ok(warp::reply::json(&rfqt_response))
     }

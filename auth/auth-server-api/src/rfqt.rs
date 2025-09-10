@@ -117,10 +117,10 @@ pub struct RfqtQuoteResponse {
     pub maker: String,
 }
 
-/// Order details in quote response
+/// RFQT order details
 #[derive(Debug, Serialize)]
 pub struct OrderDetails {
-    /// Maker token and amount (permitted field refers to maker)
+    /// Maker's asset and amount
     pub permitted: TokenAmount,
     /// 0x settlement smart contract address
     pub spender: String,
@@ -128,7 +128,7 @@ pub struct OrderDetails {
     pub nonce: String,
     /// Deadline timestamp (must be 60+ seconds from now)
     pub deadline: String,
-    /// Taker details (consideration field refers to taker)
+    /// Taker's asset and amount
     pub consideration: Consideration,
 }
 
@@ -141,15 +141,15 @@ pub struct TokenAmount {
     pub amount: String,
 }
 
-/// Consideration details
+/// Taker order details
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Consideration {
-    /// Taker token address
+    /// Token that taker sends to the maker
     pub token: String,
-    /// Taker amount (must match request if partial_fill_allowed=false)
+    /// Amount of token that taker sends to the maker
     pub amount: String,
-    /// Taker address (must match request taker field)
+    /// Address of the taker
     pub counterparty: String,
     /// Whether partial fill is allowed (must match request)
     pub partial_fill_allowed: bool,
