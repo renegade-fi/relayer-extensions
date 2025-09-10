@@ -24,6 +24,9 @@ use crate::error::AuthServerError;
 /// RFQT order
 const DEADLINE_OFFSET_SECONDS: u64 = 60;
 
+/// A dummy signature for the RFQT order
+const DUMMY_SIGNATURE: &str = "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b";
+
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
 /// server chain
 pub fn parse_levels_query_params(
@@ -223,7 +226,7 @@ pub fn transform_external_match_to_rfqt_response(
     let taker_amount = bundle.send.amount;
 
     // TODO: Signature generation
-    let signature = "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b".to_string();
+    let signature = DUMMY_SIGNATURE.to_string();
 
     // Extract maker address from settlement transaction
     let settlement_tx_to = &bundle.settlement_tx.to;
