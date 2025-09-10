@@ -426,9 +426,10 @@ async fn main() {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
+        .and(with_query_string())
         .and(with_server(server.clone()))
-        .and_then(|path, headers, body, server: Arc<Server>| async move {
-            server.handle_rfqt_quote_request(path, headers, body).await
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_rfqt_quote_request(path, headers, body, query_str).await
         });
 
     // Bind the server and listen

@@ -1,5 +1,7 @@
 //! RFQT endpoint types
 
+use num_bigint::BigUint;
+use renegade_api::deserialize_biguint_from_hex_string;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -59,18 +61,23 @@ impl serde::Serialize for Level {
 // --------------------
 
 /// Request body for POST /rfqt/v3/quote
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RfqtQuoteRequest {
     /// Chain identifier
-    pub chain_id: String,
+    pub chain_id: u64,
     /// Maker token address
-    pub maker_token: String,
+    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
+    pub maker_token: BigUint,
     /// Taker token address
-    pub taker_token: String,
+    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
+    pub taker_token: BigUint,
     /// Units of taker token that the taker is offering (alternative to
     /// maker_amount)
-    pub taker_amount: String,
+    pub taker_amount: Option<u128>,
+    /// Units of maker token that the taker is targeting (alternative to
+    /// taker_amount)
+    pub maker_amount: Option<u128>,
     /// Retail end user address (must match counterparty in response)
     pub taker: String,
     /// Number used to prevent order from being filled twice
@@ -84,11 +91,12 @@ pub struct RfqtQuoteRequest {
     /// App ID (cuid, not uuid)
     pub app_id: String,
     /// Token address that fee is based on (maker or taker token)
-    pub fee_token: String,
+    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
+    pub fee_token: BigUint,
     /// Basis points of feeToken that will be billed by 0x
-    pub fee_amount_bps: String,
+    pub fee_amount_bps: f64,
     /// Conversion rate from feeToken to USDC (feeTokenUsdValue / UsdcValue)
-    pub fee_token_conversion_rate: String,
+    pub fee_token_conversion_rate: f64,
 }
 
 /// Response for POST /rfqt/v3/quote
@@ -109,10 +117,10 @@ pub struct RfqtQuoteResponse {
     pub maker: String,
 }
 
-/// Order details in quote response
+/// RFQT order details
 #[derive(Debug, Serialize)]
 pub struct OrderDetails {
-    /// Maker token and amount (permitted field refers to maker)
+    /// Maker's asset and amount
     pub permitted: TokenAmount,
     /// 0x settlement smart contract address
     pub spender: String,
@@ -120,7 +128,7 @@ pub struct OrderDetails {
     pub nonce: String,
     /// Deadline timestamp (must be 60+ seconds from now)
     pub deadline: String,
-    /// Taker details (consideration field refers to taker)
+    /// Taker's asset and amount
     pub consideration: Consideration,
 }
 
@@ -133,15 +141,15 @@ pub struct TokenAmount {
     pub amount: String,
 }
 
-/// Consideration details
+/// Taker order details
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Consideration {
-    /// Taker token address
+    /// Token that taker sends to the maker
     pub token: String,
-    /// Taker amount (must match request if partial_fill_allowed=false)
+    /// Amount of token that taker sends to the maker
     pub amount: String,
-    /// Taker address (must match request taker field)
+    /// Address of the taker
     pub counterparty: String,
     /// Whether partial fill is allowed (must match request)
     pub partial_fill_allowed: bool,

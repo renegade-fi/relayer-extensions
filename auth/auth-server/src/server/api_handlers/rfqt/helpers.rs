@@ -6,10 +6,23 @@ use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
 };
-use renegade_api::http::order_book::GetDepthForAllPairsResponse;
+use renegade_api::http::{
+    external_match::{ExternalMatchRequest, ExternalMatchResponse, ExternalOrder},
+    order_book::GetDepthForAllPairsResponse,
+};
+use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::{chain::Chain, token::Token};
+use renegade_util::{get_current_time_millis, hex::biguint_to_hex_addr};
 
 use crate::error::AuthServerError;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The number of seconds to add to the current time to get the deadline for the
+/// RFQT order
+const DEADLINE_OFFSET_SECONDS: u64 = 60;
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
 /// server chain
@@ -54,11 +67,6 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
     }
 }
 
-/// Parse request body into `RfqtQuoteRequest`
-pub fn parse_quote_request(body: &[u8]) -> Result<RfqtQuoteRequest, AuthServerError> {
-    serde_json::from_slice(body).map_err(AuthServerError::serde)
-}
-
 /// Deserialize order book depth response from bytes
 pub fn deserialize_depth_response(
     body: &[u8],
@@ -101,32 +109,166 @@ pub fn transform_depth_to_levels(
     RfqtLevelsResponse { pairs }
 }
 
-// -------------------------
-// | Dummy Response Bodies |
-// -------------------------
+/// Transform an RFQT quote request to an external match request
+pub fn transform_rfqt_to_external_match_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which token is USDC
+    let maker_token = Token::from_addr_biguint(&req.maker_token);
+    let taker_token = Token::from_addr_biguint(&req.taker_token);
+    let maker_is_usdc = maker_token == Token::usdc();
+    let taker_is_usdc = taker_token == Token::usdc();
 
-/// Dummy response body for POST /rfqt/v3/quote
-pub fn dummy_quote_response() -> RfqtQuoteResponse {
-    RfqtQuoteResponse {
-        order: OrderDetails {
-            permitted: TokenAmount {
-                token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
-                amount: "1100000006".to_string(),
-            },
-            spender: "0x7966af62034313d87ede39380bf60f1a84c62be7".to_string(),
-            nonce: "40965050227042607011257170245709898174942929758885760071848663177298536562693".to_string(),
-            deadline: "1711125773".to_string(),
-            consideration: Consideration {
-                token: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
-                amount: "1000000000".to_string(),
-                counterparty: "0x003e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
-                partial_fill_allowed: false,
-            },
-        },
-        signature: "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b".to_string(),
-        fee_token: "0x514910771af9ca656af840dff83e8264ecf986ca".to_string(),
-        fee_amount_bps: "3.14".to_string(),
-        fee_token_conversion_rate: "13.70".to_string(),
-        maker: "0x135e1cb9314926ae6d32479e93541b0ddc8d5de8".to_string(),
+    if !maker_is_usdc && !taker_is_usdc {
+        return Err(AuthServerError::bad_request("Either maker or taker token must be USDC"));
     }
+
+    // Route to appropriate handler based on USDC position
+    if taker_is_usdc {
+        transform_taker_usdc_request(req)
+    } else {
+        transform_maker_usdc_request(req)
+    }
+}
+
+/// Transform RFQT request when taker token is USDC
+/// Internally, we treat this as a buy order since taker sends USDC, maker sends
+/// base token
+fn transform_taker_usdc_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which field to set based on provided amounts
+    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
+        // Taker amount is USDC (quote token)
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (0, amount, min_fill_size)
+    } else if let Some(amount) = req.maker_amount {
+        // Maker amount is base token
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (amount, 0, min_fill_size)
+    } else {
+        return Err(AuthServerError::bad_request("No amount provided"));
+    };
+
+    // Create external order
+    let external_order = ExternalOrder {
+        base_mint: req.maker_token,
+        quote_mint: req.taker_token,
+        side: OrderSide::Buy, // Taker is buying base token with USDC
+        base_amount,
+        quote_amount,
+        exact_base_output: 0,
+        exact_quote_output: 0,
+        min_fill_size,
+    };
+
+    Ok(ExternalMatchRequest {
+        do_gas_estimation: false,
+        matching_pool: None,   // Will be set by route_direct_match_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        receiver_address: Some(req.taker),
+        external_order,
+    })
+}
+
+/// Transform RFQT request when maker token is USDC
+/// Internally, we treat this as a sell order since maker sends USDC, taker
+/// sends base token
+fn transform_maker_usdc_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalMatchRequest, AuthServerError> {
+    // Determine which field to set based on provided amounts
+    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
+        // Taker amount is base token
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (amount, 0, min_fill_size)
+    } else if let Some(amount) = req.maker_amount {
+        // Maker amount is USDC (quote token)
+        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
+        (0, amount, min_fill_size)
+    } else {
+        return Err(AuthServerError::bad_request("No amount provided"));
+    };
+
+    // Create external order
+    let external_order = ExternalOrder {
+        base_mint: req.taker_token,
+        quote_mint: req.maker_token,
+        side: OrderSide::Sell, // Taker is selling base token for USDC
+        base_amount,
+        quote_amount,
+        exact_base_output: 0,
+        exact_quote_output: 0,
+        min_fill_size,
+    };
+
+    Ok(ExternalMatchRequest {
+        do_gas_estimation: false,
+        matching_pool: None,   // Will be set by route_direct_match_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        receiver_address: Some(req.taker),
+        external_order,
+    })
+}
+
+/// Transform an external match response to an RFQT quote response
+pub fn transform_external_match_to_rfqt_response(
+    external_match_resp: &ExternalMatchResponse,
+    rfqt_request: RfqtQuoteRequest,
+) -> Result<RfqtQuoteResponse, AuthServerError> {
+    let bundle = &external_match_resp.match_bundle;
+    let maker_token_addr = bundle.receive.mint.clone();
+    let maker_amount = bundle.receive.amount;
+    let taker_token_addr = bundle.send.mint.clone();
+    let taker_amount = bundle.send.amount;
+
+    // TODO: Signature generation
+    let signature = "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b".to_string();
+
+    // Extract maker address from settlement transaction
+    let settlement_tx_to = &bundle.settlement_tx.to;
+    let maybe_maker_address = settlement_tx_to.as_ref().and_then(|addr| addr.to());
+    let maker = maybe_maker_address
+        .map(|addr| format!("{:#x}", addr))
+        .ok_or(AuthServerError::serde("Missing maker address in settlement transaction"))?;
+
+    // Calculate deadline
+    let deadline = get_deadline();
+
+    // Build permitted token amount
+    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount.to_string() };
+
+    // Build consideration
+    let consideration = Consideration {
+        token: taker_token_addr,
+        amount: taker_amount.to_string(),
+        counterparty: rfqt_request.taker,
+        partial_fill_allowed: rfqt_request.partial_fill_allowed,
+    };
+
+    // Build order details
+    let order = OrderDetails {
+        permitted,
+        spender: rfqt_request.spender,
+        nonce: rfqt_request.nonce,
+        deadline: deadline.to_string(),
+        consideration,
+    };
+
+    // Build fee-related fields
+    let fee_token = biguint_to_hex_addr(&rfqt_request.fee_token);
+
+    Ok(RfqtQuoteResponse {
+        order,
+        signature,
+        fee_token,
+        fee_amount_bps: rfqt_request.fee_amount_bps.to_string(),
+        fee_token_conversion_rate: rfqt_request.fee_token_conversion_rate.to_string(),
+        maker,
+    })
+}
+
+/// Get the deadline for the RFQT order
+fn get_deadline() -> u64 {
+    (get_current_time_millis() / 1000) + DEADLINE_OFFSET_SECONDS
 }

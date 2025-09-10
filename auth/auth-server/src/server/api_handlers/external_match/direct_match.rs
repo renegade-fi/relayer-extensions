@@ -110,7 +110,7 @@ impl Server {
 
     /// Run the pre-request subroutines for the direct match endpoint
     #[instrument(skip_all)]
-    async fn direct_match_pre_request(
+    pub(crate) async fn direct_match_pre_request(
         &self,
         ctx: &mut DirectMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
@@ -126,7 +126,7 @@ impl Server {
 
     /// Run the post-request subroutines for the direct match endpoint
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
-    fn direct_match_post_request(
+    pub(crate) fn direct_match_post_request(
         &self,
         mut resp: BytesResponse,
         ctx: DirectMatchResponseCtx,
