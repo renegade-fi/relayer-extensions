@@ -59,13 +59,6 @@ pub fn parse_quote_request(body: &[u8]) -> Result<RfqtQuoteRequest, AuthServerEr
     serde_json::from_slice(body).map_err(AuthServerError::serde)
 }
 
-/// Deserialize order book depth response from bytes
-pub fn deserialize_depth_response(
-    body: &[u8],
-) -> Result<GetDepthForAllPairsResponse, AuthServerError> {
-    serde_json::from_slice(body).map_err(AuthServerError::serde)
-}
-
 /// Transform order book depth data to RFQT levels format
 pub fn transform_depth_to_levels(
     depth_response: GetDepthForAllPairsResponse,

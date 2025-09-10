@@ -6,9 +6,10 @@ use renegade_api::http::order_book::GET_DEPTH_FOR_ALL_PAIRS_ROUTE;
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
+use crate::error::AuthServerError;
 use crate::server::Server;
 use crate::server::api_handlers::rfqt::helpers::{
-    deserialize_depth_response, parse_levels_query_params, transform_depth_to_levels,
+    parse_levels_query_params, transform_depth_to_levels,
 };
 
 impl Server {
@@ -34,7 +35,7 @@ impl Server {
             .await?;
 
         // Deserialize and transform the response
-        let depth_response = deserialize_depth_response(resp.body())?;
+        let depth_response = serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
         let body = transform_depth_to_levels(depth_response);
 
         Ok(warp::reply::json(&body))
