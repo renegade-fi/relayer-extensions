@@ -64,10 +64,9 @@ pub fn transform_depth_to_levels(
     depth_response: GetDepthForAllPairsResponse,
 ) -> RfqtLevelsResponse {
     let mut pairs = HashMap::new();
-    let usdc_address = Token::usdc().get_addr();
 
     for price_and_depth in depth_response.pairs {
-        let pair_key = format!("{}/{}", price_and_depth.address, usdc_address);
+        let pair_key = format!("{}/{}", price_and_depth.address, Token::usdc().get_addr());
         let base_token = Token::from_addr(&price_and_depth.address);
         let price = price_and_depth.price;
 
