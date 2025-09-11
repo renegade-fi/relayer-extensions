@@ -21,12 +21,16 @@ use crate::error::AuthServerError;
 // -------------
 
 /// The number of seconds to add to the current time to get the deadline on the
-/// permit signature. Specifically required to be greater than 60 seconds from
-/// the current time. Unused since we are not a traditional market maker.
-const DEADLINE_OFFSET_SECONDS: u64 = 60;
+/// permit signature.
+///
+/// Specifically required to be greater than 60 seconds from
+/// the current time, although unused since we are not a traditional market
+/// maker and don't use permits.
+const DEADLINE_OFFSET_SECONDS: u64 = 70;
 
-/// A dummy signature for the RFQT order
-const DUMMY_SIGNATURE: &str = "0x81948c4243e0e3a9955ebbc3e7b0223623499f32e90a770387aa41c93c08b5ab196c8e062a368799f458d5e3d88124978cb5a392fd97e8554379904a031a9fbd1b";
+/// This is the signed permit message. As we don't use permits, this is just an
+/// empty string.
+const SIGNATURE: &str = "0x0";
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
 /// server chain
@@ -111,8 +115,8 @@ pub fn transform_rfqt_to_external_match_request(
 ) -> Result<ExternalMatchRequest, AuthServerError> {
     // Determine which token is USDC
     let usdc_address = Token::usdc().get_addr_biguint();
-    let maker_is_usdc = &req.maker_token == &usdc_address;
-    let taker_is_usdc = &req.taker_token == &usdc_address;
+    let maker_is_usdc = req.maker_token == usdc_address;
+    let taker_is_usdc = req.taker_token == usdc_address;
 
     if !maker_is_usdc && !taker_is_usdc {
         return Err(AuthServerError::bad_request("Either maker or taker token must be USDC"));
@@ -132,27 +136,24 @@ pub fn transform_rfqt_to_external_match_request(
 fn transform_taker_usdc_request(
     req: RfqtQuoteRequest,
 ) -> Result<ExternalMatchRequest, AuthServerError> {
-    // Determine which field to set based on provided amounts
-    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
-        // Taker amount is USDC (quote token)
-        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
-        (0, amount, min_fill_size)
-    } else if let Some(amount) = req.maker_amount {
-        // Maker amount is base token
-        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
-        (amount, 0, min_fill_size)
-    } else {
-        return Err(AuthServerError::bad_request("No amount provided"));
+    let min_fill_size = match req.maker_amount {
+        Some(_) => 0, // Exact-output order: min_fill_size must be 0
+        None => {
+            if req.partial_fill_allowed {
+                0
+            } else {
+                req.taker_amount.unwrap_or_default()
+            }
+        },
     };
 
-    // Create external order
     let external_order = ExternalOrder {
         base_mint: req.maker_token,
         quote_mint: req.taker_token,
         side: OrderSide::Buy, // Taker is buying base token with USDC
-        base_amount,
-        quote_amount,
-        exact_base_output: 0,
+        base_amount: 0,
+        quote_amount: req.taker_amount.unwrap_or_default(),
+        exact_base_output: req.maker_amount.unwrap_or_default(),
         exact_quote_output: 0,
         min_fill_size,
     };
@@ -172,28 +173,25 @@ fn transform_taker_usdc_request(
 fn transform_maker_usdc_request(
     req: RfqtQuoteRequest,
 ) -> Result<ExternalMatchRequest, AuthServerError> {
-    // Determine which field to set based on provided amounts
-    let (base_amount, quote_amount, min_fill_size) = if let Some(amount) = req.taker_amount {
-        // Taker amount is base token
-        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
-        (amount, 0, min_fill_size)
-    } else if let Some(amount) = req.maker_amount {
-        // Maker amount is USDC (quote token)
-        let min_fill_size = if req.partial_fill_allowed { 0 } else { amount };
-        (0, amount, min_fill_size)
-    } else {
-        return Err(AuthServerError::bad_request("No amount provided"));
+    let min_fill_size = match req.maker_amount {
+        Some(_) => 0, // Exact-output order: min_fill_size must be 0
+        None => {
+            if req.partial_fill_allowed {
+                0
+            } else {
+                req.taker_amount.unwrap_or_default()
+            }
+        },
     };
 
-    // Create external order
     let external_order = ExternalOrder {
         base_mint: req.taker_token,
         quote_mint: req.maker_token,
         side: OrderSide::Sell, // Taker is selling base token for USDC
-        base_amount,
-        quote_amount,
+        base_amount: req.taker_amount.unwrap_or_default(),
+        quote_amount: 0,
         exact_base_output: 0,
-        exact_quote_output: 0,
+        exact_quote_output: req.maker_amount.unwrap_or_default(),
         min_fill_size,
     };
 
@@ -216,9 +214,6 @@ pub fn transform_external_match_to_rfqt_response(
     let maker_amount = bundle.receive.amount;
     let taker_token_addr = bundle.send.mint.clone();
     let taker_amount = bundle.send.amount;
-
-    // TODO: Signature generation
-    let signature = DUMMY_SIGNATURE.to_string();
 
     // Extract maker address from settlement transaction
     let settlement_tx_to = &bundle.settlement_tx.to;
@@ -263,7 +258,7 @@ pub fn transform_external_match_to_rfqt_response(
 
     Ok(RfqtQuoteResponse {
         order,
-        signature,
+        signature: SIGNATURE.to_string(),
         fee_token,
         fee_amount_bps: rfqt.fee_amount_bps.to_string(),
         fee_token_conversion_rate: rfqt.fee_token_conversion_rate.to_string(),

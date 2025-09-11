@@ -32,28 +32,19 @@ impl Server {
         body: Bytes,
         query_str: String,
     ) -> Result<BytesResponse, Rejection> {
-        // Parse 0x-zid header
-        let _zid = headers
-            .get("0x-zid")
-            .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| AuthServerError::bad_request("Missing 0x-zid header"))?;
-
         // 1. Run the pre-request subroutines
-        let mut ctx: RequestContext<ExternalMatchRequest> =
+        let (mut ctx, rfqt_request) =
             self.rfqt_pre_request(path, headers, body.clone(), query_str).await?;
         self.direct_match_pre_request(&mut ctx).await?;
 
         // 2. Proxy the request to the relayer
-        let (raw_resp, ctx): (
-            BytesResponse,
-            ResponseContext<ExternalMatchRequest, ExternalMatchResponse>,
-        ) = self.forward_request(ctx).await?;
+        let (raw_resp, ctx) = self.forward_request(ctx).await?;
 
         // 3. Run the post-request subroutines
         let res = self.direct_match_post_request(raw_resp, ctx.clone())?;
 
         // 4. Run RFQT-specific post-processing
-        let res = self.rfqt_post_request(res, &ctx, &body)?;
+        let res = self.rfqt_post_request(res, &ctx, &rfqt_request)?;
 
         Ok(res)
     }
@@ -72,17 +63,17 @@ impl Server {
         headers: HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<RequestContext<ExternalMatchRequest>, AuthServerError> {
+    ) -> Result<(RequestContext<ExternalMatchRequest>, RfqtQuoteRequest), AuthServerError> {
         // Authorize using the original RFQT body (for proper HMAC validation)
         let path = path.as_str().to_string();
         let (key_desc, key_id) = self.authorize_request(&path, &query_str, &headers, &body).await?;
         let sdk_version = get_sdk_version(&headers);
 
         // Parse the original RFQT request body
-        let rfq_request = json_deserialize(&body, true /* stringify */)?;
+        let rfq_request: RfqtQuoteRequest = json_deserialize(&body, false /* stringify */)?;
 
         // Transform RFQT request to external match request
-        let external_match_request = transform_rfqt_to_external_match_request(rfq_request)?;
+        let external_match_request = transform_rfqt_to_external_match_request(rfq_request.clone())?;
         self.validate_request_body(&external_match_request)?;
 
         // Build the request context with the transformed external match request
@@ -100,7 +91,7 @@ impl Server {
 
         // Set the relayer fee
         self.set_relayer_fee(&mut ctx).await?;
-        Ok(ctx)
+        Ok((ctx, rfq_request))
     }
 
     /// Run the post-request subroutines for the RFQT quote endpoint
@@ -109,7 +100,7 @@ impl Server {
         &self,
         mut resp: BytesResponse,
         ctx: &ResponseContext<ExternalMatchRequest, ExternalMatchResponse>,
-        original_body: &Bytes,
+        rfqt_request: &RfqtQuoteRequest,
     ) -> Result<BytesResponse, AuthServerError> {
         // If the relayer returned non-200, return the response directly (e.g., 204 No
         // Content)
@@ -122,13 +113,9 @@ impl Server {
         let external_match_resp: ExternalMatchResponse =
             serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
 
-        // Deserialize the original RFQT request
-        let rfqt_request: RfqtQuoteRequest =
-            json_deserialize(&original_body, true /* stringify */)?;
-
         // Transform external match response to RFQT response
         let rfqt_response =
-            transform_external_match_to_rfqt_response(&external_match_resp, rfqt_request)?;
+            transform_external_match_to_rfqt_response(&external_match_resp, rfqt_request.clone())?;
 
         // We don't stringify here to rely on the serialization defined
         // `RfqtQuoteResponse`
