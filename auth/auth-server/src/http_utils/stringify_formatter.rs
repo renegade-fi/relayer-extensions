@@ -15,7 +15,7 @@ use serde_json::{
 use crate::error::AuthServerError;
 
 /// Keys to ignore when converting stringified numbers in a deserialization
-const IGNORED_KEYS: [&str; 2] = ["price", "nonce"];
+const IGNORED_KEYS: [&str; 1] = ["price"];
 
 // --------------
 // | Serializer |

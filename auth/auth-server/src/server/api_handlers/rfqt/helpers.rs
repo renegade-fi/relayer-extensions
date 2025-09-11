@@ -97,10 +97,9 @@ pub fn transform_rfqt_to_external_match_request(
     req: RfqtQuoteRequest,
 ) -> Result<ExternalMatchRequest, AuthServerError> {
     // Determine which token is USDC
-    let maker_token = Token::from_addr_biguint(&req.maker_token);
-    let taker_token = Token::from_addr_biguint(&req.taker_token);
-    let maker_is_usdc = maker_token == Token::usdc();
-    let taker_is_usdc = taker_token == Token::usdc();
+    let usdc_address = Token::usdc().get_addr_biguint();
+    let maker_is_usdc = &req.maker_token == &usdc_address;
+    let taker_is_usdc = &req.taker_token == &usdc_address;
 
     if !maker_is_usdc && !taker_is_usdc {
         return Err(AuthServerError::bad_request("Either maker or taker token must be USDC"));
