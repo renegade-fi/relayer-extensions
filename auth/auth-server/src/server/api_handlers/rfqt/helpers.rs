@@ -20,8 +20,9 @@ use crate::error::AuthServerError;
 // | Constants |
 // -------------
 
-/// The number of seconds to add to the current time to get the deadline for the
-/// RFQT order
+/// The number of seconds to add to the current time to get the deadline on the
+/// permit signature. Specifically required to be greater than 60 seconds from
+/// the current time. Unused since we are not a traditional market maker.
 const DEADLINE_OFFSET_SECONDS: u64 = 60;
 
 /// A dummy signature for the RFQT order
