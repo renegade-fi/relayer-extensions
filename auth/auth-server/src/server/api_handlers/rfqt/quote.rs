@@ -4,7 +4,7 @@ use bytes::Bytes;
 use http::HeaderMap;
 use tracing::instrument;
 use uuid::Uuid;
-use warp::{reject::Rejection, reply::Json};
+use warp::reject::Rejection;
 
 use renegade_api::http::external_match::{
     ExternalMatchRequest, ExternalMatchResponse, REQUEST_EXTERNAL_MATCH_ROUTE,
@@ -13,6 +13,7 @@ use renegade_api::http::external_match::{
 use auth_server_api::rfqt::RfqtQuoteRequest;
 
 use crate::error::AuthServerError;
+use crate::http_utils::request_response::overwrite_response_body;
 use crate::http_utils::stringify_formatter::json_deserialize;
 use crate::server::Server;
 use crate::server::api_handlers::external_match::{BytesResponse, RequestContext, ResponseContext};
@@ -30,7 +31,7 @@ impl Server {
         headers: HeaderMap,
         body: Bytes,
         query_str: String,
-    ) -> Result<Json, Rejection> {
+    ) -> Result<BytesResponse, Rejection> {
         // Parse 0x-zid header
         let _zid = headers
             .get("0x-zid")
@@ -39,7 +40,7 @@ impl Server {
 
         // 1. Run the pre-request subroutines
         let mut ctx: RequestContext<ExternalMatchRequest> =
-            self.preprocess_rfqt_quote_request(path, headers, body.clone(), query_str).await?;
+            self.rfqt_pre_request(path, headers, body.clone(), query_str).await?;
         self.direct_match_pre_request(&mut ctx).await?;
 
         // 2. Proxy the request to the relayer
@@ -49,17 +50,12 @@ impl Server {
         ) = self.forward_request(ctx).await?;
 
         // 3. Run the post-request subroutines
-        let res = self.direct_match_post_request(raw_resp, ctx)?;
+        let res = self.direct_match_post_request(raw_resp, ctx.clone())?;
 
-        // 4. Transform external match response to RFQT response
-        let external_match_body = res.body();
-        let external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
-        let rfqt_request: RfqtQuoteRequest = json_deserialize(&body, true /* stringify */)?;
-        let rfqt_response =
-            transform_external_match_to_rfqt_response(&external_match_resp, rfqt_request)?;
+        // 4. Run RFQT-specific post-processing
+        let res = self.rfqt_post_request(res, &ctx, &body)?;
 
-        Ok(warp::reply::json(&rfqt_response))
+        Ok(res)
     }
 
     /// Build request context for an external match related request, before the
@@ -70,7 +66,7 @@ impl Server {
     /// 2. Construct the RequestContext with the transformed external match
     ///    request body
     #[instrument(skip_all)]
-    pub async fn preprocess_rfqt_quote_request(
+    pub async fn rfqt_pre_request(
         &self,
         path: warp::path::FullPath,
         headers: HeaderMap,
@@ -105,5 +101,39 @@ impl Server {
         // Set the relayer fee
         self.set_relayer_fee(&mut ctx).await?;
         Ok(ctx)
+    }
+
+    /// Run the post-request subroutines for the RFQT quote endpoint
+    #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
+    pub(crate) fn rfqt_post_request(
+        &self,
+        mut resp: BytesResponse,
+        ctx: &ResponseContext<ExternalMatchRequest, ExternalMatchResponse>,
+        original_body: &Bytes,
+    ) -> Result<BytesResponse, AuthServerError> {
+        // If the relayer returned non-200, return the response directly (e.g., 204 No
+        // Content)
+        if !ctx.is_success() {
+            return Ok(resp);
+        }
+
+        // Deserialize the external match response
+        let external_match_body = resp.body();
+        let external_match_resp: ExternalMatchResponse =
+            serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
+
+        // Deserialize the original RFQT request
+        let rfqt_request: RfqtQuoteRequest =
+            json_deserialize(&original_body, true /* stringify */)?;
+
+        // Transform external match response to RFQT response
+        let rfqt_response =
+            transform_external_match_to_rfqt_response(&external_match_resp, rfqt_request)?;
+
+        // We don't stringify here to rely on the serialization defined
+        // `RfqtQuoteResponse`
+        overwrite_response_body(&mut resp, rfqt_response, false /* stringify */)?;
+
+        Ok(resp)
     }
 }
