@@ -142,15 +142,13 @@ impl CustodyClient {
             total_amount += needs;
         }
 
-        if my_balance < total_amount {
-            return Err(FundsManagerError::custom(
-                "gas wallet does not have enough ETH to cover the refill",
-            ));
-        }
+        // If the gas wallet has insufficient funds, top up each wallet as much as
+        // possible
+        let target =
+            if my_balance < total_amount { my_balance / wallets.len() as f64 } else { fill_to };
 
-        // Refill the balances
         for wallet in wallets.iter() {
-            self.top_up_gas(&wallet.address, fill_to).await?;
+            self.top_up_gas(&wallet.address, target).await?;
         }
         Ok(())
     }
