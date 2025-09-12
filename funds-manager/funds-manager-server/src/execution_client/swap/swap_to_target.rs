@@ -7,7 +7,7 @@ use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
-use renegade_common::types::token::{get_all_base_tokens, Token, USDC_TICKER};
+use renegade_common::types::token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
 use tracing::{info, warn};
 
 use crate::execution_client::{
@@ -206,7 +206,7 @@ impl ExecutionClient {
         &self,
         excluded_tokens: Vec<Token>,
     ) -> Result<Vec<SwapCandidate>, ExecutionClientError> {
-        let candidate_tokens: Vec<Token> = get_all_base_tokens()
+        let candidate_tokens: Vec<Token> = get_all_tokens()
             .into_iter()
             .filter(|token| self.swap_candidate_predicate(token, &excluded_tokens))
             .collect();
@@ -233,8 +233,10 @@ impl ExecutionClient {
     fn swap_candidate_predicate(&self, token: &Token, excluded_tokens: &[Token]) -> bool {
         let token_on_chain = token.get_chain() == self.chain;
         let token_not_excluded = !excluded_tokens.contains(token);
+        let token_not_dummy_usd =
+            token.get_ticker().map(|ticker| ticker != USD_TICKER).unwrap_or(true);
 
-        token_on_chain && token_not_excluded
+        token_on_chain && token_not_excluded && token_not_dummy_usd
     }
 
     /// Try to swap out of a candidate token to cover a target amount of a
