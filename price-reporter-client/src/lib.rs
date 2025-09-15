@@ -17,7 +17,7 @@ use price_stream::MultiPriceStream;
 use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
-    token::{get_all_tokens, Token, STABLECOIN_TICKERS, USDC_TICKER, USDT_TICKER, USD_TICKER},
+    token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER},
 };
 use reqwest::{Client, Response, Url};
 use tracing::warn;
@@ -41,8 +41,8 @@ const WETH_TICKER: &str = "WETH";
 
 // Error messages
 
-/// The tickers of tokens that are excluded from the price stream
-const EXCLUDED_TICKERS: [&str; 3] = [USDT_TICKER, USDC_TICKER, USD_TICKER];
+/// The tickers of tokens for which we assume a price of `1.0`
+const UNIT_PRICE_TICKERS: [&str; 2] = [USDC_TICKER, USD_TICKER];
 
 /// The error message for an invalid topic
 const ERR_INVALID_TOPIC: &str = "Invalid topic format";
@@ -81,7 +81,7 @@ impl PriceReporterClient {
 
         let mints = get_all_tokens()
             .into_iter()
-            .filter(|t| !EXCLUDED_TICKERS.contains(&t.get_ticker().unwrap_or_default().as_str()))
+            .filter(|t| !UNIT_PRICE_TICKERS.contains(&t.get_ticker().unwrap_or_default().as_str()))
             .map(|t| t.get_addr())
             .collect();
 
@@ -159,7 +159,7 @@ impl PriceReporterClient {
         let mint = mint.to_lowercase();
         let token = Token::from_addr_on_chain(&mint, chain);
         if let Some(ticker) = token.get_ticker()
-            && STABLECOIN_TICKERS.contains(&ticker.as_str())
+            && UNIT_PRICE_TICKERS.contains(&ticker.as_str())
         {
             return Ok(1.0);
         }
