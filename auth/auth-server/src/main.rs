@@ -412,6 +412,26 @@ async fn main() {
             server.handle_order_book_request(path, headers).await
         });
 
+    let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_query_string())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, query_str, server: Arc<Server>| async move {
+            server.handle_rfqt_levels_request(path, headers, query_str).await
+        });
+
+    let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_query_string())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_rfqt_quote_request(path, headers, body, query_str).await
+        });
+
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
@@ -431,6 +451,8 @@ async fn main() {
         .or(remove_user_fee_override)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
+        .or(rfqt_levels_path)
+        .or(rfqt_quote_path)
         .boxed()
         .with(with_tracing())
         .recover(handle_rejection);

@@ -295,7 +295,7 @@ impl Server {
     }
 
     /// Validate the request body
-    fn validate_request_body<Req>(&self, body: &Req) -> Result<(), AuthServerError>
+    pub(crate) fn validate_request_body<Req>(&self, body: &Req) -> Result<(), AuthServerError>
     where
         Req: ExternalMatchRequestType,
     {

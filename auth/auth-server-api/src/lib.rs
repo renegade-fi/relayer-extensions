@@ -8,6 +8,7 @@
 
 pub mod fee_management;
 pub mod key_management;
+pub mod rfqt;
 
 use alloy_primitives::{ruint::FromUintError, Address, U256};
 use renegade_api::http::external_match::{
