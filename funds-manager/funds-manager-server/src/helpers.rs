@@ -4,10 +4,9 @@
 use std::{str::FromStr, time::Duration};
 
 use alloy::{
-    network::Ethereum,
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
-        DynProvider, PendingTransactionBuilder, Provider, ProviderBuilder, WsConnect,
+        DynProvider, Provider, ProviderBuilder, WsConnect,
     },
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
@@ -20,7 +19,6 @@ use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
-use futures::StreamExt;
 use rand::Rng;
 use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
@@ -121,50 +119,15 @@ pub async fn send_tx_with_retry(
         };
 
         // If the handler falls through we wait
-        let pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
-        let receipt =
-            get_receipt_with_confirmations(pending_tx, client, required_confirmations).await?;
+        let mut pending_tx = pending_tx_res.map_err(FundsManagerError::on_chain)?;
+        pending_tx.set_required_confirmations(required_confirmations);
+        let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
 
         backfill_trace_field("tx_hash", receipt.transaction_hash.to_string());
         return Ok(receipt);
     }
 
     Err(FundsManagerError::on_chain("Transaction failed after retries"))
-}
-
-/// Await the receipt of a transaction on-chain with the given number of
-/// confirmations
-async fn get_receipt_with_confirmations(
-    mut pending_tx: PendingTransactionBuilder<Ethereum>,
-    client: &DynProvider,
-    required_confirmations: u64,
-) -> Result<TransactionReceipt, FundsManagerError> {
-    pending_tx.set_required_confirmations(required_confirmations);
-    let receipt = pending_tx.get_receipt().await.map_err(FundsManagerError::on_chain)?;
-
-    // TEMP: Alloy `required_confirmations` is empirically ignored. So for now,
-    // we manually watch blocks until the correct # of confirmations is reached.
-
-    let receipt_block =
-        receipt.block_number.ok_or(FundsManagerError::on_chain("No block number in receipt"))?;
-
-    // This method requires us to use a websocket provider
-    let block_subscription =
-        client.subscribe_blocks().await.map_err(FundsManagerError::on_chain)?;
-
-    let mut block_stream = block_subscription.into_stream();
-    while let Some(block) = block_stream.next().await {
-        if block.number >= receipt_block + required_confirmations - 1 {
-            let sub_id = block_stream.id();
-            if let Err(e) = client.unsubscribe(*sub_id).await {
-                error!("Failed to unsubscribe from block subscription {sub_id}: {e}");
-            }
-
-            break;
-        }
-    }
-
-    Ok(receipt)
 }
 
 /// Get the erc20 balance of an address, as a U256
