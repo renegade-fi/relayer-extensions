@@ -17,6 +17,9 @@ pub enum ExchangeConnectionError {
     /// A cryptographic error occurred
     #[error("cryptographic error: {0}")]
     Crypto(String),
+    /// A custom error occurred
+    #[error("custom error: {0}")]
+    Custom(String),
     /// An initial websocket subscription to a remote server failed.
     #[error("initial websocket subscription failed: {0}")]
     HandshakeFailure(String),
@@ -47,5 +50,11 @@ impl ExchangeConnectionError {
     /// Create an error indicating that the given exchange is not supported
     pub fn unsupported_exchange(exchange: Exchange) -> Self {
         Self::UnsupportedExchange(exchange)
+    }
+
+    /// Create a custom error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn custom<T: ToString>(message: T) -> Self {
+        Self::Custom(message.to_string())
     }
 }

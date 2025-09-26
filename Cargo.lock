@@ -7416,6 +7416,7 @@ dependencies = [
  "lazy_static",
  "matchit 0.7.3",
  "ordered-float",
+ "rand 0.8.5",
  "reqwest 0.12.22",
  "serde",
  "serde_json",

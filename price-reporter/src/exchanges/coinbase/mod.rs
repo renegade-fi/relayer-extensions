@@ -2,15 +2,14 @@
 
 use std::{
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use async_trait::async_trait;
-use crossbeam_skiplist::SkipSet;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use jsonwebtoken::{encode, Algorithm, EncodingKey as JwtEncodingKey, Header as JwtHeader};
-use ordered_float::NotNan;
+use rand::Rng;
 use renegade_common::types::{exchange::Exchange, price::Price, token::Token};
 use renegade_util::{err_str, get_current_time_seconds};
 use reqwest::{
@@ -19,11 +18,12 @@ use reqwest::{
 };
 use serde::Serialize;
 use serde_json::json;
-use tracing::error;
+use tracing::{error, info};
 use tungstenite::{Error as WsError, Message};
 use url::Url;
 
 use crate::exchanges::{
+    coinbase::{order_book::CoinbaseOrderBookData, types::CoinbaseOrderBookSnapshotResponse},
     connection::{InitializablePriceStream, PriceStreamType},
     error::ExchangeConnectionError,
     ExchangeConnectionsConfig,
@@ -35,6 +35,9 @@ use super::connection::{
 use super::util::{
     exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker,
 };
+
+mod order_book;
+mod types;
 
 // -------------
 // | Constants |
@@ -67,6 +70,30 @@ const COINBASE_OFFER: &str = "offer";
 
 /// The timeout in seconds for the Coinbase JWT
 const COINBASE_JWT_TIMEOUT_SECS: u64 = 60; // 1 minute
+
+/// The min duration on which to refresh the order book from a snapshot
+const ORDER_BOOK_REFRESH_INTERVAL_MIN: Duration = Duration::from_secs(30);
+/// The max duration on which to refresh the order book from a snapshot
+const ORDER_BOOK_REFRESH_INTERVAL_MAX: Duration = Duration::from_secs(60);
+
+/// Build a request URL for the Coinbase order book snapshot
+fn order_book_snapshot_url(product_id: &str) -> Url {
+    format!("{COINBASE_REST_BASE_URL}/products/{product_id}/book?level=2").parse().unwrap()
+}
+
+/// Get a product ID from a base and quote token
+fn get_product_id(
+    base_token: &Token,
+    quote_token: &Token,
+) -> Result<String, ExchangeConnectionError> {
+    let base_ticker =
+        get_base_exchange_ticker(base_token.clone(), quote_token.clone(), Exchange::Coinbase)?;
+    let quote_ticker =
+        get_quote_exchange_ticker(base_token.clone(), quote_token.clone(), Exchange::Coinbase)?;
+
+    let product_id = format!("{base_ticker}-{quote_ticker}");
+    Ok(product_id)
+}
 
 /// The claims for the Coinbase JWT
 #[allow(clippy::missing_docs_in_private_items)]
@@ -104,6 +131,10 @@ impl Stream for CoinbaseConnection {
 }
 
 impl CoinbaseConnection {
+    // ---------------
+    // | API Helpers |
+    // ---------------
+
     /// Get the URL of the Coinbase websocket endpoint
     fn websocket_url() -> Url {
         String::from(COINBASE_WS_BASE_URL).parse().unwrap()
@@ -111,19 +142,12 @@ impl CoinbaseConnection {
 
     /// Construct the websocket subscription message with HMAC authentication
     fn construct_subscribe_message(
-        base_token: Token,
-        quote_token: Token,
+        product_id: &str,
         config: &ExchangeConnectionsConfig,
     ) -> Result<String, ExchangeConnectionError> {
         let key_name = config.coinbase_key_name.as_ref().expect("coinbase API not configured");
         let key_secret = config.coinbase_key_secret.as_ref().expect("coinbase API not configured");
         let jwt = Self::construct_jwt(key_name, key_secret)?;
-
-        // Build a subscription request for the given product
-        let base_ticker =
-            get_base_exchange_ticker(base_token.clone(), quote_token.clone(), Exchange::Coinbase)?;
-        let quote_ticker = get_quote_exchange_ticker(base_token, quote_token, Exchange::Coinbase)?;
-        let product_id = format!("{}-{}", base_ticker, quote_ticker);
 
         let channel = "level2";
         let subscribe_msg = json!({
@@ -157,6 +181,58 @@ impl CoinbaseConnection {
         };
 
         encode(&header, &claims, &key).map_err(err_str!(ExchangeConnectionError::Crypto))
+    }
+
+    /// Fetch an order book snapshot from the HTTP API
+    async fn fetch_order_book_snapshot(
+        product_id: &str,
+    ) -> Result<CoinbaseOrderBookSnapshotResponse, ExchangeConnectionError> {
+        let client = Client::new();
+        let request_url = order_book_snapshot_url(product_id);
+        let response = client
+            .get(request_url)
+            .header(USER_AGENT, CB_USER_AGENT)
+            .send()
+            .await
+            .map_err(ExchangeConnectionError::custom)?;
+
+        let body = response
+            .json::<CoinbaseOrderBookSnapshotResponse>()
+            .await
+            .map_err(ExchangeConnectionError::custom)?;
+        Ok(body)
+    }
+
+    // -------------------------
+    // | Order Book Management |
+    // -------------------------
+
+    /// A loop in which we refresh the order book from a snapshot
+    fn start_refresh_order_book_loop(product_id: &str, order_book: CoinbaseOrderBookData) {
+        let product_id = product_id.to_string();
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = Self::refresh_order_book(&product_id, &order_book).await {
+                    error!("Error refreshing order book: {e}");
+                }
+
+                let sleep_time = rand::thread_rng()
+                    .gen_range(ORDER_BOOK_REFRESH_INTERVAL_MIN..=ORDER_BOOK_REFRESH_INTERVAL_MAX);
+                tokio::time::sleep(sleep_time).await;
+            }
+        });
+    }
+
+    /// Refresh the order book from a snapshot
+    async fn refresh_order_book(
+        product_id: &str,
+        order_book: &CoinbaseOrderBookData,
+    ) -> Result<(), ExchangeConnectionError> {
+        info!("Refreshing order book for {product_id} from snapshot");
+        let snapshot = Self::fetch_order_book_snapshot(product_id).await?;
+        order_book.rehydrate(snapshot)?;
+
+        Ok(())
     }
 
     /// Parse a midpoint price from a websocket message
@@ -222,8 +298,8 @@ impl ExchangeConnection for CoinbaseConnection {
         let url = Self::websocket_url();
         let (mut writer, read) = ws_connect(url).await?;
 
-        let authenticated_subscribe_msg =
-            Self::construct_subscribe_message(base_token, quote_token, config)?;
+        let product_id = get_product_id(&base_token, &quote_token)?;
+        let authenticated_subscribe_msg = Self::construct_subscribe_message(&product_id, config)?;
 
         // Setup the topic subscription
         writer
@@ -233,8 +309,9 @@ impl ExchangeConnection for CoinbaseConnection {
 
         // Map the stream of Coinbase messages to one of midpoint prices
         let order_book = CoinbaseOrderBookData::new();
+        let order_book_clone = order_book.clone();
         let mapped_stream = read.filter_map(move |message| {
-            let order_book_clone = order_book.clone();
+            let order_book_clone = order_book_clone.clone();
             async move {
                 match message {
                     // The outer `Result` comes from reading from the ws stream, the inner `Result`
@@ -248,6 +325,9 @@ impl ExchangeConnection for CoinbaseConnection {
                 }
             }
         });
+
+        // Spawn a task to periodically refresh the order book from a snapshot
+        Self::start_refresh_order_book_loop(&product_id, order_book);
 
         // Construct an initialized price stream from the initial price and the mapped
         // stream
@@ -294,85 +374,5 @@ impl ExchangeConnection for CoinbaseConnection {
 
         // A successful response will only be sent if the pair is supported
         Ok(response.status().is_success())
-    }
-}
-
-// ------------------
-// | Orderbook Data |
-// ------------------
-
-/// A non-nan f64
-type NonNanF64 = NotNan<f64>;
-/// A shared skip set of price levels
-pub type OrderBookLevels = Arc<SkipSet<NonNanF64>>;
-
-/// The order book data stored locally by the connection
-#[derive(Clone, Default)]
-pub struct CoinbaseOrderBookData {
-    /// The bid price levels, sorted in ascending order
-    bids: OrderBookLevels,
-    /// The offer price levels, sorted in ascending order  
-    offers: OrderBookLevels,
-}
-
-impl CoinbaseOrderBookData {
-    /// Construct a new order book data
-    pub fn new() -> Self {
-        let bids = Arc::new(SkipSet::new());
-        let offers = Arc::new(SkipSet::new());
-        Self { bids, offers }
-    }
-
-    // ------------------------
-    // | Midpoint Calculation |
-    // ------------------------
-
-    /// Get the best bid price from the current order book
-    pub fn best_bid(&self) -> Option<f64> {
-        self.bids.back().map(|e| e.value().into_inner())
-    }
-
-    /// Get the best offer price from the current order book
-    pub fn best_offer(&self) -> Option<f64> {
-        self.offers.front().map(|e| e.value().into_inner())
-    }
-
-    /// Get the midpoint price from the current order book
-    pub fn midpoint(&self) -> Option<f64> {
-        let best_bid = self.best_bid()?;
-        let best_offer = self.best_offer()?;
-        Some((best_bid + best_offer) / 2.)
-    }
-
-    // ----------------------
-    // | Order Book Updates |
-    // ----------------------
-
-    /// Remove a bid at the given price level
-    pub fn remove_bid(&self, price_level: f64) {
-        if let Ok(price_notnan) = NotNan::new(price_level) {
-            self.bids.remove(&price_notnan);
-        }
-    }
-
-    /// Remove an offer at the given price level
-    pub fn remove_offer(&self, price_level: f64) {
-        if let Ok(price_notnan) = NotNan::new(price_level) {
-            self.offers.remove(&price_notnan);
-        }
-    }
-
-    /// Add a bid at the given price level
-    pub fn add_bid(&self, price_level: f64) {
-        if let Ok(price_notnan) = NotNan::new(price_level) {
-            self.bids.insert(price_notnan);
-        }
-    }
-
-    /// Add an offer at the given price level
-    pub fn add_offer(&self, price_level: f64) {
-        if let Ok(price_notnan) = NotNan::new(price_level) {
-            self.offers.insert(price_notnan);
-        }
     }
 }
