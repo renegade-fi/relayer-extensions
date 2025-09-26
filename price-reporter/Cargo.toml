@@ -38,6 +38,7 @@ derivative = "2.2.0"
 itertools = "0.10"
 lazy_static = "1.4"
 ordered-float = "4.0"
+rand = "0.8"
 
 # === Renegade === #
 renegade-api = { package = "external-api", workspace = true }
