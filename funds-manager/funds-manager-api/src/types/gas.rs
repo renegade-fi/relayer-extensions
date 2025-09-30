@@ -11,6 +11,8 @@ pub const WITHDRAW_GAS_ROUTE: &str = "withdraw-gas";
 pub const REFILL_GAS_ROUTE: &str = "refill-gas";
 /// The route to register a gas wallet for a peer
 pub const REGISTER_GAS_WALLET_ROUTE: &str = "register-gas-wallet";
+/// The route to set the status of a gas wallet
+pub const SET_GAS_WALLET_STATUS_ROUTE: &str = "set-gas-wallet-status";
 /// The route to report active peers
 pub const REPORT_ACTIVE_PEERS_ROUTE: &str = "report-active-peers";
 /// The route to refill the gas sponsor contract
@@ -89,5 +91,24 @@ pub struct GasWalletEntry {
     /// The status of the gas wallet
     pub status: String,
     /// The peer ID of the gas wallet
+    pub peer_id: Option<String>,
+}
+
+/// The request body for setting the status of a gas wallet
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SetGasWalletStatusRequest {
+    /// The updates to the gas wallet statuses
+    pub updates: Vec<GasWalletStatusUpdate>,
+}
+
+/// A single status update for a gas wallet
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GasWalletStatusUpdate {
+    /// The address of the gas wallet
+    pub address: String,
+    /// The status of the gas wallet
+    pub status: String,
+    /// The peer ID of the gas wallet
+    #[serde(default)]
     pub peer_id: Option<String>,
 }

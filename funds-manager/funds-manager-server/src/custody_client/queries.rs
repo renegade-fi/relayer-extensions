@@ -72,7 +72,19 @@ impl CustodyClient {
 
     /// Mark a gas wallet as inactive
     pub async fn mark_gas_wallet_inactive(&self, address: &str) -> Result<(), FundsManagerError> {
-        info!("Marking gas wallet as inactive: {address}");
+        self.mark_gas_wallets_inactive_batch(&[address]).await
+    }
+
+    /// Mark multiple gas wallets as inactive
+    pub async fn mark_gas_wallets_inactive_batch(
+        &self,
+        addresses: &[&str],
+    ) -> Result<(), FundsManagerError> {
+        if addresses.is_empty() {
+            return Ok(());
+        }
+
+        info!("Marking {} gas wallets as inactive", addresses.len());
         let mut conn = self.get_db_conn().await?;
         let updates = (
             gas_wallets::status.eq(GasWalletStatus::Inactive.to_string()),
@@ -81,7 +93,7 @@ impl CustodyClient {
 
         diesel::update(
             gas_wallets::table
-                .filter(gas_wallets::address.eq(address))
+                .filter(gas_wallets::address.eq_any(addresses))
                 .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
         )
         .set(updates)
@@ -94,12 +106,24 @@ impl CustodyClient {
 
     /// Update a gas wallet to pending
     pub async fn mark_gas_wallet_pending(&self, address: &str) -> Result<(), FundsManagerError> {
-        info!("Marking gas wallet as pending: {address}");
+        self.mark_gas_wallets_pending_batch(&[address]).await
+    }
+
+    /// Update multiple gas wallets to pending
+    pub async fn mark_gas_wallets_pending_batch(
+        &self,
+        addresses: &[&str],
+    ) -> Result<(), FundsManagerError> {
+        if addresses.is_empty() {
+            return Ok(());
+        }
+
+        info!("Marking {} gas wallets as pending", addresses.len());
         let mut conn = self.get_db_conn().await?;
         let pending = GasWalletStatus::Pending.to_string();
         diesel::update(
             gas_wallets::table
-                .filter(gas_wallets::address.eq(address))
+                .filter(gas_wallets::address.eq_any(addresses))
                 .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
         )
         .set(gas_wallets::status.eq(pending))
@@ -116,19 +140,34 @@ impl CustodyClient {
         address: &str,
         peer_id: &str,
     ) -> Result<(), FundsManagerError> {
-        info!("Marking gas wallet as active: {address}");
+        self.mark_gas_wallets_active_batch(&[(address, peer_id)]).await
+    }
+
+    /// Mark multiple gas wallets as active
+    pub async fn mark_gas_wallets_active_batch(
+        &self,
+        wallets: &[(&str, &str)],
+    ) -> Result<(), FundsManagerError> {
+        if wallets.is_empty() {
+            return Ok(());
+        }
+
+        info!("Marking {} gas wallets as active", wallets.len());
         let mut conn = self.get_db_conn().await?;
         let active = GasWalletStatus::Active.to_string();
-        let updates = (gas_wallets::status.eq(active), gas_wallets::peer_id.eq(peer_id));
-        diesel::update(
-            gas_wallets::table
-                .filter(gas_wallets::address.eq(address))
-                .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
-        )
-        .set(updates)
-        .execute(&mut conn)
-        .await
-        .map_err(err_str!(FundsManagerError::Db))?;
+
+        for (address, peer_id) in wallets {
+            let updates = (gas_wallets::status.eq(&active), gas_wallets::peer_id.eq(*peer_id));
+            diesel::update(
+                gas_wallets::table
+                    .filter(gas_wallets::address.eq(*address))
+                    .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain))),
+            )
+            .set(updates)
+            .execute(&mut conn)
+            .await
+            .map_err(err_str!(FundsManagerError::Db))?;
+        }
 
         Ok(())
     }

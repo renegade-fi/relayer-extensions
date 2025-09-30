@@ -31,9 +31,10 @@ use funds_manager_api::fees::{
     WITHDRAW_FEE_BALANCE_ROUTE,
 };
 use funds_manager_api::gas::{
-    RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest, WithdrawGasRequest,
-    GET_GAS_HOT_WALLET_ADDRESS_ROUTE, REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE,
-    REGISTER_GAS_WALLET_ROUTE, REPORT_ACTIVE_PEERS_ROUTE, WITHDRAW_GAS_ROUTE,
+    RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest,
+    SetGasWalletStatusRequest, WithdrawGasRequest, GET_GAS_HOT_WALLET_ADDRESS_ROUTE,
+    REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE, REGISTER_GAS_WALLET_ROUTE,
+    REPORT_ACTIVE_PEERS_ROUTE, SET_GAS_WALLET_STATUS_ROUTE, WITHDRAW_GAS_ROUTE,
 };
 use funds_manager_api::hot_wallets::{
     CreateHotWalletRequest, TransferToVaultRequest, WithdrawToHotWalletRequest,
@@ -63,7 +64,7 @@ use crate::handlers::fee_indexing::{
 use crate::handlers::gas::{
     create_gas_wallet_handler, get_gas_hot_wallet_address_handler, get_gas_wallets_handler,
     refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
-    report_active_peers_handler, withdraw_gas_handler,
+    report_active_peers_handler, set_gas_wallet_status_handler, withdraw_gas_handler,
 };
 use crate::handlers::hot_wallets::{create_hot_wallet_handler, get_hot_wallet_balances_handler};
 use crate::handlers::quoters::{
@@ -258,6 +259,18 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(refill_gas_handler);
 
+    let set_gas_wallet_status = warp::post()
+        .and(warp::path("custody"))
+        .and(warp::path::param::<Chain>())
+        .and(warp::path("gas-wallets"))
+        .and(warp::path(SET_GAS_WALLET_STATUS_ROUTE))
+        .and(with_hmac_auth(server.clone()))
+        .map(with_chain_and_json_body::<SetGasWalletStatusRequest>)
+        .and_then(identity)
+        .untuple_one()
+        .and(with_server(server.clone()))
+        .and_then(set_gas_wallet_status_handler);
+
     let add_gas_wallet = warp::post()
         .and(warp::path("custody"))
         .and(warp::path::param::<Chain>())
@@ -384,6 +397,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .or(report_active_peers)
         .or(refill_gas_sponsor)
         .or(register_gas_wallet)
+        .or(set_gas_wallet_status)
         .or(add_gas_wallet)
         .or(get_gas_wallets)
         .or(get_gas_hot_wallet_address)
