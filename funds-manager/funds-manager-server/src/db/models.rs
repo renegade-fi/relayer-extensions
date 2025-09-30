@@ -5,6 +5,7 @@ use std::{fmt::Display, str::FromStr, time::SystemTime};
 
 use bigdecimal::BigDecimal;
 use diesel::prelude::*;
+use funds_manager_api::gas::GasWalletEntry;
 use num_bigint::BigInt;
 use renegade_circuit_types::note::Note;
 use renegade_common::types::chain::Chain;
@@ -184,5 +185,11 @@ impl GasWallet {
         let status = GasWalletStatus::Inactive.to_string();
         let chain = to_env_agnostic_name(chain);
         GasWallet { id, address, peer_id: None, status, created_at: SystemTime::now(), chain }
+    }
+}
+
+impl From<GasWallet> for GasWalletEntry {
+    fn from(wallet: GasWallet) -> Self {
+        GasWalletEntry { address: wallet.address, status: wallet.status, peer_id: wallet.peer_id }
     }
 }

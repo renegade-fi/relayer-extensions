@@ -172,8 +172,9 @@ pub(crate) async fn get_gas_wallets_handler(
     let custody_client = server.get_custody_client(&chain)?;
     let gas_wallets = custody_client.get_all_gas_wallets().await?;
 
-    let addresses = gas_wallets.into_iter().map(|wallet| wallet.address).collect();
-    let resp = GasWalletsResponse { addresses };
+    let addresses = gas_wallets.iter().map(|wallet| wallet.address.clone()).collect();
+    let entries = gas_wallets.into_iter().map(|wallet| wallet.into()).collect();
+    let resp = GasWalletsResponse { addresses, entries };
 
     Ok(warp::reply::json(&resp))
 }
