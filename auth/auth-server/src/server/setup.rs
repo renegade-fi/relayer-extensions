@@ -18,7 +18,7 @@ use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::local::PrivateKeySigner;
 use alloy_primitives::Address;
 use base64::{Engine, engine::general_purpose};
-use price_reporter_client::PriceReporterClient;
+use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
 use renegade_common::types::chain::Chain;
 use renegade_common::types::{
     hmac::HmacKey,
@@ -67,10 +67,10 @@ impl Server {
         )
         .await?;
 
-        let price_reporter_client = PriceReporterClient::new(
-            args.price_reporter_url.clone(),
-            true, // exit_on_stale
-        )?;
+        let price_reporter_client = PriceReporterClient::new(PriceReporterClientConfig {
+            base_url: args.price_reporter_url.clone(),
+            ..Default::default()
+        })?;
 
         let gas_sponsor_address = parse_gas_sponsor_address(&args)?;
         let gas_cost_sampler = Arc::new(

@@ -4,7 +4,7 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
-use price_reporter_client::PriceReporterClient;
+use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_config::setup_token_remaps;
 
@@ -58,10 +58,10 @@ impl Server {
             .unwrap()?;
         }
 
-        let price_reporter = PriceReporterClient::new(
-            args.price_reporter_url.clone(),
-            true, // exit_on_stale
-        )?;
+        let price_reporter = PriceReporterClient::new(PriceReporterClientConfig {
+            base_url: args.price_reporter_url.clone(),
+            ..Default::default()
+        })?;
 
         let hmac_key = args.get_hmac_key();
 

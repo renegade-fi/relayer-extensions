@@ -10,7 +10,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use price_reporter_client::PriceReporterClient;
+use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
 use renegade_config::setup_token_remaps;
 use serde_json::json;
 use tracing::{info, info_span};
@@ -37,10 +37,10 @@ async fn main() {
     let executor_client = ExecutorClient::new(&cli).expect("Failed to create executor client");
 
     // Create the price reporter client
-    let price_reporter_client = PriceReporterClient::new(
-        cli.price_reporter_url.clone(),
-        true, // exit_on_stale
-    )
+    let price_reporter_client = PriceReporterClient::new(PriceReporterClientConfig {
+        base_url: cli.price_reporter_url.clone(),
+        ..Default::default()
+    })
     .expect("Failed to create price reporter client");
 
     // Create the UniswapX solver and begin its polling loop
