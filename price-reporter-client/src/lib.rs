@@ -51,6 +51,23 @@ const ERR_INVALID_TOPIC: &str = "Invalid topic format";
 /// fails
 const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDecimal";
 
+// ---------
+// | Types |
+// ---------
+
+/// The configuration options for the price reporter client
+#[derive(Debug, Clone, Default)]
+pub struct PriceReporterClientConfig {
+    /// The base URL of the price reporter
+    pub base_url: String,
+    /// Whether to disable streaming of prices
+    pub disable_price_stream: bool,
+    /// Whether to allow the price stream to become stale.
+    ///
+    /// If `false`, the process will exit when staleness is detected.
+    pub allow_stale_price_stream: bool,
+}
+
 // ---------------------
 // | Client Definition |
 // ---------------------
@@ -61,19 +78,33 @@ const ERR_PRICE_BIGDECIMAL_CONVERSION: &str = "failed to convert price to BigDec
 pub struct PriceReporterClient {
     /// The base URL of the price reporter
     base_url: String,
-    /// The multi-price stream for real-time token price updates
-    multi_price_stream: MultiPriceStream,
+    /// The multi-price stream for real-time token price updates,
+    /// if the client was constructed with price streaming enabled
+    multi_price_stream: Option<MultiPriceStream>,
 }
 
 impl PriceReporterClient {
     /// Create a new PriceReporterClient with the given base URL.
     /// If `exit_on_stale` is true, the process will exit if the price stream
     /// becomes stale.
-    pub fn new(base_url: String, exit_on_stale: bool) -> Result<Self, PriceReporterClientError> {
+    pub fn new(config: PriceReporterClientConfig) -> Result<Self, PriceReporterClientError> {
+        let PriceReporterClientConfig { base_url, disable_price_stream, allow_stale_price_stream } =
+            config;
+        if disable_price_stream {
+            return Ok(Self { base_url, multi_price_stream: None });
+        }
+
         let mut ws_url: Url = base_url.parse().map_err(PriceReporterClientError::parsing)?;
-        ws_url
-            .set_scheme("wss")
-            .map_err(|_| PriceReporterClientError::setup("Error setting websocket scheme"))?;
+
+        if ws_url.scheme() == "https" {
+            ws_url
+                .set_scheme("wss")
+                .map_err(|_| PriceReporterClientError::setup("Error setting websocket scheme"))?;
+        } else if ws_url.scheme() == "http" {
+            ws_url
+                .set_scheme("ws")
+                .map_err(|_| PriceReporterClientError::setup("Error setting websocket scheme"))?;
+        }
 
         ws_url
             .set_port(Some(WS_PORT))
@@ -87,7 +118,11 @@ impl PriceReporterClient {
 
         Ok(Self {
             base_url,
-            multi_price_stream: MultiPriceStream::new(ws_url.to_string(), mints, exit_on_stale),
+            multi_price_stream: Some(MultiPriceStream::new(
+                ws_url.to_string(),
+                mints,
+                !allow_stale_price_stream,
+            )),
         })
     }
 
@@ -164,9 +199,11 @@ impl PriceReporterClient {
             return Ok(1.0);
         }
 
-        let ws_is_connected = self.multi_price_stream.is_connected();
+        let multi_price_stream = self.multi_price_stream.as_ref();
+        let ws_is_connected = multi_price_stream.is_some_and(|stream| stream.is_connected());
+
         if ws_is_connected {
-            return Ok(self.multi_price_stream.get_price(&mint).await);
+            return Ok(multi_price_stream.unwrap().get_price(&mint).await);
         }
 
         warn!("Price stream is not connected, fetching price via HTTP");
