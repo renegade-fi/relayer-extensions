@@ -146,6 +146,14 @@ pub enum ApiError {
     Unauthenticated(String),
 }
 
+impl ApiError {
+    /// Create a bad request error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn bad_request<T: ToString>(msg: T) -> Self {
+        ApiError::BadRequest(msg.to_string())
+    }
+}
+
 impl Reject for ApiError {}
 
 impl Display for ApiError {

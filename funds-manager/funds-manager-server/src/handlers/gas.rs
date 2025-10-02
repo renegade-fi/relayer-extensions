@@ -1,12 +1,13 @@
 //! Handlers for gas endpoints
 
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use bytes::Bytes;
 use funds_manager_api::{
     gas::{
         CreateGasWalletResponse, GasWalletsResponse, RefillGasRequest, RegisterGasWalletRequest,
-        RegisterGasWalletResponse, ReportActivePeersRequest, WithdrawGasRequest,
+        RegisterGasWalletResponse, ReportActivePeersRequest, SetGasWalletStatusRequest,
+        WithdrawGasRequest,
     },
     quoters::DepositAddressResponse,
 };
@@ -15,7 +16,10 @@ use serde_json::json;
 use tracing::{error, warn};
 use warp::reply::Json;
 
-use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};
+use crate::{
+    custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError,
+    server::Server,
+};
 
 // -------------
 // | Constants |
@@ -176,6 +180,41 @@ pub(crate) async fn get_gas_wallets_handler(
     let entries = gas_wallets.into_iter().map(|wallet| wallet.into()).collect();
     let resp = GasWalletsResponse { addresses, entries };
 
+    Ok(warp::reply::json(&resp))
+}
+
+/// Handler for setting the status of a gas wallet
+pub(crate) async fn set_gas_wallet_status_handler(
+    chain: Chain,
+    req: SetGasWalletStatusRequest,
+    server: Arc<Server>,
+) -> Result<Json, warp::Rejection> {
+    let mut mark_active = Vec::new();
+    let mut mark_pending = Vec::new();
+    let mut mark_inactive = Vec::new();
+    for update in req.updates.iter() {
+        let addr = update.address.as_str();
+        let status = GasWalletStatus::from_str(&update.status).unwrap();
+        match status {
+            GasWalletStatus::Active => {
+                let peer_id = update
+                    .peer_id
+                    .as_ref()
+                    .ok_or(ApiError::bad_request("Peer ID is required for active status"))?;
+                mark_active.push((addr, peer_id.as_str()));
+            },
+            GasWalletStatus::Pending => mark_pending.push(addr),
+            GasWalletStatus::Inactive => mark_inactive.push(addr),
+        }
+    }
+
+    let custody_client = server.get_custody_client(&chain)?;
+    custody_client.mark_gas_wallets_active_batch(&mark_active).await?;
+    custody_client.mark_gas_wallets_pending_batch(&mark_pending).await?;
+    custody_client.mark_gas_wallets_inactive_batch(&mark_inactive).await?;
+
+    // Respond with empty json
+    let resp = json!({});
     Ok(warp::reply::json(&resp))
 }
 
