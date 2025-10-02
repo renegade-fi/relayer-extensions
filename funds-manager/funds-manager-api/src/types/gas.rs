@@ -77,4 +77,17 @@ pub struct ReportActivePeersRequest {
 pub struct GasWalletsResponse {
     /// The list of gas wallet addresses
     pub addresses: Vec<String>,
+    /// The list of gas wallet entries
+    pub entries: Vec<GasWalletEntry>,
+}
+
+/// A gas wallet's entry
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GasWalletEntry {
+    /// The address of the gas wallet
+    pub address: String,
+    /// The status of the gas wallet
+    pub status: String,
+    /// The peer ID of the gas wallet
+    pub peer_id: Option<String>,
 }
