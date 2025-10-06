@@ -7,6 +7,7 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(let_chains)]
+#![feature(duration_millis_float)]
 
 use std::{collections::HashSet, net::SocketAddr};
 

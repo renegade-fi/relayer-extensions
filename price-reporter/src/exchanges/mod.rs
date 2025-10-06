@@ -7,7 +7,7 @@ use crate::{
         binance::BinanceConnection, coinbase::CoinbaseConnection, connection::ExchangeConnection,
         error::ExchangeConnectionError, kraken::KrakenConnection, okx::OkxConnection,
     },
-    utils::PairInfo,
+    utils::{metrics::increment_exchange_connection_attempts, PairInfo},
 };
 
 pub(crate) mod binance;
@@ -47,6 +47,11 @@ pub async fn connect_exchange(
     config: &ExchangeConnectionsConfig,
 ) -> Result<Box<dyn ExchangeConnection>, ExchangeConnectionError> {
     let exchange = pair_info.exchange;
+    let base_token = pair_info.base_token();
+
+    // Record the connection attempt
+    increment_exchange_connection_attempts(exchange, &base_token);
+
     Ok(match exchange {
         Exchange::Binance => Box::new(BinanceConnection::connect(pair_info, config).await?),
         Exchange::Coinbase => Box::new(CoinbaseConnection::connect(pair_info, config).await?),

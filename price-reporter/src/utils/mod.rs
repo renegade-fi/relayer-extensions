@@ -32,6 +32,7 @@ use crate::exchanges::ExchangeConnectionsConfig;
 use crate::{errors::ServerError, http_server::routes::Handler};
 
 mod canonical_exchange;
+pub mod metrics;
 mod pair_info;
 
 pub use canonical_exchange::set_canonical_exchange_map;

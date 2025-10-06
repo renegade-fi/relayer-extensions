@@ -5,11 +5,10 @@ use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey};
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
 use crate::{
-    errors::ServerError, exchanges::ExchangeConnectionsConfig, utils::PriceReporterConfig,
+    errors::ServerError,
+    exchanges::ExchangeConnectionsConfig,
+    utils::{metrics::METRICS_PREFIX, PriceReporterConfig},
 };
-
-/// The prefix to apply to all metrics emitted by the price reporter
-const METRICS_PREFIX: &str = "price-reporter";
 
 /// The default statsd host to use for metrics
 const DEFAULT_STATSD_HOST: &str = "127.0.0.1";
