@@ -7401,6 +7401,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "atomic_float 0.1.0",
+ "clap",
  "common",
  "config",
  "crossbeam-skiplist",
@@ -7425,7 +7426,6 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite 0.18.0",
  "tracing",
- "tracing-subscriber 0.3.19",
  "tungstenite 0.18.0",
  "url",
  "util",

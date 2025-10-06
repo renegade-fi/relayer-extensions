@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::{collections::HashMap, env, str::FromStr, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use futures_util::StreamExt;
 use futures_util::{stream::SplitSink, Stream};
@@ -26,12 +26,6 @@ use tokio::{
 };
 use tokio_stream::{wrappers::WatchStream, StreamMap};
 use tokio_tungstenite::WebSocketStream;
-use tracing_subscriber::{
-    filter::{EnvFilter, LevelFilter},
-    fmt,
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-};
 use tungstenite::Message;
 
 use crate::exchanges::ExchangeConnectionsConfig;
@@ -57,39 +51,6 @@ pub const CONN_RETRY_DELAY_MS: u64 = 2_000; // 2 seconds
 pub const MAX_CONN_RETRY_WINDOW_MS: u64 = 60_000; // 1 minute
 /// The maximum number of retries to attempt before giving up on a connection
 pub const MAX_CONN_RETRIES: usize = 5;
-
-/// The name of the environment variable specifying the port on which the
-/// server listens for incoming websocket connections
-const WS_PORT_ENV_VAR: &str = "WS_PORT";
-/// The default port on which the server listens for incoming websocket
-/// connections
-const DEFAULT_WS_PORT: u16 = 4000;
-/// The name of the environment variable specifying the port on which the
-/// server listens for http requests
-const HTTP_PORT_ENV_VAR: &str = "HTTP_PORT";
-/// The default port on which the server listens for http requests
-const DEFAULT_HTTP_PORT: u16 = 3000;
-/// The name of the environment variable specifying the path to the token remap
-const TOKEN_REMAP_PATH_ENV_VAR: &str = "TOKEN_REMAP_PATH";
-/// The name of the environment variable specifying the chain to use
-/// for token remapping
-const CHAIN_ID_ENV_VAR: &str = "CHAIN_ID";
-/// The default chain to use for token remapping
-const DEFAULT_CHAIN: Chain = Chain::Devnet;
-/// The name of the environment variable specifying the Coinbase
-/// API key
-const CB_API_KEY_ENV_VAR: &str = "CB_API_KEY";
-/// The name of the environment variable specifying the Coinbase
-/// API secret
-const CB_API_SECRET_ENV_VAR: &str = "CB_API_SECRET";
-/// The name of the environment variable specifying the Ethereum
-/// RPC node websocket address
-const ETH_WS_ADDR_ENV_VAR: &str = "ETH_WS_ADDR";
-/// The name of the environment variable specifying the HMAC key for the admin
-/// API
-const ADMIN_KEY_ENV_VAR: &str = "ADMIN_KEY";
-/// The name of the environment variable specifying the disabled exchanges
-const DISABLED_EXCHANGES_ENV_VAR: &str = "DISABLED_EXCHANGES";
 
 // ---------
 // | TYPES |
@@ -217,59 +178,6 @@ pub struct PriceReporterConfig {
 // -----------
 // | HELPERS |
 // -----------
-
-/// Configure the logging subscriber
-pub fn setup_logging() {
-    tracing_subscriber::registry()
-        .with(
-            EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy(),
-        )
-        .with(fmt::layer().with_file(true).with_line_number(true).json().flatten_event(true))
-        .init();
-}
-
-/// Parse the configuration options from environment variables
-pub fn parse_config_env_vars() -> PriceReporterConfig {
-    let ws_port = env::var(WS_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_WS_PORT);
-    let http_port =
-        env::var(HTTP_PORT_ENV_VAR).map(|p| p.parse().unwrap()).unwrap_or(DEFAULT_HTTP_PORT);
-    let token_remap_path = env::var(TOKEN_REMAP_PATH_ENV_VAR).ok();
-    let chains = match env::var(CHAIN_ID_ENV_VAR) {
-        Err(_) => vec![DEFAULT_CHAIN],
-        Ok(c) => {
-            c.split(',').map(Chain::from_str).collect::<Result<Vec<_>, _>>().unwrap_or_default()
-        },
-    };
-    let coinbase_key_name = env::var(CB_API_KEY_ENV_VAR).ok();
-    let coinbase_key_secret = env::var(CB_API_SECRET_ENV_VAR).ok();
-    let eth_websocket_addr = env::var(ETH_WS_ADDR_ENV_VAR).ok();
-    let admin_key = env::var(ADMIN_KEY_ENV_VAR)
-        .ok()
-        .map(|key_str| HmacKey::from_base64_string(&key_str).expect("Invalid admin HMAC key"));
-
-    let disabled_exchanges = match env::var(DISABLED_EXCHANGES_ENV_VAR) {
-        Err(_) => vec![Exchange::UniswapV3],
-        Ok(exchanges) => exchanges
-            .split(',')
-            .map(Exchange::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_default(),
-    };
-
-    PriceReporterConfig {
-        ws_port,
-        http_port,
-        token_remap_path,
-        chains,
-        exchange_conn_config: ExchangeConnectionsConfig {
-            coinbase_key_name,
-            coinbase_key_secret,
-            eth_websocket_addr,
-        },
-        admin_key,
-        disabled_exchanges,
-    }
-}
 
 /// Get the topic name for a given pair info
 pub fn get_price_topic_str(topic: &PriceTopic) -> String {
