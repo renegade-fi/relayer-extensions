@@ -10,6 +10,7 @@
 
 use std::{collections::HashSet, net::SocketAddr};
 
+use clap::Parser;
 use errors::ServerError;
 use http_server::HttpServer;
 use itertools::Itertools;
@@ -20,11 +21,14 @@ use renegade_common::types::{
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{parse_config_env_vars, setup_all_token_remaps, setup_logging, PairInfo};
+use utils::{setup_all_token_remaps, PairInfo};
 use ws_server::handle_connection;
 
-use crate::{exchanges::ExchangeConnectionsConfig, price_stream_manager::GlobalPriceStreams};
+use crate::{
+    cli::Cli, exchanges::ExchangeConnectionsConfig, price_stream_manager::GlobalPriceStreams,
+};
 
+mod cli;
 mod errors;
 mod exchanges;
 mod http_server;
@@ -34,11 +38,13 @@ mod ws_server;
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
-    // Set up logging
-    setup_logging();
+    let cli = Cli::parse();
+
+    // Configure telemetry
+    cli.configure_telemetry()?;
 
     // Parse configuration env vars
-    let price_reporter_config = parse_config_env_vars();
+    let price_reporter_config = cli.parse_price_reporter_config()?;
 
     // Set up the token remapping
     let token_remap_path = price_reporter_config.token_remap_path.clone();

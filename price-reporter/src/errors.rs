@@ -42,6 +42,9 @@ pub enum ServerError {
     /// An error indicating that the admin key was not provided
     #[error("No admin key provided")]
     NoAdminKey,
+    /// An error setting up telemetry
+    #[error("Error setting up telemetry: {0}")]
+    TelemetrySetup(String),
 }
 
 impl ServerError {
