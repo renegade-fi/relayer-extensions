@@ -7,7 +7,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::{Sink, SinkExt, Stream, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use jsonwebtoken::{encode, Algorithm, EncodingKey as JwtEncodingKey, Header as JwtHeader};
 use rand::Rng;
 use renegade_common::types::{exchange::Exchange, price::Price, token::Token};
@@ -18,8 +18,9 @@ use reqwest::{
 };
 use serde::Serialize;
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
-use tungstenite::{Error as WsError, Message};
+use tungstenite::Message;
 use url::Url;
 
 use crate::exchanges::{
@@ -30,7 +31,7 @@ use crate::exchanges::{
 };
 
 use super::connection::{
-    parse_json_field, parse_json_from_message, ws_connect, ws_ping, ExchangeConnection,
+    parse_json_field, parse_json_from_message, ws_connect, ExchangeConnection,
 };
 use super::util::{
     exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker,
@@ -117,8 +118,8 @@ struct CoinbaseJwtClaims {
 pub struct CoinbaseConnection {
     /// The underlying stream of prices from the websocket
     price_stream: Box<dyn Stream<Item = PriceStreamType> + Unpin + Send>,
-    /// The underlying write stream of the websocket
-    write_stream: Box<dyn Sink<Message, Error = WsError> + Unpin + Send>,
+    /// Cancellation token to stop background tasks on drop
+    cancel_token: CancellationToken,
 }
 
 impl Stream for CoinbaseConnection {
@@ -153,6 +154,26 @@ impl CoinbaseConnection {
         let subscribe_msg = json!({
             "type": "subscribe",
             "product_ids": [ product_id ],
+            "channel": channel,
+            "jwt": jwt,
+        })
+        .to_string();
+
+        Ok(subscribe_msg)
+    }
+
+    /// Construct the websocket heartbeat channel subscription with HMAC
+    /// authentication
+    fn construct_heartbeat_message(
+        config: &ExchangeConnectionsConfig,
+    ) -> Result<String, ExchangeConnectionError> {
+        let key_name = config.coinbase_key_name.as_ref().expect("coinbase API not configured");
+        let key_secret = config.coinbase_key_secret.as_ref().expect("coinbase API not configured");
+        let jwt = Self::construct_jwt(key_name, key_secret)?;
+
+        let channel = "heartbeat";
+        let subscribe_msg = json!({
+            "type": "subscribe",
             "channel": channel,
             "jwt": jwt,
         })
@@ -208,16 +229,26 @@ impl CoinbaseConnection {
     // -------------------------
 
     /// A loop in which we refresh the order book from a snapshot
-    fn start_refresh_order_book_loop(product_id: &str, order_book: CoinbaseOrderBookData) {
+    fn start_refresh_order_book_loop(
+        product_id: &str,
+        order_book: CoinbaseOrderBookData,
+        cancel_token: CancellationToken,
+    ) {
         let product_id = product_id.to_string();
         tokio::spawn(async move {
             loop {
+                if cancel_token.is_cancelled() {
+                    info!("Received cancellation signal, stopping order book refresh loop for {product_id}");
+                    break;
+                }
+
                 if let Err(e) = Self::refresh_order_book(&product_id, &order_book).await {
                     error!("Error refreshing order book: {e}");
                 }
 
                 let sleep_time = rand::thread_rng()
                     .gen_range(ORDER_BOOK_REFRESH_INTERVAL_MIN..=ORDER_BOOK_REFRESH_INTERVAL_MAX);
+
                 tokio::time::sleep(sleep_time).await;
             }
         });
@@ -287,6 +318,12 @@ impl CoinbaseConnection {
     }
 }
 
+impl Drop for CoinbaseConnection {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
+}
+
 #[async_trait]
 impl ExchangeConnection for CoinbaseConnection {
     async fn connect(
@@ -300,10 +337,17 @@ impl ExchangeConnection for CoinbaseConnection {
 
         let product_id = get_product_id(&base_token, &quote_token)?;
         let authenticated_subscribe_msg = Self::construct_subscribe_message(&product_id, config)?;
+        let authenticated_heartbeat_msg = Self::construct_heartbeat_message(config)?;
 
         // Setup the topic subscription
         writer
             .send(Message::Text(authenticated_subscribe_msg))
+            .await
+            .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
+
+        // Setup the heartbeat subscription
+        writer
+            .send(Message::Text(authenticated_heartbeat_msg))
             .await
             .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
 
@@ -327,17 +371,13 @@ impl ExchangeConnection for CoinbaseConnection {
         });
 
         // Spawn a task to periodically refresh the order book from a snapshot
-        Self::start_refresh_order_book_loop(&product_id, order_book);
+        let cancel_token = CancellationToken::new();
+        Self::start_refresh_order_book_loop(&product_id, order_book, cancel_token.clone());
 
         // Construct an initialized price stream from the initial price and the mapped
         // stream
         let price_stream = InitializablePriceStream::new(Box::pin(mapped_stream));
-        Ok(Self { price_stream: Box::new(price_stream), write_stream: Box::new(writer) })
-    }
-
-    async fn send_keepalive(&mut self) -> Result<(), ExchangeConnectionError> {
-        // Send a ping message
-        ws_ping(&mut self.write_stream).await
+        Ok(Self { price_stream: Box::new(price_stream), cancel_token })
     }
 
     async fn supports_pair(
@@ -358,6 +398,9 @@ impl ExchangeConnection for CoinbaseConnection {
         };
 
         let product_id = format!("{}-{}", base_ticker, quote_ticker);
+
+        // TODO: We sometimes incorrectly report pairs as unsupported due to getting
+        // rate limited on the following request
 
         // Query the `products` endpoint about the pair
         let request_url = format!("{COINBASE_REST_BASE_URL}/products/{product_id}");
