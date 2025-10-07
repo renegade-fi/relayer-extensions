@@ -111,6 +111,7 @@ pub(crate) async fn ws_connect(
     ),
     ExchangeConnectionError,
 > {
+    // TODO: Track TCP buffer depth on the associated connection
     let ws_conn = match connect_async(url.clone()).await {
         Ok((conn, _resp)) => conn,
         Err(e) => {
