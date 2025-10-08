@@ -78,6 +78,8 @@ pub struct PriceReporterClientConfig {
 pub struct PriceReporterClient {
     /// The base URL of the price reporter
     base_url: String,
+    /// The shared HTTP client used for issuing requests to the price reporter
+    http_client: Client,
     /// The multi-price stream for real-time token price updates,
     /// if the client was constructed with price streaming enabled
     multi_price_stream: Option<MultiPriceStream>,
@@ -90,8 +92,15 @@ impl PriceReporterClient {
     pub fn new(config: PriceReporterClientConfig) -> Result<Self, PriceReporterClientError> {
         let PriceReporterClientConfig { base_url, disable_price_stream, allow_stale_price_stream } =
             config;
+
+        // Build a shared HTTP client with a sensible default timeout
+        let http_client = Client::builder()
+            .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+            .build()
+            .map_err(PriceReporterClientError::http)?;
+
         if disable_price_stream {
-            return Ok(Self { base_url, multi_price_stream: None });
+            return Ok(Self { base_url, http_client, multi_price_stream: None });
         }
 
         let mut ws_url: Url = base_url.parse().map_err(PriceReporterClientError::parsing)?;
@@ -118,6 +127,7 @@ impl PriceReporterClient {
 
         Ok(Self {
             base_url,
+            http_client,
             multi_price_stream: Some(MultiPriceStream::new(
                 ws_url.to_string(),
                 mints,
@@ -215,13 +225,28 @@ impl PriceReporterClient {
         let price_topic = construct_price_topic(mint);
 
         let url = format!("{}{}/{}", self.base_url, PRICE_ROUTE, price_topic);
-        let response = send_get_request(&url, DEFAULT_TIMEOUT_SECS).await?;
+        let response = self.send_get_request(&url).await?;
 
         let res_text = response.text().await.map_err(PriceReporterClientError::parsing)?;
 
         let price: f64 = res_text.parse().map_err(PriceReporterClientError::parsing)?;
 
         Ok(price)
+    }
+
+    /// Sends a basic GET request
+    async fn send_get_request(&self, url: &str) -> Result<Response, PriceReporterClientError> {
+        let response =
+            self.http_client.get(url).send().await.map_err(PriceReporterClientError::http)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let message = response.text().await.map_err(PriceReporterClientError::parsing)?;
+
+            return Err(PriceReporterClientError::http(format!("Status {}: {}", status, message)));
+        }
+
+        Ok(response)
     }
 }
 
@@ -240,26 +265,4 @@ pub fn get_base_mint_from_topic(topic: &str) -> Result<String, PriceReporterClie
     let parts: Vec<&str> = topic.split('-').collect();
     let base_mint = parts.get(1).ok_or(PriceReporterClientError::parsing(ERR_INVALID_TOPIC))?;
     Ok(base_mint.to_string())
-}
-
-/// Sends a basic GET request
-pub async fn send_get_request(
-    url: &str,
-    timeout_secs: u64,
-) -> Result<Response, PriceReporterClientError> {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(timeout_secs))
-        .build()
-        .map_err(PriceReporterClientError::http)?;
-
-    let response = client.get(url).send().await.map_err(PriceReporterClientError::http)?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let message = response.text().await.map_err(PriceReporterClientError::parsing)?;
-
-        return Err(PriceReporterClientError::http(format!("Status {}: {}", status, message)));
-    }
-
-    Ok(response)
 }
