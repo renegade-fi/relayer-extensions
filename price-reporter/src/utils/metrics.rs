@@ -16,6 +16,8 @@ pub const METRICS_PREFIX: &str = "price-reporter";
 const EXCHANGE_CONNECTION_ATTEMPTS_METRIC_NAME: &str = "exchange_connection_attempts";
 /// The name of the metric tracking the latency of a price update
 const PRICE_UPDATE_LATENCY_METRIC_NAME: &str = "price_update_latency_ms";
+/// The name of the metric tracking the ongoing volatility of a price stream
+const ONGOING_VOL_METRIC_NAME: &str = "ongoing_volatility";
 
 /// The tag for the exchange
 const EXCHANGE_TAG: &str = "exchange";
@@ -42,4 +44,15 @@ pub fn record_price_update_latency(pair_info: &PairInfo, latency_ms: f64) {
     let tags = vec![(EXCHANGE_TAG.to_string(), exchange), (ASSET_TAG.to_string(), ticker)];
 
     metrics::gauge!(PRICE_UPDATE_LATENCY_METRIC_NAME, &tags).set(latency_ms);
+}
+
+/// Record a metric tracking the ongoing volatility sampled from a price stream
+pub fn record_ongoing_volatility(pair_info: &PairInfo, volatility: f64) {
+    let base_token = pair_info.base_token();
+    let ticker = base_token.get_ticker().unwrap_or(base_token.get_addr());
+    let exchange = pair_info.exchange.to_string();
+
+    let tags = vec![(EXCHANGE_TAG.to_string(), exchange), (ASSET_TAG.to_string(), ticker)];
+
+    metrics::gauge!(ONGOING_VOL_METRIC_NAME, &tags).set(volatility);
 }

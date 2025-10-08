@@ -18,9 +18,9 @@ use crate::{
         ExchangeConnectionsConfig,
     },
     utils::{
-        metrics::record_price_update_latency, ClosureSender, PairInfo, PriceReceiver, PriceSender,
-        PriceStream, SharedPriceStreams, CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS,
-        MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+        metrics::{record_ongoing_volatility, record_price_update_latency},
+        ClosureSender, PairInfo, PriceReceiver, PriceSender, PriceStream, SharedPriceStreams,
+        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
     },
 };
 
@@ -36,6 +36,13 @@ use crate::{
 const UNIT_PAIR_PRICE: f64 = 1.0;
 /// The interval at which to refresh the unit price
 const UNIT_PRICE_REFRESH_INTERVAL_MS: u64 = 1_000; // 1 second
+
+/// The interval at which to sample the fixed-window volatility of a price
+/// stream
+const ONGOING_VOL_SAMPLING_INTERVAL: Duration = Duration::from_secs(60); // 1 minute
+
+/// The interval over which to record the volatility of a price stream
+const ONGOING_VOL_RECORDING_INTERVAL: Duration = Duration::from_millis(50); // 50ms
 
 // ---------
 // | Types |
@@ -116,18 +123,23 @@ impl GlobalPriceStreams {
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
         let global_price_streams = self.clone();
+        let pair_info_clone = pair_info.clone();
         tokio::spawn(async move {
             let res = Self::price_stream_task(
                 config,
-                pair_info.clone(),
+                pair_info_clone.clone(),
                 price_tx,
                 &global_price_streams.price_update_timestamps,
             )
             .await;
 
-            global_price_streams.remove_price_stream(pair_info).await;
+            global_price_streams.remove_price_stream(pair_info_clone).await;
             global_price_streams.closure_channel.send(res).unwrap()
         });
+
+        // Spawn a task responsible for tracking the ongoing volatility of the price
+        // stream
+        tokio::spawn(Self::track_ongoing_vol_task(pair_info, price_rx.clone()));
 
         // Return a handle to the broadcast channel stream
         Ok(price_rx)
@@ -404,5 +416,31 @@ impl GlobalPriceStreams {
         drop(price_streams);
 
         self.init_price_stream(pair_info, config).await
+    }
+
+    /// Records the volatility of the given pair info over a fixed recording
+    /// interval in a permanent loop, with a fixed sampling interval
+    async fn track_ongoing_vol_task(pair_info: PairInfo, price_rx: PriceReceiver) {
+        loop {
+            if price_rx.has_changed().is_err() {
+                warn!(
+                    "Price stream for {} has closed, exiting ongoing volatility task",
+                    pair_info.to_topic()
+                );
+
+                break;
+            }
+
+            let start_price = *price_rx.borrow();
+            tokio::time::sleep(ONGOING_VOL_RECORDING_INTERVAL).await;
+            let end_price = *price_rx.borrow();
+
+            let deviation = (end_price - start_price) / start_price;
+            let vol = if deviation.is_finite() { deviation.abs() } else { 0.0 };
+
+            record_ongoing_volatility(&pair_info, vol);
+
+            tokio::time::sleep(ONGOING_VOL_SAMPLING_INTERVAL).await;
+        }
     }
 }
