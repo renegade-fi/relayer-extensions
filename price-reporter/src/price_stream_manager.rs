@@ -48,9 +48,22 @@ impl GlobalPriceStreams {
         Self { price_streams: Arc::new(RwLock::new(HashMap::new())), closure_channel }
     }
 
-    /// Add a price stream to the global map
-    pub async fn add_price_stream(&self, pair_info: PairInfo, price_rx: PriceReceiver) {
-        self.price_streams.write().await.insert(pair_info, price_rx);
+    /// Attempt to add a price stream to the global map, returning the price
+    /// receiver if one already exists
+    pub async fn maybe_add_price_stream(
+        &self,
+        pair_info: PairInfo,
+        price_rx: PriceReceiver,
+    ) -> Option<PriceReceiver> {
+        let mut price_streams = self.price_streams.write().await;
+
+        if let Some(stream_rx) = price_streams.get(&pair_info).cloned() {
+            return Some(stream_rx);
+        }
+
+        price_streams.insert(pair_info, price_rx);
+
+        None
     }
 
     /// Remove a price stream from the global map
@@ -65,11 +78,21 @@ impl GlobalPriceStreams {
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
         pair_info.validate_subscription().await?;
-        info!("Initializing price stream for {}", pair_info.to_topic());
 
         // Create a shared channel into which we forward streamed prices
         let (price_tx, price_rx) = channel(Price::default());
-        self.add_price_stream(pair_info.clone(), price_rx.clone()).await;
+
+        if let Some(stream_rx) =
+            self.maybe_add_price_stream(pair_info.clone(), price_rx.clone()).await
+        {
+            // If a price receiver entry already exists, return it.
+            // This prevents a race condition where two concurrent
+            // calls with the same `pair_info` result in duplicate price stream
+            // tasks being spawned.
+            return Ok(stream_rx);
+        }
+
+        info!("Initializing price stream for {}", pair_info.to_topic());
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
@@ -284,16 +307,13 @@ impl GlobalPriceStreams {
         pair_info: PairInfo,
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
-        let maybe_stream_rx = {
-            let price_streams = self.price_streams.read().await;
-            price_streams.get(&pair_info).cloned()
-        };
+        let price_streams = self.price_streams.read().await;
+        if let Some(stream_rx) = price_streams.get(&pair_info).cloned() {
+            return Ok(stream_rx);
+        }
 
-        let recv = match maybe_stream_rx {
-            Some(stream_rx) => stream_rx,
-            None => self.init_price_stream(pair_info, config).await?,
-        };
+        drop(price_streams);
 
-        Ok(recv)
+        self.init_price_stream(pair_info, config).await
     }
 }

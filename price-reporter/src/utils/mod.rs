@@ -67,6 +67,7 @@ pub type PriceReceiver = WatchReceiver<Price>;
 
 /// A type alias for a shareable map of price streams, indexed by the (source,
 /// base, quote) tuple
+// TODO: Replace w/ `DashMap`?
 pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceReceiver>>>;
 
 /// A type alias for a price stream
