@@ -16,7 +16,7 @@ pub enum ServerError {
     #[error("Invalid (exchange, base, quote) tuple: {0}")]
     InvalidPairInfo(String),
     /// An error establishing a connection to an exchange
-    #[error("Error establishing connection to {0}")]
+    #[error("Error establishing exchange connection: {0}")]
     ExchangeConnection(#[from] ExchangeConnectionError),
     /// An error getting the peer address of a websocket connection
     #[error("Error getting peer address: {0}")]

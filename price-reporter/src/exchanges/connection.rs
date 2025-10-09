@@ -17,11 +17,14 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use tracing::error;
+use tracing::{error, warn};
 use tungstenite::Error as WsError;
 use url::Url;
 
-use crate::exchanges::{error::ExchangeConnectionError, ExchangeConnectionsConfig};
+use crate::{
+    exchanges::{error::ExchangeConnectionError, ExchangeConnectionsConfig},
+    utils::PairInfo,
+};
 
 // -------------
 // | Constants |
@@ -160,7 +163,10 @@ pub(super) fn parse_json_field_array<T: FromStr>(
 }
 
 /// Parse an json structure from a websocket message
-pub fn parse_json_from_message(message: Message) -> Result<Option<Value>, ExchangeConnectionError> {
+pub fn parse_json_from_message(
+    message: Message,
+    pair_info: &PairInfo,
+) -> Result<Option<Value>, ExchangeConnectionError> {
     if let Message::Text(message_str) = message {
         // Okx sends some undocumented messages: Empty strings and "Protocol violation"
         // messages
@@ -182,6 +188,15 @@ pub fn parse_json_from_message(message: Message) -> Result<Option<Value>, Exchan
         serde_json::from_str(&message_str).map_err(|err| {
             ExchangeConnectionError::InvalidMessage(format!("{} for message: {}", err, message_str))
         })
+    } else if let Message::Close(close_frame) = message {
+        let topic = pair_info.to_topic();
+        warn!("Received close message from {topic} websocket");
+        if let Some(close_frame) = close_frame {
+            let code = close_frame.code;
+            let reason = close_frame.reason;
+            warn!("Close code: {code}, reason: {reason} for {topic} websocket");
+        }
+        Ok(None)
     } else {
         Ok(None)
     }
@@ -196,8 +211,7 @@ pub fn parse_json_from_message(message: Message) -> Result<Option<Value>, Exchan
 pub trait ExchangeConnection: Stream<Item = PriceStreamType> + Unpin + Send {
     /// Create a new connection to the exchange on a given asset pair
     async fn connect(
-        base_token: Token,
-        quote_token: Token,
+        pair_info: PairInfo,
         config: &ExchangeConnectionsConfig,
     ) -> Result<Self, ExchangeConnectionError>
     where

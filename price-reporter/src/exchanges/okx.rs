@@ -14,13 +14,13 @@ use tracing::error;
 use tungstenite::{Error as WsError, Message};
 use url::Url;
 
-use crate::exchanges::connection::{InitializablePriceStream, PriceStreamType};
+use crate::{
+    exchanges::connection::{InitializablePriceStream, PriceStreamType},
+    utils::PairInfo,
+};
 
 use super::{
-    connection::{
-        parse_json_field, parse_json_field_array, parse_json_from_message, ws_connect,
-        ExchangeConnection,
-    },
+    connection::{parse_json_field_array, parse_json_from_message, ws_connect, ExchangeConnection},
     error::ExchangeConnectionError,
     util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
     ExchangeConnectionsConfig,
@@ -50,8 +50,6 @@ const OKX_DATA: &str = "data";
 const OKX_BIDS: &str = "bids";
 /// The field name for asks on an Okx bbo websocket message
 const OKX_ASKS: &str = "asks";
-/// the field name for the timestamp on an Okx websocket message
-const OKX_TIMESTAMP: &str = "ts";
 /// The data index to pull the first bid or ask
 const FIRST_ENTRY: usize = 0;
 /// The data index to pull the price from a bid or ask
@@ -78,8 +76,9 @@ impl OkxConnection {
     /// Parse a price from an Okx websocket message
     fn midpoint_from_ws_message(
         message: Message,
+        pair_info: &PairInfo,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
-        let json_blob = parse_json_from_message(message)?;
+        let json_blob = parse_json_from_message(message, pair_info)?;
         if json_blob.is_none() {
             return Ok(None);
         }
@@ -96,7 +95,6 @@ impl OkxConnection {
             parse_json_field_array(OKX_PRICE, &first_data_entry[OKX_BIDS][FIRST_ENTRY])?;
         let best_offer: f64 =
             parse_json_field_array(OKX_PRICE, &first_data_entry[OKX_ASKS][FIRST_ENTRY])?;
-        let _reported_timestamp_seconds: f32 = parse_json_field(OKX_TIMESTAMP, first_data_entry)?;
 
         Ok(Some((best_bid + best_offer) / 2.0))
     }
@@ -114,13 +112,15 @@ impl Stream for OkxConnection {
 #[async_trait]
 impl ExchangeConnection for OkxConnection {
     async fn connect(
-        base_token: Token,
-        quote_token: Token,
+        pair_info: PairInfo,
         _config: &ExchangeConnectionsConfig,
     ) -> Result<Self, ExchangeConnectionError>
     where
         Self: Sized,
     {
+        let base_token = pair_info.base_token();
+        let quote_token = pair_info.quote_token();
+
         // Connect to the websocket
         let url = Self::websocket_url();
         let (mut write, read) = ws_connect(url).await?;
@@ -147,18 +147,21 @@ impl ExchangeConnection for OkxConnection {
             .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
 
         // Map the stream to process midpoint prices
-        let mapped_stream = read.filter_map(|message| async {
-            match message.map(Self::midpoint_from_ws_message) {
-                // The outer `Result` comes from reading the message from the websocket
-                // Processing the message returns a `Result<Option<..>>` which we
-                // flip to match the stream type
-                Ok(mapped_res) => mapped_res.transpose(),
+        let mapped_stream = read.filter_map(move |message| {
+            let pair_info = pair_info.clone();
+            async move {
+                match message.map(|message| Self::midpoint_from_ws_message(message, &pair_info)) {
+                    // The outer `Result` comes from reading the message from the websocket
+                    // Processing the message returns a `Result<Option<..>>` which we
+                    // flip to match the stream type
+                    Ok(mapped_res) => mapped_res.transpose(),
 
-                // Error reading from the websocket
-                Err(e) => {
-                    error!("Error reading message from Okx ws: {}", e);
-                    Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
-                },
+                    // Error reading from the websocket
+                    Err(e) => {
+                        error!("Error reading message from Okx ws: {}", e);
+                        Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
+                    },
+                }
             }
         });
 

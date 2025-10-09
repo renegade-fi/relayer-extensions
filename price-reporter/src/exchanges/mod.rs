@@ -1,10 +1,13 @@
 //! Exchange connection shims
 
-use renegade_common::types::{exchange::Exchange, token::Token};
+use renegade_common::types::exchange::Exchange;
 
-use crate::exchanges::{
-    binance::BinanceConnection, coinbase::CoinbaseConnection, connection::ExchangeConnection,
-    error::ExchangeConnectionError, kraken::KrakenConnection, okx::OkxConnection,
+use crate::{
+    exchanges::{
+        binance::BinanceConnection, coinbase::CoinbaseConnection, connection::ExchangeConnection,
+        error::ExchangeConnectionError, kraken::KrakenConnection, okx::OkxConnection,
+    },
+    utils::PairInfo,
 };
 
 pub(crate) mod binance;
@@ -40,25 +43,15 @@ impl ExchangeConnectionsConfig {
 
 /// Construct a new websocket connection for the given exchange
 pub async fn connect_exchange(
-    base_token: &Token,
-    quote_token: &Token,
+    pair_info: PairInfo,
     config: &ExchangeConnectionsConfig,
-    exchange: Exchange,
 ) -> Result<Box<dyn ExchangeConnection>, ExchangeConnectionError> {
-    let base_token = base_token.clone();
-    let quote_token = quote_token.clone();
-
+    let exchange = pair_info.exchange;
     Ok(match exchange {
-        Exchange::Binance => {
-            Box::new(BinanceConnection::connect(base_token, quote_token, config).await?)
-        },
-        Exchange::Coinbase => {
-            Box::new(CoinbaseConnection::connect(base_token, quote_token, config).await?)
-        },
-        Exchange::Kraken => {
-            Box::new(KrakenConnection::connect(base_token, quote_token, config).await?)
-        },
-        Exchange::Okx => Box::new(OkxConnection::connect(base_token, quote_token, config).await?),
+        Exchange::Binance => Box::new(BinanceConnection::connect(pair_info, config).await?),
+        Exchange::Coinbase => Box::new(CoinbaseConnection::connect(pair_info, config).await?),
+        Exchange::Kraken => Box::new(KrakenConnection::connect(pair_info, config).await?),
+        Exchange::Okx => Box::new(OkxConnection::connect(pair_info, config).await?),
         _ => return Err(ExchangeConnectionError::unsupported_exchange(exchange)),
     })
 }

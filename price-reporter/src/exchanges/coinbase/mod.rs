@@ -23,11 +23,14 @@ use tracing::{error, info};
 use tungstenite::Message;
 use url::Url;
 
-use crate::exchanges::{
-    coinbase::{order_book::CoinbaseOrderBookData, types::CoinbaseOrderBookSnapshotResponse},
-    connection::{InitializablePriceStream, PriceStreamType},
-    error::ExchangeConnectionError,
-    ExchangeConnectionsConfig,
+use crate::{
+    exchanges::{
+        coinbase::{order_book::CoinbaseOrderBookData, types::CoinbaseOrderBookSnapshotResponse},
+        connection::{InitializablePriceStream, PriceStreamType},
+        error::ExchangeConnectionError,
+        ExchangeConnectionsConfig,
+    },
+    utils::PairInfo,
 };
 
 use super::connection::{
@@ -270,9 +273,10 @@ impl CoinbaseConnection {
     fn midpoint_from_ws_message(
         order_book: &CoinbaseOrderBookData,
         message: Message,
+        pair_info: &PairInfo,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
         // The json body of the message
-        let json = match parse_json_from_message(message)? {
+        let json = match parse_json_from_message(message, pair_info)? {
             Some(json) => json,
             None => return Ok(None),
         };
@@ -327,10 +331,12 @@ impl Drop for CoinbaseConnection {
 #[async_trait]
 impl ExchangeConnection for CoinbaseConnection {
     async fn connect(
-        base_token: Token,
-        quote_token: Token,
+        pair_info: PairInfo,
         config: &ExchangeConnectionsConfig,
     ) -> Result<Self, ExchangeConnectionError> {
+        let base_token = pair_info.base_token();
+        let quote_token = pair_info.quote_token();
+
         // Build the base websocket connection
         let url = Self::websocket_url();
         let (mut writer, read) = ws_connect(url).await?;
@@ -355,12 +361,14 @@ impl ExchangeConnection for CoinbaseConnection {
         let order_book = CoinbaseOrderBookData::new();
         let order_book_clone = order_book.clone();
         let mapped_stream = read.filter_map(move |message| {
+            let pair_info = pair_info.clone();
             let order_book_clone = order_book_clone.clone();
             async move {
                 match message {
                     // The outer `Result` comes from reading from the ws stream, the inner `Result`
                     // comes from parsing the message
-                    Ok(val) => Self::midpoint_from_ws_message(&order_book_clone, val).transpose(),
+                    Ok(val) => Self::midpoint_from_ws_message(&order_book_clone, val, &pair_info)
+                        .transpose(),
 
                     Err(e) => {
                         error!("Error reading message from Coinbase websocket: {e}");

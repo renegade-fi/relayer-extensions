@@ -124,7 +124,7 @@ impl GlobalPriceStreams {
             Self::connect_with_retries(&pair_info, &config, &mut retry_timestamps).await?;
 
         loop {
-            match Self::manage_connection(&mut conn, &price_tx).await {
+            match Self::manage_connection(&mut conn, &price_tx, &pair_info).await {
                 Ok(()) => {},
                 Err(e) => {
                     conn = Self::exhaust_retries(e, &pair_info, &config, &mut retry_timestamps)
@@ -151,6 +151,7 @@ impl GlobalPriceStreams {
     async fn manage_connection(
         conn: &mut Box<dyn ExchangeConnection>,
         price_tx: &PriceSender,
+        pair_info: &PairInfo,
     ) -> Result<(), ServerError> {
         let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
         tokio::pin!(delay);
@@ -164,9 +165,15 @@ impl GlobalPriceStreams {
                 }
 
                 // Forward the next price into the broadcast channel
-                Some(price_res) = conn.next() => {
-                    let price = price_res.map_err(ServerError::ExchangeConnection)?;
-                    let _ = price_tx.send(price);
+                maybe_price_res = conn.next() => match maybe_price_res {
+                    Some(price_res) => {
+                        let price = price_res.map_err(ServerError::ExchangeConnection)?;
+                        let _ = price_tx.send(price);
+                    }
+                    None => {
+                        let stream_closure_msg = format!("Price stream for {} has closed", pair_info.to_topic());
+                        return Err(ServerError::ExchangeConnection(ExchangeConnectionError::ConnectionHangup(stream_closure_msg)))
+                    }
                 }
             }
         }
@@ -178,11 +185,8 @@ impl GlobalPriceStreams {
         config: &ExchangeConnectionsConfig,
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
-        let (exchange, base, quote) =
-            (pair_info.exchange, pair_info.base_token(), pair_info.quote_token());
-
         // Attempt to connect to the pair on the specified exchange
-        match connect_exchange(&base, &quote, config, exchange)
+        match connect_exchange(pair_info.clone(), config)
             .await
             .map_err(ServerError::ExchangeConnection)
         {
@@ -199,6 +203,7 @@ impl GlobalPriceStreams {
         config: &ExchangeConnectionsConfig,
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
+        warn!("Error in connection to {}: {}", pair_info.to_topic(), prev_err);
         let exchange = pair_info.exchange;
         loop {
             prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
@@ -228,9 +233,6 @@ impl GlobalPriceStreams {
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
         warn!("Retrying connection for {}", pair_info.to_topic());
 
-        let (exchange, base, quote) =
-            (pair_info.exchange, pair_info.base_token(), pair_info.quote_token());
-
         // Increment the retry count and filter out old requests
         let now = Instant::now();
         let retry_window = Duration::from_millis(MAX_CONN_RETRY_WINDOW_MS);
@@ -240,7 +242,7 @@ impl GlobalPriceStreams {
         retry_timestamps.push(now);
         if retry_timestamps.len() >= MAX_CONN_RETRIES {
             return Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
-                exchange,
+                pair_info.exchange,
             )));
         }
 
@@ -248,9 +250,7 @@ impl GlobalPriceStreams {
         tokio::time::sleep(Duration::from_millis(CONN_RETRY_DELAY_MS)).await;
 
         // Reconnect
-        connect_exchange(&base, &quote, config, exchange)
-            .await
-            .map_err(ServerError::ExchangeConnection)
+        connect_exchange(pair_info.clone(), config).await.map_err(ServerError::ExchangeConnection)
     }
 
     /// Returns a tuple of (canonicalized pair info, requires quote conversion),

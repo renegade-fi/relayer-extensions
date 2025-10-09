@@ -16,7 +16,10 @@ use tracing::error;
 use tungstenite::{Error as WsError, Message};
 use url::Url;
 
-use crate::exchanges::connection::{InitializablePriceStream, PriceStreamType};
+use crate::{
+    exchanges::connection::{InitializablePriceStream, PriceStreamType},
+    utils::PairInfo,
+};
 
 use super::{
     connection::{
@@ -81,9 +84,10 @@ impl KrakenConnection {
     /// Parse a price report from a Kraken websocket message
     fn midpoint_from_ws_message(
         message: Message,
+        pair_info: &PairInfo,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
         // Parse the message to json
-        let json_blob = parse_json_from_message(message)?;
+        let json_blob = parse_json_from_message(message, pair_info)?;
         if json_blob.is_none() {
             return Ok(None);
         }
@@ -118,13 +122,15 @@ impl Stream for KrakenConnection {
 #[async_trait]
 impl ExchangeConnection for KrakenConnection {
     async fn connect(
-        base_token: Token,
-        quote_token: Token,
+        pair_info: PairInfo,
         _config: &ExchangeConnectionsConfig,
     ) -> Result<Self, ExchangeConnectionError>
     where
         Self: Sized,
     {
+        let base_token = pair_info.base_token();
+        let quote_token = pair_info.quote_token();
+
         // Connect to the websocket
         let url = Self::websocket_url();
         let (mut write, read) = ws_connect(url).await?;
@@ -151,18 +157,21 @@ impl ExchangeConnection for KrakenConnection {
             .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
 
         // Map the stream to process midpoint prices
-        let mapped_stream = read.filter_map(|message| async {
-            match message.map(Self::midpoint_from_ws_message) {
-                // The outer `Result` comes from reading the websocket stream
-                // Processing the stream messages returns a `Result<Option<..>>` which we
-                // flip via `transpose`
-                Ok(val) => val.transpose(),
+        let mapped_stream = read.filter_map(move |message| {
+            let pair_info = pair_info.clone();
+            async move {
+                match message.map(|message| Self::midpoint_from_ws_message(message, &pair_info)) {
+                    // The outer `Result` comes from reading the websocket stream
+                    // Processing the stream messages returns a `Result<Option<..>>` which we
+                    // flip via `transpose`
+                    Ok(val) => val.transpose(),
 
-                // Error reading from the websocket
-                Err(e) => {
-                    error!("Error reading message from Kraken ws: {}", e);
-                    Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
-                },
+                    // Error reading from the websocket
+                    Err(e) => {
+                        error!("Error reading message from Kraken ws: {}", e);
+                        Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
+                    },
+                }
             }
         });
 

@@ -18,11 +18,14 @@ use tracing::error;
 use tungstenite::{Error as WsError, Message};
 use url::Url;
 
-use crate::exchanges::{
-    connection::{InitializablePriceStream, PriceStreamType},
-    error::ExchangeConnectionError,
-    util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
-    ExchangeConnectionsConfig,
+use crate::{
+    exchanges::{
+        connection::{InitializablePriceStream, PriceStreamType},
+        error::ExchangeConnectionError,
+        util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
+        ExchangeConnectionsConfig,
+    },
+    PairInfo,
 };
 
 use super::connection::{
@@ -123,9 +126,10 @@ impl BinanceConnection {
     /// Parse a price report from an incoming message
     fn midpoint_from_ws_message(
         message: Message,
+        pair_info: &PairInfo,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
         // Deserialize the message into a JSON object
-        if let Some(json_blob) = parse_json_from_message(message)? {
+        if let Some(json_blob) = parse_json_from_message(message, pair_info)? {
             // Raw numbers are ignored
             if let Value::Number(_) = json_blob {
                 return Ok(None);
@@ -153,13 +157,15 @@ impl Stream for BinanceConnection {
 #[async_trait]
 impl ExchangeConnection for BinanceConnection {
     async fn connect(
-        base_token: Token,
-        quote_token: Token,
+        pair_info: PairInfo,
         _config: &ExchangeConnectionsConfig,
     ) -> Result<Self, ExchangeConnectionError>
     where
         Self: Sized,
     {
+        let base_token = pair_info.base_token();
+        let quote_token = pair_info.quote_token();
+
         // Fetch an inital price report to setup the stream
         let initial_price_report =
             Self::fetch_price_report(base_token.clone(), quote_token.clone()).await?;
@@ -169,17 +175,21 @@ impl ExchangeConnection for BinanceConnection {
         let (write, read) = ws_connect(url).await?;
 
         // Map the stream to process midpoint prices
-        let mapped_stream = read.filter_map(|message| async {
-            match message.map(Self::midpoint_from_ws_message) {
-                // The result is for reading a message from the websocket, the inner result is for
-                // processing that message and returns an option. Flip the order of the option and
-                // the result in the processed message
-                Ok(mapped_stream) => mapped_stream.transpose(),
-                // Error on the incoming (filtered) stream
-                Err(e) => {
-                    error!("Error reading message from Binance ws: {}", e);
-                    Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
-                },
+        let mapped_stream = read.filter_map(move |message| {
+            let pair_info = pair_info.clone();
+            async move {
+                match message.map(|message| Self::midpoint_from_ws_message(message, &pair_info)) {
+                    // The result is for reading a message from the websocket, the inner result is
+                    // for processing that message and returns an option. Flip
+                    // the order of the option and the result in the processed
+                    // message
+                    Ok(mapped_stream) => mapped_stream.transpose(),
+                    // Error on the incoming (filtered) stream
+                    Err(e) => {
+                        error!("Error reading message from Binance ws: {}", e);
+                        Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
+                    },
+                }
             }
         });
 
