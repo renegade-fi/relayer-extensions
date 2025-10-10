@@ -17,7 +17,7 @@ use reqwest::{
     Client,
 };
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use tungstenite::Message;
@@ -55,6 +55,8 @@ const CDP_ISSUER_ID: &str = "cdp";
 /// The User-Agent header for Coinbase requests
 const CB_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
+/// The name of the sequence number field in a Coinbase WS message
+const COINBASE_SEQ_NUM: &str = "sequence_num";
 /// The name of the events field in a Coinbase WS message
 const COINBASE_EVENTS: &str = "events";
 /// The name of the event type field on a coinbase event
@@ -297,6 +299,7 @@ impl CoinbaseConnection {
         order_book: &CoinbaseOrderBookData,
         message: Message,
         pair_info: &PairInfo,
+        last_sequence_num: &mut i64,
     ) -> Result<Option<Price>, ExchangeConnectionError> {
         // The json body of the message
         let json = match parse_json_from_message(message, pair_info)? {
@@ -322,6 +325,8 @@ impl CoinbaseConnection {
         if event_type == SNAPSHOT_EVENT_TYPE {
             order_book.clear();
         }
+
+        Self::check_and_update_sequence_num(&json, last_sequence_num, pair_info)?;
 
         // Make updates to the locally replicated book given the price level updates
         for coinbase_event in update_events {
@@ -352,6 +357,39 @@ impl CoinbaseConnection {
 
         // Compute the midpoint price
         Ok(order_book.midpoint())
+    }
+
+    /// Check the sequence number of a websocket message against the last-seen
+    /// one, then update the last-seen sequence number
+    fn check_and_update_sequence_num(
+        ws_message: &Value,
+        last_sequence_num: &mut i64,
+        pair_info: &PairInfo,
+    ) -> Result<(), ExchangeConnectionError> {
+        let seq_num_field = &ws_message[COINBASE_SEQ_NUM];
+
+        let sequence_num = seq_num_field
+            .as_i64()
+            .ok_or(ExchangeConnectionError::InvalidMessage(seq_num_field.to_string()))?;
+
+        if *last_sequence_num == -1 {
+            *last_sequence_num = sequence_num;
+            return Ok(());
+        }
+
+        let topic = pair_info.to_topic();
+
+        if sequence_num > *last_sequence_num + 1 {
+            error!("Dropped message in {topic} websocket stream (sequence number: {sequence_num}; last seen: {last_sequence_num})");
+        }
+
+        if sequence_num < *last_sequence_num {
+            error!("Out-of-order message in {topic} websocket stream (sequence number: {sequence_num}; last seen: {last_sequence_num})");
+        }
+
+        *last_sequence_num = sequence_num;
+
+        Ok(())
     }
 }
 
@@ -393,6 +431,7 @@ impl ExchangeConnection for CoinbaseConnection {
         // Map the stream of Coinbase messages to one of midpoint prices
         let order_book = CoinbaseOrderBookData::new();
         let order_book_clone = order_book.clone();
+        let mut last_sequence_num = -1;
         let mapped_stream = read.filter_map(move |message| {
             let pair_info = pair_info.clone();
             let order_book_clone = order_book_clone.clone();
@@ -400,8 +439,13 @@ impl ExchangeConnection for CoinbaseConnection {
                 match message {
                     // The outer `Result` comes from reading from the ws stream, the inner `Result`
                     // comes from parsing the message
-                    Ok(val) => Self::midpoint_from_ws_message(&order_book_clone, val, &pair_info)
-                        .transpose(),
+                    Ok(val) => Self::midpoint_from_ws_message(
+                        &order_book_clone,
+                        val,
+                        &pair_info,
+                        &mut last_sequence_num,
+                    )
+                    .transpose(),
 
                     Err(e) => {
                         error!("Error reading message from Coinbase websocket: {e}");
