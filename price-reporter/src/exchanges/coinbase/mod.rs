@@ -25,8 +25,8 @@ use url::Url;
 
 use crate::{
     exchanges::{
-        coinbase::{order_book::CoinbaseOrderBookData, types::CoinbaseOrderBookSnapshotResponse},
-        connection::{InitializablePriceStream, PriceStreamType},
+        coinbase::order_book::CoinbaseOrderBookData,
+        connection::{BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType},
         error::ExchangeConnectionError,
         ExchangeConnectionsConfig,
     },
@@ -41,7 +41,6 @@ use super::util::{
 };
 
 mod order_book;
-mod types;
 
 // -------------
 // | Constants |
@@ -58,6 +57,8 @@ const CB_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG
 
 /// The name of the events field in a Coinbase WS message
 const COINBASE_EVENTS: &str = "events";
+/// The name of the event type field on a coinbase event
+const COINBASE_EVENT_TYPE: &str = "type";
 /// The name of the updates field on a coinbase event
 const COINBASE_EVENT_UPDATE: &str = "updates";
 /// The name of the price level field on a coinbase event
@@ -67,6 +68,8 @@ const COINBASE_NEW_QUANTITY: &str = "new_quantity";
 /// The name of the side field on a coinbase event
 const COINBASE_SIDE: &str = "side";
 
+/// The snapshot event type
+const SNAPSHOT_EVENT_TYPE: &str = "snapshot";
 /// The bid side field value
 const COINBASE_BID: &str = "bid";
 /// The offer side field value
@@ -75,15 +78,10 @@ const COINBASE_OFFER: &str = "offer";
 /// The timeout in seconds for the Coinbase JWT
 const COINBASE_JWT_TIMEOUT_SECS: u64 = 60; // 1 minute
 
-/// The min duration on which to refresh the order book from a snapshot
-const ORDER_BOOK_REFRESH_INTERVAL_MIN: Duration = Duration::from_secs(30);
-/// The max duration on which to refresh the order book from a snapshot
-const ORDER_BOOK_REFRESH_INTERVAL_MAX: Duration = Duration::from_secs(60);
-
-/// Build a request URL for the Coinbase order book snapshot
-fn order_book_snapshot_url(product_id: &str) -> Url {
-    format!("{COINBASE_REST_BASE_URL}/products/{product_id}/book?level=2").parse().unwrap()
-}
+/// The min duration on which to resubscribe to the level2 channel
+const RESUBSCRIPTION_INTERVAL_MIN: Duration = Duration::from_secs(30);
+/// The max duration on which to resubscribe to the level2 channel
+const RESUBSCRIPTION_INTERVAL_MAX: Duration = Duration::from_secs(60);
 
 /// Get a product ID from a base and quote token
 fn get_product_id(
@@ -120,7 +118,7 @@ struct CoinbaseJwtClaims {
 /// The message handler for Exchange::Coinbase.
 pub struct CoinbaseConnection {
     /// The underlying stream of prices from the websocket
-    price_stream: Box<dyn Stream<Item = PriceStreamType> + Unpin + Send>,
+    price_stream: BoxedPriceReader,
     /// Cancellation token to stop background tasks on drop
     cancel_token: CancellationToken,
 }
@@ -165,6 +163,27 @@ impl CoinbaseConnection {
         Ok(subscribe_msg)
     }
 
+    /// Construct the websocket unsubscription message with HMAC authentication
+    fn construct_unsubscribe_message(
+        product_id: &str,
+        config: &ExchangeConnectionsConfig,
+    ) -> Result<String, ExchangeConnectionError> {
+        let key_name = config.coinbase_key_name.as_ref().expect("coinbase API not configured");
+        let key_secret = config.coinbase_key_secret.as_ref().expect("coinbase API not configured");
+        let jwt = Self::construct_jwt(key_name, key_secret)?;
+
+        let channel = "level2";
+        let unsubscribe_msg = json!({
+            "type": "unsubscribe",
+            "product_ids": [ product_id ],
+            "channel": channel,
+            "jwt": jwt,
+        })
+        .to_string();
+
+        Ok(unsubscribe_msg)
+    }
+
     /// Construct the websocket heartbeat channel subscription with HMAC
     /// authentication
     fn construct_heartbeat_message(
@@ -207,64 +226,68 @@ impl CoinbaseConnection {
         encode(&header, &claims, &key).map_err(err_str!(ExchangeConnectionError::Crypto))
     }
 
-    /// Fetch an order book snapshot from the HTTP API
-    async fn fetch_order_book_snapshot(
+    // ---------------------------
+    // | Subscription Management |
+    // ---------------------------
+
+    /// A loop in which we re-subscribe to the level2 channel for the product.
+    ///
+    /// We do this in order to refresh the local orderbook from the snapshot
+    /// received from the new subscription, without worrying abour missed
+    /// updates after the snapshot.
+    fn start_resubscription_loop(
         product_id: &str,
-    ) -> Result<CoinbaseOrderBookSnapshotResponse, ExchangeConnectionError> {
-        let client = Client::new();
-        let request_url = order_book_snapshot_url(product_id);
-        let response = client
-            .get(request_url)
-            .header(USER_AGENT, CB_USER_AGENT)
-            .send()
-            .await
-            .map_err(ExchangeConnectionError::custom)?;
-
-        let body = response
-            .json::<CoinbaseOrderBookSnapshotResponse>()
-            .await
-            .map_err(ExchangeConnectionError::custom)?;
-        Ok(body)
-    }
-
-    // -------------------------
-    // | Order Book Management |
-    // -------------------------
-
-    /// A loop in which we refresh the order book from a snapshot
-    fn start_refresh_order_book_loop(
-        product_id: &str,
-        order_book: CoinbaseOrderBookData,
+        config: &ExchangeConnectionsConfig,
+        mut writer: BoxedWsWriter,
         cancel_token: CancellationToken,
     ) {
         let product_id = product_id.to_string();
+        let config = config.clone();
         tokio::spawn(async move {
             loop {
                 if cancel_token.is_cancelled() {
-                    info!("Received cancellation signal, stopping order book refresh loop for {product_id}");
+                    info!("Received cancellation signal, stopping resubscription loop for {product_id}");
                     break;
                 }
 
-                if let Err(e) = Self::refresh_order_book(&product_id, &order_book).await {
-                    error!("Error refreshing order book: {e}");
+                if let Err(e) =
+                    Self::resubscribe_to_channel(&product_id, &config, &mut writer).await
+                {
+                    error!("Error refreshing subscription: {e}");
                 }
 
                 let sleep_time = rand::thread_rng()
-                    .gen_range(ORDER_BOOK_REFRESH_INTERVAL_MIN..=ORDER_BOOK_REFRESH_INTERVAL_MAX);
+                    .gen_range(RESUBSCRIPTION_INTERVAL_MIN..=RESUBSCRIPTION_INTERVAL_MAX);
 
                 tokio::time::sleep(sleep_time).await;
             }
         });
     }
 
-    /// Refresh the order book from a snapshot
-    async fn refresh_order_book(
+    /// Re-subscribe to the level2 channel for the product
+    async fn resubscribe_to_channel(
         product_id: &str,
-        order_book: &CoinbaseOrderBookData,
+        config: &ExchangeConnectionsConfig,
+        writer: &mut BoxedWsWriter,
     ) -> Result<(), ExchangeConnectionError> {
-        info!("Refreshing order book for {product_id} from snapshot");
-        let snapshot = Self::fetch_order_book_snapshot(product_id).await?;
-        order_book.rehydrate(snapshot)?;
+        info!("Refreshing subscription for {product_id}");
+
+        // Unsubscribe from the level2 channel for the product
+        let authenticated_unsubscribe_msg =
+            Self::construct_unsubscribe_message(product_id, config)?;
+
+        writer
+            .send(Message::Text(authenticated_unsubscribe_msg))
+            .await
+            .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
+
+        // Re-subscribe to the level2 channel for the product so that we receive a fresh
+        // snapshot
+        let authenticated_subscribe_msg = Self::construct_subscribe_message(product_id, config)?;
+        writer
+            .send(Message::Text(authenticated_subscribe_msg))
+            .await
+            .map_err(|err| ExchangeConnectionError::ConnectionHangup(err.to_string()))?;
 
         Ok(())
     }
@@ -282,13 +305,23 @@ impl CoinbaseConnection {
         };
 
         // Extract the list of events and update the order book
-        let update_events = if let Some(coinbase_events) = json[COINBASE_EVENTS].as_array()
-            && let Some(update_events) = coinbase_events[0][COINBASE_EVENT_UPDATE].as_array()
-        {
-            update_events
-        } else {
+        let coinbase_event = json[COINBASE_EVENTS].as_array().and_then(|events| events.first());
+        let update_events =
+            coinbase_event.and_then(|event| event[COINBASE_EVENT_UPDATE].as_array());
+
+        if coinbase_event.is_none() || update_events.is_none() {
             return Ok(None);
-        };
+        }
+
+        let coinbase_event = coinbase_event.unwrap();
+        let update_events = update_events.unwrap();
+
+        // If this is a snapshot event, clear the order book so that we replicate it
+        // properly from the snapshot
+        let event_type = coinbase_event[COINBASE_EVENT_TYPE].as_str().unwrap_or("");
+        if event_type == SNAPSHOT_EVENT_TYPE {
+            order_book.clear();
+        }
 
         // Make updates to the locally replicated book given the price level updates
         for coinbase_event in update_events {
@@ -378,9 +411,15 @@ impl ExchangeConnection for CoinbaseConnection {
             }
         });
 
-        // Spawn a task to periodically refresh the order book from a snapshot
+        // Spawn a task to periodically re-subscribe to the level2 channel for the
+        // product
         let cancel_token = CancellationToken::new();
-        Self::start_refresh_order_book_loop(&product_id, order_book, cancel_token.clone());
+        Self::start_resubscription_loop(
+            &product_id,
+            config,
+            Box::new(writer),
+            cancel_token.clone(),
+        );
 
         // Construct an initialized price stream from the initial price and the mapped
         // stream
