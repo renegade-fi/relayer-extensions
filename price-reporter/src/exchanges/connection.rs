@@ -41,6 +41,11 @@ const CLOUDFLARE_RESET_MESSAGE: &str = "CloudFlare WebSocket proxy restarting";
 // | Stream Types |
 // ----------------
 
+/// A type alias for a boxed price reader
+pub type BoxedPriceReader = Box<dyn Stream<Item = PriceStreamType> + Unpin + Send>;
+/// A type alias for a boxed websocket writer
+pub type BoxedWsWriter = Box<dyn Sink<Message, Error = WsError> + Unpin + Send>;
+
 /// The type that a price stream should return
 pub(crate) type PriceStreamType = Result<Price, ExchangeConnectionError>;
 

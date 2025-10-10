@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::{Sink, Stream, StreamExt};
+use futures_util::{Stream, StreamExt};
 use renegade_common::types::{
     exchange::{Exchange, PriceReport},
     price::Price,
@@ -15,12 +15,12 @@ use renegade_common::types::{
 use renegade_util::{err_str, get_current_time_millis};
 use serde_json::Value;
 use tracing::error;
-use tungstenite::{Error as WsError, Message};
+use tungstenite::Message;
 use url::Url;
 
 use crate::{
     exchanges::{
-        connection::{InitializablePriceStream, PriceStreamType},
+        connection::{BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType},
         error::ExchangeConnectionError,
         util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
         ExchangeConnectionsConfig,
@@ -60,9 +60,9 @@ pub struct BinanceConnection {
     /// The underlying price stream
     ///
     /// TODO: Unbox this if performance becomes a concern
-    price_stream: Box<dyn Stream<Item = PriceStreamType> + Unpin + Send>,
+    price_stream: BoxedPriceReader,
     /// The underlying write stream of the websocket
-    write_stream: Box<dyn Sink<Message, Error = WsError> + Unpin + Send>,
+    write_stream: BoxedWsWriter,
 }
 
 impl BinanceConnection {

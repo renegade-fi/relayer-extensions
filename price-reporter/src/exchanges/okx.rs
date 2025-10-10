@@ -6,16 +6,18 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::{Sink, SinkExt, Stream, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use renegade_common::types::{exchange::Exchange, price::Price, token::Token};
 use renegade_util::err_str;
 use serde_json::{json, Value};
 use tracing::error;
-use tungstenite::{Error as WsError, Message};
+use tungstenite::Message;
 use url::Url;
 
 use crate::{
-    exchanges::connection::{InitializablePriceStream, PriceStreamType},
+    exchanges::connection::{
+        BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType,
+    },
     utils::PairInfo,
 };
 
@@ -62,9 +64,9 @@ const OKX_PRICE: usize = 0;
 /// The message handler for Exchange::Okx.
 pub struct OkxConnection {
     /// The underlying price stream
-    price_stream: Box<dyn Stream<Item = PriceStreamType> + Unpin + Send>,
+    price_stream: BoxedPriceReader,
     /// The underlying write stream of the websocket
-    write_stream: Box<dyn Sink<Message, Error = WsError> + Unpin + Send>,
+    write_stream: BoxedWsWriter,
 }
 
 impl OkxConnection {
