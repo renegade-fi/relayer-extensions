@@ -58,7 +58,7 @@ impl ExternalMatchRequestType for ExternalQuoteRequest {
 /// The response context for a quote request
 type QuoteResponseCtx = ResponseContext<ExternalQuoteRequest, ExternalQuoteResponse>;
 /// The response context for a sponsored quote response
-type SponsoredQuoteResponseCtx = ResponseContext<ExternalQuoteRequest, SponsoredQuoteResponse>;
+pub type SponsoredQuoteResponseCtx = ResponseContext<ExternalQuoteRequest, SponsoredQuoteResponse>;
 
 impl SponsoredQuoteResponseCtx {
     /// Create a sponsored quote response context from a quote response context
@@ -114,7 +114,10 @@ impl Server {
     /// Run endpoint handler subroutines before forwarding the request to the
     /// relayer
     #[instrument(skip_all)]
-    async fn quote_pre_request(&self, ctx: &mut QuoteRequestCtx) -> Result<(), AuthServerError> {
+    pub(crate) async fn quote_pre_request(
+        &self,
+        ctx: &mut QuoteRequestCtx,
+    ) -> Result<(), AuthServerError> {
         // Check the rate limit
         self.check_quote_rate_limit(&ctx.user()).await?;
         self.route_quote_req(ctx).await?;
@@ -130,7 +133,7 @@ impl Server {
     ///
     /// Returns the auth server's response to the client
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
-    fn quote_post_request(
+    pub(crate) fn quote_post_request(
         &self,
         mut resp: BytesResponse,
         ctx: QuoteResponseCtx,
