@@ -91,12 +91,15 @@ impl Stream for PriceStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
 
-        // Poll the main stream
-        let main_poll = this.stream.poll_next_unpin(cx);
-        let main_price = match main_poll {
-            Poll::Ready(Some(price)) => price,
-            Poll::Ready(None) => return Poll::Ready(None),
-            Poll::Pending => return Poll::Pending,
+        // Poll the main stream, draining 0.0s as this should only be sent as the
+        // initial value
+        let main_price = loop {
+            match this.stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(0.0)) => continue,
+                Poll::Ready(Some(p)) => break p,
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            }
         };
 
         // If there's no conversion stream, return the main price
@@ -104,18 +107,22 @@ impl Stream for PriceStream {
             return Poll::Ready(Some(main_price));
         }
 
-        // Poll the conversion stream
-        let conversion_poll = this.conversion_stream.as_mut().unwrap().poll_next_unpin(cx);
-        let conversion_price = match conversion_poll {
-            Poll::Ready(Some(price)) => price,
-            Poll::Ready(None) => return Poll::Ready(None),
-            Poll::Pending => return Poll::Pending,
+        // Poll the conversion stream, draining 0.0s as this should only be sent as the
+        // initial value
+        let conv = this.conversion_stream.as_mut().unwrap();
+        let conversion_price = loop {
+            match conv.poll_next_unpin(cx) {
+                Poll::Ready(Some(0.0)) => continue,
+                Poll::Ready(Some(p)) => break p,
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            }
         };
 
         // Divide main price by conversion price
         // Practically this will be [USDT / BASE] / [USDT / USDC] = USDC / BASE
-        let converted_price =
-            if conversion_price == 0.0 { 0.0 } else { main_price / conversion_price };
+        let converted_price = main_price / conversion_price;
+
         Poll::Ready(Some(converted_price))
     }
 }

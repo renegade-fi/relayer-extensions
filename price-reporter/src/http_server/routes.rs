@@ -90,7 +90,7 @@ impl PriceHandler {
             .get_or_create_price_stream(pair_info, self_clone.config.clone())
             .await?;
 
-        let price = price_stream.next().await.unwrap_or_default();
+        let price = price_stream.next().await.ok_or(ServerError::PriceStreamClosed)?;
         Ok(price)
     }
 }

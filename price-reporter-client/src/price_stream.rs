@@ -159,8 +159,14 @@ impl MultiPriceStream {
     }
 
     /// Get the current state of the price stream
-    pub async fn get_price(&self, mint: &str) -> f64 {
-        self.inner.prices.read().await.get(mint).map_or(0.0, |price| price.load(Ordering::Relaxed))
+    pub async fn get_price(&self, mint: &str) -> Result<f64, PriceReporterClientError> {
+        let prices = self.inner.prices.read().await;
+
+        let price = prices
+            .get(mint)
+            .ok_or(PriceReporterClientError::custom(format!("No price stream for {mint}")))?;
+
+        Ok(price.load(Ordering::Relaxed))
     }
 
     /// Get the connection status of the price stream
