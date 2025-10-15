@@ -45,6 +45,9 @@ pub enum ServerError {
     /// An error setting up telemetry
     #[error("Error setting up telemetry: {0}")]
     TelemetrySetup(String),
+    /// An error indicating that the price stream is closed
+    #[error("Price stream closed")]
+    PriceStreamClosed,
 }
 
 impl ServerError {

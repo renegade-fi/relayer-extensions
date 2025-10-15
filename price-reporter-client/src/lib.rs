@@ -213,7 +213,7 @@ impl PriceReporterClient {
         let ws_is_connected = multi_price_stream.is_some_and(|stream| stream.is_connected());
 
         if ws_is_connected {
-            return Ok(multi_price_stream.unwrap().get_price(&mint).await);
+            return multi_price_stream.unwrap().get_price(&mint).await;
         }
 
         warn!("Price stream is not connected, fetching price via HTTP");
