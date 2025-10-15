@@ -2,19 +2,27 @@
 
 use std::collections::HashMap;
 
+use alloy_primitives::Bytes;
 use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
 };
 use renegade_api::http::{
-    external_match::{ExternalMatchRequest, ExternalMatchResponse, ExternalOrder},
+    external_match::{
+        ASSEMBLE_MALLEABLE_EXTERNAL_MATCH_ROUTE, AssembleExternalMatchRequest,
+        AtomicMatchApiBundle, ExternalMatchRequest, ExternalOrder, ExternalQuoteRequest,
+        ExternalQuoteResponse, MalleableAtomicMatchApiBundle,
+    },
     order_book::GetDepthForAllPairsResponse,
 };
-use renegade_circuit_types::order::OrderSide;
+use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::{chain::Chain, token::Token};
 use renegade_util::{get_current_time_millis, hex::biguint_to_hex_addr};
 
-use crate::error::AuthServerError;
+use crate::{
+    error::AuthServerError,
+    server::api_handlers::{external_match::RequestContext, rfqt::MatchBundle},
+};
 
 // -------------
 // | Constants |
@@ -31,6 +39,11 @@ const DEADLINE_OFFSET_SECONDS: u64 = 70;
 /// This is the signed permit message. As we don't use permits, this is just an
 /// empty string.
 const SIGNATURE: &str = "0x0";
+
+/// Check if the query string indicates malleable calldata should be used
+pub fn should_use_malleable_calldata(query_str: &str) -> bool {
+    query_str.contains("malleableCalldata=true")
+}
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
 /// server chain
@@ -109,10 +122,65 @@ pub fn transform_depth_to_levels(
     RfqtLevelsResponse { pairs }
 }
 
-/// Transform an RFQT quote request to an external match request
-pub fn transform_rfqt_to_external_match_request(
+/// Create a quote request from an RFQT quote request
+pub fn create_quote_request(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalQuoteRequest, AuthServerError> {
+    let external_order = transform_rfqt_to_external_order(req)?;
+    Ok(ExternalQuoteRequest {
+        matching_pool: None,   // Will be set by route_quote_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        external_order,
+    })
+}
+
+/// Transform a quote response to an assemble malleable request context
+pub fn transform_quote_to_assemble_malleable_ctx(
+    quote: ExternalQuoteResponse,
+    req_ctx: RequestContext<ExternalQuoteRequest>,
+) -> Result<RequestContext<AssembleExternalMatchRequest>, AuthServerError> {
+    let assemble_request = AssembleExternalMatchRequest {
+        signed_quote: quote.signed_quote,
+        do_gas_estimation: false,
+        allow_shared: false,
+        matching_pool: None,
+        relayer_fee_rate: 0.0,
+        receiver_address: None,
+        updated_order: None,
+    };
+    let assemble_quote_request_ctx = RequestContext {
+        path: ASSEMBLE_MALLEABLE_EXTERNAL_MATCH_ROUTE.to_string(),
+        query_str: req_ctx.query_str,
+        user: req_ctx.user,
+        sdk_version: req_ctx.sdk_version,
+        headers: req_ctx.headers,
+        body: assemble_request,
+        request_id: req_ctx.request_id,
+        key_id: req_ctx.key_id,
+        sponsorship_info: None,
+    };
+    Ok(assemble_quote_request_ctx)
+}
+
+/// Create a direct match request from an RFQT quote request
+pub fn create_direct_match_request(
     req: RfqtQuoteRequest,
 ) -> Result<ExternalMatchRequest, AuthServerError> {
+    let external_order = transform_rfqt_to_external_order(req.clone())?;
+    let receiver_address = Some(req.taker);
+    Ok(ExternalMatchRequest {
+        do_gas_estimation: false,
+        matching_pool: None,   // Will be set by route_direct_match_req if needed
+        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
+        receiver_address,
+        external_order,
+    })
+}
+
+/// Transform an RFQT quote request to an external order
+fn transform_rfqt_to_external_order(
+    req: RfqtQuoteRequest,
+) -> Result<ExternalOrder, AuthServerError> {
     // Determine which token is USDC
     let usdc_address = Token::usdc().get_addr_biguint();
     let maker_is_usdc = req.maker_token == usdc_address;
@@ -123,19 +191,13 @@ pub fn transform_rfqt_to_external_match_request(
     }
 
     // Route to appropriate handler based on USDC position
-    if taker_is_usdc {
-        transform_taker_usdc_request(req)
-    } else {
-        transform_maker_usdc_request(req)
-    }
+    if taker_is_usdc { transform_taker_usdc_order(req) } else { transform_maker_usdc_order(req) }
 }
 
 /// Transform RFQT request when taker token is USDC
 /// Internally, we treat this as a buy order since taker sends USDC, maker sends
 /// base token
-fn transform_taker_usdc_request(
-    req: RfqtQuoteRequest,
-) -> Result<ExternalMatchRequest, AuthServerError> {
+fn transform_taker_usdc_order(req: RfqtQuoteRequest) -> Result<ExternalOrder, AuthServerError> {
     let min_fill_size = match req.maker_amount {
         Some(_) => 0, // Exact-output order: min_fill_size must be 0
         None => {
@@ -158,21 +220,13 @@ fn transform_taker_usdc_request(
         min_fill_size,
     };
 
-    Ok(ExternalMatchRequest {
-        do_gas_estimation: false,
-        matching_pool: None,   // Will be set by route_direct_match_req if needed
-        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
-        receiver_address: Some(req.taker),
-        external_order,
-    })
+    Ok(external_order)
 }
 
 /// Transform RFQT request when maker token is USDC
 /// Internally, we treat this as a sell order since maker sends USDC, taker
 /// sends base token
-fn transform_maker_usdc_request(
-    req: RfqtQuoteRequest,
-) -> Result<ExternalMatchRequest, AuthServerError> {
+fn transform_maker_usdc_order(req: RfqtQuoteRequest) -> Result<ExternalOrder, AuthServerError> {
     let min_fill_size = match req.maker_amount {
         Some(_) => 0, // Exact-output order: min_fill_size must be 0
         None => {
@@ -195,68 +249,115 @@ fn transform_maker_usdc_request(
         min_fill_size,
     };
 
-    Ok(ExternalMatchRequest {
-        do_gas_estimation: false,
-        matching_pool: None,   // Will be set by route_direct_match_req if needed
-        relayer_fee_rate: 0.0, // Will be set by preprocess_rfqt_quote_request
-        receiver_address: Some(req.taker),
-        external_order,
-    })
+    Ok(external_order)
 }
 
-/// Transform an external match response to an RFQT quote response
-pub fn transform_external_match_to_rfqt_response(
-    external_match: &ExternalMatchResponse,
-    rfqt: RfqtQuoteRequest,
+/// Transform a malleable match bundle into an RFQT quote response
+fn transform_malleable_bundle_to_rfqt_response(
+    bundle: MalleableAtomicMatchApiBundle,
+    rfqt: &RfqtQuoteRequest,
 ) -> Result<RfqtQuoteResponse, AuthServerError> {
-    let bundle = &external_match.match_bundle;
-    let maker_token_addr = bundle.receive.mint.clone();
-    let maker_amount = bundle.receive.amount;
-    let taker_token_addr = bundle.send.mint.clone();
-    let taker_amount = bundle.send.amount;
-
-    // Extract maker address from settlement transaction
-    let settlement_tx_to = &bundle.settlement_tx.to;
-    let maybe_maker_address = settlement_tx_to.as_ref().and_then(|addr| addr.to());
-    let maker = maybe_maker_address
+    let maker = bundle
+        .settlement_tx
+        .to
+        .as_ref()
+        .and_then(|addr| addr.to().copied())
         .map(|addr| format!("{:#x}", addr))
-        .ok_or(AuthServerError::serde("Missing maker address in settlement transaction"))?;
-
-    // Extract calldata from settlement transaction
+        .ok_or_else(|| AuthServerError::serde("Missing maker address in settlement transaction"))?;
     let calldata = bundle
         .settlement_tx
         .input
         .input()
-        .ok_or(AuthServerError::serde("Missing settlement transaction input"))?
-        .clone();
+        .cloned()
+        .ok_or_else(|| AuthServerError::serde("Missing settlement transaction input"))?;
 
-    // Calculate deadline
+    Ok(build_rfqt_quote_response(
+        rfqt,
+        bundle.max_receive.mint.clone(),
+        bundle.max_receive.amount.to_string(),
+        bundle.max_send.mint.clone(),
+        bundle.max_send.amount.to_string(),
+        maker,
+        calldata,
+        bundle.match_result.price_fp,
+    ))
+}
+
+/// Transform a direct match bundle into an RFQT quote response
+fn transform_direct_bundle_to_rfqt_response(
+    bundle: AtomicMatchApiBundle,
+    rfqt: &RfqtQuoteRequest,
+) -> Result<RfqtQuoteResponse, AuthServerError> {
+    let maker = bundle
+        .settlement_tx
+        .to
+        .as_ref()
+        .and_then(|addr| addr.to().copied())
+        .map(|addr| format!("{:#x}", addr))
+        .ok_or_else(|| AuthServerError::serde("Missing maker address in settlement transaction"))?;
+    let calldata = bundle
+        .settlement_tx
+        .input
+        .input()
+        .cloned()
+        .ok_or_else(|| AuthServerError::serde("Missing settlement transaction input"))?;
+
+    Ok(build_rfqt_quote_response(
+        rfqt,
+        bundle.receive.mint.clone(),
+        bundle.receive.amount.to_string(),
+        bundle.send.mint.clone(),
+        bundle.send.amount.to_string(),
+        maker,
+        calldata,
+        FixedPoint::from(0u64),
+    ))
+}
+
+/// Transform a Direct or Malleable match bundle into an RFQT quote response
+pub fn transform_match_bundle_to_rfqt_response(
+    bundle: MatchBundle,
+    rfqt: &RfqtQuoteRequest,
+) -> Result<RfqtQuoteResponse, AuthServerError> {
+    match bundle {
+        MatchBundle::Malleable(bundle) => transform_malleable_bundle_to_rfqt_response(bundle, rfqt),
+        MatchBundle::Direct(bundle) => transform_direct_bundle_to_rfqt_response(bundle, rfqt),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Build an RFQT quote response
+fn build_rfqt_quote_response(
+    rfqt: &RfqtQuoteRequest,
+    maker_token_addr: String,
+    maker_amount: String,
+    taker_token_addr: String,
+    taker_amount: String,
+    maker: String,
+    calldata: Bytes,
+    price_fp: FixedPoint,
+) -> RfqtQuoteResponse {
     let deadline = get_deadline();
 
-    // Build permitted token amount
-    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount.to_string() };
-
-    // Build consideration
+    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount };
     let consideration = Consideration {
         token: taker_token_addr,
-        amount: taker_amount.to_string(),
-        counterparty: rfqt.taker,
+        amount: taker_amount,
+        counterparty: rfqt.taker.clone(),
         partial_fill_allowed: rfqt.partial_fill_allowed,
     };
 
-    // Build order details
     let order = OrderDetails {
         permitted,
-        spender: rfqt.spender,
-        nonce: rfqt.nonce,
+        spender: rfqt.spender.clone(),
+        nonce: rfqt.nonce.clone(),
         deadline: deadline.to_string(),
         consideration,
     };
 
-    // Build fee-related fields
     let fee_token = biguint_to_hex_addr(&rfqt.fee_token);
 
-    Ok(RfqtQuoteResponse {
+    RfqtQuoteResponse {
         order,
         signature: SIGNATURE.to_string(),
         fee_token,
@@ -264,7 +365,8 @@ pub fn transform_external_match_to_rfqt_response(
         fee_token_conversion_rate: rfqt.fee_token_conversion_rate.to_string(),
         maker,
         calldata,
-    })
+        price_fp,
+    }
 }
 
 /// Get the deadline for the RFQT order
