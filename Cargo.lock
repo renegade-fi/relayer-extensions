@@ -1428,6 +1428,7 @@ name = "auth-server-api"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives 1.3.0",
+ "circuit-types",
  "external-api",
  "num-bigint",
  "serde",
