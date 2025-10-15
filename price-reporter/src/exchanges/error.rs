@@ -23,6 +23,9 @@ pub enum ExchangeConnectionError {
     /// An initial websocket subscription to a remote server failed.
     #[error("initial websocket subscription failed: {0}")]
     HandshakeFailure(String),
+    /// A websocket connection was rate limited.
+    #[error("websocket connection rate limited")]
+    RateLimited,
     /// Could not parse a remote server message.
     #[error("could not parse remote server message: {0}")]
     InvalidMessage(String),

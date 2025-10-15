@@ -18,7 +18,8 @@ use crate::{
     },
     utils::{
         ClosureSender, PairInfo, PriceReceiver, PriceSender, PriceStream, SharedPriceStreams,
-        CONN_RETRY_DELAY_MS, KEEPALIVE_INTERVAL_MS, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW_MS,
+        CONN_RETRY_DELAY, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW,
+        RATE_LIMIT_RETRY_DELAY,
     },
 };
 
@@ -153,7 +154,7 @@ impl GlobalPriceStreams {
         price_tx: &PriceSender,
         pair_info: &PairInfo,
     ) -> Result<(), ServerError> {
-        let delay = tokio::time::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
+        let delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
         tokio::pin!(delay);
 
         loop {
@@ -161,7 +162,7 @@ impl GlobalPriceStreams {
                 // Send a keepalive message to the exchange
                 _ = &mut delay => {
                     conn.send_keepalive().await.map_err(ServerError::ExchangeConnection)?;
-                    delay.as_mut().reset(Instant::now() + Duration::from_millis(KEEPALIVE_INTERVAL_MS));
+                    delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
                 }
 
                 // Forward the next price into the broadcast channel
@@ -206,6 +207,20 @@ impl GlobalPriceStreams {
         warn!("Error in connection to {}: {}", pair_info.to_topic(), prev_err);
         let exchange = pair_info.exchange;
         loop {
+            // Add delay before retrying
+            if prev_err.is_rate_limit_error() {
+                // We were rate limited, so we wait longer before retrying
+                info!(
+                    "Waiting {}s to retry {} connection due to rate limit",
+                    RATE_LIMIT_RETRY_DELAY.as_secs(),
+                    pair_info.to_topic()
+                );
+
+                tokio::time::sleep(RATE_LIMIT_RETRY_DELAY).await;
+            } else {
+                tokio::time::sleep(CONN_RETRY_DELAY).await;
+            }
+
             prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
                 Ok(conn) => return Ok(conn),
                 Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
@@ -235,8 +250,7 @@ impl GlobalPriceStreams {
 
         // Increment the retry count and filter out old requests
         let now = Instant::now();
-        let retry_window = Duration::from_millis(MAX_CONN_RETRY_WINDOW_MS);
-        retry_timestamps.retain(|ts| now.duration_since(*ts) < retry_window);
+        retry_timestamps.retain(|ts| now.duration_since(*ts) < MAX_CONN_RETRY_WINDOW);
 
         // Add the current timestamp to the set of retries
         retry_timestamps.push(now);
@@ -245,9 +259,6 @@ impl GlobalPriceStreams {
                 pair_info.exchange,
             )));
         }
-
-        // Add delay before retrying
-        tokio::time::sleep(Duration::from_millis(CONN_RETRY_DELAY_MS)).await;
 
         // Reconnect
         connect_exchange(pair_info.clone(), config).await.map_err(ServerError::ExchangeConnection)

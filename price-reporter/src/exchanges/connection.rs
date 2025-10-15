@@ -18,7 +18,7 @@ use std::{
 use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{error, warn};
-use tungstenite::Error as WsError;
+use tungstenite::{http::StatusCode, Error as WsError};
 use url::Url;
 
 use crate::{
@@ -123,6 +123,12 @@ pub(crate) async fn ws_connect(
         Ok((conn, _resp)) => conn,
         Err(e) => {
             error!("Cannot connect to the remote URL: {}", url);
+            if let WsError::Http(ref response) = e
+                && response.status() == StatusCode::TOO_MANY_REQUESTS
+            {
+                return Err(ExchangeConnectionError::RateLimited);
+            }
+
             return Err(ExchangeConnectionError::HandshakeFailure(e.to_string()));
         },
     };

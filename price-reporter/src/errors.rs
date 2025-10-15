@@ -55,4 +55,9 @@ impl ServerError {
             pair_info.exchange, pair_info.base, pair_info.quote
         ))
     }
+
+    /// Whether the error is a rate limit error
+    pub fn is_rate_limit_error(&self) -> bool {
+        matches!(self, ServerError::ExchangeConnection(ExchangeConnectionError::RateLimited))
+    }
 }
