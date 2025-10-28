@@ -15,8 +15,10 @@ use renegade_api::http::{
     },
     order_book::GetDepthForAllPairsResponse,
 };
-use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
+use renegade_circuit_types::{Amount, fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::{chain::Chain, token::Token};
+use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use renegade_util::{get_current_time_millis, hex::biguint_to_hex_addr};
 
 use crate::{
@@ -271,16 +273,52 @@ fn transform_malleable_bundle_to_rfqt_response(
         .cloned()
         .ok_or_else(|| AuthServerError::serde("Missing settlement transaction input"))?;
 
-    Ok(build_rfqt_quote_response(
-        rfqt,
-        bundle.max_receive.mint.clone(),
-        bundle.max_receive.amount.to_string(),
-        bundle.max_send.mint.clone(),
-        bundle.max_send.amount.to_string(),
-        maker,
-        calldata,
-        bundle.match_result.price_fp,
-    ))
+    // Compute the amounts that match the calldata encoding defaults
+    let base_amount = bundle.match_result.max_base_amount;
+    let quote_amount = compute_quote_amount(bundle.match_result.price_fp, base_amount);
+
+    let price = Some(bundle.match_result.price_fp);
+    let max_receive = Some(bundle.max_receive.amount);
+    let min_receive = Some(bundle.min_receive.amount);
+    let max_send = Some(bundle.max_send.amount);
+    let min_send = Some(bundle.min_send.amount);
+
+    match bundle.match_result.direction {
+        OrderSide::Buy => {
+            // External party buys base with quote
+            Ok(build_rfqt_quote_response(
+                rfqt,
+                bundle.match_result.base_mint,
+                base_amount,
+                bundle.match_result.quote_mint,
+                quote_amount,
+                maker,
+                calldata,
+                price,
+                max_receive,
+                min_receive,
+                max_send,
+                min_send,
+            ))
+        },
+        OrderSide::Sell => {
+            // External party sells base for quote
+            Ok(build_rfqt_quote_response(
+                rfqt,
+                bundle.match_result.quote_mint,
+                quote_amount,
+                bundle.match_result.base_mint,
+                base_amount,
+                maker,
+                calldata,
+                price,
+                max_receive,
+                min_receive,
+                max_send,
+                min_send,
+            ))
+        },
+    }
 }
 
 /// Transform a direct match bundle into an RFQT quote response
@@ -305,12 +343,16 @@ fn transform_direct_bundle_to_rfqt_response(
     Ok(build_rfqt_quote_response(
         rfqt,
         bundle.receive.mint.clone(),
-        bundle.receive.amount.to_string(),
+        bundle.receive.amount,
         bundle.send.mint.clone(),
-        bundle.send.amount.to_string(),
+        bundle.send.amount,
         maker,
         calldata,
-        FixedPoint::from(0u64),
+        None, // price
+        None, // max_receive
+        None, // min_receive
+        None, // max_send
+        None, // min_send
     ))
 }
 
@@ -330,19 +372,23 @@ pub fn transform_match_bundle_to_rfqt_response(
 fn build_rfqt_quote_response(
     rfqt: &RfqtQuoteRequest,
     maker_token_addr: String,
-    maker_amount: String,
+    maker_amount: Amount,
     taker_token_addr: String,
-    taker_amount: String,
+    taker_amount: Amount,
     maker: String,
     calldata: Bytes,
-    price_fp: FixedPoint,
+    price: Option<FixedPoint>,
+    max_receive: Option<Amount>,
+    min_receive: Option<Amount>,
+    max_send: Option<Amount>,
+    min_send: Option<Amount>,
 ) -> RfqtQuoteResponse {
     let deadline = get_deadline();
 
-    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount };
+    let permitted = TokenAmount { token: maker_token_addr, amount: maker_amount.to_string() };
     let consideration = Consideration {
         token: taker_token_addr,
-        amount: taker_amount,
+        amount: taker_amount.to_string(),
         counterparty: rfqt.taker.clone(),
         partial_fill_allowed: rfqt.partial_fill_allowed,
     };
@@ -365,8 +411,18 @@ fn build_rfqt_quote_response(
         fee_token_conversion_rate: rfqt.fee_token_conversion_rate.to_string(),
         maker,
         calldata,
-        price_fp,
+        price,
+        max_taker_receive: max_receive,
+        min_taker_receive: min_receive,
+        max_taker_send: max_send,
+        min_taker_send: min_send,
     }
+}
+
+/// Compute the quote amount from the price and base amount
+fn compute_quote_amount(price: FixedPoint, base_amount: u128) -> u128 {
+    let quote_amount_fp = price * Scalar::from(base_amount);
+    scalar_to_u128(&quote_amount_fp.floor())
 }
 
 /// Get the deadline for the RFQT order
