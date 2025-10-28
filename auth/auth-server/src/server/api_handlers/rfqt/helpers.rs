@@ -43,8 +43,10 @@ const DEADLINE_OFFSET_SECONDS: u64 = 70;
 const SIGNATURE: &str = "0x0";
 
 /// Check if the query string indicates malleable calldata should be used
+/// Returns true by default (malleable calldata enabled), false only when
+/// explicitly disabled
 pub fn should_use_malleable_calldata(query_str: &str) -> bool {
-    query_str.contains("malleableCalldata=true")
+    !query_str.contains("malleableCalldata=false")
 }
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
