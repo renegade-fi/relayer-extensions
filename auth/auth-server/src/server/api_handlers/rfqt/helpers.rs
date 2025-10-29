@@ -146,7 +146,6 @@ pub fn transform_quote_to_assemble_malleable_ctx(
     let assemble_request = AssembleExternalMatchRequest {
         signed_quote: quote.signed_quote,
         do_gas_estimation: false,
-        allow_shared: false,
         matching_pool: None,
         relayer_fee_rate: 0.0,
         receiver_address: None,

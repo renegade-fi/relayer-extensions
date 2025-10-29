@@ -116,6 +116,9 @@ pub struct Cli {
     /// The address of the gas sponsor contract
     #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
     gas_sponsor_address: String,
+    /// The address of the malleable match gas sponsor connector
+    #[clap(long, env = "MALLEABLE_MATCH_CONNECTOR_ADDRESS")]
+    malleable_match_connector_address: String,
     /// The auth private key used for gas sponsorship, encoded as a hex string
     #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
     gas_sponsor_auth_key: String,

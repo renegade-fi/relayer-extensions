@@ -69,6 +69,8 @@ pub struct Server {
     pub metrics_sampling_rate: f64,
     /// The address of the gas sponsor address
     pub gas_sponsor_address: Address,
+    /// The address of the malleable match connector contract
+    pub malleable_match_connector_address: Address,
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
     /// The price reporter client with WebSocket streaming support

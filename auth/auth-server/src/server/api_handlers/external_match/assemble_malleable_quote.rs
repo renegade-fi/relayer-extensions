@@ -6,6 +6,7 @@ use renegade_api::http::external_match::{
     AssembleExternalMatchRequest, MalleableExternalMatchResponse,
 };
 use renegade_util::get_current_time_millis;
+use serde::Deserialize;
 use tracing::{instrument, warn};
 use warp::reject::Rejection;
 
@@ -51,6 +52,26 @@ impl SponsoredAssembleMalleableQuoteResponseCtx {
             sponsorship_info_with_nonce: ctx.sponsorship_info_with_nonce,
             request_id: ctx.request_id,
         }
+    }
+}
+
+// --- Query Params --- //
+
+/// Typed query parameters for the malleable assemble endpoint
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct MalleableMatchQueryParams {
+    /// Whether to use the malleable match gas sponsor connector
+    #[serde(default)]
+    use_malleable_match_connector: Option<bool>,
+}
+
+impl ResponseContext<AssembleExternalMatchRequest, MalleableExternalMatchResponse> {
+    /// Get the `use_malleable_match_connector` flag from the query string
+    pub fn use_malleable_match_connector(&self) -> bool {
+        serde_urlencoded::from_str::<MalleableMatchQueryParams>(&self.query_str)
+            .unwrap_or_default()
+            .use_malleable_match_connector
+            .unwrap_or(false)
     }
 }
 
@@ -151,8 +172,13 @@ impl Server {
 
         // Construct the sponsored match response
         let (info, nonce) = sponsorship_info.unwrap();
-        let sponsored_match_resp =
-            self.construct_sponsored_malleable_match_response(resp, info, nonce)?;
+        let use_malleable_match_connector = ctx.use_malleable_match_connector();
+        let sponsored_match_resp = self.construct_sponsored_malleable_match_response(
+            resp,
+            info,
+            nonce,
+            use_malleable_match_connector,
+        )?;
 
         Ok(sponsored_match_resp)
     }

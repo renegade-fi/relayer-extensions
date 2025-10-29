@@ -257,7 +257,14 @@ impl Server {
         refund_native_eth: bool,
         refund_amount: U256,
         nonce: U256,
+        use_malleable_match_connector: bool,
     ) -> Result<Bytes, AuthServerError> {
+        if use_malleable_match_connector {
+            return Err(AuthServerError::gas_sponsorship(
+                "malleable match connector not supported on Arbitrum",
+            ));
+        }
+
         // Sign a sponsorship permit
         let signature = sign_sponsorship_nonce(
             refund_address,
