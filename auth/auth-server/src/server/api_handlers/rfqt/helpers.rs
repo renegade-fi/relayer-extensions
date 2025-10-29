@@ -43,8 +43,10 @@ const DEADLINE_OFFSET_SECONDS: u64 = 70;
 const SIGNATURE: &str = "0x0";
 
 /// Check if the query string indicates malleable calldata should be used
+/// Returns true by default (malleable calldata enabled), false only when
+/// explicitly disabled
 pub fn should_use_malleable_calldata(query_str: &str) -> bool {
-    query_str.contains("malleableCalldata=true")
+    !query_str.contains("malleableCalldata=false")
 }
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
@@ -277,7 +279,7 @@ fn transform_malleable_bundle_to_rfqt_response(
     let base_amount = bundle.match_result.max_base_amount;
     let quote_amount = compute_quote_amount(bundle.match_result.price_fp, base_amount);
 
-    let price = Some(bundle.match_result.price_fp);
+    let price = Some(bundle.match_result.price_fp.to_f64());
     let max_receive = Some(bundle.max_receive.amount);
     let min_receive = Some(bundle.min_receive.amount);
     let max_send = Some(bundle.max_send.amount);
@@ -377,7 +379,7 @@ fn build_rfqt_quote_response(
     taker_amount: Amount,
     maker: String,
     calldata: Bytes,
-    price: Option<FixedPoint>,
+    price: Option<f64>,
     max_receive: Option<Amount>,
     min_receive: Option<Amount>,
     max_send: Option<Amount>,

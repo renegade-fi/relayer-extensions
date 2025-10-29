@@ -193,7 +193,7 @@ impl Server {
             req,
         )?;
 
-        overwrite_response_body(&mut resp, rfqt_response, false /* stringify */)?;
+        overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
     }
 
@@ -217,7 +217,7 @@ impl Server {
             req,
         )?;
 
-        overwrite_response_body(&mut resp, rfqt_response, false /* stringify */)?;
+        overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
     }
 }

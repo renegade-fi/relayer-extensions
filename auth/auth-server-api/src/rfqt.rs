@@ -3,7 +3,7 @@
 use alloy_primitives::Bytes;
 use num_bigint::BigUint;
 use renegade_api::deserialize_biguint_from_hex_string;
-use renegade_circuit_types::{fixed_point::FixedPoint, Amount};
+use renegade_circuit_types::Amount;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -120,7 +120,7 @@ pub struct RfqtQuoteResponse {
     /// Calldata for the settlement transaction
     pub calldata: Bytes,
     /// The fixed point representation of the price
-    pub price: Option<FixedPoint>,
+    pub price: Option<f64>,
     /// The maximum amount that the taker will receive
     pub max_taker_receive: Option<Amount>,
     /// The minimum amount that the taker will receive
