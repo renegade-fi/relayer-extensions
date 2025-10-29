@@ -279,7 +279,7 @@ fn transform_malleable_bundle_to_rfqt_response(
     let base_amount = bundle.match_result.max_base_amount;
     let quote_amount = compute_quote_amount(bundle.match_result.price_fp, base_amount);
 
-    let price = Some(bundle.match_result.price_fp);
+    let price = Some(bundle.match_result.price_fp.to_f64());
     let max_receive = Some(bundle.max_receive.amount);
     let min_receive = Some(bundle.min_receive.amount);
     let max_send = Some(bundle.max_send.amount);
@@ -379,7 +379,7 @@ fn build_rfqt_quote_response(
     taker_amount: Amount,
     maker: String,
     calldata: Bytes,
-    price: Option<FixedPoint>,
+    price: Option<f64>,
     max_receive: Option<Amount>,
     min_receive: Option<Amount>,
     max_send: Option<Amount>,
