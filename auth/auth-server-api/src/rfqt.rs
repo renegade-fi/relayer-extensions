@@ -3,7 +3,7 @@
 use alloy_primitives::Bytes;
 use num_bigint::BigUint;
 use renegade_api::deserialize_biguint_from_hex_string;
-use renegade_circuit_types::fixed_point::FixedPoint;
+use renegade_circuit_types::{fixed_point::FixedPoint, Amount};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -76,10 +76,10 @@ pub struct RfqtQuoteRequest {
     pub taker_token: BigUint,
     /// Units of taker token that the taker is offering (alternative to
     /// maker_amount)
-    pub taker_amount: Option<u128>,
+    pub taker_amount: Option<Amount>,
     /// Units of maker token that the taker is targeting (alternative to
     /// taker_amount)
-    pub maker_amount: Option<u128>,
+    pub maker_amount: Option<Amount>,
     /// Retail end user address (must match counterparty in response)
     pub taker: String,
     /// Number used to prevent order from being filled twice
@@ -120,7 +120,15 @@ pub struct RfqtQuoteResponse {
     /// Calldata for the settlement transaction
     pub calldata: Bytes,
     /// The fixed point representation of the price
-    pub price_fp: FixedPoint,
+    pub price: Option<FixedPoint>,
+    /// The maximum amount that the taker will receive
+    pub max_taker_receive: Option<Amount>,
+    /// The minimum amount that the taker will receive
+    pub min_taker_receive: Option<Amount>,
+    /// The maximum amount that the taker will send
+    pub max_taker_send: Option<Amount>,
+    /// The minimum amount that the taker will send
+    pub min_taker_send: Option<Amount>,
 }
 
 /// RFQT order details
