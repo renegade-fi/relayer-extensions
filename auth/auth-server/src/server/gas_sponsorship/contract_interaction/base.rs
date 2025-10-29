@@ -6,8 +6,9 @@ use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{SolCall, SolValue};
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
 use renegade_solidity_abi::IDarkpool::{
-    processAtomicMatchSettleCall, processMalleableAtomicMatchSettleCall,
-    sponsorAtomicMatchSettleCall, sponsorMalleableAtomicMatchSettleCall,
+    executeMalleableAtomicMatchWithInputCall, processAtomicMatchSettleCall,
+    processMalleableAtomicMatchSettleCall, sponsorAtomicMatchSettleCall,
+    sponsorMalleableAtomicMatchSettleCall,
 };
 
 use crate::{
@@ -22,6 +23,14 @@ use crate::{
 // | ABI Helpers |
 // ---------------
 
+/// The direction of an external match for an internal party on the buy side
+///
+/// The sol macro encodes these enums as u8 values, so we need to match on
+/// integer values.
+const DIRECTION_INTERNAL_PARTY_BUY: u8 = 0;
+/// The direction of an external match for an internal party on the sell side
+const DIRECTION_INTERNAL_PARTY_SELL: u8 = 1;
+
 /// Convert a `processAtomicMatchSettle` calldata into a
 /// `sponsorAtomicMatchSettleWithRefundOptions` call
 fn sponsored_atomic_match_calldata(
@@ -31,7 +40,7 @@ fn sponsored_atomic_match_calldata(
     refund_native_eth: bool,
     refund_amount: U256,
     signature: Bytes,
-) -> Result<sponsorAtomicMatchSettleCall, AuthServerError> {
+) -> Result<Bytes, AuthServerError> {
     let processAtomicMatchSettleCall {
         receiver,
         internalPartyPayload,
@@ -41,7 +50,7 @@ fn sponsored_atomic_match_calldata(
     } = processAtomicMatchSettleCall::abi_decode(calldata)
         .map_err(AuthServerError::gas_sponsorship)?;
 
-    Ok(sponsorAtomicMatchSettleCall {
+    let call = sponsorAtomicMatchSettleCall {
         receiver,
         internalPartyMatchPayload: internalPartyPayload,
         validMatchSettleAtomicStatement: matchSettleStatement,
@@ -52,7 +61,9 @@ fn sponsored_atomic_match_calldata(
         refundNativeEth: refund_native_eth,
         refundAmount: refund_amount,
         signature,
-    })
+    };
+
+    Ok(call.abi_encode().into())
 }
 
 /// Convert a `processMalleableAtomicMatchSettle` calldata into a
@@ -64,32 +75,82 @@ fn sponsored_malleable_atomic_match_calldata(
     refund_native_eth: bool,
     refund_amount: U256,
     signature: Bytes,
-) -> Result<sponsorMalleableAtomicMatchSettleCall, AuthServerError> {
-    let processMalleableAtomicMatchSettleCall {
-        quoteAmount,
-        baseAmount,
-        receiver,
-        internalPartyPayload,
-        matchSettleStatement,
-        proofs,
-        linkingProofs,
-    } = processMalleableAtomicMatchSettleCall::abi_decode(calldata)
+    use_malleable_match_connector: bool,
+) -> Result<Bytes, AuthServerError> {
+    // Decode the original call
+    let original_call = processMalleableAtomicMatchSettleCall::abi_decode(calldata)
         .map_err(AuthServerError::gas_sponsorship)?;
 
-    Ok(sponsorMalleableAtomicMatchSettleCall {
-        quoteAmount,
-        baseAmount,
-        receiver,
-        internalPartyMatchPayload: internalPartyPayload,
-        malleableMatchSettleStatement: matchSettleStatement,
-        matchProofs: proofs,
-        matchLinkingProofs: linkingProofs,
+    // If the user requested their order to be routed through the connector,
+    // use calldata for the connector's ABI
+    if use_malleable_match_connector {
+        return sponsored_malleable_atomic_match_calldata_with_connector(
+            original_call,
+            refund_address,
+            nonce,
+            refund_native_eth,
+            refund_amount,
+            signature,
+        );
+    }
+
+    // Otherwise, route directly to the gas sponsor
+    let call = sponsorMalleableAtomicMatchSettleCall {
+        quoteAmount: original_call.quoteAmount,
+        baseAmount: original_call.baseAmount,
+        receiver: original_call.receiver,
+        internalPartyMatchPayload: original_call.internalPartyPayload,
+        malleableMatchSettleStatement: original_call.matchSettleStatement,
+        matchProofs: original_call.proofs,
+        matchLinkingProofs: original_call.linkingProofs,
         refundAddress: refund_address,
         nonce,
         refundNativeEth: refund_native_eth,
         refundAmount: refund_amount,
         signature,
-    })
+    };
+    Ok(call.abi_encode().into())
+}
+
+/// Convert a `processMalleableAtomicMatchSettle` calldata into an
+/// `executeMalleableAtomicMatchWithInputCall` call
+///
+/// The connector uses the same ABI as the gas sponsor with the exception that
+/// it replaces the base and quote amounts with a single `inputAmount` field.
+/// Therefore, this method must determine the input amount based on the original
+/// call and use that in place of the base and quote amounts.
+fn sponsored_malleable_atomic_match_calldata_with_connector(
+    original_call: processMalleableAtomicMatchSettleCall,
+    refund_address: Address,
+    nonce: U256,
+    refund_native_eth: bool,
+    refund_amount: U256,
+    signature: Bytes,
+) -> Result<Bytes, AuthServerError> {
+    let direction = original_call.matchSettleStatement.matchResult.direction;
+    let input_amount = match direction {
+        // Internal party buys the base, so the input is the base amount
+        DIRECTION_INTERNAL_PARTY_BUY => original_call.baseAmount,
+        // Internal party buys the quote, so the input is the quote amount
+        DIRECTION_INTERNAL_PARTY_SELL => original_call.quoteAmount,
+        _ => return Err(AuthServerError::gas_sponsorship("invalid match direction")),
+    };
+
+    let call = executeMalleableAtomicMatchWithInputCall {
+        inputAmount: input_amount,
+        receiver: original_call.receiver,
+        internalPartyMatchPayload: original_call.internalPartyPayload,
+        malleableMatchSettleStatement: original_call.matchSettleStatement,
+        matchProofs: original_call.proofs,
+        matchLinkingProofs: original_call.linkingProofs,
+        refundAddress: refund_address,
+        nonce,
+        refundNativeEth: refund_native_eth,
+        refundAmount: refund_amount,
+        signature,
+    };
+
+    Ok(call.abi_encode().into())
 }
 
 // ---------------
@@ -118,7 +179,7 @@ impl Server {
         let calldata = tx.input.input().unwrap_or_default();
         let selector = get_selector(calldata)?;
 
-        let gas_sponsor_call = match selector {
+        let calldata = match selector {
             processAtomicMatchSettleCall::SELECTOR => sponsored_atomic_match_calldata(
                 calldata,
                 refund_address,
@@ -131,8 +192,6 @@ impl Server {
                 return Err(AuthServerError::gas_sponsorship("invalid selector"));
             },
         }?;
-
-        let calldata = gas_sponsor_call.abi_encode().into();
         Ok(calldata)
     }
 
@@ -144,6 +203,7 @@ impl Server {
         refund_native_eth: bool,
         refund_amount: U256,
         nonce: U256,
+        use_malleable_match_connector: bool,
     ) -> Result<Bytes, AuthServerError> {
         // Sign a sponsorship permit
         let signature = sign_sponsorship_nonce(
@@ -158,7 +218,7 @@ impl Server {
         let calldata = tx.input.input().unwrap_or_default();
         let selector = get_selector(calldata)?;
 
-        let gas_sponsor_call = match selector {
+        let calldata = match selector {
             processMalleableAtomicMatchSettleCall::SELECTOR => {
                 sponsored_malleable_atomic_match_calldata(
                     calldata,
@@ -167,14 +227,13 @@ impl Server {
                     refund_native_eth,
                     refund_amount,
                     signature,
+                    use_malleable_match_connector,
                 )
             },
             _ => {
                 return Err(AuthServerError::gas_sponsorship("invalid selector"));
             },
         }?;
-
-        let calldata = gas_sponsor_call.abi_encode().into();
         Ok(calldata)
     }
 }

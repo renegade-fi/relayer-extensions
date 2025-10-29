@@ -45,7 +45,9 @@ rand = "0.8.5"
 alloy = { workspace = true, features = ["provider-ws"] }
 alloy-primitives = { workspace = true, features = ["serde", "k256", "rand"] }
 alloy-sol-types = { workspace = true }
-ruint = { version = "1.16", default-features = false, features = ["bigdecimal"] }
+ruint = { version = "1.16", default-features = false, features = [
+    "bigdecimal",
+] }
 
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
@@ -57,7 +59,7 @@ renegade-common = { workspace = true }
 renegade-constants = { workspace = true }
 renegade-config = { workspace = true }
 renegade-crypto = { workspace = true }
-renegade-util = { workspace = true }
+renegade-util = { workspace = true, features = ["blockchain"] }
 renegade-api = { workspace = true }
 renegade-solidity-abi = { workspace = true, optional = true }
 renegade-system-clock = { workspace = true }

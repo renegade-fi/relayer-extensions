@@ -5,6 +5,7 @@ use super::db::{create_db_pool, create_redis_client};
 use super::gas_estimation::gas_cost_sampler::GasCostSampler;
 use super::rate_limiter::AuthServerRateLimiter;
 
+use std::str::FromStr;
 use std::{iter, sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
@@ -29,7 +30,7 @@ use renegade_constants::NATIVE_ASSET_ADDRESS;
 use renegade_darkpool_client::DarkpoolClient;
 use renegade_darkpool_client::client::DarkpoolClientConfig;
 use renegade_system_clock::SystemClock;
-use renegade_util::on_chain::{PROTOCOL_FEE, set_external_match_fee};
+use renegade_util::on_chain::{set_external_match_fee, set_protocol_fee};
 use reqwest::Client;
 
 /// The interval at which we poll filter updates
@@ -73,6 +74,7 @@ impl Server {
         })?;
 
         let gas_sponsor_address = parse_gas_sponsor_address(&args)?;
+        let malleable_match_connector_address = parse_malleable_match_connector_address(&args)?;
         let gas_cost_sampler = Arc::new(
             GasCostSampler::new(
                 darkpool_client.provider().clone(),
@@ -116,6 +118,7 @@ impl Server {
                 .metrics_sampling_rate
                 .unwrap_or(1.0 /* default no sampling */),
             gas_sponsor_address,
+            malleable_match_connector_address,
             gas_sponsor_auth_key,
             price_reporter_client,
             gas_cost_sampler,
@@ -142,10 +145,7 @@ async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
 /// Set the external match fees & protocol fee
 async fn set_external_match_fees(darkpool_client: &DarkpoolClient) -> Result<(), AuthServerError> {
     let protocol_fee = darkpool_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
-
-    PROTOCOL_FEE
-        .set(protocol_fee)
-        .map_err(|_| AuthServerError::setup("Failed to set protocol fee"))?;
+    set_protocol_fee(protocol_fee);
 
     let tokens: Vec<Token> = get_all_tokens()
         .into_iter()
@@ -194,10 +194,17 @@ fn parse_auth_server_keys(
 
 /// Parse the gas sponsor address from the CLI args
 fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
-    let gas_sponsor_address_bytes =
-        hex::decode(&args.gas_sponsor_address).map_err(AuthServerError::setup)?;
+    parse_address(&args.gas_sponsor_address)
+}
 
-    Ok(Address::from_slice(&gas_sponsor_address_bytes))
+/// Parse the malleable match connector address from the CLI args
+fn parse_malleable_match_connector_address(args: &Cli) -> Result<Address, AuthServerError> {
+    parse_address(&args.malleable_match_connector_address)
+}
+
+/// Parse an address from a string
+fn parse_address(s: &str) -> Result<Address, AuthServerError> {
+    Address::from_str(s).map_err(AuthServerError::setup)
 }
 
 /// Create a darkpool client with the provided configuration
