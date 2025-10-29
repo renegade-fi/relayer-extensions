@@ -1428,6 +1428,7 @@ name = "auth-server-api"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives 1.3.0",
+ "circuit-types",
  "external-api",
  "num-bigint",
  "serde",
@@ -2830,7 +2831,7 @@ dependencies = [
 [[package]]
 name = "contracts-common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade-contracts.git#40ec8a16fd05d9d65d3b49ef8b4850f9d2ffbf8e"
+source = "git+https://github.com/renegade-fi/renegade-stylus-contracts.git#39fbb8bf2f332ea3c42464151660df8e2a13d7e2"
 dependencies = [
  "alloy-primitives 0.8.20",
  "alloy-sol-types 0.8.20",
