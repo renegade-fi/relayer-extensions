@@ -11,6 +11,7 @@ use diesel::{
     prelude::{Insertable, Queryable},
     serialize::{self, IsNull, Output, ToSql},
 };
+use uuid::Uuid;
 
 use crate::db::schema::sql_types::ObjectType as ObjectTypeSqlType;
 
@@ -61,10 +62,35 @@ impl FromSql<ObjectTypeSqlType, Pg> for ObjectType {
 #[diesel(table_name = crate::db::schema::master_view_seeds)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MasterViewSeed {
+    /// The ID of the seed owner's account
+    pub account_id: Uuid,
     /// The address of the seed's owner
     pub owner_address: String,
     /// The master view seed
     pub seed: BigDecimal,
+}
+
+// === Expected Nullifiers Table ===
+
+/// An expected nullifier record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::expected_nullifiers)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ExpectedNullifier {
+    /// The expected nullifier
+    pub nullifier: BigDecimal,
+    /// The ID of the account owning the state object associated with the
+    /// nullifier
+    pub account_id: Uuid,
+    /// The address of the owner of the state object associated with the
+    /// nullifier
+    pub owner_address: String,
+    /// The identifier stream seed of the state object associated with the
+    /// nullifier
+    pub identifier_seed: BigDecimal,
+    /// The encryption cipher seed of the state object associated with the
+    /// nullifier
+    pub encryption_seed: BigDecimal,
 }
 
 // === Processed Nullifiers Table ===
@@ -89,6 +115,8 @@ pub struct ProcessedNullifier {
 pub struct GenericStateObject {
     /// The object's identifier stream seed
     pub identifier_seed: BigDecimal,
+    /// The ID of the account owning the state object
+    pub account_id: Uuid,
     /// Whether the object is active
     pub active: bool,
     /// The type of the object
@@ -116,6 +144,8 @@ pub struct GenericStateObject {
 pub struct Intent {
     /// The intent's identifier stream seed
     pub identifier_seed: BigDecimal,
+    /// The ID of the account owning the intent
+    pub account_id: Uuid,
     /// Whether the intent is active
     pub active: bool,
     /// The mint of the input token in the intent
@@ -147,6 +177,8 @@ pub struct Intent {
 pub struct Balance {
     /// The balance's identifier stream seed
     pub identifier_seed: BigDecimal,
+    /// The ID of the account owning the balance
+    pub account_id: Uuid,
     /// Whether the balance is active
     pub active: bool,
     /// The mint of the token in the balance

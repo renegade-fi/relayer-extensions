@@ -9,6 +9,7 @@ pub mod sql_types {
 diesel::table! {
     balances (identifier_seed) {
         identifier_seed -> Numeric,
+        account_id -> Uuid,
         active -> Bool,
         mint -> Text,
         owner_address -> Text,
@@ -21,11 +22,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    expected_nullifiers (nullifier) {
+        nullifier -> Numeric,
+        account_id -> Uuid,
+        owner_address -> Text,
+        identifier_seed -> Numeric,
+        encryption_seed -> Numeric,
+    }
+}
+
+diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::ObjectType;
 
     generic_state_objects (identifier_seed) {
         identifier_seed -> Numeric,
+        account_id -> Uuid,
         active -> Bool,
         object_type -> ObjectType,
         nullifier -> Numeric,
@@ -40,6 +52,7 @@ diesel::table! {
 diesel::table! {
     intents (identifier_seed) {
         identifier_seed -> Numeric,
+        account_id -> Uuid,
         active -> Bool,
         input_mint -> Text,
         output_mint -> Text,
@@ -54,7 +67,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    master_view_seeds (owner_address) {
+    master_view_seeds (account_id) {
+        account_id -> Uuid,
         owner_address -> Text,
         seed -> Numeric,
     }
@@ -69,6 +83,7 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     balances,
+    expected_nullifiers,
     generic_state_objects,
     intents,
     master_view_seeds,
