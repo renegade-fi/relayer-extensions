@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# === Renegade === #
+renegade-constants = { workspace = true }
+ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
+
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
 

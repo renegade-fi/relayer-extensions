@@ -6,4 +6,6 @@ pub mod schema;
 
 pub mod client;
 pub mod error;
+pub mod interface;
 pub mod models;
+mod utils;
