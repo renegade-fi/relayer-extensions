@@ -3,6 +3,9 @@ name = "prover-service"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+log-invalid-bundles = ["dep:mpc-plonk"]
+
 [dependencies]
 # === HTTP Server + Runtime === #
 http = "0.2"
@@ -15,6 +18,7 @@ renegade-circuits = { workspace = true }
 renegade-circuit-types = { workspace = true }
 renegade-util = { workspace = true, features = ["telemetry"] }
 prover-service-api = { path = "../api" }
+mpc-plonk = { git = "https://github.com/renegade-fi/mpc-jellyfish.git", optional = true }
 
 # === Misc Dependencies === #
 clap = { version = "4", features = ["derive", "env"] }

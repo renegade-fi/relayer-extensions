@@ -12,7 +12,7 @@ use prover_service_api::{
     ValidWalletCreateRequest, ValidWalletUpdateRequest,
 };
 use renegade_circuit_types::{
-    PlonkLinkProof, PlonkProof, ProofLinkingHint, errors::ProverError, traits::SingleProverCircuit,
+    PlonkLinkProof, PlonkProof, ProofLinkingHint, traits::SingleProverCircuit,
 };
 use renegade_circuits::{
     singleprover_prove_with_hint,
@@ -32,7 +32,8 @@ use renegade_circuits::{
         valid_wallet_update::SizedValidWalletUpdate,
     },
 };
-use tracing::instrument;
+use serde::Serialize;
+use tracing::{error, instrument};
 use warp::{reject::Rejection, reply::Json};
 
 use crate::error::ProverServiceError;
@@ -177,8 +178,8 @@ async fn generate_proof_json<C: SingleProverCircuit>(
     statement: C::Statement,
 ) -> Result<Json, Rejection>
 where
-    C::Witness: 'static + Send,
-    C::Statement: 'static + Send,
+    C::Witness: 'static + Send + Serialize,
+    C::Statement: 'static + Send + Serialize,
 {
     // Spawn on a blocking thread
     let (proof, _link_hint) = prove_circuit::<C>(witness, statement).await?;
@@ -192,25 +193,12 @@ async fn generate_proof_and_hint_json<C: SingleProverCircuit>(
     statement: C::Statement,
 ) -> Result<Json, Rejection>
 where
-    C::Witness: 'static + Send,
-    C::Statement: 'static + Send,
+    C::Witness: 'static + Send + Serialize,
+    C::Statement: 'static + Send + Serialize,
 {
     let (proof, link_hint) = prove_circuit::<C>(witness, statement).await?;
     let resp = ProofAndHintResponse { proof, link_hint };
     Ok(warp::reply::json(&resp))
-}
-
-/// Prove a circuit; return the proof and link hint
-#[instrument(skip_all, fields(circuit = C::name()))]
-async fn prove_circuit<C: SingleProverCircuit>(
-    witness: C::Witness,
-    statement: C::Statement,
-) -> Result<(PlonkProof, ProofLinkingHint), Rejection>
-where
-    C::Witness: 'static + Send,
-    C::Statement: 'static + Send,
-{
-    run_blocking(move || singleprover_prove_with_hint::<C>(witness, statement)).await
 }
 
 // --- Proof Linking --- //
@@ -251,16 +239,77 @@ async fn link_commitments_malleable_match_settle_atomic(
 
 // --- Runtime --- //
 
-/// Block on a prover callback and handle errors
-async fn run_blocking<F, R>(f: F) -> Result<R, Rejection>
+/// Prove a circuit in a blocking thread and log invalid bundles
+#[cfg(feature = "log-invalid-bundles")]
+async fn prove_circuit<C: SingleProverCircuit>(
+    witness: C::Witness,
+    statement: C::Statement,
+) -> Result<(PlonkProof, ProofLinkingHint), Rejection>
 where
-    F: FnOnce() -> Result<R, ProverError> + Send + 'static,
+    C::Witness: 'static + Send + Serialize,
+    C::Statement: 'static + Send + Serialize,
+{
+    use mpc_plonk::errors::{PlonkError, SnarkError};
+    use renegade_circuit_types::errors::ProverError;
+
+    run_blocking(move || {
+        // Prove the circuit
+        let res = singleprover_prove_with_hint::<C>(witness.clone(), statement.clone());
+
+        // Check for constraint satisfaction errors
+        if let Err(ProverError::Plonk(PlonkError::SnarkError(
+            SnarkError::WrongQuotientPolyDegree(..),
+        ))) = &res
+        {
+            // Log the invalid witness and statement
+            // Unwraps here are valid as the witness and statement were serialized across
+            // the API
+            let witness_json = serde_json::to_string(&witness).unwrap();
+            let statement_json = serde_json::to_string(&statement).unwrap();
+            error!(
+                witness = %witness_json,
+                statement = %statement_json,
+                "Invalid witness/statement for circuit {}", C::name(),
+            );
+        }
+
+        res
+    })
+    .await
+}
+
+/// Prove a circuit in a blocking thread, don't log invalid bundles
+#[cfg(not(feature = "log-invalid-bundles"))]
+async fn prove_circuit<C: SingleProverCircuit>(
+    witness: C::Witness,
+    statement: C::Statement,
+) -> Result<(PlonkProof, ProofLinkingHint), Rejection>
+where
+    C::Witness: 'static + Send + Serialize,
+    C::Statement: 'static + Send + Serialize,
+{
+    run_blocking(move || singleprover_prove_with_hint::<C>(witness, statement)).await
+}
+
+/// Block on a prover callback and handle errors
+async fn run_blocking<F, R, E>(f: F) -> Result<R, Rejection>
+where
+    F: FnOnce() -> Result<R, E> + Send + 'static,
     R: Send + 'static,
+    E: ToString + Send + 'static,
 {
     let r = tokio::task::spawn_blocking(f)
         .await
         .map_err(ProverServiceError::custom)? // join error
-        .map_err(ProverServiceError::prover)?; // proof system error
+        .map_err(|e| {
+            // Convert WrongQuotientPolyDegree errors to BadRequest instead of Prover error
+            let err_str = e.to_string();
+            if err_str.contains("WrongQuotientPolyDegree") {
+                ProverServiceError::bad_request(format!("Invalid witness: {err_str}"))
+            } else {
+                ProverServiceError::prover(err_str)
+            }
+        })?;
 
     Ok(r)
 }

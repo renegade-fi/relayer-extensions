@@ -7001,6 +7001,7 @@ dependencies = [
  "clap",
  "http 0.2.12",
  "http-auth-basic",
+ "mpc-plonk",
  "opentelemetry",
  "opentelemetry-http",
  "prover-service-api",

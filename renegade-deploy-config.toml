@@ -125,6 +125,7 @@ region = "ca-central-1"
 [services.testnet-prover-service.build]
 dockerfile = "prover-service/Dockerfile"
 ecr_repo = "prover-service-testnet"
+cargo_features = "log-invalid-bundles"
 
 [services.testnet-prover-service.deploy]
 environment = "testnet"
@@ -134,6 +135,7 @@ resource = "prover-service"
 [services.mainnet-prover-service.build]
 dockerfile = "prover-service/Dockerfile"
 ecr_repo = "prover-service-mainnet"
+cargo_features = "log-invalid-bundles"
 
 [services.mainnet-prover-service.deploy]
 environment = "mainnet"
