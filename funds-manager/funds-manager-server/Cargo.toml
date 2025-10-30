@@ -23,13 +23,13 @@ warp = "0.3"
 aws-sdk-secretsmanager = "1.37"
 aws-sdk-s3 = "1.37"
 aws-config = "1.5"
-bb8 = "0.8"
+bb8 = { workspace = true }
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
 diesel-async = { workspace = true, features = ["postgres", "bb8"] }
 fireblocks-sdk = { git = "https://github.com/renegade-fi/fireblocks-sdk-rs.git", branch = "v2.0.1" }
-native-tls = "0.2"
-postgres-native-tls = "0.5"
-tokio-postgres = "0.7.7"
+native-tls = { workspace = true }
+postgres-native-tls = { workspace = true }
+tokio-postgres = { workspace = true }
 
 # === Blockchain Interaction === #
 alloy-sol-types = { workspace = true }

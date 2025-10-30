@@ -5,6 +5,7 @@ members = [
     "compliance/compliance-server",
     "compliance/compliance-api",
     "renegade-solver",
+    "darkpool-indexer",
     "dealer/renegade-dealer",
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
@@ -54,8 +55,12 @@ alloy-primitives = "1.0.32"
 alloy = "1.0.32"
 
 # === Database Dependencies === #
-diesel = { version = "2.1" }
-diesel-async = { version = "0.4" }
+diesel = { version = "2.3" }
+diesel-async = { version = "0.7" }
+bb8 = "0.9"
+native-tls = "0.2"
+postgres-native-tls = "0.5"
+tokio-postgres = "0.7"
 
 # === Misc Dependencies === #
 thiserror = "2.0"

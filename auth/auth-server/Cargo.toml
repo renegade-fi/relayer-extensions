@@ -23,12 +23,12 @@ opentelemetry-http = "0.10"
 tracing-opentelemetry = "0.22"
 
 # === Database === #
-diesel = { version = "2", features = ["postgres", "chrono", "uuid"] }
-bb8 = "0.8"
-diesel-async = { version = "0.4", features = ["postgres", "bb8"] }
-tokio-postgres = "0.7"
-postgres-native-tls = "0.5"
-native-tls = "0.2"
+diesel = { workspace = true, features = ["postgres", "chrono", "uuid"] }
+bb8 = { workspace = true }
+diesel-async = { workspace = true, features = ["postgres", "bb8"] }
+tokio-postgres = { workspace = true }
+postgres-native-tls = { workspace = true }
+native-tls = { workspace = true }
 redis = { version = "0.32", features = [
     "tokio-native-tls-comp",
     "connection-manager",

@@ -1,0 +1,21 @@
+[package]
+name = "darkpool-indexer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# === Runtime === #
+tokio = { version = "1.10", features = ["full"] }
+
+# === DB === #
+diesel = { workspace = true, features = ["postgres", "numeric"] }
+diesel-async = { workspace = true, features = ["postgres", "bb8"] }
+bb8 = { workspace = true }
+native-tls = { workspace = true }
+postgres-native-tls = { workspace = true }
+tokio-postgres = { workspace = true }
+bigdecimal = "0.4"
+
+# === Misc === #
+thiserror = { workspace = true }
+tracing = { workspace = true }
