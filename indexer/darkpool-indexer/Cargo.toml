@@ -20,7 +20,15 @@ native-tls = { workspace = true }
 postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
 bigdecimal = "0.4"
-uuid = "1.17"
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
+
+# === API === #
+darkpool-indexer-api = { path = "../darkpool-indexer-api" }
+serde = "1.0"
+serde_json = "1.0"
+
+# === Crypto === #
+tiny-keccak = { version = "2.0", features = ["keccak", "sha3"] }
 
 # === Misc === #
 thiserror = { workspace = true }

@@ -1171,7 +1171,7 @@ dependencies = [
 [[package]]
 name = "ark-mpc"
 version = "0.1.2"
-source = "git+https://github.com/renegade-fi/ark-mpc#d0c3a9fef9638b4885bc644d23086a8739944450"
+source = "git+https://github.com/renegade-fi/ark-mpc.git#d0c3a9fef9638b4885bc644d23086a8739944450"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
@@ -3232,6 +3232,7 @@ dependencies = [
  "bb8",
  "bigdecimal 0.4.9",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "darkpool-indexer-api",
  "diesel",
  "diesel-async",
  "itertools 0.10.5",
@@ -3239,10 +3240,23 @@ dependencies = [
  "postgres-native-tls",
  "rand 0.8.5",
  "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?rev=dd1c9a0)",
+ "serde",
+ "serde_json",
  "thiserror 2.0.17",
+ "tiny-keccak",
  "tokio",
  "tokio-postgres",
  "tracing",
+ "uuid 1.17.0",
+]
+
+[[package]]
+name = "darkpool-indexer-api"
+version = "0.1.0"
+dependencies = [
+ "ark-mpc",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "serde",
  "uuid 1.17.0",
 ]
 

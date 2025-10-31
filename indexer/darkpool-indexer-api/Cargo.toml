@@ -1,0 +1,13 @@
+[package]
+name = "darkpool-indexer-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# === Renegade === #
+renegade-constants = { workspace = true }
+ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
+
+# === Misc === #
+serde = "1.0"
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
