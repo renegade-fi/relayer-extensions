@@ -1171,7 +1171,7 @@ dependencies = [
 [[package]]
 name = "ark-mpc"
 version = "0.1.2"
-source = "git+https://github.com/renegade-fi/ark-mpc.git#d0c3a9fef9638b4885bc644d23086a8739944450"
+source = "git+https://github.com/renegade-fi/ark-mpc#d0c3a9fef9638b4885bc644d23086a8739944450"
 dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
@@ -3228,8 +3228,10 @@ dependencies = [
 name = "darkpool-indexer"
 version = "0.1.0"
 dependencies = [
+ "ark-mpc",
  "bb8",
  "bigdecimal 0.4.9",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "diesel",
  "diesel-async",
  "native-tls",
