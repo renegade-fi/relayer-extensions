@@ -4,6 +4,19 @@ use itertools::Itertools;
 use renegade_constants::Scalar;
 use renegade_crypto::hash::Poseidon2Sponge;
 
+// -------------
+// | Constants |
+// -------------
+
+/// The error message to use when the CSPRNG stream terminates unexpectedly
+///
+/// This should never happen, as the CSPRNG stream is infinite.
+pub const CSPRNG_TERMINATION_ERROR: &str = "CSPRNG stream should never terminate";
+
+// ---------------------
+// | CSPRNG Definition |
+// ---------------------
+
 /// A hash chain from a seed used to compute CSPRNG values
 pub struct PoseidonCSPRNG {
     /// The index of the next element to generate

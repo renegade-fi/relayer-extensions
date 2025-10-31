@@ -12,6 +12,9 @@ pub enum DbError {
     /// An error executing a query
     #[error("query execution error: {0}")]
     Query(String),
+    /// An arbitrary Diesel error
+    #[error("Diesel error: {0}")]
+    DieselError(#[from] diesel::result::Error),
 }
 
 #[allow(clippy::needless_pass_by_value)]
