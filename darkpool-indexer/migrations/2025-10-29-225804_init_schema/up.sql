@@ -5,6 +5,7 @@
 -- Stores darkpool balances
 CREATE TABLE "balances"(
 	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"mint" TEXT NOT NULL,
 	"owner_address" TEXT NOT NULL,
@@ -15,8 +16,19 @@ CREATE TABLE "balances"(
 	"allow_public_fills" BOOL NOT NULL
 );
 
--- Indexes a balance by its active flag
-CREATE INDEX "idx_balances_active_owner_address" ON "balances" ("active", "owner_address");
+-- Indexes a balance by its account ID & active flag
+CREATE INDEX "idx_balances_account_id_active" ON "balances" ("account_id", "active");
+
+-- EXPECTED NULLIFIERS --
+
+-- Stores nullifiers which are expected to be spent
+CREATE TABLE "expected_nullifiers"(
+	"nullifier" NUMERIC NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
+	"account_id" UUID NOT NULL,
+	"owner_address" TEXT NOT NULL,
+	"identifier_seed" NUMERIC NOT NULL CHECK (identifier_seed >= 0),
+	"encryption_seed" NUMERIC NOT NULL CHECK (encryption_seed >= 0)
+);
 
 -- PROCESSED NULLIFIERS --
 
@@ -31,6 +43,7 @@ CREATE TABLE "processed_nullifiers"(
 -- Stores darkpool intents
 CREATE TABLE "intents"(
 	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"input_mint" TEXT NOT NULL,
 	"output_mint" TEXT NOT NULL,
@@ -43,14 +56,15 @@ CREATE TABLE "intents"(
 	"precompute_cancellation_proof" BOOL NOT NULL
 );
 
--- Indexes an intent by its active flag
-CREATE INDEX "idx_intents_active_owner_address" ON "intents" ("active", "owner_address");
+-- Indexes an intent by its account ID & active flag
+CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active");
 
 -- MASTER VIEW SEEDS --
 
 -- Stores users' master view seeds
 CREATE TABLE "master_view_seeds"(
-	"owner_address" TEXT NOT NULL PRIMARY KEY,
+	"account_id" UUID NOT NULL PRIMARY KEY,
+	"owner_address" TEXT NOT NULL,
 	"seed" NUMERIC NOT NULL CHECK (seed >= 0)
 );
 
@@ -62,6 +76,7 @@ CREATE TYPE "object_type" AS ENUM ('intent', 'balance');
 -- Stores generic state objects
 CREATE TABLE "generic_state_objects"(
 	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"object_type" "object_type" NOT NULL,
 	"nullifier" NUMERIC NOT NULL CHECK (nullifier >= 0),
@@ -72,8 +87,8 @@ CREATE TABLE "generic_state_objects"(
 	"private_shares" NUMERIC[] NOT NULL CHECK (array_position(private_shares, NULL) IS NULL AND 0 <= ALL(private_shares))
 );
 
--- Indexes a generic state object by its active flag
-CREATE INDEX "idx_generic_state_objects_active_owner_address" ON "generic_state_objects" ("active", "owner_address");
+-- Indexes a generic state object by its account ID & active flag
+CREATE INDEX "idx_generic_state_objects_account_id_active" ON "generic_state_objects" ("account_id", "active");
 
 -- Indexes a generic state object by its nullifier
 CREATE INDEX "idx_generic_state_objects_nullifier" ON "generic_state_objects" ("nullifier");

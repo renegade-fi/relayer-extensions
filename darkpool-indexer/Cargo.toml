@@ -8,13 +8,14 @@ edition = "2024"
 tokio = { version = "1.10", features = ["full"] }
 
 # === DB === #
-diesel = { workspace = true, features = ["postgres", "numeric"] }
+diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
 diesel-async = { workspace = true, features = ["postgres", "bb8"] }
 bb8 = { workspace = true }
 native-tls = { workspace = true }
 postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
 bigdecimal = "0.4"
+uuid = "1.17"
 
 # === Misc === #
 thiserror = { workspace = true }
