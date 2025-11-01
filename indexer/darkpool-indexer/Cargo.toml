@@ -6,11 +6,13 @@ edition = "2024"
 [dependencies]
 # === Renegade === #
 renegade-constants = { workspace = true }
+renegade-common = { workspace = true }
 renegade-crypto = { workspace = true }
 ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
+clap = { version = "4.5.3", features = ["derive", "env"] }
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
@@ -21,6 +23,10 @@ postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
 bigdecimal = "0.4"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
+
+# === AWS === #
+aws-config = { version = "1.1.4", features = ["behavior-version-latest"] }
+aws-sdk-sqs = "1.50.0"
 
 # === API === #
 darkpool-indexer-api = { path = "../darkpool-indexer-api" }
