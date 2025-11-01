@@ -67,18 +67,34 @@ pub async fn handle_master_view_seed_message(
 /// SQS handler test suite
 #[cfg(test)]
 mod test {
+    use aws_config::Region;
+    use aws_sdk_sqs::Client as SqsClient;
     use rand::thread_rng;
     use renegade_constants::Scalar;
     use uuid::Uuid;
 
-    use crate::indexer::error::IndexerError;
+    use crate::{db::client::DbClient, indexer::error::IndexerError};
 
     use super::*;
 
+    /// The region where the test SQS queue is located
+    const TEST_SQS_REGION: &str = "us-east-2";
+
     /// Build an indexer configured with a database URL from the environment
+    ///
+    /// TODO: Figure out better testing abstractions
     async fn build_test_indexer() -> Result<Indexer, IndexerError> {
         let db_url = env!("DATABASE_URL");
-        Indexer::new(db_url).await
+        let db = DbClient::new(db_url).await?;
+
+        // Set up the AWS SQS client
+        let config = aws_config::from_env().region(Region::new(TEST_SQS_REGION)).load().await;
+
+        let sqs_client = SqsClient::new(&config);
+
+        let indexer = Indexer { db, sqs_client };
+
+        Ok(indexer)
     }
 
     /// Generate a random master view seed message
