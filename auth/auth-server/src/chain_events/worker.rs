@@ -47,17 +47,18 @@ impl OnChainEventListener {
         Ok(())
     }
 
-    /// Spawns a watcher thread that joins the given handle and logs its
-    /// outcome.
+    /// Spawns a watcher thread that joins the given handle and panics if the
+    /// executor thread panics or exits with an error, ensuring failures crash
+    /// the process.
     pub fn watch(mut self) {
         std::thread::Builder::new()
             .name("on-chain-listener-watcher".to_string())
             .spawn(move || match self.executor_handle.take().unwrap().join() {
                 Err(panic) => {
-                    error!("worker on-chain-event-listener panicked with error: {panic:?}");
+                    panic!("worker on-chain-event-listener panicked: {panic:?}");
                 },
                 Ok(err) => {
-                    error!("worker on-chain-event-listener exited with error: {err:?}");
+                    panic!("worker on-chain-event-listener exited with error: {err:?}");
                 },
             })
             .unwrap();
