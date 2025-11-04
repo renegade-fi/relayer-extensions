@@ -4,6 +4,10 @@ use itertools::Itertools;
 use renegade_constants::Scalar;
 use renegade_crypto::hash::Poseidon2Sponge;
 
+// ---------------------
+// | CSPRNG Definition |
+// ---------------------
+
 /// A hash chain from a seed used to compute CSPRNG values
 pub struct PoseidonCSPRNG {
     /// The index of the next element to generate
