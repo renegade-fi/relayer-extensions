@@ -4,6 +4,13 @@ use renegade_constants::Scalar;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// The top-level enum of all possible SQS messages
+#[derive(Serialize, Deserialize)]
+pub enum SqsMessage {
+    /// A message representing the registration of a new master view seed
+    MasterViewSeed(MasterViewSeedMessage),
+}
+
 /// A message representing the registration of a new master view seed
 #[derive(Serialize, Deserialize)]
 pub struct MasterViewSeedMessage {
