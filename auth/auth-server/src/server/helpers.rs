@@ -1,14 +1,25 @@
 //! Helper methods for the auth server
 
+use std::{iter, str::FromStr, time::Duration};
+
 use aes_gcm::{AeadCore, Aes128Gcm, aead::Aead};
 use alloy::signers::k256::ecdsa::SigningKey;
-use alloy_primitives::{Signature, U256, keccak256};
+use alloy::signers::local::PrivateKeySigner;
+use alloy_primitives::{Address, Signature, U256, keccak256};
 use base64::{Engine as _, engine::general_purpose};
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use rand::thread_rng;
 use renegade_api::http::external_match::SignedExternalQuote;
+use renegade_common::types::chain::Chain;
+use renegade_common::types::token::{Token, get_all_tokens};
+use renegade_config::setup_token_remaps;
+use renegade_constants::NATIVE_ASSET_ADDRESS;
+use renegade_darkpool_client::DarkpoolClient;
+use renegade_darkpool_client::client::DarkpoolClientConfig;
+use renegade_util::on_chain::{set_external_match_fee, set_protocol_fee};
 use uuid::Uuid;
 
+use crate::Cli;
 use crate::error::AuthServerError;
 
 // -------------
@@ -110,6 +121,81 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
     uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
 
     Uuid::from_bytes(uuid_bytes)
+}
+
+// -----------------
+// | Setup Helpers |
+// -----------------
+
+/// The interval at which we poll filter updates
+const DEFAULT_BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Setup the token mapping
+pub async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
+    let chain_id = args.chain_id;
+    let token_remap_file = args.token_remap_file.clone();
+    tokio::task::spawn_blocking(move || setup_token_remaps(token_remap_file, chain_id))
+        .await
+        .unwrap()
+        .map_err(AuthServerError::setup)
+}
+
+/// Set the external match fees & protocol fee
+pub async fn set_external_match_fees(
+    darkpool_client: &DarkpoolClient,
+) -> Result<(), AuthServerError> {
+    let protocol_fee = darkpool_client.get_protocol_fee().await.map_err(AuthServerError::setup)?;
+    set_protocol_fee(protocol_fee);
+
+    let tokens: Vec<Token> = get_all_tokens()
+        .into_iter()
+        .chain(iter::once(Token::from_addr(NATIVE_ASSET_ADDRESS)))
+        .collect();
+
+    for token in tokens {
+        // Fetch the fee override from the contract
+        let addr = token.get_alloy_address();
+        let fee =
+            darkpool_client.get_external_match_fee(addr).await.map_err(AuthServerError::setup)?;
+
+        // Write the fee into the mapping
+        let addr_bigint = token.get_addr_biguint();
+        set_external_match_fee(&addr_bigint, fee);
+    }
+
+    Ok(())
+}
+
+/// Parse the gas sponsor address from the CLI args
+pub fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
+    parse_address(&args.gas_sponsor_address)
+}
+
+/// Parse the malleable match connector address from the CLI args
+pub fn parse_malleable_match_connector_address(args: &Cli) -> Result<Address, AuthServerError> {
+    parse_address(&args.malleable_match_connector_address)
+}
+
+/// Parse an address from a string
+pub fn parse_address(s: &str) -> Result<Address, AuthServerError> {
+    Address::from_str(s).map_err(AuthServerError::setup)
+}
+
+/// Create a darkpool client with the provided configuration
+pub fn create_darkpool_client(
+    darkpool_address: String,
+    chain_id: Chain,
+    rpc_url: String,
+) -> Result<DarkpoolClient, String> {
+    // Create the client
+    DarkpoolClient::new(DarkpoolClientConfig {
+        darkpool_addr: darkpool_address,
+        chain: chain_id,
+        rpc_url,
+        private_key: PrivateKeySigner::random(),
+        block_polling_interval: DEFAULT_BLOCK_POLLING_INTERVAL,
+    })
+    .map_err(|e| format!("Failed to create darkpool client: {e}"))
 }
 
 // ---------

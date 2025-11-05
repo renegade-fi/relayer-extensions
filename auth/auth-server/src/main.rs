@@ -23,15 +23,16 @@ pub mod http_utils;
 mod server;
 mod telemetry;
 
-use renegade_common::types::chain::Chain;
-use renegade_system_clock::SystemClock;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
+use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
+use renegade_common::types::chain::Chain;
+use renegade_system_clock::SystemClock;
 use reqwest::StatusCode;
 use serde_json::json;
-use std::net::SocketAddr;
-use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info, info_span};
 use uuid::Uuid;
@@ -40,7 +41,15 @@ use warp::{
     reply::{Json, WithStatus},
 };
 
+use bundle_store::BundleStore;
+use chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use server::Server;
+use server::gas_estimation::gas_cost_sampler::GasCostSampler;
+use server::helpers::{
+    create_darkpool_client, parse_gas_sponsor_address, parse_malleable_match_connector_address,
+    set_external_match_fees, setup_token_mapping,
+};
+use server::rate_limiter::AuthServerRateLimiter;
 
 use crate::error::AuthServerError;
 
@@ -209,8 +218,76 @@ async fn main() {
 
     let system_clock = SystemClock::new().await;
 
+    // Setup token mappings
+    setup_token_mapping(&args).await.expect("Failed to setup token mapping");
+
+    // Create the darkpool client
+    let darkpool_client =
+        create_darkpool_client(args.darkpool_address.clone(), args.chain_id, args.rpc_url.clone())
+            .expect("failed to create darkpool client");
+
+    // Set the external match fees & protocol fee
+    set_external_match_fees(&darkpool_client).await.expect("failed to set external match fees");
+
+    // Parse addresses
+    let gas_sponsor_address =
+        parse_gas_sponsor_address(&args).expect("failed to parse gas sponsor address");
+    let malleable_match_connector_address = parse_malleable_match_connector_address(&args)
+        .expect("failed to parse malleable match connector address");
+
+    // Create shared dependencies
+    let bundle_store = BundleStore::new();
+
+    let rate_limiter = AuthServerRateLimiter::new(
+        args.quote_rate_limit,
+        args.bundle_rate_limit,
+        args.max_gas_sponsorship_value,
+        &args.redis_url,
+        &args.execution_cost_redis_url,
+    )
+    .await
+    .expect("failed to create rate limiter");
+
+    let price_reporter_client = PriceReporterClient::new(PriceReporterClientConfig {
+        base_url: args.price_reporter_url.clone(),
+        ..Default::default()
+    })
+    .expect("failed to create price reporter client");
+
+    let gas_cost_sampler = Arc::new(
+        GasCostSampler::new(darkpool_client.provider().clone(), gas_sponsor_address, &system_clock)
+            .await
+            .expect("failed to create gas cost sampler"),
+    );
+
+    // Start the on-chain event listener
+    let chain_listener_config = OnChainEventListenerConfig {
+        chain: args.chain_id,
+        gas_sponsor_address,
+        websocket_addr: args.eth_websocket_addr.clone(),
+        bundle_store: bundle_store.clone(),
+        rate_limiter: rate_limiter.clone(),
+        price_reporter_client: price_reporter_client.clone(),
+        gas_cost_sampler: gas_cost_sampler.clone(),
+        darkpool_client: darkpool_client.clone(),
+    };
+    let mut chain_listener = OnChainEventListener::new(chain_listener_config)
+        .expect("failed to build on-chain event listener");
+    chain_listener.start().expect("failed to start on-chain event listener");
+    chain_listener.watch();
+
     // Create the server
-    let server_inner = Server::setup(args, &system_clock).await.expect("Failed to create server");
+    let server_inner = Server::setup(
+        args,
+        gas_sponsor_address,
+        malleable_match_connector_address,
+        bundle_store.clone(),
+        rate_limiter.clone(),
+        price_reporter_client.clone(),
+        gas_cost_sampler.clone(),
+    )
+    .await
+    .expect("Failed to create server");
     let server = Arc::new(server_inner);
 
     // --- Management Routes --- //
