@@ -59,6 +59,9 @@ pub enum AuthServerError {
     /// Unauthorized
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    /// Worker failed
+    #[error("Worker failed: {0}")]
+    WorkerFailed(String),
 }
 
 impl AuthServerError {
