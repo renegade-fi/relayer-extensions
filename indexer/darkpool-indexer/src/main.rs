@@ -15,6 +15,7 @@ use tokio::task::JoinSet;
 use tracing::{error, warn};
 
 use crate::{
+    api::handlers::sqs::handle_sqs_message,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
 };
@@ -43,9 +44,9 @@ async fn main() -> Result<(), IndexerError> {
     let indexer = Indexer::build_from_cli(&cli).await?;
 
     let mut tasks = JoinSet::new();
-    tasks.spawn(run_relayer_sqs_consumer(indexer.clone(), cli.sqs_queue_url.clone()));
+    tasks.spawn(run_sqs_consumer(indexer.clone(), cli.sqs_queue_url.clone()));
 
-    // TODO: Spawn onchain event SQS consumer & HTTP server
+    // TODO: Spawn HTTP server
     match tasks.join_next().await.expect("No tasks spawned") {
         Err(e) => error!("Error joining indexer task: {e}"),
         Ok(Ok(())) => warn!("Indexer task exited"),
@@ -55,25 +56,22 @@ async fn main() -> Result<(), IndexerError> {
     Ok(())
 }
 
-/// Run the relayer message SQS consumer, polling for new messages from the
-/// relayer and handling them
-async fn run_relayer_sqs_consumer(
-    indexer: Indexer,
-    relayer_sqs_queue_url: String,
-) -> Result<(), IndexerError> {
+/// Run the SQS consumer, polling for new messages from the
+/// queue and handling them
+async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(), IndexerError> {
     loop {
         let messages = match indexer
             .sqs_client
             .receive_message()
             .max_number_of_messages(MAX_RECV_MESSAGES)
             .message_system_attribute_names(MessageSystemAttributeName::MessageGroupId)
-            .queue_url(&relayer_sqs_queue_url)
+            .queue_url(&sqs_queue_url)
             .send()
             .await
         {
             Ok(messages) => messages,
             Err(e) => {
-                error!("Error receiving messages from relayer SQS queue: {e}");
+                error!("Error receiving messages from SQS: {e}");
                 continue;
             },
         };
@@ -91,7 +89,7 @@ async fn run_relayer_sqs_consumer(
 
             if message_group_id.is_none() {
                 warn!(
-                    "Message {} from relayer SQS queue has no message group ID, skipping",
+                    "Message {} from SQS has no message group ID, skipping",
                     message.message_id().unwrap_or_default()
                 );
                 continue;
@@ -101,9 +99,18 @@ async fn run_relayer_sqs_consumer(
         }
 
         // Process message groups concurrently
-        for _messages in message_groups.into_values() {
+        for messages in message_groups.into_values() {
+            let indexer_clone = indexer.clone();
+            let sqs_queue_url_clone = sqs_queue_url.clone();
             tokio::spawn(async move {
-                // TODO: Message handling logic
+                // Process messages within a message group sequentially
+                for message in messages {
+                    if let Err(e) =
+                        handle_sqs_message(message, &indexer_clone, &sqs_queue_url_clone).await
+                    {
+                        error!("Error handling SQS message: {e}")
+                    }
+                }
             });
         }
     }
