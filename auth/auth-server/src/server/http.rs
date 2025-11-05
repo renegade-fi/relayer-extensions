@@ -1,6 +1,6 @@
 //! HTTP server executor and route building
 
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 
 use auth_server_api::API_KEYS_PATH;
 use reqwest::StatusCode;
@@ -14,27 +14,40 @@ use warp::{
 
 use crate::{ApiError, error::AuthServerError};
 
-use super::Server;
+use super::{Server, worker::HttpServerConfig};
 
 /// The executor that runs in a thread
 #[derive(Clone)]
 pub struct HttpServerExecutor {
-    /// The server instance
-    pub server: Arc<Server>,
-    /// The address to bind the server to
-    pub listen_addr: SocketAddr,
+    /// The configuration for the HTTP server
+    pub(crate) config: HttpServerConfig,
 }
 
 impl HttpServerExecutor {
     /// Create a new HTTP server executor
-    pub fn new(server: Arc<Server>, listen_addr: SocketAddr) -> Self {
-        Self { server, listen_addr }
+    pub fn new(config: HttpServerConfig) -> Self {
+        Self { config }
     }
 
     /// The main execution loop for the HTTP server
     pub async fn execute(self) {
-        let listen_addr = self.listen_addr;
-        let routes = self.build_routes();
+        let listen_addr = self.config.listen_addr;
+
+        // Setup the server
+        let server = Server::setup(
+            self.config.args,
+            self.config.gas_sponsor_address,
+            self.config.malleable_match_connector_address,
+            self.config.bundle_store,
+            self.config.rate_limiter,
+            self.config.price_reporter_client,
+            self.config.gas_cost_sampler,
+        )
+        .await
+        .expect("Failed to create server");
+        let server = Arc::new(server);
+
+        let routes = Self::build_routes(server);
 
         info!("Starting auth server on port {}", listen_addr.port());
         warp::serve(routes).bind(listen_addr).await;
@@ -42,10 +55,8 @@ impl HttpServerExecutor {
 
     /// Build all the routes for the server
     pub fn build_routes(
-        self,
+        server: Arc<Server>,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-        let server = self.server;
-
         // --- Management Routes --- //
 
         // Ping route

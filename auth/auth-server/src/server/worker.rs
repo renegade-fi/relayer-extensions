@@ -6,21 +6,41 @@ use std::{
     thread::{Builder, JoinHandle},
 };
 
+use alloy_primitives::Address;
+use price_reporter_client::PriceReporterClient;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tracing::error;
 
-use super::{Server, http::HttpServerExecutor};
+use crate::{Cli, bundle_store::BundleStore};
 
-/// The error type for HTTP server worker
-pub type HttpServerError = String;
+use super::{
+    gas_estimation::gas_cost_sampler::GasCostSampler, http::HttpServerExecutor,
+    rate_limiter::AuthServerRateLimiter,
+};
 
-/// The configuration for the HTTP server worker
+/// The configuration for the HTTP server executor
+#[derive(Clone)]
 pub struct HttpServerConfig {
-    /// The server instance
-    pub server: Arc<Server>,
+    /// The CLI arguments
+    pub args: Cli,
+    /// The address of the gas sponsor contract
+    pub gas_sponsor_address: Address,
+    /// The address of the malleable match connector contract
+    pub malleable_match_connector_address: Address,
+    /// The bundle store
+    pub bundle_store: BundleStore,
+    /// The rate limiter
+    pub rate_limiter: AuthServerRateLimiter,
+    /// The price reporter client
+    pub price_reporter_client: PriceReporterClient,
+    /// The gas cost sampler
+    pub gas_cost_sampler: Arc<GasCostSampler>,
     /// The address to bind the server to
     pub listen_addr: SocketAddr,
 }
+
+/// The error type for HTTP server worker
+pub type HttpServerError = String;
 
 /// The HTTP server worker
 pub struct HttpServerWorker {
@@ -33,7 +53,7 @@ pub struct HttpServerWorker {
 impl HttpServerWorker {
     /// Create a new HTTP server worker
     pub fn new(config: HttpServerConfig) -> Result<Self, HttpServerError> {
-        let executor = HttpServerExecutor::new(config.server, config.listen_addr);
+        let executor = HttpServerExecutor::new(config);
         Ok(Self { executor: Some(executor), executor_handle: None })
     }
 

@@ -37,7 +37,6 @@ use tracing::error;
 
 use bundle_store::BundleStore;
 use chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
-use server::Server;
 use server::gas_estimation::gas_cost_sampler::GasCostSampler;
 use server::helpers::{
     create_darkpool_client, parse_gas_sponsor_address, parse_malleable_match_connector_address,
@@ -56,7 +55,7 @@ const DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
 // -------
 
 /// The command line arguments for the auth server
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     // -----------------------
@@ -255,10 +254,6 @@ async fn main() -> Result<(), AuthServerError> {
             .expect("failed to create gas cost sampler"),
     );
 
-    // Create failure channels for workers
-    let (chain_listener_failure_tx, mut chain_listener_failure_rx) = channel::<()>(1);
-    let (http_server_failure_tx, mut http_server_failure_rx) = channel::<()>(1);
-
     // Start the on-chain event listener
     let chain_listener_config = OnChainEventListenerConfig {
         chain: args.chain_id,
@@ -273,38 +268,43 @@ async fn main() -> Result<(), AuthServerError> {
     let mut chain_listener = OnChainEventListener::new(chain_listener_config)
         .expect("failed to build on-chain event listener");
     chain_listener.start().expect("failed to start on-chain event listener");
-    chain_listener.watch(&chain_listener_failure_tx);
+    let (chain_listener_failure_sender, mut chain_listener_failure_receiver) =
+        new_worker_failure_channel();
+    chain_listener.watch(&chain_listener_failure_sender);
 
-    // Create the server
-    let server_inner = Server::setup(
+    // Start the HTTP server worker
+    let http_server_config = HttpServerConfig {
         args,
         gas_sponsor_address,
         malleable_match_connector_address,
-        bundle_store.clone(),
-        rate_limiter.clone(),
-        price_reporter_client.clone(),
-        gas_cost_sampler.clone(),
-    )
-    .await
-    .expect("Failed to create server");
-    let server = Arc::new(server_inner);
-
-    // Start the HTTP server worker
-    let http_server_config = HttpServerConfig { server, listen_addr };
+        bundle_store: bundle_store.clone(),
+        rate_limiter: rate_limiter.clone(),
+        price_reporter_client: price_reporter_client.clone(),
+        gas_cost_sampler: gas_cost_sampler.clone(),
+        listen_addr,
+    };
     let mut http_server =
         HttpServerWorker::new(http_server_config).expect("failed to build HTTP server worker");
     http_server.start().expect("failed to start HTTP server worker");
-    http_server.watch(&http_server_failure_tx);
+    let (http_server_failure_sender, mut http_server_failure_receiver) =
+        new_worker_failure_channel();
+    http_server.watch(&http_server_failure_sender);
 
     // Wait for an error, log the error, and teardown the auth server
     select! {
-        _ = chain_listener_failure_rx.recv() => {
+        _ = chain_listener_failure_receiver.recv() => {
             error!("Chain listener failed, shutting down");
             Err(AuthServerError::WorkerFailed("chain listener".to_string()))
         },
-        _ = http_server_failure_rx.recv() => {
+        _ = http_server_failure_receiver.recv() => {
             error!("HTTP server failed, shutting down");
             Err(AuthServerError::WorkerFailed("http server".to_string()))
         },
     }
+}
+
+/// Create a new worker failure channel
+pub fn new_worker_failure_channel()
+-> (tokio::sync::mpsc::Sender<()>, tokio::sync::mpsc::Receiver<()>) {
+    channel(1 /* buffer */)
 }
