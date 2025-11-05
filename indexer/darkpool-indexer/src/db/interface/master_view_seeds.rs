@@ -2,15 +2,16 @@
 
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
-use renegade_constants::Scalar;
 use uuid::Uuid;
 
-use crate::db::{
-    client::{DbClient, DbConn},
-    error::DbError,
-    models::MasterViewSeed,
-    schema::master_view_seeds,
-    utils::scalar_to_bigdecimal,
+use crate::{
+    db::{
+        client::{DbClient, DbConn},
+        error::DbError,
+        models::MasterViewSeedModel,
+        schema::master_view_seeds,
+    },
+    types::MasterViewSeed,
 };
 
 impl DbClient {
@@ -21,16 +22,13 @@ impl DbClient {
     /// Insert a new master view seed
     pub async fn insert_master_view_seed(
         &self,
-        account_id: Uuid,
-        owner_address: String,
-        seed: Scalar,
+        master_view_seed: MasterViewSeed,
         conn: &mut DbConn<'_>,
     ) -> Result<(), DbError> {
-        let seed_bigdecimal = scalar_to_bigdecimal(seed);
-        let master_view_seed = MasterViewSeed { account_id, owner_address, seed: seed_bigdecimal };
+        let master_view_seed_model: MasterViewSeedModel = master_view_seed.into();
 
         diesel::insert_into(master_view_seeds::table)
-            .values(master_view_seed)
+            .values(master_view_seed_model)
             .execute(conn)
             .await
             .map_err(DbError::query)?;
@@ -53,5 +51,6 @@ impl DbClient {
             .first(conn)
             .await
             .map_err(DbError::query)
+            .map(MasterViewSeedModel::into)
     }
 }

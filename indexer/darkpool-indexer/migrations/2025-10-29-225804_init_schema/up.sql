@@ -19,10 +19,10 @@ CREATE TABLE "balances"(
 -- Indexes a balance by its account ID & active flag
 CREATE INDEX "idx_balances_account_id_active" ON "balances" ("account_id", "active");
 
--- EXPECTED NULLIFIERS --
+-- EXPECTED STATE OBJECTS --
 
--- Stores nullifiers which are expected to be spent
-CREATE TABLE "expected_nullifiers"(
+-- Stores information about state objects which are expected to be created
+CREATE TABLE "expected_state_objects"(
 	"nullifier" NUMERIC NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
 	"account_id" UUID NOT NULL,
 	"owner_address" TEXT NOT NULL,
@@ -82,6 +82,7 @@ CREATE TABLE "generic_state_objects"(
 	"nullifier" NUMERIC NOT NULL CHECK (nullifier >= 0),
 	"version" NUMERIC NOT NULL CHECK (version >= 0),
 	"encryption_seed" NUMERIC NOT NULL CHECK (encryption_seed >= 0),
+	"encryption_cipher_index" NUMERIC NOT NULL CHECK (encryption_cipher_index >= 0),
 	"owner_address" TEXT NOT NULL,
 	"public_shares" NUMERIC[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"private_shares" NUMERIC[] NOT NULL CHECK (array_position(private_shares, NULL) IS NULL AND 0 <= ALL(private_shares))

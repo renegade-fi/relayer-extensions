@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, DbConn},
     error::DbError,
-    models::Balance,
+    models::BalanceModel,
     schema::balances,
     utils::scalar_to_bigdecimal,
 };
@@ -38,7 +38,7 @@ impl DbClient {
         let relayer_fee_bigdecimal = scalar_to_bigdecimal(relayer_fee);
         let amount_bigdecimal = scalar_to_bigdecimal(amount);
 
-        let balance = Balance {
+        let balance = BalanceModel {
             identifier_seed: identifier_seed_bigdecimal,
             account_id,
             active: true,
@@ -69,7 +69,7 @@ impl DbClient {
         &self,
         identifier_seed: Scalar,
         conn: &mut DbConn<'_>,
-    ) -> Result<Balance, DbError> {
+    ) -> Result<BalanceModel, DbError> {
         let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
 
         balances::table

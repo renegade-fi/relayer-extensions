@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, DbConn},
     error::DbError,
-    models::Intent,
+    models::IntentModel,
     schema::intents,
     utils::scalar_to_bigdecimal,
 };
@@ -40,7 +40,7 @@ impl DbClient {
         let input_amount_bigdecimal = scalar_to_bigdecimal(input_amount);
         let min_fill_size_bigdecimal = scalar_to_bigdecimal(min_fill_size);
 
-        let intent = Intent {
+        let intent = IntentModel {
             identifier_seed: identifier_seed_bigdecimal,
             account_id,
             active: true,
@@ -73,7 +73,7 @@ impl DbClient {
         &self,
         identifier_seed: Scalar,
         conn: &mut DbConn<'_>,
-    ) -> Result<Intent, DbError> {
+    ) -> Result<IntentModel, DbError> {
         let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
 
         intents::table

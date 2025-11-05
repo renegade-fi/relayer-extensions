@@ -22,7 +22,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    expected_nullifiers (nullifier) {
+    expected_state_objects (nullifier) {
         nullifier -> Numeric,
         account_id -> Uuid,
         owner_address -> Text,
@@ -43,6 +43,7 @@ diesel::table! {
         nullifier -> Numeric,
         version -> Numeric,
         encryption_seed -> Numeric,
+        encryption_cipher_index -> Numeric,
         owner_address -> Text,
         public_shares -> Array<Numeric>,
         private_shares -> Array<Numeric>,
@@ -83,7 +84,7 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     balances,
-    expected_nullifiers,
+    expected_state_objects,
     generic_state_objects,
     intents,
     master_view_seeds,

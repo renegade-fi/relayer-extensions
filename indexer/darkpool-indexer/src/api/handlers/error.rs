@@ -13,9 +13,20 @@ pub enum HandlerError {
     /// An error with AWS SQS
     #[error("SQS error: {0}")]
     Sqs(String),
+    /// An error parsing a value
+    #[error("parse error: {0}")]
+    Parse(String),
     /// An error de/serializing a value
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
+}
+
+#[allow(clippy::needless_pass_by_value)]
+impl HandlerError {
+    /// Create a new parse error
+    pub fn parse<T: ToString>(msg: T) -> Self {
+        Self::Parse(msg.to_string())
+    }
 }
 
 impl<E, R> From<SdkError<E, R>> for HandlerError {
