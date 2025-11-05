@@ -73,3 +73,6 @@ thiserror = { workspace = true }
 tracing = "0.1"
 uuid = "=1.17.0"
 serde_qs = { version = "1.0.0-rc.3", features = ["warp"] }
+sha2 = { version = "0.10", features = ["asm"] }
+hmac = "0.12"
+chrono = "0.4"
