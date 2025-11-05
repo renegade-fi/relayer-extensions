@@ -7,9 +7,9 @@ pub(crate) mod caching;
 pub(crate) mod db;
 pub mod gas_estimation;
 pub(crate) mod gas_sponsorship;
-pub(crate) mod helpers;
+pub mod helpers;
 pub(crate) mod rate_limiter;
-mod setup;
+pub mod setup;
 
 use std::str::FromStr;
 use std::{sync::Arc, time::Duration};

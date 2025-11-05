@@ -1,15 +1,19 @@
 //! Helper methods for the auth server
 
-use aes_gcm::{AeadCore, Aes128Gcm, aead::Aead};
+use std::str::FromStr;
+
+use aes_gcm::{AeadCore, Aes128Gcm, KeyInit, aead::Aead};
+use alloy::hex;
 use alloy::signers::k256::ecdsa::SigningKey;
-use alloy_primitives::{Signature, U256, keccak256};
+use alloy_primitives::{Address, Signature, U256, keccak256};
 use base64::{Engine as _, engine::general_purpose};
 use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use rand::thread_rng;
 use renegade_api::http::external_match::SignedExternalQuote;
+use renegade_common::types::hmac::HmacKey;
 use uuid::Uuid;
 
-use crate::error::AuthServerError;
+use crate::{Cli, error::AuthServerError};
 
 // -------------
 // | Constants |
@@ -111,6 +115,51 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
     uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
 
     Uuid::from_bytes(uuid_bytes)
+}
+
+// ------------------
+// | Parsing Helpers |
+// ------------------
+
+/// Parse the encryption key, management key, relayer admin key, and gas sponsor
+/// auth key
+pub fn parse_auth_server_keys(
+    args: &Cli,
+) -> Result<(Aes128Gcm, HmacKey, HmacKey, SigningKey), AuthServerError> {
+    let encryption_key_bytes =
+        general_purpose::STANDARD.decode(&args.encryption_key).map_err(AuthServerError::setup)?;
+
+    let encryption_key =
+        Aes128Gcm::new_from_slice(&encryption_key_bytes).map_err(AuthServerError::setup)?;
+
+    let management_key =
+        HmacKey::from_base64_string(&args.management_key).map_err(AuthServerError::setup)?;
+
+    let relayer_admin_key =
+        HmacKey::from_base64_string(&args.relayer_admin_key).map_err(AuthServerError::setup)?;
+
+    let gas_sponsor_auth_key_bytes =
+        hex::decode(&args.gas_sponsor_auth_key).map_err(AuthServerError::setup)?;
+
+    let gas_sponsor_auth_key =
+        SigningKey::from_slice(&gas_sponsor_auth_key_bytes).map_err(AuthServerError::setup)?;
+
+    Ok((encryption_key, management_key, relayer_admin_key, gas_sponsor_auth_key))
+}
+
+/// Parse the gas sponsor address from the CLI args
+pub fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
+    parse_address(&args.gas_sponsor_address)
+}
+
+/// Parse the malleable match connector address from the CLI args
+pub fn parse_malleable_match_connector_address(args: &Cli) -> Result<Address, AuthServerError> {
+    parse_address(&args.malleable_match_connector_address)
+}
+
+/// Parse an address from a string
+pub fn parse_address(s: &str) -> Result<Address, AuthServerError> {
+    Address::from_str(s).map_err(AuthServerError::setup)
 }
 
 // ---------
