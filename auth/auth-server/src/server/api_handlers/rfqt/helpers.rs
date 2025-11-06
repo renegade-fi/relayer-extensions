@@ -324,7 +324,7 @@ fn transform_malleable_bundle_to_rfqt_response(
 
 /// Transform a direct match bundle into an RFQT quote response
 fn transform_direct_bundle_to_rfqt_response(
-    bundle: AtomicMatchApiBundle,
+    bundle: &AtomicMatchApiBundle,
     rfqt: &RfqtQuoteRequest,
 ) -> Result<RfqtQuoteResponse, AuthServerError> {
     let maker = bundle
@@ -364,7 +364,7 @@ pub fn transform_match_bundle_to_rfqt_response(
 ) -> Result<RfqtQuoteResponse, AuthServerError> {
     match bundle {
         MatchBundle::Malleable(bundle) => transform_malleable_bundle_to_rfqt_response(bundle, rfqt),
-        MatchBundle::Direct(bundle) => transform_direct_bundle_to_rfqt_response(bundle, rfqt),
+        MatchBundle::Direct(bundle) => transform_direct_bundle_to_rfqt_response(&bundle, rfqt),
     }
 }
 

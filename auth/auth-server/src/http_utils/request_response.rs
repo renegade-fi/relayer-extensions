@@ -75,6 +75,7 @@ pub fn should_stringify_numbers(headers: &HeaderMap) -> bool {
 }
 
 /// Sends a basic POST request
+#[allow(unused)]
 pub async fn send_post_request<T: Serialize>(
     url: &str,
     body: Option<T>,
