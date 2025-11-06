@@ -10,6 +10,7 @@ use crate::execution_client::{
         bebop::BebopClient,
         cowswap::CowswapClient,
         lifi::LifiClient,
+        okx::OkxClient,
         quote::{CrossVenueQuoteSource, ExecutableQuote},
     },
 };
@@ -29,6 +30,8 @@ pub struct AllExecutionVenues {
     pub cowswap: CowswapClient,
     /// The Bebop client
     pub bebop: BebopClient,
+    /// The Okx client
+    pub okx: OkxClient,
 }
 
 impl AllExecutionVenues {
@@ -36,7 +39,7 @@ impl AllExecutionVenues {
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
         // TEMP: We are disabling Cowswap by default until we have a mechanism
         // for self-trade prevention
-        vec![&self.lifi, &self.bebop]
+        vec![&self.lifi, &self.bebop, &self.okx]
     }
 
     /// Get a venue by its specifier
@@ -45,7 +48,7 @@ impl AllExecutionVenues {
             SupportedExecutionVenue::Lifi => &self.lifi,
             SupportedExecutionVenue::Cowswap => &self.cowswap,
             SupportedExecutionVenue::Bebop => &self.bebop,
-            SupportedExecutionVenue::Okx => todo!(),
+            SupportedExecutionVenue::Okx => &self.okx,
         }
     }
 }

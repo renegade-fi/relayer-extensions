@@ -2,7 +2,13 @@
 
 use std::{collections::HashMap, iter, str::FromStr};
 
-use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
+use alloy::{
+    eips::BlockId,
+    network::TransactionBuilder,
+    providers::{DynProvider, Provider},
+    rpc::types::{TransactionReceipt, TransactionRequest},
+    signers::local::PrivateKeySigner,
+};
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use base64::Engine;
@@ -13,6 +19,7 @@ use itertools::Itertools;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
+use tracing::{info, warn};
 
 use crate::{
     execution_client::{
@@ -27,7 +34,10 @@ use crate::{
             ExecutionResult, ExecutionVenue,
         },
     },
-    helpers::{build_provider, handle_http_response, to_chain_id},
+    helpers::{
+        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
+        handle_http_response, send_tx_with_retry, to_chain_id, TWO_CONFIRMATIONS,
+    },
 };
 
 pub mod api_types;
@@ -74,7 +84,7 @@ const RENEGADE_DEX_NAME: &str = "Renegade";
 // ---------
 
 /// The credentials required for authenticating with the Okx API
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct OkxApiCredentials {
     /// The API key to use for requests
     api_key: String,
@@ -113,7 +123,7 @@ pub struct OkxClient {
     /// The underlying HTTP client
     http_client: Client,
     /// The RPC provider
-    _rpc_provider: DynProvider,
+    rpc_provider: DynProvider,
     /// The address of the hot wallet used for executing quotes
     hot_wallet_address: Address,
     /// The chain on which the client is operating
@@ -132,12 +142,12 @@ impl OkxClient {
         chain: Chain,
     ) -> Result<Self, ExecutionClientError> {
         let hot_wallet_address = hot_wallet.address();
-        let _rpc_provider = build_provider(base_provider, Some(hot_wallet));
+        let rpc_provider = build_provider(base_provider, Some(hot_wallet));
 
         let mut client = Self {
             credentials,
             http_client: Client::new(),
-            _rpc_provider,
+            rpc_provider,
             hot_wallet_address,
             chain,
             all_liquidity_sources: HashMap::new(),
@@ -261,6 +271,64 @@ impl OkxClient {
             dex_ids,
         }
     }
+
+    /// Approve an erc20 allowance for the given approval target
+    async fn approve_erc20_allowance(
+        &self,
+        token_address: Address,
+        amount: U256,
+        approval_target: Address,
+    ) -> Result<(), ExecutionClientError> {
+        approve_erc20_allowance(
+            token_address,
+            approval_target,
+            self.hot_wallet_address,
+            amount,
+            self.rpc_provider.clone(),
+        )
+        .await
+        .map_err(ExecutionClientError::onchain)
+    }
+
+    /// Build a swap transaction from Okx execution data
+    async fn build_swap_tx(
+        &self,
+        execution_data: &OkxQuoteExecutionData,
+    ) -> Result<TransactionRequest, ExecutionClientError> {
+        let latest_block = self
+            .rpc_provider
+            .get_block(BlockId::latest())
+            .await
+            .map_err(ExecutionClientError::onchain)?
+            .ok_or(ExecutionClientError::onchain("No latest block found"))?;
+
+        let latest_basefee = latest_block
+            .header
+            .base_fee_per_gas
+            .ok_or(ExecutionClientError::onchain("No basefee found"))?
+            as u128;
+
+        let tx = TransactionRequest::default()
+            .with_to(execution_data.to)
+            .with_from(execution_data.from)
+            .with_value(execution_data.value)
+            .with_input(execution_data.data.clone())
+            .with_max_fee_per_gas(latest_basefee * 2)
+            .with_max_priority_fee_per_gas(latest_basefee * 2);
+
+        Ok(tx)
+    }
+
+    /// Send an onchain transaction with the configured RPC provider
+    /// (expected to be configured with a signer)
+    async fn send_tx(
+        &self,
+        tx: TransactionRequest,
+    ) -> Result<TransactionReceipt, ExecutionClientError> {
+        send_tx_with_retry(tx, &self.rpc_provider, TWO_CONFIRMATIONS)
+            .await
+            .map_err(ExecutionClientError::onchain)
+    }
 }
 
 // ------------------------
@@ -309,9 +377,48 @@ impl ExecutionVenue for OkxClient {
 
     async fn execute_quote(
         &self,
-        _executable_quote: &ExecutableQuote,
+        executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
-        todo!()
+        let ExecutableQuote { quote, execution_data } = executable_quote;
+        let okx_execution_data = execution_data.okx()?;
+
+        self.approve_erc20_allowance(
+            quote.sell_token.get_alloy_address(),
+            quote.sell_amount,
+            okx_execution_data.approval_target,
+        )
+        .await?;
+
+        let tx = self.build_swap_tx(&okx_execution_data).await?;
+
+        info!("Executing {} quote", quote.source);
+
+        match self.send_tx(tx).await {
+            Ok(receipt) => {
+                let gas_cost = get_gas_cost(&receipt);
+                let tx_hash = receipt.transaction_hash;
+
+                if receipt.status() {
+                    let recipient = okx_execution_data.from;
+                    let buy_token_address = quote.buy_token.get_alloy_address();
+                    let buy_amount_actual =
+                        get_received_amount(&receipt, buy_token_address, recipient);
+
+                    Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
+                } else {
+                    warn!("tx ({tx_hash:#x}) reverted");
+                    Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
+                }
+            },
+            Err(e) => {
+                warn!("swap tx failed to send: {e}");
+                Ok(ExecutionResult {
+                    buy_amount_actual: U256::ZERO,
+                    gas_cost: U256::ZERO,
+                    tx_hash: None,
+                })
+            },
+        }
     }
 }
 

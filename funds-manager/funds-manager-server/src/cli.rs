@@ -18,7 +18,7 @@ use crate::{
     custody_client::CustodyClient,
     db::DbPool,
     error::FundsManagerError,
-    execution_client::ExecutionClient,
+    execution_client::{venues::okx::OkxApiCredentials, ExecutionClient},
     helpers::{base_ws_provider, fetch_s3_object},
     metrics::MetricsRecorder,
     mux_darkpool_client::MuxDarkpoolClient,
@@ -217,6 +217,8 @@ pub struct ChainConfig {
     pub lifi_api_key: Option<String>,
     /// The Bebop API key
     pub bebop_api_key: Option<String>,
+    /// The Okx API credentials
+    pub okx_api_credentials: OkxApiCredentials,
     /// A map from token ticker to the maximum price deviation allowed in a
     /// quote for that token
     #[serde(default)]
@@ -282,11 +284,13 @@ impl ChainConfig {
             chain,
             self.lifi_api_key.clone(),
             self.bebop_api_key.clone(),
+            self.okx_api_credentials.clone(),
             base_provider.clone(),
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
             self.max_price_deviations.clone(),
-        );
+        )
+        .await?;
 
         // Build a metrics recorder
         let darkpool_address =
