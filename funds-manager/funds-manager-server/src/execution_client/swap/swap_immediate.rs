@@ -257,7 +257,9 @@ impl ExecutionClient {
     ) -> Result<Option<ExecutableQuote>, ExecutionClientError> {
         let all_quotes = self.fetch_all_quotes(params, excluded_quote_sources).await?;
 
-        self.select_best_quote(all_quotes)
+        let valid_quotes = all_quotes.into_iter().filter(|quote| quote.is_valid()).collect();
+
+        self.select_best_quote(valid_quotes)
     }
 
     /// Fetch quotes across all venues

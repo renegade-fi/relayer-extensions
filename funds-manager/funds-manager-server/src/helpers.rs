@@ -4,6 +4,7 @@
 use std::{str::FromStr, time::Duration};
 
 use alloy::{
+    hex,
     providers::{
         fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
         DynProvider, Provider, ProviderBuilder, WsConnect,
@@ -45,6 +46,32 @@ const APPROVAL_AMPLIFIER: U256 = U256::from_limbs([4, 0, 0, 0]);
 
 /// The error message indicating that a nonce is too low
 const ERR_NONCE_TOO_LOW: &str = "nonce too low";
+
+/// The darkpool address on Arbitrum One
+const ARBITRUM_ONE_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x30bd8eab29181f790d7e495786d4b96d7afdc518"));
+/// The darkpool address on Arbitrum Sepolia
+const ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x9af58f1ff20ab22e819e40b57ffd784d115a9ef5"));
+/// The darkpool address on Base Mainnet
+const BASE_MAINNET_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0xb4a96068577141749CC8859f586fE29016C935dB"));
+/// The darkpool address on Base Sepolia
+const BASE_SEPOLIA_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x653C95391644EEE16E4975a7ef1f46e0B8276695"));
+
+/// The gas sponsor address on Arbitrum One
+const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0xbacedc261add2e273801b9f64133bb709efbc3d8"));
+/// The gas sponsor address on Arbitrum Sepolia
+const ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0xaab1a91fdc6498d1dc1acba9bf7d751cd744653c"));
+/// The gas sponsor address on Base Mainnet
+const BASE_MAINNET_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0xE1AD298b51a8924C539d1530E8E5E39232006771"));
+/// The gas sponsor address on Base Sepolia
+const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0x2fDB4e70Db12599b04642b3d023E75f6439c5707"));
 
 // ---------
 // | ERC20 |
@@ -372,12 +399,39 @@ pub fn from_chain_id(chain_id: u64) -> Result<Chain, String> {
     }
 }
 
+/// Get the darkpool address for a given chain
+pub fn get_darkpool_address(chain: Chain) -> Address {
+    match chain {
+        Chain::ArbitrumOne => ARBITRUM_ONE_DARKPOOL_ADDRESS,
+        Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS,
+        Chain::BaseMainnet => BASE_MAINNET_DARKPOOL_ADDRESS,
+        Chain::BaseSepolia => BASE_SEPOLIA_DARKPOOL_ADDRESS,
+        _ => panic!("Invalid chain"),
+    }
+}
+
+/// Get the gas sponsor address for a given chain
+pub fn get_gas_sponsor_address(chain: Chain) -> Address {
+    match chain {
+        Chain::ArbitrumOne => ARBITRUM_ONE_GAS_SPONSOR_ADDRESS,
+        Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
+        Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS,
+        Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS,
+        _ => panic!("Invalid chain"),
+    }
+}
+
 /// Convert a string to title case
 pub fn titlecase(s: &str) -> String {
     s.split_whitespace()
         .map(|w| w.chars().next().unwrap().to_uppercase().to_string() + &w[1..])
         .collect::<Vec<String>>()
         .join(" ")
+}
+
+/// Check if a byte slice contains a subslice
+pub fn contains_byte_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|window| window == needle)
 }
 
 /// Round an f64 value up to the given number of decimal places

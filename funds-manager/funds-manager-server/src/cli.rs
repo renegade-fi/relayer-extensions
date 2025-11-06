@@ -1,9 +1,8 @@
 //! CLI argument definition & parsing for the funds manager server
 
-use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use alloy::signers::local::PrivateKeySigner;
-use alloy_primitives::Address;
 use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use price_reporter_client::PriceReporterClient;
@@ -19,7 +18,7 @@ use crate::{
     db::DbPool,
     error::FundsManagerError,
     execution_client::{venues::okx::OkxApiCredentials, ExecutionClient},
-    helpers::{base_ws_provider, fetch_s3_object},
+    helpers::{base_ws_provider, fetch_s3_object, get_darkpool_address, get_gas_sponsor_address},
     metrics::MetricsRecorder,
     mux_darkpool_client::MuxDarkpoolClient,
     relayer_client::RelayerClient,
@@ -202,10 +201,6 @@ pub struct ChainConfig {
     pub rpc_url: String,
     /// The WebSocket RPC url to use
     pub ws_rpc_url: String,
-    /// The address of the darkpool contract
-    pub darkpool_address: String,
-    /// The address of the gas sponsor contract
-    pub gas_sponsor_address: String,
     /// The fee decryption key to use for the protocol fees
     ///
     /// This argument is not necessary, protocol fee indexing is skipped if this
@@ -239,10 +234,12 @@ impl ChainConfig {
         // Build a relayer client
         let relayer_client = RelayerClient::new(&self.relayer_url, chain);
 
+        let darkpool_address = get_darkpool_address(chain);
+
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
         let conf = DarkpoolClientConfig {
-            darkpool_addr: self.darkpool_address.clone(),
+            darkpool_addr: darkpool_address.to_string(),
             chain,
             rpc_url: self.rpc_url.clone(),
             private_key,
@@ -256,8 +253,7 @@ impl ChainConfig {
         let base_provider = base_ws_provider(&self.ws_rpc_url).await?;
 
         // Build a custody client
-        let gas_sponsor_address =
-            Address::from_str(&self.gas_sponsor_address).map_err(FundsManagerError::parse)?;
+        let gas_sponsor_address = get_gas_sponsor_address(chain);
 
         let custody_client = CustodyClient::new(
             chain,
@@ -293,11 +289,7 @@ impl ChainConfig {
         .await?;
 
         // Build a metrics recorder
-        let darkpool_address =
-            Address::from_str(&self.darkpool_address).map_err(FundsManagerError::parse)?;
-
-        let metrics_recorder =
-            MetricsRecorder::new(price_reporter.clone(), base_provider, chain, darkpool_address);
+        let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), base_provider, chain);
 
         // Build a fee indexer
         let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)
