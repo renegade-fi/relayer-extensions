@@ -1,13 +1,14 @@
 //! Helpers for executing subroutines in the on-chain event listener
 use alloy::providers::Provider;
 use alloy::rpc::types::TransactionReceipt;
-use alloy_primitives::U256;
+use alloy_primitives::{TxHash, U256};
 use alloy_sol_types::SolEvent;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_circuit_types::order::OrderSide;
 use renegade_common::types::token::Token;
+use tracing::warn;
 
 use crate::chain_events::abis::GasSponsorContract::SponsoredExternalMatch;
 use crate::chain_events::utils::GPv2Settlement;
@@ -43,6 +44,9 @@ const WETH_TICKER: &str = "WETH";
 
 /// The error message emitted when a refund asset ticker cannot be found
 const REFUND_ASSET_TICKER_ERROR_MSG: &str = "failed to get refund asset ticker";
+
+/// The threshold on spread cost at which we log a warning
+const HIGH_SPREAD_COST_THRESHOLD_USD: f64 = 20.; // $20 USD
 
 impl OnChainEventListenerExecutor {
     /// Record settlement metrics for a bundle
@@ -90,6 +94,7 @@ impl OnChainEventListenerExecutor {
     ///    called as close to the actual time of settlement as possible.
     pub async fn record_external_match_spread_cost(
         &self,
+        tx: TxHash,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
     ) -> Result<(), AuthServerError> {
@@ -114,6 +119,14 @@ impl OnChainEventListenerExecutor {
 
         let relative_spread = trade_side_factor * (match_price - reference_price) / reference_price;
         let spread_cost = quote_amount_decimal * relative_spread;
+        if spread_cost > HIGH_SPREAD_COST_THRESHOLD_USD {
+            warn!(
+                reference_price = reference_price,
+                match_price = match_price,
+                tx = format!("{tx:#x}"),
+                "High spread cost detected: {spread_cost} USD"
+            );
+        }
 
         let side_tag_value = match match_result.direction {
             OrderSide::Buy => "buy",

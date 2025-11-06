@@ -4,7 +4,7 @@ use auth_server_api::RENEGADE_API_KEY_HEADER;
 use http::HeaderMap;
 use renegade_api::auth::validate_expiring_auth;
 use renegade_common::types::hmac::HmacKey;
-use tracing::{info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 use warp::filters::path::FullPath;
 
@@ -48,7 +48,6 @@ impl Server {
             .ok_or(AuthServerError::unauthorized("Invalid or missing Renegade API key"))?;
 
         let key_description = self.check_api_key_auth(api_key, auth_path, headers, body).await?;
-        info!("Authorized request for entity: {key_description}");
         Ok((key_description, api_key))
     }
 

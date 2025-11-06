@@ -240,7 +240,7 @@ impl OnChainEventListenerExecutor {
                 let api_match: ApiExternalMatchResult = external_match.match_result().into();
 
                 // Record external match spread cost
-                self.record_external_match_spread_cost(&bundle_ctx, &api_match).await?;
+                self.record_external_match_spread_cost(tx, &bundle_ctx, &api_match).await?;
 
                 // Record settlement metrics
                 self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match)?;

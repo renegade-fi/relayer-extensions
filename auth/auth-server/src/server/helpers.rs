@@ -28,6 +28,7 @@ const UUID_SIZE: usize = 16;
 /// AES encrypt a value
 ///
 /// Returns a base64 encoded string of the format [nonce, ciphertext]
+#[allow(deprecated)]
 pub fn aes_encrypt(value: &str, key: &Aes128Gcm) -> Result<String, AuthServerError> {
     let mut rng = thread_rng();
     let nonce = Aes128Gcm::generate_nonce(&mut rng);
