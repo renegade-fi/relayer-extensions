@@ -403,6 +403,9 @@ impl ExecutionClient {
                 QuoteExecutionData::Bebop(_) => {
                     self.venues.bebop.execute_quote(&executable_quote).await?
                 },
+                QuoteExecutionData::Okx(_) => {
+                    todo!()
+                },
             };
 
         cumulative_gas_cost += gas_cost;
