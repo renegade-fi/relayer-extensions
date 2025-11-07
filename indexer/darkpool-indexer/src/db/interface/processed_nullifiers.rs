@@ -47,7 +47,7 @@ impl DbClient {
     // -----------
 
     /// Check if a nullifier has been processed
-    pub async fn check_nullifier_processed(
+    pub async fn nullifier_processed(
         &self,
         nullifier: Scalar,
         conn: &mut DbConn<'_>,

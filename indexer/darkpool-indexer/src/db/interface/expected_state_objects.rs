@@ -37,6 +37,23 @@ impl DbClient {
         Ok(())
     }
 
+    /// Delete an expected state object record
+    pub async fn delete_expected_state_object(
+        &self,
+        nullifier: Scalar,
+        conn: &mut DbConn<'_>,
+    ) -> Result<(), DbError> {
+        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
+
+        diesel::delete(expected_state_objects::table)
+            .filter(expected_state_objects::nullifier.eq(nullifier_bigdecimal))
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------

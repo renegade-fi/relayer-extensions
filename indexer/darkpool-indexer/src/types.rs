@@ -4,15 +4,13 @@
 // TODO: Find a better location for this module?
 
 use alloy::primitives::Address;
-use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, intent::Intent,
-};
+use renegade_circuit_types::{Amount, balance::Balance, csprng::PoseidonCSPRNG, intent::Intent};
 use renegade_constants::Scalar;
-use renegade_crypto::hash::compute_poseidon_hash;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
-    recovery_stream::create_recovery_seed_csprng, share_stream::create_share_seed_csprng,
+    recovery_stream::{create_recovery_seed_csprng, sample_nullifier},
+    share_stream::create_share_seed_csprng,
 };
 
 // -------------
@@ -48,6 +46,19 @@ impl MasterViewSeed {
 
         Self { account_id, owner_address, seed, recovery_seed_csprng, share_seed_csprng }
     }
+
+    /// Generate the next expected state object for the account
+    pub fn next_expected_state_object(&mut self) -> ExpectedStateObject {
+        let recovery_stream_seed = self.recovery_seed_csprng.next().unwrap();
+        let share_stream_seed = self.share_seed_csprng.next().unwrap();
+
+        ExpectedStateObject::new(
+            self.account_id,
+            self.owner_address,
+            recovery_stream_seed,
+            share_stream_seed,
+        )
+    }
 }
 
 /// A state object which is expected to be created
@@ -79,9 +90,7 @@ impl ExpectedStateObject {
         let recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
         let share_stream = PoseidonCSPRNG::new(share_stream_seed);
 
-        let expected_recovery_id = recovery_stream.get_ith(0);
-        let expected_nullifier =
-            compute_poseidon_hash(&[expected_recovery_id, recovery_stream_seed]);
+        let expected_nullifier = sample_nullifier(&recovery_stream, 0 /* version */);
 
         Self {
             nullifier: expected_nullifier,
@@ -135,7 +144,6 @@ impl GenericStateObject {
         recovery_stream_seed: Scalar,
         account_id: Uuid,
         object_type: StateObjectType,
-        nullifier: Scalar,
         share_stream_seed: Scalar,
         owner_address: Address,
         public_shares: Vec<Scalar>,
@@ -146,6 +154,8 @@ impl GenericStateObject {
         recovery_stream.advance_by(1);
 
         let share_stream = PoseidonCSPRNG::new(share_stream_seed);
+
+        let nullifier = sample_nullifier(&recovery_stream, 1 /* version */);
 
         Self {
             recovery_stream,
@@ -178,16 +188,7 @@ pub struct BalanceStateObject {
 
 impl BalanceStateObject {
     /// Create a new balance state object
-    pub fn new(
-        mint: Address,
-        owner: Address,
-        relayer_fee_recipient: Address,
-        one_time_authority: Address,
-        recovery_stream_seed: Scalar,
-        account_id: Uuid,
-    ) -> Self {
-        let balance = Balance::new(mint, owner, relayer_fee_recipient, one_time_authority);
-
+    pub fn new(balance: Balance, recovery_stream_seed: Scalar, account_id: Uuid) -> Self {
         Self {
             balance,
             recovery_stream_seed,
@@ -224,17 +225,8 @@ pub struct IntentStateObject {
 
 impl IntentStateObject {
     /// Create a new intent state object
-    pub fn new(
-        in_token: Address,
-        out_token: Address,
-        owner: Address,
-        min_price: FixedPoint,
-        amount_in: Amount,
-        recovery_stream_seed: Scalar,
-        account_id: Uuid,
-    ) -> Self {
-        let intent = Intent { in_token, out_token, owner, min_price, amount_in };
-
+    pub fn new(intent: Intent, recovery_stream_seed: Scalar, account_id: Uuid) -> Self {
+        let min_fill_size = intent.amount_in;
         Self {
             intent,
             recovery_stream_seed,
@@ -244,7 +236,7 @@ impl IntentStateObject {
             // These are user decisions that must be communicated from the relayer.
             matching_pool: GLOBAL_MATCHING_POOL.to_string(),
             allow_external_matches: false,
-            min_fill_size: amount_in,
+            min_fill_size,
             precompute_cancellation_proof: false,
         }
     }

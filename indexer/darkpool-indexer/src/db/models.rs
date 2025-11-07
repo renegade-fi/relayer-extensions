@@ -9,7 +9,7 @@ use diesel::{
     deserialize::{self, FromSql, FromSqlRow},
     expression::AsExpression,
     pg::{Pg, PgValue},
-    prelude::{Insertable, Queryable},
+    prelude::{AsChangeset, Insertable, Queryable},
     serialize::{self, IsNull, Output, ToSql},
 };
 use renegade_circuit_types::{balance::Balance, csprng::PoseidonCSPRNG, intent::Intent};
@@ -93,7 +93,7 @@ impl From<DbStateObjectType> for StateObjectType {
 // === Master View Seeds Table ===
 
 /// A master view seed record
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::db::schema::master_view_seeds)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MasterViewSeedModel {

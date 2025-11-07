@@ -47,15 +47,34 @@ impl DbClient {
         &self,
         recovery_stream_seed: Scalar,
         conn: &mut DbConn<'_>,
-    ) -> Result<Option<IntentStateObject>, DbError> {
+    ) -> Result<IntentStateObject, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
         intents::table
             .filter(intents::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first(conn)
             .await
-            .optional()
             .map_err(DbError::query)
-            .map(|maybe_record| maybe_record.map(IntentModel::into))
+            .map(IntentModel::into)
+    }
+
+    /// Check if an intent record exists for a given recovery stream seed
+    pub async fn intent_exists(
+        &self,
+        recovery_stream_seed: Scalar,
+        conn: &mut DbConn<'_>,
+    ) -> Result<bool, DbError> {
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+
+        match intents::table
+            .filter(intents::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .first::<IntentModel>(conn)
+            .await
+            .optional()
+        {
+            Ok(Some(_)) => Ok(true),
+            Ok(None) => Ok(false),
+            Err(e) => Err(DbError::query(e)),
+        }
     }
 }

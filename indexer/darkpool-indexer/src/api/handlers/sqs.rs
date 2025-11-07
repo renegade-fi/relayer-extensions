@@ -4,22 +4,23 @@ use alloy::{providers::Provider, rpc::types::TransactionReceipt};
 use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{MasterViewSeedMessage, NullifierSpendMessage, SqsMessage};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use renegade_circuit_types::{
+    balance::BalanceShare,
+    intent::IntentShare,
+    traits::{BaseType, SecretShareType},
+};
 use renegade_constants::Scalar;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::{
     api::handlers::error::HandlerError,
-    db::{client::DbConn, error::DbError},
+    db::client::DbConn,
     indexer::Indexer,
-    types::{ExpectedStateObject, GenericStateObject, MasterViewSeed, StateObjectType},
+    types::{
+        BalanceStateObject, ExpectedStateObject, GenericStateObject, IntentStateObject,
+        MasterViewSeed, StateObjectType,
+    },
 };
-
-// -------------
-// | Constants |
-// -------------
-
-/// The index of an account's first state object
-const FIRST_OBJECT_IDX: u64 = 0;
 
 // ---------
 // | Types |
@@ -38,7 +39,7 @@ struct NullifierSpendData {
     updated_public_shares: Vec<Scalar>,
     /// The start index of the updated public shares within the secret-sharing
     /// of the state object
-    updated_shares_index: usize,
+    _updated_shares_index: usize,
 }
 
 // -----------------------------
@@ -90,20 +91,9 @@ pub async fn handle_master_view_seed_message(
 ) -> Result<(), HandlerError> {
     let MasterViewSeedMessage { account_id, owner_address, seed } = message;
 
-    let master_view_seed = MasterViewSeed::new(account_id, owner_address, seed);
+    let mut master_view_seed = MasterViewSeed::new(account_id, owner_address, seed);
 
-    let first_object_recovery_stream_seed =
-        master_view_seed.recovery_seed_csprng.get_ith(FIRST_OBJECT_IDX);
-
-    let first_object_share_stream_seed =
-        master_view_seed.share_seed_csprng.get_ith(FIRST_OBJECT_IDX);
-
-    let expected_state_object = ExpectedStateObject::new(
-        account_id,
-        owner_address,
-        first_object_recovery_stream_seed,
-        first_object_share_stream_seed,
-    );
+    let expected_state_object = master_view_seed.next_expected_state_object();
 
     // Insert the master view seed and expected state object into the database
     let mut conn = indexer.db.get_db_conn().await?;
@@ -138,10 +128,10 @@ pub async fn handle_nullifier_spend_message(
             let block_number = nullifier_spend_data.block_number;
 
             // Check if the nullifier has already been processed
-            let nullifier_processed = indexer.db.check_nullifier_processed(nullifier, conn).await?;
+            let nullifier_processed = indexer.db.nullifier_processed(nullifier, conn).await?;
             if nullifier_processed {
                 warn!("Nullifier {} has already been processed", nullifier);
-                return Ok(());
+                return Ok::<_, HandlerError>(());
             }
 
             // Check if this is the nullifier for an expected state object
@@ -161,7 +151,10 @@ pub async fn handle_nullifier_spend_message(
                 // objects
             }
 
-            indexer.db.mark_nullifier_processed(nullifier, block_number, conn).await
+            // Mark the nullifier as processed
+            indexer.db.mark_nullifier_processed(nullifier, block_number, conn).await?;
+
+            Ok::<_, HandlerError>(())
         }
         .scope_boxed()
     })
@@ -185,7 +178,7 @@ async fn fetch_nullifier_spend_data(
 
     let block_number = spend_tx
         .block_number
-        .ok_or(HandlerError::rpc("Block number not found in tx {tx_hash:#x} receipt"))?;
+        .ok_or(HandlerError::rpc(format!("Block number not found in tx {tx_hash:#x} receipt")))?;
 
     let state_object_type =
         get_updated_state_object_type(nullifier_spend.nullifier, &spend_tx, indexer).await?;
@@ -198,7 +191,7 @@ async fn fetch_nullifier_spend_data(
         block_number,
         state_object_type,
         updated_public_shares,
-        updated_shares_index,
+        _updated_shares_index: updated_shares_index,
     })
 }
 
@@ -227,17 +220,18 @@ async fn handle_first_object_nullifier_spend(
     expected_state_object: ExpectedStateObject,
     indexer: &Indexer,
     conn: &mut DbConn<'_>,
-) -> Result<(), DbError> {
+) -> Result<(), HandlerError> {
     let NullifierSpendData { updated_public_shares, state_object_type, .. } = nullifier_spend_data;
 
+    // Generate the private shares for the state object
     let private_shares: Vec<Scalar> =
         expected_state_object.share_stream.clone().take(updated_public_shares.len()).collect();
 
+    // Create the generic state object
     let generic_state_object = GenericStateObject::new(
         expected_state_object.recovery_stream.seed,
         expected_state_object.account_id,
         state_object_type,
-        expected_state_object.nullifier,
         expected_state_object.share_stream.seed,
         expected_state_object.owner_address,
         updated_public_shares,
@@ -246,15 +240,105 @@ async fn handle_first_object_nullifier_spend(
 
     indexer.db.create_generic_state_object(generic_state_object.clone(), conn).await?;
 
-    // TODO: Create the appropriate intent/balance state object
-    // NOTE: It's possible that the typed state object is already present in the
-    // database, on account of us having processed a metadata update message for
-    // it before processing the nullifier spend. In this case, we have to be
-    // sure not to overwrite the metadata fields.
+    // Create the appropriate typed state object
     match generic_state_object.object_type {
-        StateObjectType::Intent => todo!(),
-        StateObjectType::Balance => todo!(),
+        StateObjectType::Intent => {
+            create_intent_state_object(generic_state_object, indexer, conn).await?
+        },
+        StateObjectType::Balance => {
+            create_balance_state_object(generic_state_object, indexer, conn).await?
+        },
+    };
+
+    // Delete the expected state object record for the now-indexed state object
+    indexer.db.delete_expected_state_object(expected_state_object.nullifier, conn).await?;
+
+    // Create an expected state object record for the next state object for the
+    // account, updating the master view seed CSPRNG states in the process
+    let mut master_view_seed =
+        indexer.db.get_account_master_view_seed(expected_state_object.account_id, conn).await?;
+
+    let next_expected_state_object = master_view_seed.next_expected_state_object();
+    indexer.db.insert_expected_state_object(next_expected_state_object, conn).await?;
+    indexer.db.update_master_view_seed(master_view_seed, conn).await?;
+
+    Ok(())
+}
+
+/// Create an intent state object from a newly-created generic state object
+async fn create_intent_state_object(
+    generic_state_object: GenericStateObject,
+    indexer: &Indexer,
+    conn: &mut DbConn<'_>,
+) -> Result<(), HandlerError> {
+    // First, check if the associated intent object already exists in the DB.
+    // This is possible in the case that we previously processed a metadata update
+    // message for it.
+    let intent_exists =
+        indexer.db.intent_exists(generic_state_object.recovery_stream.seed, conn).await?;
+
+    if intent_exists {
+        // We assume that the intent details with which the record was originally
+        // created match those derived from the newly-created generic state
+        // object
+        info!("Intent object record already exists, skipping creation");
+        return Ok(());
     }
 
-    // TODO: Delete expected state object record
+    let intent_public_share =
+        IntentShare::from_scalars(&mut generic_state_object.public_shares.into_iter());
+
+    let intent_private_share =
+        IntentShare::from_scalars(&mut generic_state_object.private_shares.into_iter());
+
+    let intent = intent_public_share.add_shares(&intent_private_share);
+
+    let intent_state_object = IntentStateObject::new(
+        intent,
+        generic_state_object.recovery_stream.seed,
+        generic_state_object.account_id,
+    );
+
+    indexer.db.create_intent(intent_state_object, conn).await?;
+
+    Ok(())
+}
+
+/// Create a balance state object from a newly-created generic state object
+async fn create_balance_state_object(
+    generic_state_object: GenericStateObject,
+    indexer: &Indexer,
+    conn: &mut DbConn<'_>,
+) -> Result<(), HandlerError> {
+    // First, check if the associated balance object already exists in the DB.
+    // This is possible in the case that we previously processed a metadata update
+    // message for it.
+    let balance_exists =
+        indexer.db.balance_exists(generic_state_object.recovery_stream.seed, conn).await?;
+
+    if balance_exists {
+        // We assume that the balance details with which the record was originally
+        // created match those derived from the newly-created generic state
+        // object
+        info!("Balance object record already exists, skipping creation");
+        return Ok(());
+    }
+
+    let balance_public_share =
+        BalanceShare::from_scalars(&mut generic_state_object.public_shares.into_iter());
+
+    let balance_private_share =
+        BalanceShare::from_scalars(&mut generic_state_object.private_shares.into_iter());
+
+    let balance = balance_public_share.add_shares(&balance_private_share);
+
+    let balance_state_object = BalanceStateObject::new(
+        balance,
+        generic_state_object.recovery_stream.seed,
+        generic_state_object.account_id,
+    );
+
+    indexer.db.create_balance(balance_state_object, conn).await?;
+
+    Ok(())
 }

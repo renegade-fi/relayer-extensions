@@ -2,6 +2,7 @@
 
 use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
+use renegade_crypto::hash::compute_poseidon_hash;
 
 use crate::crypto_mocks::utils::hash_to_scalar;
 
@@ -27,4 +28,11 @@ pub fn create_recovery_seed_csprng(master_view_seed: Scalar) -> PoseidonCSPRNG {
     let csprng_seed = hash_to_scalar(&seed_msg);
 
     PoseidonCSPRNG::new(csprng_seed)
+}
+
+/// Sample the nullifier for the given object version from the provided recovery
+/// stream
+pub fn sample_nullifier(recovery_stream: &PoseidonCSPRNG, version: u64) -> Scalar {
+    let recovery_id = recovery_stream.get_ith(version);
+    compute_poseidon_hash(&[recovery_id, recovery_stream.seed])
 }
