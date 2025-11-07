@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 
 use bigdecimal::{BigDecimal, ToPrimitive};
+use diesel::define_sql_function;
 use diesel::deserialize::Queryable;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::sum;
 use diesel::result::Error as DieselError;
-use diesel::sql_function;
 use diesel::sql_query;
 use diesel::sql_types::SingleValue;
 use diesel::sql_types::{Array, Integer, Nullable, Numeric, Text};
@@ -34,17 +34,17 @@ use super::redeem_fees::MAX_FEES_REDEEMED;
 pub(crate) const LAST_INDEXED_BLOCK_KEY: &str = "latest_block";
 
 // Define the `array_length` function
-sql_function! {
+define_sql_function! {
     /// Calculate the length of an array
     fn array_length<T>(array: Array<T>, dim: Integer) -> Nullable<Integer>;
 }
 
-sql_function! {
+define_sql_function! {
     /// Coalesce a nullable value with a default value
     fn coalesce<T: SingleValue>(x: Nullable<T>, y: T) -> T;
 }
 
-sql_function! {
+define_sql_function! {
     /// Append an element to an array
     fn array_append<T: SingleValue>(arr: Array<T>, elem: T) -> Array<T>;
 }

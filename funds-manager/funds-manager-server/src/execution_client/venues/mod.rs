@@ -17,6 +17,7 @@ use crate::execution_client::{
 pub mod bebop;
 pub mod cowswap;
 pub mod lifi;
+pub mod okx;
 pub mod quote;
 
 /// A collection of all execution venues used by the execution client
