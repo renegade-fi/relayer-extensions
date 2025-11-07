@@ -2,7 +2,7 @@
 
 use std::{io::Write, str::FromStr};
 
-use alloy_primitives::Address;
+use alloy::primitives::Address;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,

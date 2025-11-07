@@ -47,9 +47,6 @@ pub struct Cli {
     /// The chain for which to index darkpool state
     #[clap(long, env = "CHAIN")]
     pub chain: Chain,
-    /// The JSON-RPC URL to use for blockchain interaction
-    #[clap(long, env = "JSON_RPC_URL")]
-    pub json_rpc_url: String,
     /// The Websocket RPC URL to use for listening to onchain events
     #[clap(long, env = "WS_RPC_URL")]
     pub ws_rpc_url: String,

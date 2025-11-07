@@ -3,8 +3,7 @@
 
 // TODO: Find a better location for this module?
 
-use alloy_primitives::Address;
-use darkpool_indexer_api::types::sqs::ApiStateObjectType;
+use alloy::primitives::Address;
 use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
 use renegade_crypto::hash::compute_poseidon_hash;
@@ -87,15 +86,6 @@ pub enum StateObjectType {
     Intent,
     /// A balance state object
     Balance,
-}
-
-impl From<ApiStateObjectType> for StateObjectType {
-    fn from(value: ApiStateObjectType) -> Self {
-        match value {
-            ApiStateObjectType::Intent => Self::Intent,
-            ApiStateObjectType::Balance => Self::Balance,
-        }
-    }
 }
 
 /// A generic state object, containing just the raw public/private shares & no
