@@ -1,7 +1,6 @@
 //! General metrics recording functionality
 
 use alloy::providers::DynProvider;
-use alloy_primitives::Address;
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
 
@@ -20,8 +19,6 @@ pub struct MetricsRecorder {
     pub provider: DynProvider,
     /// The chain for which metrics are being recorded
     pub chain: Chain,
-    /// The address of the darkpool contract
-    pub darkpool_address: Address,
 }
 
 impl MetricsRecorder {
@@ -30,10 +27,9 @@ impl MetricsRecorder {
         price_reporter: PriceReporterClient,
         base_provider: DynProvider,
         chain: Chain,
-        darkpool_address: Address,
     ) -> Self {
         let provider = build_provider(base_provider, None /* wallet */);
 
-        MetricsRecorder { price_reporter, provider, chain, darkpool_address }
+        MetricsRecorder { price_reporter, provider, chain }
     }
 }

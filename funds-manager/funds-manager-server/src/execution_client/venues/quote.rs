@@ -8,6 +8,7 @@ use renegade_common::types::{
     chain::Chain,
     token::{Token, USDC_TICKER},
 };
+use tracing::warn;
 
 use crate::{
     execution_client::{
@@ -17,7 +18,7 @@ use crate::{
             lifi::LifiQuoteExecutionData, okx::OkxQuoteExecutionData, SupportedExecutionVenue,
         },
     },
-    helpers::to_chain_id,
+    helpers::{contains_byte_subslice, get_darkpool_address, to_chain_id},
 };
 
 /// The basic information included in an execution quote,
@@ -207,6 +208,40 @@ pub struct ExecutableQuote {
     pub quote: ExecutionQuote,
     /// The venue-specific auxiliary data needed to execute the quote
     pub execution_data: QuoteExecutionData,
+}
+
+impl ExecutableQuote {
+    /// Check if the executable quote is valid
+    pub fn is_valid(&self) -> bool {
+        // TODO: In the future, we can add more / venue-specific validation here
+        !self.darkpool_address_in_calldata()
+    }
+
+    /// Check if the darkpool address is in the calldata of the quote
+    fn darkpool_address_in_calldata(&self) -> bool {
+        let Self { quote, execution_data } = self;
+        let darkpool_address = get_darkpool_address(quote.chain);
+
+        let calldata = match execution_data {
+            QuoteExecutionData::Lifi(data) => data.data.as_ref(),
+            QuoteExecutionData::Bebop(data) => data.data.as_ref(),
+            QuoteExecutionData::Okx(data) => data.data.as_ref(),
+            // Cowswap doesn't supply calldata in quotes
+            QuoteExecutionData::Cowswap(_) => return false,
+        };
+
+        let contains_darkpool_address =
+            contains_byte_subslice(calldata, darkpool_address.as_slice());
+
+        if contains_darkpool_address {
+            warn!(
+                "{} quote calldata contains darkpool address, suspected self-trade",
+                quote.source
+            );
+        }
+
+        contains_darkpool_address
+    }
 }
 
 /// The different sources of quotes, across all venues

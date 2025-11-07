@@ -16,7 +16,7 @@ use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
     execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
-    helpers::{to_env_agnostic_name, IERC20::Transfer},
+    helpers::{get_darkpool_address, to_env_agnostic_name, IERC20::Transfer},
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, SELF_TRADE_VOLUME_USDC_METRIC_NAME, SWAP_EXECUTION_COST_METRIC_NAME,
         SWAP_GAS_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
@@ -99,6 +99,11 @@ impl MetricsRecorder {
 // -------------------
 
 impl MetricsRecorder {
+    /// Get the darkpool address for the recorder's chain
+    fn get_darkpool_address(&self) -> Address {
+        get_darkpool_address(self.chain)
+    }
+
     /// Build the unified swap cost data from available information
     async fn build_swap_cost_data(
         &self,
@@ -240,6 +245,8 @@ impl MetricsRecorder {
         let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
         let usdc_address = usdc_token.get_alloy_address();
 
+        let darkpool_address = self.get_darkpool_address();
+
         receipt
             .logs()
             .iter()
@@ -254,7 +261,7 @@ impl MetricsRecorder {
                     Err(_) => return Ok(0.0),
                 };
 
-                if transfer.to == self.darkpool_address || transfer.from == self.darkpool_address {
+                if transfer.to == darkpool_address || transfer.from == darkpool_address {
                     let value =
                         u256_try_into_u128(transfer.value).map_err(FundsManagerError::parse)?;
                     Ok(usdc_token.convert_to_decimal(value))
