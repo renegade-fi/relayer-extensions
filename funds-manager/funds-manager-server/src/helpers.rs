@@ -360,6 +360,18 @@ pub fn to_chain_id(chain: Chain) -> u64 {
     }
 }
 
+/// Convert a chain id to a `Chain` variant
+pub fn from_chain_id(chain_id: u64) -> Result<Chain, String> {
+    match chain_id {
+        42161 => Ok(Chain::ArbitrumOne),
+        421614 => Ok(Chain::ArbitrumSepolia),
+        8453 => Ok(Chain::BaseMainnet),
+        84532 => Ok(Chain::BaseSepolia),
+        0 => Ok(Chain::Devnet),
+        _ => Err("Invalid chain ID".to_string()),
+    }
+}
+
 /// Convert a string to title case
 pub fn titlecase(s: &str) -> String {
     s.split_whitespace()

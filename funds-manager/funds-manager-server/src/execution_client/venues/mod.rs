@@ -45,6 +45,7 @@ impl AllExecutionVenues {
             SupportedExecutionVenue::Lifi => &self.lifi,
             SupportedExecutionVenue::Cowswap => &self.cowswap,
             SupportedExecutionVenue::Bebop => &self.bebop,
+            SupportedExecutionVenue::Okx => todo!(),
         }
     }
 }

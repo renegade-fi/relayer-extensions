@@ -70,6 +70,8 @@ pub enum SupportedExecutionVenue {
     Cowswap,
     /// The Bebop venue
     Bebop,
+    /// The Okx venue
+    Okx,
 }
 
 impl Display for SupportedExecutionVenue {
@@ -78,6 +80,7 @@ impl Display for SupportedExecutionVenue {
             SupportedExecutionVenue::Lifi => write!(f, "Lifi"),
             SupportedExecutionVenue::Cowswap => write!(f, "Cowswap"),
             SupportedExecutionVenue::Bebop => write!(f, "Bebop"),
+            SupportedExecutionVenue::Okx => write!(f, "Okx"),
         }
     }
 }
