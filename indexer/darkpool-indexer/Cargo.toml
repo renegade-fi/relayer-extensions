@@ -5,9 +5,10 @@ edition = "2024"
 
 [dependencies]
 # === Renegade === #
-renegade-constants = { workspace = true }
-renegade-common = { workspace = true }
-renegade-crypto = { workspace = true }
+renegade-constants = { package = "constants", path = "/Users/akirillo/code/renegade/constants" }
+renegade-common = { package = "common", path = "/Users/akirillo/code/renegade/common" }
+renegade-crypto = { path = "/Users/akirillo/code/renegade/renegade-crypto" }
+renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
 ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
 
 # === Runtime === #

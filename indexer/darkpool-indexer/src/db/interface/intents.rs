@@ -22,7 +22,7 @@ impl DbClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_intent(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         account_id: Uuid,
         input_mint: String,
         output_mint: String,
@@ -35,13 +35,13 @@ impl DbClient {
         precompute_cancellation_proof: bool,
         conn: &mut DbConn<'_>,
     ) -> Result<(), DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
         let min_price_bigdecimal = scalar_to_bigdecimal(min_price);
         let input_amount_bigdecimal = scalar_to_bigdecimal(input_amount);
         let min_fill_size_bigdecimal = scalar_to_bigdecimal(min_fill_size);
 
         let intent = IntentModel {
-            identifier_seed: identifier_seed_bigdecimal,
+            recovery_stream_seed: recovery_stream_seed_bigdecimal,
             account_id,
             active: true,
             input_mint,
@@ -68,16 +68,16 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get an intent by its identifier seed
+    /// Get an intent by its recovery stream seed
     pub async fn get_intent(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         conn: &mut DbConn<'_>,
     ) -> Result<IntentModel, DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
         intents::table
-            .filter(intents::identifier_seed.eq(identifier_seed_bigdecimal))
+            .filter(intents::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first(conn)
             .await
             .map_err(DbError::query)

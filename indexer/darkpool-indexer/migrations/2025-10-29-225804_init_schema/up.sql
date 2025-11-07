@@ -4,7 +4,7 @@
 
 -- Stores darkpool balances
 CREATE TABLE "balances"(
-	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
 	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"mint" TEXT NOT NULL,
@@ -26,8 +26,8 @@ CREATE TABLE "expected_state_objects"(
 	"nullifier" NUMERIC NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
 	"account_id" UUID NOT NULL,
 	"owner_address" TEXT NOT NULL,
-	"identifier_seed" NUMERIC NOT NULL CHECK (identifier_seed >= 0),
-	"encryption_seed" NUMERIC NOT NULL CHECK (encryption_seed >= 0)
+	"recovery_stream_seed" NUMERIC NOT NULL CHECK (recovery_stream_seed >= 0),
+	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0),
 );
 
 -- PROCESSED NULLIFIERS --
@@ -42,7 +42,7 @@ CREATE TABLE "processed_nullifiers"(
 
 -- Stores darkpool intents
 CREATE TABLE "intents"(
-	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
 	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"input_mint" TEXT NOT NULL,
@@ -65,7 +65,9 @@ CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active
 CREATE TABLE "master_view_seeds"(
 	"account_id" UUID NOT NULL PRIMARY KEY,
 	"owner_address" TEXT NOT NULL,
-	"seed" NUMERIC NOT NULL CHECK (seed >= 0)
+	"seed" NUMERIC NOT NULL CHECK (seed >= 0),
+	"recovery_seed_csprng_index" NUMERIC NOT NULL CHECK (recovery_seed_csprng_index >= 0),
+	"share_seed_csprng_index" NUMERIC NOT NULL CHECK (share_seed_csprng_index >= 0)
 );
 
 -- GENERIC STATE OBJECTS --
@@ -75,14 +77,14 @@ CREATE TYPE "object_type" AS ENUM ('intent', 'balance');
 
 -- Stores generic state objects
 CREATE TABLE "generic_state_objects"(
-	"identifier_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (identifier_seed >= 0),
+	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
 	"account_id" UUID NOT NULL,
 	"active" BOOL NOT NULL,
 	"object_type" "object_type" NOT NULL,
 	"nullifier" NUMERIC NOT NULL CHECK (nullifier >= 0),
 	"version" NUMERIC NOT NULL CHECK (version >= 0),
-	"encryption_seed" NUMERIC NOT NULL CHECK (encryption_seed >= 0),
-	"encryption_cipher_index" NUMERIC NOT NULL CHECK (encryption_cipher_index >= 0),
+	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0),
+	"share_stream_index" NUMERIC NOT NULL CHECK (share_stream_index >= 0),
 	"owner_address" TEXT NOT NULL,
 	"public_shares" NUMERIC[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"private_shares" NUMERIC[] NOT NULL CHECK (array_position(private_shares, NULL) IS NULL AND 0 <= ALL(private_shares))

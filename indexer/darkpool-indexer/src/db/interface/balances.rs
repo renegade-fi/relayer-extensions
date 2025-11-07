@@ -22,7 +22,7 @@ impl DbClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_balance(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         account_id: Uuid,
         mint: String,
         owner_address: String,
@@ -33,13 +33,13 @@ impl DbClient {
         allow_public_fills: bool,
         conn: &mut DbConn<'_>,
     ) -> Result<(), DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
         let protocol_fee_bigdecimal = scalar_to_bigdecimal(protocol_fee);
         let relayer_fee_bigdecimal = scalar_to_bigdecimal(relayer_fee);
         let amount_bigdecimal = scalar_to_bigdecimal(amount);
 
         let balance = BalanceModel {
-            identifier_seed: identifier_seed_bigdecimal,
+            recovery_stream_seed: recovery_stream_seed_bigdecimal,
             account_id,
             active: true,
             mint,
@@ -64,16 +64,16 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get a balance by its identifier seed
+    /// Get a balance by its recovery stream seed
     pub async fn get_balance(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         conn: &mut DbConn<'_>,
     ) -> Result<BalanceModel, DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
         balances::table
-            .filter(balances::identifier_seed.eq(identifier_seed_bigdecimal))
+            .filter(balances::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first(conn)
             .await
             .map_err(DbError::query)

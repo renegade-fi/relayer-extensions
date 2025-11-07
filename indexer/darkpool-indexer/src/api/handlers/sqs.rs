@@ -11,11 +11,6 @@ use tracing::warn;
 
 use crate::{
     api::handlers::error::HandlerError,
-    crypto_mocks::{
-        csprng::PoseidonCSPRNG,
-        encryption_stream::sample_encryption_seed,
-        identifier_stream::{sample_identifier_seed, sample_nullifier},
-    },
     db::{client::DbConn, error::DbError},
     indexer::Indexer,
     types::{ExpectedStateObject, GenericStateObject, MasterViewSeed, StateObjectType},
@@ -25,11 +20,8 @@ use crate::{
 // | Constants |
 // -------------
 
-/// The index of the identifier stream seed for an account's first state object
-const FIRST_OBJECT_IDX: usize = 0;
-
-/// A state object's first version
-const OBJECT_FIRST_VERSION: usize = 0;
+/// The index of an account's first state object
+const FIRST_OBJECT_IDX: u64 = 0;
 
 // -----------------------------
 // | Top-Level Message Handler |
@@ -80,22 +72,20 @@ pub async fn handle_master_view_seed_message(
 
     let owner_address_alloy = Address::from_str(&owner_address).map_err(HandlerError::parse)?;
 
-    // Sample the identifier stream seed, first nullifier, and encryption stream
-    // seed for the account's first state object
-    let first_object_identifier_seed = sample_identifier_seed(seed, FIRST_OBJECT_IDX);
-    let first_nullifier = sample_nullifier(first_object_identifier_seed, OBJECT_FIRST_VERSION);
-    let first_object_encryption_seed = sample_encryption_seed(seed, FIRST_OBJECT_IDX);
+    let master_view_seed = MasterViewSeed::new(account_id, owner_address_alloy, seed);
 
-    // Create the master view seed and expected state object
-    let master_view_seed = MasterViewSeed { account_id, owner_address: owner_address_alloy, seed };
+    let first_object_recovery_stream_seed =
+        master_view_seed.recovery_seed_csprng.get_ith(FIRST_OBJECT_IDX);
 
-    let expected_state_object = ExpectedStateObject {
-        nullifier: first_nullifier,
+    let first_object_share_stream_seed =
+        master_view_seed.share_seed_csprng.get_ith(FIRST_OBJECT_IDX);
+
+    let expected_state_object = ExpectedStateObject::new(
         account_id,
-        owner_address: owner_address_alloy,
-        identifier_seed: first_object_identifier_seed,
-        encryption_seed: first_object_encryption_seed,
-    };
+        owner_address_alloy,
+        first_object_recovery_stream_seed,
+        first_object_share_stream_seed,
+    );
 
     // Insert the master view seed and expected state object into the database
     let mut conn = indexer.db.get_db_conn().await?;
@@ -160,15 +150,15 @@ async fn handle_first_object_nullifier_spend(
     indexer: &Indexer,
     conn: &mut DbConn<'_>,
 ) -> Result<(), DbError> {
-    let stream_cipher = PoseidonCSPRNG::new(expected_state_object.encryption_seed);
-    let private_shares: Vec<Scalar> = stream_cipher.take(message.public_shares.len()).collect();
+    let private_shares: Vec<Scalar> =
+        expected_state_object.share_stream.clone().take(message.public_shares.len()).collect();
 
     let generic_state_object = GenericStateObject::new(
-        expected_state_object.identifier_seed,
+        expected_state_object.recovery_stream.seed,
         expected_state_object.account_id,
         message.object_type.into(),
         expected_state_object.nullifier,
-        expected_state_object.encryption_seed,
+        expected_state_object.share_stream.seed,
         expected_state_object.owner_address,
         message.public_shares,
         private_shares,
@@ -181,4 +171,6 @@ async fn handle_first_object_nullifier_spend(
         StateObjectType::Intent => todo!(),
         StateObjectType::Balance => todo!(),
     }
+
+    // TODO: Delete expected state object record
 }

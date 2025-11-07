@@ -43,16 +43,16 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get a generic state object by its identifier seed
+    /// Get a generic state object by its recovery stream seed
     pub async fn get_generic_state_object(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         conn: &mut DbConn<'_>,
     ) -> Result<GenericStateObject, DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
         generic_state_objects::table
-            .filter(generic_state_objects::identifier_seed.eq(identifier_seed_bigdecimal))
+            .filter(generic_state_objects::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first(conn)
             .await
             .map_err(DbError::query)
