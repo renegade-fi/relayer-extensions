@@ -7,6 +7,8 @@ use warp::reject::Reject;
 
 use fireblocks_sdk::{apis::Error as FireblocksApiError, FireblocksError};
 
+use crate::execution_client::error::ExecutionClientError;
+
 /// The error type emitted by the funds manager
 #[derive(Debug, Clone)]
 pub enum FundsManagerError {
@@ -30,6 +32,8 @@ pub enum FundsManagerError {
     PriceReporter(PriceReporterClientError),
     /// An error converting between types
     Conversion(String),
+    /// An error with the execution client
+    ExecutionClient(ExecutionClientError),
     /// A miscellaneous error
     Custom(String),
 }
@@ -100,6 +104,7 @@ impl Display for FundsManagerError {
             FundsManagerError::Custom(e) => write!(f, "Uncategorized error: {}", e),
             FundsManagerError::Fireblocks(e) => write!(f, "Fireblocks error: {}", e),
             FundsManagerError::PriceReporter(e) => write!(f, "Price reporter error: {}", e),
+            FundsManagerError::ExecutionClient(e) => write!(f, "Execution client error: {}", e),
             FundsManagerError::Conversion(e) => write!(f, "Conversion error: {}", e),
         }
     }
@@ -128,6 +133,12 @@ impl From<PriceReporterClientError> for FundsManagerError {
 impl From<reqwest::Error> for FundsManagerError {
     fn from(e: reqwest::Error) -> Self {
         FundsManagerError::http(e)
+    }
+}
+
+impl From<ExecutionClientError> for FundsManagerError {
+    fn from(error: ExecutionClientError) -> Self {
+        FundsManagerError::ExecutionClient(error)
     }
 }
 

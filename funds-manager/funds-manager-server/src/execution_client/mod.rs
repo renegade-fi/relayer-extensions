@@ -11,7 +11,11 @@ use renegade_common::types::chain::Chain;
 use crate::{
     cli::MaxPriceDeviations,
     execution_client::venues::{
-        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
+        bebop::BebopClient,
+        cowswap::CowswapClient,
+        lifi::LifiClient,
+        okx::{OkxApiCredentials, OkxClient},
+        AllExecutionVenues,
     },
     helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
 };
@@ -37,15 +41,17 @@ pub struct ExecutionClient {
 
 impl ExecutionClient {
     /// Create a new client
-    pub fn new(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new(
         chain: Chain,
         lifi_api_key: Option<String>,
         bebop_api_key: Option<String>,
+        okx_credentials: OkxApiCredentials,
         base_provider: DynProvider,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
         max_price_deviations: MaxPriceDeviations,
-    ) -> Self {
+    ) -> Result<Self, ExecutionClientError> {
         let hot_wallet_address = quoter_hot_wallet.address();
 
         let rpc_provider = build_provider(base_provider.clone(), None /* wallet */);
@@ -54,18 +60,25 @@ impl ExecutionClient {
             LifiClient::new(lifi_api_key, base_provider.clone(), quoter_hot_wallet.clone(), chain);
 
         let cowswap = CowswapClient::new(base_provider.clone(), quoter_hot_wallet.clone(), chain);
-        let bebop = BebopClient::new(bebop_api_key, base_provider, quoter_hot_wallet, chain);
+        let bebop = BebopClient::new(
+            bebop_api_key,
+            base_provider.clone(),
+            quoter_hot_wallet.clone(),
+            chain,
+        );
 
-        let venues = AllExecutionVenues { lifi, cowswap, bebop };
+        let okx = OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain).await?;
 
-        Self {
+        let venues = AllExecutionVenues { lifi, cowswap, bebop, okx };
+
+        Ok(Self {
             chain,
             rpc_provider,
             price_reporter,
             hot_wallet_address,
             venues,
             max_price_deviations,
-        }
+        })
     }
 
     /// Get the erc20 balance of an address, as a U256
