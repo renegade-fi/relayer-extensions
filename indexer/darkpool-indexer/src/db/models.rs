@@ -12,7 +12,7 @@ use diesel::{
     prelude::{Insertable, Queryable},
     serialize::{self, IsNull, Output, ToSql},
 };
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
+use renegade_circuit_types::{balance::Balance, csprng::PoseidonCSPRNG, intent::Intent};
 use uuid::Uuid;
 
 use crate::{
@@ -21,9 +21,15 @@ use crate::{
     },
     db::{
         schema::sql_types::ObjectType as ObjectTypeSqlType,
-        utils::{bigdecimal_to_scalar, scalar_to_bigdecimal},
+        utils::{
+            bigdecimal_to_fixed_point, bigdecimal_to_scalar, fixed_point_to_bigdecimal,
+            scalar_to_bigdecimal,
+        },
     },
-    types::{ExpectedStateObject, GenericStateObject, MasterViewSeed, StateObjectType},
+    types::{
+        BalanceStateObject, ExpectedStateObject, GenericStateObject, IntentStateObject,
+        MasterViewSeed, StateObjectType,
+    },
 };
 
 // ----------------------------
@@ -415,6 +421,96 @@ pub struct IntentModel {
     pub precompute_cancellation_proof: bool,
 }
 
+impl From<IntentStateObject> for IntentModel {
+    fn from(value: IntentStateObject) -> Self {
+        let IntentStateObject {
+            intent: Intent { in_token, out_token, owner, min_price, amount_in },
+            recovery_stream_seed,
+            account_id,
+            active,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        } = value;
+
+        let input_mint_string = in_token.to_string();
+        let output_mint_string = out_token.to_string();
+        let owner_address_string = owner.to_string();
+
+        let min_price_bigdecimal = fixed_point_to_bigdecimal(min_price);
+        let input_amount_bigdecimal = amount_in.into();
+
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let min_fill_size_bigdecimal = min_fill_size.into();
+
+        IntentModel {
+            recovery_stream_seed: recovery_stream_seed_bigdecimal,
+            account_id,
+            active,
+            input_mint: input_mint_string,
+            output_mint: output_mint_string,
+            owner_address: owner_address_string,
+            min_price: min_price_bigdecimal,
+            input_amount: input_amount_bigdecimal,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size: min_fill_size_bigdecimal,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
+impl From<IntentModel> for IntentStateObject {
+    fn from(value: IntentModel) -> Self {
+        let IntentModel {
+            recovery_stream_seed,
+            account_id,
+            active,
+            input_mint,
+            output_mint,
+            owner_address,
+            min_price,
+            input_amount,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        } = value;
+
+        let input_mint_address =
+            Address::from_str(&input_mint).expect("Input mint must be a valid address");
+        let output_mint_address =
+            Address::from_str(&output_mint).expect("Output mint must be a valid address");
+        let owner_address_address =
+            Address::from_str(&owner_address).expect("Owner address must be a valid address");
+        let min_price_fixed_point = bigdecimal_to_fixed_point(min_price);
+        let input_amount_u128 =
+            input_amount.to_u128().expect("Input amount cannot be converted to u128");
+
+        let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
+        let min_fill_size_u128 =
+            min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
+
+        IntentStateObject {
+            intent: Intent {
+                in_token: input_mint_address,
+                out_token: output_mint_address,
+                owner: owner_address_address,
+                min_price: min_price_fixed_point,
+                amount_in: input_amount_u128,
+            },
+            recovery_stream_seed: recovery_stream_seed_scalar,
+            account_id,
+            active,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size: min_fill_size_u128,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
 // === Balances Table ===
 
 /// A balance record
@@ -432,8 +528,10 @@ pub struct BalanceModel {
     pub mint: String,
     /// The address of the balance's owner
     pub owner_address: String,
-    /// The one-time key used for authorizing fills capitalized by this balance
-    pub one_time_key: String,
+    /// The address to which the relayer fees are paid
+    pub relayer_fee_recipient: String,
+    /// A one-time signing authority for the balance
+    pub one_time_authority: String,
     /// The protocol fee owed on this balance
     pub protocol_fee: BigDecimal,
     /// The relayer fee owed on this balance
@@ -442,4 +540,102 @@ pub struct BalanceModel {
     pub amount: BigDecimal,
     /// Whether public fills are allowed on this balance
     pub allow_public_fills: bool,
+}
+
+impl From<BalanceStateObject> for BalanceModel {
+    fn from(value: BalanceStateObject) -> Self {
+        let BalanceStateObject {
+            balance:
+                Balance {
+                    mint,
+                    owner,
+                    relayer_fee_recipient,
+                    one_time_authority,
+                    relayer_fee_balance,
+                    protocol_fee_balance,
+                    amount,
+                },
+            recovery_stream_seed,
+            account_id,
+            active,
+            allow_public_fills,
+        } = value;
+
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let mint_string = mint.to_string();
+        let owner_address_string = owner.to_string();
+        let relayer_fee_recipient_string = relayer_fee_recipient.to_string();
+        let one_time_authority_string = one_time_authority.to_string();
+        let protocol_fee_bigdecimal = protocol_fee_balance.into();
+        let relayer_fee_bigdecimal = relayer_fee_balance.into();
+        let amount_bigdecimal = amount.into();
+
+        BalanceModel {
+            recovery_stream_seed: recovery_stream_seed_bigdecimal,
+            account_id,
+            active,
+            mint: mint_string,
+            owner_address: owner_address_string,
+            relayer_fee_recipient: relayer_fee_recipient_string,
+            one_time_authority: one_time_authority_string,
+            protocol_fee: protocol_fee_bigdecimal,
+            relayer_fee: relayer_fee_bigdecimal,
+            amount: amount_bigdecimal,
+            allow_public_fills,
+        }
+    }
+}
+
+impl From<BalanceModel> for BalanceStateObject {
+    fn from(value: BalanceModel) -> Self {
+        let BalanceModel {
+            recovery_stream_seed,
+            account_id,
+            active,
+            mint,
+            owner_address,
+            relayer_fee_recipient,
+            one_time_authority,
+            protocol_fee,
+            relayer_fee,
+            amount,
+            allow_public_fills,
+        } = value;
+
+        let mint_address = Address::from_str(&mint).expect("Mint must be a valid address");
+        let owner_address_address =
+            Address::from_str(&owner_address).expect("Owner address must be a valid address");
+
+        let relayer_fee_recipient_address = Address::from_str(&relayer_fee_recipient)
+            .expect("Relayer fee recipient must be a valid address");
+
+        let one_time_authority_address = Address::from_str(&one_time_authority)
+            .expect("One time authority must be a valid address");
+
+        let relayer_fee_u128 =
+            relayer_fee.to_u128().expect("Relayer fee cannot be converted to u128");
+
+        let protocol_fee_u128 =
+            protocol_fee.to_u128().expect("Protocol fee cannot be converted to u128");
+
+        let amount_u128 = amount.to_u128().expect("Amount cannot be converted to u128");
+
+        let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
+
+        BalanceStateObject {
+            balance: Balance {
+                mint: mint_address,
+                owner: owner_address_address,
+                relayer_fee_recipient: relayer_fee_recipient_address,
+                one_time_authority: one_time_authority_address,
+                relayer_fee_balance: relayer_fee_u128,
+                protocol_fee_balance: protocol_fee_u128,
+                amount: amount_u128,
+            },
+            recovery_stream_seed: recovery_stream_seed_scalar,
+            account_id,
+            active,
+            allow_public_fills,
+        }
+    }
 }

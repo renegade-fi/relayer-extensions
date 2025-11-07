@@ -247,6 +247,10 @@ async fn handle_first_object_nullifier_spend(
     indexer.db.create_generic_state_object(generic_state_object.clone(), conn).await?;
 
     // TODO: Create the appropriate intent/balance state object
+    // NOTE: It's possible that the typed state object is already present in the
+    // database, on account of us having processed a metadata update message for
+    // it before processing the nullifier spend. In this case, we have to be
+    // sure not to overwrite the metadata fields.
     match generic_state_object.object_type {
         StateObjectType::Intent => todo!(),
         StateObjectType::Balance => todo!(),
