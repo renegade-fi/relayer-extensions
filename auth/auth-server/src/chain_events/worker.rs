@@ -1,24 +1,12 @@
 //! The worker implementation for the on-chain event listener
 use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tracing::error;
 
 use super::{
     error::OnChainEventListenerError,
     listener::{OnChainEventListener, OnChainEventListenerConfig, OnChainEventListenerExecutor},
 };
-
-/// A channel for sending worker failures
-pub type WorkerFailureSender = Sender<()>;
-
-/// A channel for receiving worker failures
-pub type WorkerFailureReceiver = Receiver<()>;
-
-/// Create a new worker failure channel
-pub fn new_worker_failure_channel() -> (WorkerFailureSender, WorkerFailureReceiver) {
-    channel(1 /* buffer */)
-}
 
 impl OnChainEventListener {
     /// Create a new on-chain event listener
@@ -61,19 +49,16 @@ impl OnChainEventListener {
 
     /// Spawns a watcher thread that joins the given handle and logs its
     /// outcome.
-    pub fn watch(mut self, failure_sender: WorkerFailureSender) {
+    pub fn watch(mut self) {
         std::thread::Builder::new()
             .name("on-chain-listener-watcher".to_string())
-            .spawn(move || {
-                match self.executor_handle.take().unwrap().join() {
-                    Err(panic) => {
-                        error!("worker on-chain-event-listener panicked with error: {panic:?}");
-                    },
-                    Ok(err) => {
-                        error!("worker on-chain-event-listener exited with error: {err:?}");
-                    },
-                }
-                failure_sender.blocking_send(()).unwrap();
+            .spawn(move || match self.executor_handle.take().unwrap().join() {
+                Err(panic) => {
+                    error!("worker on-chain-event-listener panicked with error: {panic:?}");
+                },
+                Ok(err) => {
+                    error!("worker on-chain-event-listener exited with error: {err:?}");
+                },
             })
             .unwrap();
     }
