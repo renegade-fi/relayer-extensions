@@ -242,4 +242,18 @@ impl IntentStateObject {
     }
 }
 
-// TODO: Define remaining internal types
+/// The data associated with a nullifier spend that is necessary for proper
+/// indexing
+pub struct NullifierSpendData {
+    /// The nullifier that was spent
+    pub nullifier: Scalar,
+    /// The block number in which the nullifier was spent
+    pub block_number: u64,
+    /// The type of the state object that was updated
+    pub state_object_type: StateObjectType,
+    /// The updated public shares of the state object
+    pub updated_public_shares: Vec<Scalar>,
+    /// The start index of the updated public shares within the secret-sharing
+    /// of the state object
+    pub updated_shares_index: usize,
+}

@@ -8,4 +8,5 @@ pub mod client;
 pub mod error;
 pub mod interface;
 pub mod models;
+pub mod tables;
 mod utils;
