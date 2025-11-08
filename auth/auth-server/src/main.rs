@@ -197,7 +197,7 @@ impl warp::reject::Reject for ApiError {}
 
 /// The main function for the auth server
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), AuthServerError> {
     // Set the default crypto provider for the process, this will be used by
     // websocket listeners
     rustls::crypto::ring::default_provider()
@@ -210,7 +210,8 @@ async fn main() {
     let system_clock = SystemClock::new().await;
 
     // Create the server
-    let server_inner = Server::setup(args, &system_clock).await.expect("Failed to create server");
+    let (server_inner, chain_listener_cancellation_token) =
+        Server::setup(args, &system_clock).await.expect("Failed to create server");
     let server = Arc::new(server_inner);
 
     // --- Management Routes --- //
@@ -459,7 +460,15 @@ async fn main() {
         .boxed()
         .with(with_tracing())
         .recover(handle_rejection);
-    warp::serve(routes).bind(listen_addr).await;
+
+    tokio::select! {
+        _ = warp::serve(routes).bind(listen_addr) => {
+            Err(AuthServerError::custom("Server crashed".to_string()))
+        },
+        _ = chain_listener_cancellation_token.cancelled() => {
+            Err(AuthServerError::custom("Chain event listener crashed".to_string()))
+        },
+    }
 }
 
 /// Helper function to pass the server to filters
