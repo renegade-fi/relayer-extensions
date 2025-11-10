@@ -32,13 +32,17 @@ use renegade_darkpool_client::client::DarkpoolClientConfig;
 use renegade_system_clock::SystemClock;
 use renegade_util::on_chain::{set_external_match_fee, set_protocol_fee};
 use reqwest::Client;
+use tokio_util::sync::CancellationToken;
 
 /// The interval at which we poll filter updates
 const DEFAULT_BLOCK_POLLING_INTERVAL: Duration = Duration::from_millis(100);
 
 impl Server {
     /// Create a new server instance
-    pub async fn setup(args: Cli, system_clock: &SystemClock) -> Result<Self, AuthServerError> {
+    pub async fn setup(
+        args: Cli,
+        system_clock: &SystemClock,
+    ) -> Result<(Self, CancellationToken), AuthServerError> {
         configure_telemtry_from_args(&args)?;
         setup_token_mapping(&args).await?;
 
@@ -101,9 +105,10 @@ impl Server {
         let mut chain_listener = OnChainEventListener::new(chain_listener_config)
             .expect("failed to build on-chain event listener");
         chain_listener.start().expect("failed to start on-chain event listener");
-        chain_listener.watch();
+        let chain_listener_cancellation_token = CancellationToken::new();
+        chain_listener.watch(chain_listener_cancellation_token.clone());
 
-        Ok(Self {
+        let server = Self {
             chain: args.chain_id,
             db_pool,
             redis_client,
@@ -124,7 +129,8 @@ impl Server {
             gas_cost_sampler,
             min_sponsored_order_quote_amount: args.min_sponsored_order_quote_amount,
             bundle_store,
-        })
+        };
+        Ok((server, chain_listener_cancellation_token))
     }
 }
 
