@@ -9,7 +9,6 @@ renegade-constants = { package = "constants", path = "/Users/akirillo/code/reneg
 renegade-common = { package = "common", path = "/Users/akirillo/code/renegade/common" }
 renegade-crypto = { path = "/Users/akirillo/code/renegade/renegade-crypto" }
 renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
-ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -17,8 +16,7 @@ clap = { version = "4.5.3", features = ["derive", "env"] }
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
-diesel-async = { workspace = true, features = ["postgres", "bb8"] }
-bb8 = { workspace = true }
+diesel-async = { workspace = true, features = ["postgres", "deadpool"] }
 native-tls = { workspace = true }
 postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
@@ -35,7 +33,7 @@ serde = "1.0"
 serde_json = "1.0"
 
 # === Blockchain === #
-alloy = { workspace = true }
+alloy = { workspace = true, features = ["provider-ws"] }
 
 # === Crypto === #
 tiny-keccak = { version = "2.0", features = ["keccak", "sha3"] }
@@ -47,3 +45,6 @@ itertools = "0.10"
 
 [dev-dependencies]
 rand = "0.8"
+postgresql_embedded = { version = "0.19", features = ["tokio", "bundled"] }
+diesel_migrations = "2.3"
+diesel-async = { workspace = true, features = ["migrations"] }

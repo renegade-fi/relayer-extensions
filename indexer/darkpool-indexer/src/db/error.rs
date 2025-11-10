@@ -15,6 +15,9 @@ pub enum DbError {
     /// An arbitrary Diesel error
     #[error("Diesel error: {0}")]
     DieselError(#[from] diesel::result::Error),
+    /// A custom error
+    #[error("custom error: {0}")]
+    Custom(String),
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -32,5 +35,10 @@ impl DbError {
     /// Create a new query execution error
     pub fn query<T: ToString>(msg: T) -> Self {
         Self::Query(msg.to_string())
+    }
+
+    /// Create a new custom error
+    pub fn custom<T: ToString>(msg: T) -> Self {
+        Self::Custom(msg.to_string())
     }
 }

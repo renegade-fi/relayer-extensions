@@ -26,7 +26,7 @@ impl DbClient {
     pub async fn create_generic_state_object(
         &self,
         generic_state_object: GenericStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let generic_state_object_model: GenericStateObjectModel = generic_state_object.into();
 
@@ -47,7 +47,7 @@ impl DbClient {
     pub async fn get_generic_state_object(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<GenericStateObject, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 

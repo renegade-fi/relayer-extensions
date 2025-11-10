@@ -25,7 +25,7 @@ impl DbClient {
     pub async fn create_intent(
         &self,
         intent: IntentStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let intent_model: IntentModel = intent.into();
 
@@ -46,7 +46,7 @@ impl DbClient {
     pub async fn get_intent(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<IntentStateObject, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
@@ -62,7 +62,7 @@ impl DbClient {
     pub async fn intent_exists(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 

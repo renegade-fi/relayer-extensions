@@ -28,7 +28,7 @@ CREATE TABLE "expected_state_objects"(
 	"account_id" UUID NOT NULL,
 	"owner_address" TEXT NOT NULL,
 	"recovery_stream_seed" NUMERIC NOT NULL CHECK (recovery_stream_seed >= 0),
-	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0),
+	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0)
 );
 
 -- PROCESSED NULLIFIERS --

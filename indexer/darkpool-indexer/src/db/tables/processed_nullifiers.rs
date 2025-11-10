@@ -23,7 +23,7 @@ impl DbClient {
         &self,
         nullifier: Scalar,
         block_number: u64,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
         let block_number_bigdecimal = BigDecimal::from(block_number);
@@ -50,7 +50,7 @@ impl DbClient {
     pub async fn nullifier_processed(
         &self,
         nullifier: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
 

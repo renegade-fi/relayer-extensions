@@ -10,3 +10,6 @@ pub mod interface;
 pub mod models;
 pub mod tables;
 mod utils;
+
+#[cfg(test)]
+mod test_utils;

@@ -71,7 +71,7 @@ impl DbClient {
         &self,
         nullifier_spend_data: NullifierSpendData,
         expected_state_object: ExpectedStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let NullifierSpendData { updated_public_shares, state_object_type, .. } =
             nullifier_spend_data;
@@ -122,7 +122,7 @@ impl DbClient {
     async fn create_intent_state_object(
         &self,
         generic_state_object: GenericStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         // First, check if the associated intent object already exists in the DB.
         // This is possible in the case that we previously processed a metadata update
@@ -161,7 +161,7 @@ impl DbClient {
     async fn create_balance_state_object(
         &self,
         generic_state_object: GenericStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         // First, check if the associated balance object already exists in the DB.
         // This is possible in the case that we previously processed a metadata update
