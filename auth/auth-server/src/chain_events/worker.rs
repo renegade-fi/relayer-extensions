@@ -1,6 +1,7 @@
 //! The worker implementation for the on-chain event listener
 use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
+use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 use super::{
@@ -49,16 +50,19 @@ impl OnChainEventListener {
 
     /// Spawns a watcher thread that joins the given handle and logs its
     /// outcome.
-    pub fn watch(mut self) {
+    pub fn watch(mut self, cancellation_token: CancellationToken) {
         std::thread::Builder::new()
             .name("on-chain-listener-watcher".to_string())
-            .spawn(move || match self.executor_handle.take().unwrap().join() {
-                Err(panic) => {
-                    error!("worker on-chain-event-listener panicked with error: {panic:?}");
-                },
-                Ok(err) => {
-                    error!("worker on-chain-event-listener exited with error: {err:?}");
-                },
+            .spawn(move || {
+                match self.executor_handle.take().unwrap().join() {
+                    Err(panic) => {
+                        error!("worker on-chain-event-listener panicked with error: {panic:?}");
+                    },
+                    Ok(err) => {
+                        error!("worker on-chain-event-listener exited with error: {err:?}");
+                    },
+                }
+                cancellation_token.cancel();
             })
             .unwrap();
     }
