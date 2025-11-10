@@ -25,6 +25,7 @@ const GLOBAL_MATCHING_POOL: &str = "global";
 // ---------
 
 /// An account's master view seed
+#[derive(Clone)]
 pub struct MasterViewSeed {
     /// The ID of the seed owner's account
     pub account_id: Uuid,
@@ -62,6 +63,7 @@ impl MasterViewSeed {
 }
 
 /// A state object which is expected to be created
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ExpectedStateObject {
     /// The expected nullifier
     pub nullifier: Scalar,
@@ -147,15 +149,16 @@ impl GenericStateObject {
         share_stream_seed: Scalar,
         owner_address: Address,
         public_shares: Vec<Scalar>,
-        private_shares: Vec<Scalar>,
     ) -> Self {
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
         // New state objects are created at version 1
         recovery_stream.advance_by(1);
 
-        let share_stream = PoseidonCSPRNG::new(share_stream_seed);
-
         let nullifier = sample_nullifier(&recovery_stream, 1 /* version */);
+
+        // Generate the private shares for the state object
+        let mut share_stream = PoseidonCSPRNG::new(share_stream_seed);
+        let private_shares: Vec<Scalar> = share_stream.by_ref().take(public_shares.len()).collect();
 
         Self {
             recovery_stream,
@@ -244,6 +247,7 @@ impl IntentStateObject {
 
 /// The data associated with a nullifier spend that is necessary for proper
 /// indexing
+#[derive(Clone)]
 pub struct NullifierSpendData {
     /// The nullifier that was spent
     pub nullifier: Scalar,

@@ -44,7 +44,13 @@ tracing = { workspace = true }
 itertools = "0.10"
 
 [dev-dependencies]
-rand = "0.8"
+# === DB === #
 postgresql_embedded = { version = "0.19", features = ["tokio", "bundled"] }
 diesel_migrations = "2.3"
 diesel-async = { workspace = true, features = ["migrations"] }
+
+# === Blockchain === #
+alloy = { workspace = true, features = ["getrandom"] }
+
+# === Misc === #
+rand = "0.8"

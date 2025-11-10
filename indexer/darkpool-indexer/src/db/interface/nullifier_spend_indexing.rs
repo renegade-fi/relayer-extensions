@@ -6,7 +6,6 @@ use renegade_circuit_types::{
     intent::IntentShare,
     traits::{BaseType, SecretShareType},
 };
-use renegade_constants::Scalar;
 use tracing::{info, warn};
 
 use crate::{
@@ -76,10 +75,6 @@ impl DbClient {
         let NullifierSpendData { updated_public_shares, state_object_type, .. } =
             nullifier_spend_data;
 
-        // Generate the private shares for the state object
-        let private_shares: Vec<Scalar> =
-            expected_state_object.share_stream.clone().take(updated_public_shares.len()).collect();
-
         // Create the generic state object
         let generic_state_object = GenericStateObject::new(
             expected_state_object.recovery_stream.seed,
@@ -88,7 +83,6 @@ impl DbClient {
             expected_state_object.share_stream.seed,
             expected_state_object.owner_address,
             updated_public_shares,
-            private_shares,
         );
 
         self.create_generic_state_object(generic_state_object.clone(), conn).await?;
@@ -194,5 +188,196 @@ impl DbClient {
         self.create_balance(balance_state_object, conn).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Debug;
+
+    use alloy::primitives::Address;
+    use renegade_circuit_types::{
+        balance::Balance,
+        state_wrapper::StateWrapper,
+        traits::{CircuitBaseType, SecretShareBaseType},
+    };
+
+    use crate::db::test_utils::{
+        assert_csprng_state, cleanup_test_db, gen_random_master_view_seed, setup_test_db_client,
+    };
+
+    use super::*;
+
+    /// Sets up an expected state object in the DB, generating a new master view
+    /// seed for the account owning the state object.
+    ///
+    /// Returns the expected state object.
+    async fn setup_expected_state_object(
+        db_client: &DbClient,
+    ) -> Result<ExpectedStateObject, DbError> {
+        let mut master_view_seed = gen_random_master_view_seed();
+        db_client.index_master_view_seed(master_view_seed.clone()).await?;
+        Ok(master_view_seed.next_expected_state_object())
+    }
+
+    /// Generate the nullifier spend data which should result in the given
+    /// expected state object being indexed as a new balance.
+    ///
+    /// Returns the nullifier spend data, along with the expected balance
+    /// object.
+    fn gen_new_balance_nullifier_spend_data(
+        expected_state_object: &ExpectedStateObject,
+    ) -> (NullifierSpendData, StateWrapper<Balance>) {
+        let mint = Address::random();
+        let relayer_fee_recipient = Address::random();
+        let one_time_authority = Address::random();
+
+        let balance = Balance::new(
+            mint,
+            expected_state_object.owner_address,
+            relayer_fee_recipient,
+            one_time_authority,
+        );
+
+        let wrapped_balance = StateWrapper::new(
+            balance,
+            expected_state_object.share_stream.seed,
+            expected_state_object.recovery_stream.seed,
+        );
+        let updated_public_shares = wrapped_balance.public_share().to_scalars();
+
+        let nullifier_spend_data = NullifierSpendData {
+            nullifier: expected_state_object.nullifier,
+            block_number: 0,
+            state_object_type: StateObjectType::Balance,
+            updated_public_shares,
+            updated_shares_index: 0,
+        };
+
+        (nullifier_spend_data, wrapped_balance)
+    }
+
+    /// Validate the indexing of a new generic state object
+    async fn validate_new_generic_state_object_indexing<T>(
+        db_client: &DbClient,
+        expected_reconstructed_object: &StateWrapper<T>,
+    ) -> Result<(), DbError>
+    where
+        T: SecretShareBaseType + CircuitBaseType + Debug + Eq,
+        T::ShareType: CircuitBaseType,
+        <T::ShareType as SecretShareType>::Base: Into<T>,
+    {
+        let mut conn = db_client.get_db_conn().await?;
+        let indexed_generic_state_object = db_client
+            .get_generic_state_object(expected_reconstructed_object.recovery_stream.seed, &mut conn)
+            .await?;
+
+        // Assert that the indexed generic state object's CSPRNG states are correctly
+        // advanced
+        let indexed_recovery_stream = &indexed_generic_state_object.recovery_stream;
+        assert_csprng_state(
+            indexed_recovery_stream,
+            expected_reconstructed_object.recovery_stream.seed,
+            1, // expected_index
+        );
+
+        let indexed_share_stream = &indexed_generic_state_object.share_stream;
+        assert_csprng_state(
+            indexed_share_stream,
+            expected_reconstructed_object.share_stream.seed,
+            T::NUM_SCALARS as u64, // expected_index
+        );
+
+        // Assert that the indexed generic state object's shares properly reconstruct
+        // the expected object
+        let public_share = T::ShareType::from_scalars(
+            &mut indexed_generic_state_object.public_shares.clone().into_iter(),
+        );
+
+        let private_share = T::ShareType::from_scalars(
+            &mut indexed_generic_state_object.private_shares.clone().into_iter(),
+        );
+
+        let reconstructed_object: T = public_share.add_shares(&private_share).into();
+
+        assert_eq!(reconstructed_object, expected_reconstructed_object.inner);
+
+        Ok(())
+    }
+
+    /// Validate the rotation of an account's next expected state object
+    async fn validate_expected_state_object_rotation(
+        db_client: &DbClient,
+        old_expected_state_object: &ExpectedStateObject,
+    ) -> Result<(), DbError> {
+        let mut conn = db_client.get_db_conn().await?;
+
+        // Assert that the indexed master view seed's CSPRNG states are advanced
+        // correctly
+        let indexed_master_view_seed = db_client
+            .get_account_master_view_seed(old_expected_state_object.account_id, &mut conn)
+            .await?;
+
+        let recovery_seed_stream = &indexed_master_view_seed.recovery_seed_csprng;
+        assert_csprng_state(recovery_seed_stream, recovery_seed_stream.seed, 2);
+
+        let share_seed_stream = &indexed_master_view_seed.share_seed_csprng;
+        assert_csprng_state(share_seed_stream, share_seed_stream.seed, 2);
+
+        // Assert that the next expected state object is indexed correctly
+        let expected_recovery_stream_seed = recovery_seed_stream.get_ith(1);
+        let expected_share_stream_seed = share_seed_stream.get_ith(1);
+        let next_expected_state_object = ExpectedStateObject::new(
+            indexed_master_view_seed.account_id,
+            indexed_master_view_seed.owner_address,
+            expected_recovery_stream_seed,
+            expected_share_stream_seed,
+        );
+
+        let indexed_next_expected_state_object = db_client
+            .get_expected_state_object(next_expected_state_object.nullifier, &mut conn)
+            .await?
+            .ok_or(DbError::custom("Next expected state object not found"))?;
+
+        assert_eq!(indexed_next_expected_state_object, next_expected_state_object);
+
+        // Assert that the old expected state object is deleted
+        let maybe_deleted_expected_state_object = db_client
+            .get_expected_state_object(old_expected_state_object.nullifier, &mut conn)
+            .await?;
+
+        assert!(maybe_deleted_expected_state_object.is_none());
+
+        Ok(())
+    }
+
+    /// Test that a state object's first nullifier spend is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_new_balance_nullifier_spend() -> Result<(), DbError> {
+        let test_db_client = setup_test_db_client().await?;
+        let db_client = test_db_client.get_client();
+        let mut conn = db_client.get_db_conn().await?;
+
+        let expected_state_object = setup_expected_state_object(db_client).await?;
+        let (nullifier_spend_data, wrapped_balance) =
+            gen_new_balance_nullifier_spend_data(&expected_state_object);
+
+        // Index the new balance's nullifier spend
+        db_client.index_nullifier_spend(nullifier_spend_data.clone()).await?;
+
+        validate_new_generic_state_object_indexing(db_client, &wrapped_balance).await?;
+
+        // Assert that the indexed balance object matches the expected balance object
+        let indexed_balance_object =
+            db_client.get_balance(expected_state_object.recovery_stream.seed, &mut conn).await?;
+
+        assert_eq!(indexed_balance_object.balance, wrapped_balance.inner);
+
+        validate_expected_state_object_rotation(db_client, &expected_state_object).await?;
+
+        // Assert that the nullifier is marked as processed
+        assert!(db_client.nullifier_processed(nullifier_spend_data.nullifier, &mut conn).await?);
+
+        cleanup_test_db(test_db_client).await
     }
 }

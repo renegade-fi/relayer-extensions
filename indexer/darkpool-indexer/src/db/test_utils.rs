@@ -1,11 +1,20 @@
 //! Common utilities for DB tests
 
+use alloy::primitives::Address;
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, AsyncMigrationHarness, AsyncPgConnection, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use postgresql_embedded::PostgreSQL;
+use rand::thread_rng;
+use renegade_circuit_types::csprng::PoseidonCSPRNG;
+use renegade_constants::Scalar;
+use uuid::Uuid;
 
-use crate::db::{client::DbClient, error::DbError};
+use crate::{
+    crypto_mocks::recovery_stream::sample_nullifier,
+    db::{client::DbClient, error::DbError},
+    types::MasterViewSeed,
+};
 
 // -------------
 // | Constants |
@@ -34,9 +43,9 @@ impl TestDbClient {
     }
 }
 
-// -----------
-// | Helpers |
-// -----------
+// -------------------
+// | Test DB Helpers |
+// -------------------
 
 /// Set up a test database client targeting a local PostgreSQL instance
 pub async fn setup_test_db_client() -> Result<TestDbClient, DbError> {
@@ -96,4 +105,38 @@ pub async fn cleanup_test_db(test_db_client: TestDbClient) -> Result<(), DbError
 async fn create_unpooled_conn(test_db_client: &TestDbClient) -> Result<AsyncPgConnection, DbError> {
     let db_url = test_db_client.postgres.settings().url(TEST_DB_NAME);
     AsyncPgConnection::establish(&db_url).await.map_err(DbError::custom)
+}
+
+// ---------------------
+// | Test Data Helpers |
+// ---------------------
+
+/// Generate a random master view seed
+pub fn gen_random_master_view_seed() -> MasterViewSeed {
+    let account_id = Uuid::new_v4();
+    let owner_address = Address::random();
+    let seed = Scalar::random(&mut thread_rng());
+
+    MasterViewSeed::new(account_id, owner_address, seed)
+}
+
+/// Compute the first nullifier of the nth expected state object for the given
+/// master view seed.
+pub fn get_expected_object_nullifier(
+    master_view_seed: &MasterViewSeed,
+    object_number: u64,
+) -> Scalar {
+    let recovery_stream_seed = master_view_seed.recovery_seed_csprng.get_ith(object_number);
+    let recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
+    sample_nullifier(&recovery_stream, 0 /* version */)
+}
+
+// --------------------------
+// | Test Assertion Helpers |
+// --------------------------
+
+/// Assert that a CSPRNG is in the expected state
+pub fn assert_csprng_state(csprng: &PoseidonCSPRNG, expected_seed: Scalar, expected_index: u64) {
+    assert_eq!(csprng.seed, expected_seed);
+    assert_eq!(csprng.index, expected_index);
 }
