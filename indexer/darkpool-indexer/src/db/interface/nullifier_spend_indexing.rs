@@ -74,6 +74,7 @@ impl DbClient {
             self.get_generic_state_object_for_nullifier(nullifier, conn).await?;
 
         generic_state_object.update(&updated_public_shares, updated_shares_index);
+        self.update_generic_state_object(generic_state_object.clone(), conn).await?;
 
         // Update the associated typed state object
         match generic_state_object.object_type {
@@ -81,7 +82,7 @@ impl DbClient {
                 self.update_intent_state_object(&generic_state_object, conn).await
             },
             StateObjectType::Balance => {
-                self.update_balance_state_object(generic_state_object, conn).await
+                self.update_balance_state_object(&generic_state_object, conn).await
             },
         }
     }
@@ -216,7 +217,7 @@ impl DbClient {
     /// object
     async fn update_balance_state_object(
         &self,
-        generic_state_object: GenericStateObject,
+        generic_state_object: &GenericStateObject,
         conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let wrapped_balance = generic_state_object.reconstruct_circuit_type::<Balance>();
@@ -231,17 +232,16 @@ mod tests {
     use std::fmt::Debug;
 
     use alloy::primitives::Address;
+    use rand::{Rng, thread_rng};
     use renegade_circuit_types::{
-        balance::Balance,
+        Amount,
+        balance::{Balance, BalanceShare},
         state_wrapper::StateWrapper,
         traits::{BaseType, CircuitBaseType, SecretShareBaseType, SecretShareType},
     };
 
-    use crate::{
-        crypto_mocks::recovery_stream::peek_nullifier,
-        db::test_utils::{
-            assert_csprng_state, cleanup_test_db, gen_random_master_view_seed, setup_test_db_client,
-        },
+    use crate::db::test_utils::{
+        assert_csprng_state, cleanup_test_db, gen_random_master_view_seed, setup_test_db_client,
     };
 
     use super::*;
@@ -277,11 +277,17 @@ mod tests {
             one_time_authority,
         );
 
-        let wrapped_balance = StateWrapper::new(
+        let mut wrapped_balance = StateWrapper::new(
             balance,
             expected_state_object.share_stream.seed,
             expected_state_object.recovery_stream.seed,
         );
+
+        // New state objects start at version 1 (after their 0th nullifier has been
+        // spent).
+        // This means their initial recovery stream index is 2 (version = index - 1).
+        wrapped_balance.recovery_stream.advance_by(2);
+
         let updated_public_shares = wrapped_balance.public_share().to_scalars();
 
         let nullifier_spend_data = NullifierSpendData {
@@ -295,8 +301,56 @@ mod tests {
         (nullifier_spend_data, wrapped_balance)
     }
 
-    /// Validate the indexing of a new generic state object
-    async fn validate_new_generic_state_object_indexing<T>(
+    /// Generate the nullifier spend data which should result in the given
+    /// balance being updated with a deposit.
+    ///
+    /// Returns the nullifier spend data, along with the updated balance.
+    fn gen_deposit_nullifier_spend_data(
+        initial_balance: &StateWrapper<Balance>,
+    ) -> (NullifierSpendData, StateWrapper<Balance>) {
+        let spent_nullifier = initial_balance.compute_nullifier();
+
+        let mut updated_balance = initial_balance.clone();
+
+        // Advance the recovery stream to indicate the next object version
+        updated_balance.recovery_stream.advance_by(1);
+
+        // Apply a random deposit amount to the balance
+        let deposit_amount: Amount = thread_rng().r#gen();
+        updated_balance.inner.amount += deposit_amount;
+
+        // We re-encrypt only the updated shares of the balance, which in this case
+        // pertain only to the amount
+        let updated_balance_amount = updated_balance.inner.amount;
+        let updated_public_shares =
+            updated_balance.stream_cipher_encrypt(&updated_balance_amount).to_scalars();
+
+        // The balance amount is the last field in the secret-sharing of the balance.
+        // We compute the updated shares index accordingly.
+        let updated_shares_index = Balance::NUM_SCALARS - Amount::NUM_SCALARS;
+
+        // We write the updated public shares to the appropriate slice of the total
+        // public sharing of the balance
+        let mut all_public_shares = updated_balance.public_share().to_scalars();
+        all_public_shares[updated_shares_index..].copy_from_slice(&updated_public_shares);
+        updated_balance.public_share =
+            BalanceShare::from_scalars(&mut all_public_shares.into_iter());
+
+        // Construct the associated nullifier spend data
+        let nullifier_spend_data = NullifierSpendData {
+            nullifier: spent_nullifier,
+            block_number: 0,
+            state_object_type: StateObjectType::Balance,
+            updated_public_shares,
+            updated_shares_index,
+        };
+
+        (nullifier_spend_data, updated_balance)
+    }
+
+    /// Validate the indexing of a generic state object against the expected
+    /// circuit type
+    async fn validate_generic_state_object_indexing<T>(
         db_client: &DbClient,
         expected_reconstructed_object: &StateWrapper<T>,
     ) -> Result<(), DbError>
@@ -307,24 +361,26 @@ mod tests {
     {
         let mut conn = db_client.get_db_conn().await?;
 
-        let nullifier = peek_nullifier(&expected_reconstructed_object.recovery_stream, 1);
+        let nullifier = expected_reconstructed_object.compute_nullifier();
         let indexed_generic_state_object =
             db_client.get_generic_state_object_for_nullifier(nullifier, &mut conn).await?;
 
         // Assert that the indexed generic state object's CSPRNG states are correctly
         // advanced
         let indexed_recovery_stream = &indexed_generic_state_object.recovery_stream;
+        let expected_recovery_stream = &expected_reconstructed_object.recovery_stream;
         assert_csprng_state(
             indexed_recovery_stream,
-            expected_reconstructed_object.recovery_stream.seed,
-            2, // expected_index
+            expected_recovery_stream.seed,
+            expected_recovery_stream.index,
         );
 
         let indexed_share_stream = &indexed_generic_state_object.share_stream;
+        let expected_share_stream = &expected_reconstructed_object.share_stream;
         assert_csprng_state(
             indexed_share_stream,
-            expected_reconstructed_object.share_stream.seed,
-            T::NUM_SCALARS as u64, // expected_index
+            expected_share_stream.seed,
+            expected_share_stream.index,
         );
 
         // Assert that the indexed generic state object's shares properly reconstruct
@@ -404,7 +460,7 @@ mod tests {
         // Index the new balance's nullifier spend
         db_client.index_nullifier_spend(nullifier_spend_data.clone()).await?;
 
-        validate_new_generic_state_object_indexing(db_client, &wrapped_balance).await?;
+        validate_generic_state_object_indexing(db_client, &wrapped_balance).await?;
 
         // Assert that the indexed balance object matches the expected balance object
         let indexed_balance_object =
@@ -416,6 +472,46 @@ mod tests {
 
         // Assert that the nullifier is marked as processed
         assert!(db_client.nullifier_processed(nullifier_spend_data.nullifier, &mut conn).await?);
+
+        cleanup_test_db(test_db_client).await
+    }
+
+    /// Test that a nullifier spend of an existing state object is indexed
+    /// correctly
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_existing_balance_nullifier_spend() -> Result<(), DbError> {
+        let test_db_client = setup_test_db_client().await?;
+        let db_client = test_db_client.get_client();
+        let mut conn = db_client.get_db_conn().await?;
+
+        let expected_state_object = setup_expected_state_object(db_client).await?;
+        let (initial_nullifier_spend_data, initial_wrapped_balance) =
+            gen_new_balance_nullifier_spend_data(&expected_state_object);
+
+        // Index the new balance's nullifier spend
+        db_client.index_nullifier_spend(initial_nullifier_spend_data.clone()).await?;
+
+        // Generate subsequent nullifier spend data
+        let (deposit_nullifier_spend_data, updated_wrapped_balance) =
+            gen_deposit_nullifier_spend_data(&initial_wrapped_balance);
+
+        // Index subsequent nullifier spend
+        db_client.index_nullifier_spend(deposit_nullifier_spend_data.clone()).await?;
+
+        validate_generic_state_object_indexing(db_client, &updated_wrapped_balance).await?;
+
+        // Assert that the indexed balance object matches the updated balance
+        let indexed_balance_object =
+            db_client.get_balance(updated_wrapped_balance.recovery_stream.seed, &mut conn).await?;
+
+        assert_eq!(indexed_balance_object.balance, updated_wrapped_balance.inner);
+
+        // Assert that the nullifier is marked as processed
+        assert!(
+            db_client
+                .nullifier_processed(deposit_nullifier_spend_data.nullifier, &mut conn)
+                .await?
+        );
 
         cleanup_test_db(test_db_client).await
     }

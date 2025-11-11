@@ -261,7 +261,7 @@ pub struct ProcessedNullifierModel {
 // === Generic State Objects Table ===
 
 /// A generic state object record
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::db::schema::generic_state_objects)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct GenericStateObjectModel {

@@ -22,7 +22,6 @@ impl DbClient {
     // -----------
 
     /// Insert a balance record representing a newly-created balance
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_balance(
         &self,
         balance: BalanceStateObject,

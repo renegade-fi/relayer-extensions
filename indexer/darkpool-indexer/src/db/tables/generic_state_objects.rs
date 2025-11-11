@@ -22,7 +22,6 @@ impl DbClient {
 
     /// Insert a generic state object record representing a newly-created state
     /// object
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_generic_state_object(
         &self,
         generic_state_object: GenericStateObject,
@@ -32,6 +31,25 @@ impl DbClient {
 
         diesel::insert_into(generic_state_objects::table)
             .values(generic_state_object_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
+    /// Update a generic state object record
+    pub async fn update_generic_state_object(
+        &self,
+        generic_state_object: GenericStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let generic_state_object_model: GenericStateObjectModel = generic_state_object.into();
+        let recovery_stream_seed = generic_state_object_model.recovery_stream_seed.clone();
+
+        diesel::update(generic_state_objects::table)
+            .filter(generic_state_objects::recovery_stream_seed.eq(recovery_stream_seed))
+            .set(generic_state_object_model)
             .execute(conn)
             .await
             .map_err(DbError::query)?;
