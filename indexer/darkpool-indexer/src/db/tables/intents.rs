@@ -2,13 +2,14 @@
 
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
+use renegade_circuit_types::intent::Intent;
 use renegade_constants::Scalar;
 
 use crate::{
     db::{
         client::{DbClient, DbConn},
         error::DbError,
-        models::IntentModel,
+        models::{IntentCoreChangeset, IntentModel},
         schema::intents,
         utils::scalar_to_bigdecimal,
     },
@@ -21,7 +22,6 @@ impl DbClient {
     // -----------
 
     /// Insert an intent record representing a newly-created intent
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_intent(
         &self,
         intent: IntentStateObject,
@@ -31,6 +31,26 @@ impl DbClient {
 
         diesel::insert_into(intents::table)
             .values(intent_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
+    /// Update the core fields of an intent from the corresponding circuit type
+    pub async fn update_intent_core(
+        &self,
+        recovery_stream_seed: Scalar,
+        intent: Intent,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let intent_core_changeset: IntentCoreChangeset = intent.into();
+
+        diesel::update(intents::table)
+            .filter(intents::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .set(intent_core_changeset)
             .execute(conn)
             .await
             .map_err(DbError::query)?;

@@ -1,11 +1,7 @@
 //! High-level interface for indexing nullifier spends
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{
-    balance::BalanceShare,
-    intent::IntentShare,
-    traits::{BaseType, SecretShareType},
-};
+use renegade_circuit_types::{balance::Balance, intent::Intent};
 use tracing::{info, warn};
 
 use crate::{
@@ -51,8 +47,7 @@ impl DbClient {
                     )
                     .await?;
                 } else {
-                    // TODO: Handle nullifier spend messages for existing state
-                    // objects
+                    self.handle_existing_object_nullifier_spend(nullifier_spend_data, conn).await?;
                 }
 
                 // Mark the nullifier as processed
@@ -63,6 +58,32 @@ impl DbClient {
         .await?;
 
         Ok(())
+    }
+
+    /// Handle the spending of an existing state object's nullifier
+    async fn handle_existing_object_nullifier_spend(
+        &self,
+        nullifier_spend_data: NullifierSpendData,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let NullifierSpendData { nullifier, updated_public_shares, updated_shares_index, .. } =
+            nullifier_spend_data;
+
+        // Update the public & private shares of the associated generic state object
+        let mut generic_state_object =
+            self.get_generic_state_object_for_nullifier(nullifier, conn).await?;
+
+        generic_state_object.update(&updated_public_shares, updated_shares_index);
+
+        // Update the associated typed state object
+        match generic_state_object.object_type {
+            StateObjectType::Intent => {
+                self.update_intent_state_object(&generic_state_object, conn).await
+            },
+            StateObjectType::Balance => {
+                self.update_balance_state_object(generic_state_object, conn).await
+            },
+        }
     }
 
     /// Handle the spending of a state object's first nullifier
@@ -90,10 +111,10 @@ impl DbClient {
         // Create the appropriate typed state object
         match generic_state_object.object_type {
             StateObjectType::Intent => {
-                self.create_intent_state_object(generic_state_object, conn).await?
+                self.create_intent_state_object(&generic_state_object, conn).await?
             },
             StateObjectType::Balance => {
-                self.create_balance_state_object(generic_state_object, conn).await?
+                self.create_balance_state_object(&generic_state_object, conn).await?
             },
         };
 
@@ -115,7 +136,7 @@ impl DbClient {
     /// Create an intent state object from a newly-created generic state object
     async fn create_intent_state_object(
         &self,
-        generic_state_object: GenericStateObject,
+        generic_state_object: &GenericStateObject,
         conn: &mut DbConn,
     ) -> Result<(), DbError> {
         // First, check if the associated intent object already exists in the DB.
@@ -132,13 +153,7 @@ impl DbClient {
             return Ok(());
         }
 
-        let intent_public_share =
-            IntentShare::from_scalars(&mut generic_state_object.public_shares.into_iter());
-
-        let intent_private_share =
-            IntentShare::from_scalars(&mut generic_state_object.private_shares.into_iter());
-
-        let intent = intent_public_share.add_shares(&intent_private_share);
+        let intent = generic_state_object.reconstruct_circuit_type::<Intent>().inner;
 
         let intent_state_object = IntentStateObject::new(
             intent,
@@ -151,10 +166,23 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update an existing intent state object from the given generic state
+    /// object
+    async fn update_intent_state_object(
+        &self,
+        generic_state_object: &GenericStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let wrapped_intent = generic_state_object.reconstruct_circuit_type::<Intent>();
+
+        self.update_intent_core(wrapped_intent.recovery_stream.seed, wrapped_intent.inner, conn)
+            .await
+    }
+
     /// Create a balance state object from a newly-created generic state object
     async fn create_balance_state_object(
         &self,
-        generic_state_object: GenericStateObject,
+        generic_state_object: &GenericStateObject,
         conn: &mut DbConn,
     ) -> Result<(), DbError> {
         // First, check if the associated balance object already exists in the DB.
@@ -171,13 +199,7 @@ impl DbClient {
             return Ok(());
         }
 
-        let balance_public_share =
-            BalanceShare::from_scalars(&mut generic_state_object.public_shares.into_iter());
-
-        let balance_private_share =
-            BalanceShare::from_scalars(&mut generic_state_object.private_shares.into_iter());
-
-        let balance = balance_public_share.add_shares(&balance_private_share);
+        let balance = generic_state_object.reconstruct_circuit_type::<Balance>().inner;
 
         let balance_state_object = BalanceStateObject::new(
             balance,
@@ -189,6 +211,19 @@ impl DbClient {
 
         Ok(())
     }
+
+    /// Update an existing balance state object from the given generic state
+    /// object
+    async fn update_balance_state_object(
+        &self,
+        generic_state_object: GenericStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let wrapped_balance = generic_state_object.reconstruct_circuit_type::<Balance>();
+
+        self.update_balance_core(wrapped_balance.recovery_stream.seed, wrapped_balance.inner, conn)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -199,11 +234,14 @@ mod tests {
     use renegade_circuit_types::{
         balance::Balance,
         state_wrapper::StateWrapper,
-        traits::{CircuitBaseType, SecretShareBaseType},
+        traits::{BaseType, CircuitBaseType, SecretShareBaseType, SecretShareType},
     };
 
-    use crate::db::test_utils::{
-        assert_csprng_state, cleanup_test_db, gen_random_master_view_seed, setup_test_db_client,
+    use crate::{
+        crypto_mocks::recovery_stream::peek_nullifier,
+        db::test_utils::{
+            assert_csprng_state, cleanup_test_db, gen_random_master_view_seed, setup_test_db_client,
+        },
     };
 
     use super::*;
@@ -268,9 +306,10 @@ mod tests {
         <T::ShareType as SecretShareType>::Base: Into<T>,
     {
         let mut conn = db_client.get_db_conn().await?;
-        let indexed_generic_state_object = db_client
-            .get_generic_state_object(expected_reconstructed_object.recovery_stream.seed, &mut conn)
-            .await?;
+
+        let nullifier = peek_nullifier(&expected_reconstructed_object.recovery_stream, 1);
+        let indexed_generic_state_object =
+            db_client.get_generic_state_object_for_nullifier(nullifier, &mut conn).await?;
 
         // Assert that the indexed generic state object's CSPRNG states are correctly
         // advanced
@@ -278,7 +317,7 @@ mod tests {
         assert_csprng_state(
             indexed_recovery_stream,
             expected_reconstructed_object.recovery_stream.seed,
-            1, // expected_index
+            2, // expected_index
         );
 
         let indexed_share_stream = &indexed_generic_state_object.share_stream;

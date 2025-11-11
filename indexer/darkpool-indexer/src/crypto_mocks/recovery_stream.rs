@@ -30,9 +30,16 @@ pub fn create_recovery_seed_csprng(master_view_seed: Scalar) -> PoseidonCSPRNG {
     PoseidonCSPRNG::new(csprng_seed)
 }
 
-/// Sample the nullifier for the given object version from the provided recovery
-/// stream
-pub fn sample_nullifier(recovery_stream: &PoseidonCSPRNG, version: u64) -> Scalar {
+/// Generate the nullifier for the given object version from the provided
+/// recovery stream, without mutating its state
+pub fn peek_nullifier(recovery_stream: &PoseidonCSPRNG, version: u64) -> Scalar {
     let recovery_id = recovery_stream.get_ith(version);
+    compute_poseidon_hash(&[recovery_id, recovery_stream.seed])
+}
+
+/// Sample the next nullifier from the provided recovery stream, advancing its
+/// state
+pub fn sample_next_nullifier(recovery_stream: &mut PoseidonCSPRNG) -> Scalar {
+    let recovery_id = recovery_stream.next().unwrap();
     compute_poseidon_hash(&[recovery_id, recovery_stream.seed])
 }

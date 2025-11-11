@@ -11,7 +11,7 @@ use renegade_constants::Scalar;
 use uuid::Uuid;
 
 use crate::{
-    crypto_mocks::recovery_stream::sample_nullifier,
+    crypto_mocks::recovery_stream::peek_nullifier,
     db::{client::DbClient, error::DbError},
     types::MasterViewSeed,
 };
@@ -128,7 +128,7 @@ pub fn get_expected_object_nullifier(
 ) -> Scalar {
     let recovery_stream_seed = master_view_seed.recovery_seed_csprng.get_ith(object_number);
     let recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
-    sample_nullifier(&recovery_stream, 0 /* version */)
+    peek_nullifier(&recovery_stream, 0 /* version */)
 }
 
 // --------------------------

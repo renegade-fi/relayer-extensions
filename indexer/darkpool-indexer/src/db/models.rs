@@ -309,7 +309,8 @@ impl From<GenericStateObject> for GenericStateObjectModel {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
         let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
 
-        let version_bigdecimal = recovery_stream.index.into();
+        // The object's current version is the previous index in the recovery stream
+        let version_bigdecimal = (recovery_stream.index - 1).into();
         let share_stream_index_bigdecimal = share_stream.index.into();
 
         let owner_address_string = owner_address.to_string();
@@ -358,7 +359,10 @@ impl From<GenericStateObjectModel> for GenericStateObject {
         let nullifier_scalar = bigdecimal_to_scalar(nullifier);
         let share_stream_seed_scalar = bigdecimal_to_scalar(share_stream_seed);
 
+        // The object's version is given by the *previous* index in the recovery stream
         let version_u64 = version.to_u64().expect("Version cannot be converted to u64");
+        let recovery_stream_index = version_u64 + 1;
+
         let share_stream_index_u64 =
             share_stream_index.to_u64().expect("Share stream index cannot be converted to u64");
 
@@ -369,7 +373,8 @@ impl From<GenericStateObjectModel> for GenericStateObject {
         let private_shares_scalars = private_shares.into_iter().map(bigdecimal_to_scalar).collect();
 
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed_scalar);
-        recovery_stream.index = version_u64;
+
+        recovery_stream.index = recovery_stream_index;
 
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed_scalar);
         share_stream.index = share_stream_index_u64;
@@ -511,6 +516,45 @@ impl From<IntentModel> for IntentStateObject {
     }
 }
 
+/// A changeset for updating the core fields of an intent, which are committed
+/// to onchain
+#[derive(AsChangeset)]
+#[diesel(table_name = crate::db::schema::intents)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct IntentCoreChangeset {
+    /// The mint of the input token in the intent
+    pub input_mint: String,
+    /// The mint of the output token in the intent
+    pub output_mint: String,
+    /// The address of the intent's owner
+    pub owner_address: String,
+    /// The minimum price at which the intent can be filled
+    pub min_price: BigDecimal,
+    /// The amount of the input token to be traded via the intent
+    pub input_amount: BigDecimal,
+}
+
+impl From<Intent> for IntentCoreChangeset {
+    fn from(value: Intent) -> Self {
+        let Intent { in_token, out_token, owner, min_price, amount_in } = value;
+
+        let input_mint_string = in_token.to_string();
+        let output_mint_string = out_token.to_string();
+        let owner_address_string = owner.to_string();
+
+        let min_price_bigdecimal = fixed_point_to_bigdecimal(min_price);
+        let input_amount_bigdecimal = amount_in.into();
+
+        IntentCoreChangeset {
+            input_mint: input_mint_string,
+            output_mint: output_mint_string,
+            owner_address: owner_address_string,
+            min_price: min_price_bigdecimal,
+            input_amount: input_amount_bigdecimal,
+        }
+    }
+}
+
 // === Balances Table ===
 
 /// A balance record
@@ -636,6 +680,60 @@ impl From<BalanceModel> for BalanceStateObject {
             account_id,
             active,
             allow_public_fills,
+        }
+    }
+}
+
+/// A changeset for updating the core fields of a balance, which are committed
+/// to onchain
+#[derive(AsChangeset)]
+#[diesel(table_name = crate::db::schema::balances)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct BalanceCoreChangeset {
+    /// The mint of the token in the balance
+    pub mint: String,
+    /// The address of the balance's owner
+    pub owner_address: String,
+    /// The address to which the relayer fees are paid
+    pub relayer_fee_recipient: String,
+    /// A one-time signing authority for the balance
+    pub one_time_authority: String,
+    /// The protocol fee owed on this balance
+    pub protocol_fee: BigDecimal,
+    /// The relayer fee owed on this balance
+    pub relayer_fee: BigDecimal,
+    /// The amount of the token in the balance
+    pub amount: BigDecimal,
+}
+
+impl From<Balance> for BalanceCoreChangeset {
+    fn from(value: Balance) -> Self {
+        let Balance {
+            mint,
+            owner,
+            relayer_fee_recipient,
+            one_time_authority,
+            protocol_fee_balance,
+            relayer_fee_balance,
+            amount,
+        } = value;
+
+        let mint_string = mint.to_string();
+        let owner_address_string = owner.to_string();
+        let relayer_fee_recipient_string = relayer_fee_recipient.to_string();
+        let one_time_authority_string = one_time_authority.to_string();
+        let protocol_fee_bigdecimal = protocol_fee_balance.into();
+        let relayer_fee_bigdecimal = relayer_fee_balance.into();
+        let amount_bigdecimal = amount.into();
+
+        BalanceCoreChangeset {
+            mint: mint_string,
+            owner_address: owner_address_string,
+            relayer_fee_recipient: relayer_fee_recipient_string,
+            one_time_authority: one_time_authority_string,
+            protocol_fee: protocol_fee_bigdecimal,
+            relayer_fee: relayer_fee_bigdecimal,
+            amount: amount_bigdecimal,
         }
     }
 }

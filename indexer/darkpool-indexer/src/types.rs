@@ -4,12 +4,19 @@
 // TODO: Find a better location for this module?
 
 use alloy::primitives::Address;
-use renegade_circuit_types::{Amount, balance::Balance, csprng::PoseidonCSPRNG, intent::Intent};
+use renegade_circuit_types::{
+    Amount,
+    balance::Balance,
+    csprng::PoseidonCSPRNG,
+    intent::Intent,
+    state_wrapper::StateWrapper,
+    traits::{BaseType, CircuitBaseType, SecretShareBaseType, SecretShareType},
+};
 use renegade_constants::Scalar;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
-    recovery_stream::{create_recovery_seed_csprng, sample_nullifier},
+    recovery_stream::{create_recovery_seed_csprng, peek_nullifier, sample_next_nullifier},
     share_stream::create_share_seed_csprng,
 };
 
@@ -92,7 +99,7 @@ impl ExpectedStateObject {
         let recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
         let share_stream = PoseidonCSPRNG::new(share_stream_seed);
 
-        let expected_nullifier = sample_nullifier(&recovery_stream, 0 /* version */);
+        let expected_nullifier = peek_nullifier(&recovery_stream, 0 /* version */);
 
         Self {
             nullifier: expected_nullifier,
@@ -119,7 +126,7 @@ pub enum StateObjectType {
 pub struct GenericStateObject {
     /// The object's recovery stream.
     ///
-    /// The stream's index is, equivalently, the object's version.
+    /// The object's version is the previous index in the recovery stream.
     pub recovery_stream: PoseidonCSPRNG,
     /// The object's share stream
     pub share_stream: PoseidonCSPRNG,
@@ -151,10 +158,12 @@ impl GenericStateObject {
         public_shares: Vec<Scalar>,
     ) -> Self {
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
-        // New state objects are created at version 1
+        // New state objects are created after the first (0th) nullifier has been spent
         recovery_stream.advance_by(1);
 
-        let nullifier = sample_nullifier(&recovery_stream, 1 /* version */);
+        // Sample the object's current (unspent) nullifier, advancing the recovery
+        // stream's state
+        let nullifier = sample_next_nullifier(&mut recovery_stream);
 
         // Generate the private shares for the state object
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed);
@@ -170,6 +179,46 @@ impl GenericStateObject {
             owner_address,
             public_shares,
             private_shares,
+        }
+    }
+
+    /// Update the generic state object with the given updated public shares
+    pub fn update(&mut self, updated_public_shares: &[Scalar], updated_shares_index: usize) {
+        // Sample the object's new (unspent) nullifier, advancing the recovery
+        // stream's state
+        let nullifier = sample_next_nullifier(&mut self.recovery_stream);
+        self.nullifier = nullifier;
+
+        // Overwrite the appropriate slice of the public & private shares
+        let updated_private_shares: Vec<Scalar> =
+            self.share_stream.by_ref().take(updated_public_shares.len()).collect();
+
+        let start_index = updated_shares_index;
+        let end_index = start_index + updated_public_shares.len();
+
+        self.public_shares[start_index..end_index].copy_from_slice(updated_public_shares);
+        self.private_shares[start_index..end_index].copy_from_slice(&updated_private_shares);
+    }
+
+    /// Reconstruct a circuit type from the public & private shares stored on
+    /// the generic state object
+    pub fn reconstruct_circuit_type<T>(&self) -> StateWrapper<T>
+    where
+        T: SecretShareBaseType + CircuitBaseType,
+        T::ShareType: CircuitBaseType,
+        <T::ShareType as SecretShareType>::Base: Into<T>,
+    {
+        let public_share = T::ShareType::from_scalars(&mut self.public_shares.clone().into_iter());
+        let private_share =
+            T::ShareType::from_scalars(&mut self.private_shares.clone().into_iter());
+
+        let inner = public_share.add_shares(&private_share).into();
+
+        StateWrapper {
+            recovery_stream: self.recovery_stream.clone(),
+            share_stream: self.share_stream.clone(),
+            inner,
+            public_share,
         }
     }
 }

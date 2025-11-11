@@ -43,16 +43,16 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get a generic state object by its recovery stream seed
-    pub async fn get_generic_state_object(
+    /// Get the generic state object associated with the given nullifier
+    pub async fn get_generic_state_object_for_nullifier(
         &self,
-        recovery_stream_seed: Scalar,
+        nullifier: Scalar,
         conn: &mut DbConn,
     ) -> Result<GenericStateObject, DbError> {
-        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
 
         generic_state_objects::table
-            .filter(generic_state_objects::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .filter(generic_state_objects::nullifier.eq(nullifier_bigdecimal))
             .first(conn)
             .await
             .map_err(DbError::query)
