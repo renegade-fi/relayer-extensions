@@ -1,6 +1,7 @@
 //! Defines the indexer struct, a dependency injection container which stores
 //! handles to shared resources
 
+use alloy::providers::{DynProvider, Provider, ProviderBuilder, WsConnect};
 use aws_config::Region;
 use aws_sdk_sqs::Client as SqsClient;
 
@@ -15,6 +16,8 @@ pub struct Indexer {
     pub db: DbClient,
     /// The AWS SQS client
     pub sqs_client: SqsClient,
+    /// The WebSocket Ethereum RPC provider
+    pub ws_provider: DynProvider,
 }
 
 impl Indexer {
@@ -29,8 +32,13 @@ impl Indexer {
 
         let sqs_client = SqsClient::new(&config);
 
+        // Set up the WebSocket RPC provider
+        let ws = WsConnect::new(&cli.ws_rpc_url);
+        let ws_provider =
+            ProviderBuilder::default().connect_ws(ws).await.map_err(IndexerError::rpc)?.erased();
+
         // TODO: Parse remaining CLI arguments
 
-        Ok(Self { db, sqs_client })
+        Ok(Self { db, sqs_client, ws_provider })
     }
 }
