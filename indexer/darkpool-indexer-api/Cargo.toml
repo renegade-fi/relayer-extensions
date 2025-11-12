@@ -8,6 +8,9 @@ edition = "2024"
 renegade-constants = { workspace = true }
 ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
 
+# === Blockchain === #
+alloy-primitives = { workspace = true }
+
 # === Misc === #
 serde = "1.0"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }

@@ -11,4 +11,15 @@ pub enum IndexerError {
     /// An error in an API handler
     #[error("API handler error: {0}")]
     ApiHandler(#[from] HandlerError),
+    /// An error in the RPC client
+    #[error("RPC client error: {0}")]
+    Rpc(String),
+}
+
+#[allow(clippy::needless_pass_by_value)]
+impl IndexerError {
+    /// Create a new RPC error
+    pub fn rpc<T: ToString>(msg: T) -> Self {
+        Self::Rpc(msg.to_string())
+    }
 }

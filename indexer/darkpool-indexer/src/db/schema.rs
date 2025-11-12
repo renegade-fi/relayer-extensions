@@ -7,13 +7,14 @@ pub mod sql_types {
 }
 
 diesel::table! {
-    balances (identifier_seed) {
-        identifier_seed -> Numeric,
+    balances (recovery_stream_seed) {
+        recovery_stream_seed -> Numeric,
         account_id -> Uuid,
         active -> Bool,
         mint -> Text,
         owner_address -> Text,
-        one_time_key -> Text,
+        relayer_fee_recipient -> Text,
+        one_time_authority -> Text,
         protocol_fee -> Numeric,
         relayer_fee -> Numeric,
         amount -> Numeric,
@@ -22,12 +23,12 @@ diesel::table! {
 }
 
 diesel::table! {
-    expected_nullifiers (nullifier) {
+    expected_state_objects (nullifier) {
         nullifier -> Numeric,
         account_id -> Uuid,
         owner_address -> Text,
-        identifier_seed -> Numeric,
-        encryption_seed -> Numeric,
+        recovery_stream_seed -> Numeric,
+        share_stream_seed -> Numeric,
     }
 }
 
@@ -35,14 +36,15 @@ diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::ObjectType;
 
-    generic_state_objects (identifier_seed) {
-        identifier_seed -> Numeric,
+    generic_state_objects (recovery_stream_seed) {
+        recovery_stream_seed -> Numeric,
         account_id -> Uuid,
         active -> Bool,
         object_type -> ObjectType,
         nullifier -> Numeric,
         version -> Numeric,
-        encryption_seed -> Numeric,
+        share_stream_seed -> Numeric,
+        share_stream_index -> Numeric,
         owner_address -> Text,
         public_shares -> Array<Numeric>,
         private_shares -> Array<Numeric>,
@@ -50,8 +52,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    intents (identifier_seed) {
-        identifier_seed -> Numeric,
+    intents (recovery_stream_seed) {
+        recovery_stream_seed -> Numeric,
         account_id -> Uuid,
         active -> Bool,
         input_mint -> Text,
@@ -71,6 +73,8 @@ diesel::table! {
         account_id -> Uuid,
         owner_address -> Text,
         seed -> Numeric,
+        recovery_seed_csprng_index -> Numeric,
+        share_seed_csprng_index -> Numeric,
     }
 }
 
@@ -83,7 +87,7 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(
     balances,
-    expected_nullifiers,
+    expected_state_objects,
     generic_state_objects,
     intents,
     master_view_seeds,

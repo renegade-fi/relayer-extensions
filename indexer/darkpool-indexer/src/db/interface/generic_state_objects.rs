@@ -1,17 +1,18 @@
 //! Interface methods for interacting with the generic state objects table
 
-use bigdecimal::{BigDecimal, One};
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_constants::Scalar;
-use uuid::Uuid;
 
-use crate::db::{
-    client::{DbClient, DbConn},
-    error::DbError,
-    models::{GenericStateObject, ObjectType},
-    schema::generic_state_objects,
-    utils::scalar_to_bigdecimal,
+use crate::{
+    db::{
+        client::{DbClient, DbConn},
+        error::DbError,
+        models::GenericStateObjectModel,
+        schema::generic_state_objects,
+        utils::scalar_to_bigdecimal,
+    },
+    types::GenericStateObject,
 };
 
 impl DbClient {
@@ -24,41 +25,13 @@ impl DbClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_generic_state_object(
         &self,
-        identifier_seed: Scalar,
-        account_id: Uuid,
-        object_type: ObjectType,
-        nullifier: Scalar,
-        encryption_seed: Scalar,
-        owner_address: String,
-        public_shares: Vec<Scalar>,
-        private_shares: Vec<Scalar>,
+        generic_state_object: GenericStateObject,
         conn: &mut DbConn<'_>,
     ) -> Result<(), DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
-        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
-        let encryption_seed_bigdecimal = scalar_to_bigdecimal(encryption_seed);
-
-        let public_shares_bigdecimal =
-            public_shares.into_iter().map(scalar_to_bigdecimal).collect();
-
-        let private_shares_bigdecimal =
-            private_shares.into_iter().map(scalar_to_bigdecimal).collect();
-
-        let generic_state_object = GenericStateObject {
-            identifier_seed: identifier_seed_bigdecimal,
-            account_id,
-            active: true,
-            object_type,
-            nullifier: nullifier_bigdecimal,
-            version: BigDecimal::one(),
-            encryption_seed: encryption_seed_bigdecimal,
-            owner_address,
-            public_shares: public_shares_bigdecimal,
-            private_shares: private_shares_bigdecimal,
-        };
+        let generic_state_object_model: GenericStateObjectModel = generic_state_object.into();
 
         diesel::insert_into(generic_state_objects::table)
-            .values(generic_state_object)
+            .values(generic_state_object_model)
             .execute(conn)
             .await
             .map_err(DbError::query)?;
@@ -70,18 +43,19 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get a generic state object by its identifier seed
+    /// Get a generic state object by its recovery stream seed
     pub async fn get_generic_state_object(
         &self,
-        identifier_seed: Scalar,
+        recovery_stream_seed: Scalar,
         conn: &mut DbConn<'_>,
     ) -> Result<GenericStateObject, DbError> {
-        let identifier_seed_bigdecimal = scalar_to_bigdecimal(identifier_seed);
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
         generic_state_objects::table
-            .filter(generic_state_objects::identifier_seed.eq(identifier_seed_bigdecimal))
+            .filter(generic_state_objects::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first(conn)
             .await
             .map_err(DbError::query)
+            .map(GenericStateObjectModel::into)
     }
 }
