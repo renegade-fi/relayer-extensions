@@ -1,14 +1,14 @@
 //! Handler logic SQS messages polled by the darkpool indexer
 
-use alloy::{providers::Provider, rpc::types::TransactionReceipt};
+use alloy::providers::Provider;
 use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{MasterViewSeedMessage, NullifierSpendMessage, SqsMessage};
-use renegade_constants::Scalar;
 
 use crate::{
     api::handlers::error::HandlerError,
+    darkpool_client::indexing::StateObjectUpdate,
     indexer::Indexer,
-    types::{MasterViewSeed, NullifierSpendData, StateObjectType},
+    types::{MasterViewSeed, NullifierSpendData},
 };
 
 // -----------------------------
@@ -89,7 +89,7 @@ async fn fetch_nullifier_spend_data(
 ) -> Result<NullifierSpendData, HandlerError> {
     let tx_hash = nullifier_spend.tx_hash;
     let spend_tx = indexer
-        .ws_provider
+        .provider()
         .get_transaction_receipt(tx_hash)
         .await
         .map_err(HandlerError::rpc)?
@@ -99,11 +99,11 @@ async fn fetch_nullifier_spend_data(
         .block_number
         .ok_or(HandlerError::rpc(format!("Block number not found in tx {tx_hash:#x} receipt")))?;
 
-    let state_object_type =
-        get_updated_state_object_type(nullifier_spend.nullifier, &spend_tx, indexer).await?;
-
-    let (updated_public_shares, updated_shares_index) =
-        get_updated_public_shares(nullifier_spend.nullifier, &spend_tx, indexer).await?;
+    let StateObjectUpdate { state_object_type, updated_public_shares, updated_shares_index } =
+        indexer
+            .darkpool_client
+            .fetch_updated_public_shares(nullifier_spend.nullifier, tx_hash)
+            .await?;
 
     Ok(NullifierSpendData {
         nullifier: nullifier_spend.nullifier,
@@ -112,23 +112,4 @@ async fn fetch_nullifier_spend_data(
         updated_public_shares,
         updated_shares_index,
     })
-}
-
-/// Get the type of the state object associated with the spent nullifier
-async fn get_updated_state_object_type(
-    _nullifier: Scalar,
-    _tx: &TransactionReceipt,
-    _indexer: &Indexer,
-) -> Result<StateObjectType, HandlerError> {
-    todo!()
-}
-
-/// Get the updated public shares associated with a nullifier spend, along with
-/// their start index within the secret-sharing of the state object
-async fn get_updated_public_shares(
-    _nullifier: Scalar,
-    _tx: &TransactionReceipt,
-    _indexer: &Indexer,
-) -> Result<(Vec<Scalar>, usize), HandlerError> {
-    todo!()
 }

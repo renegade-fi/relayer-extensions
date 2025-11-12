@@ -2,7 +2,7 @@
 
 use aws_sdk_sqs::error::SdkError;
 
-use crate::db::error::DbError;
+use crate::{darkpool_client::error::DarkpoolClientError, db::error::DbError};
 
 /// Handler errors
 #[derive(Debug, thiserror::Error)]
@@ -16,6 +16,9 @@ pub enum HandlerError {
     /// An error with the RPC client
     #[error("RPC client error: {0}")]
     Rpc(String),
+    /// An error with the darkpool client
+    #[error("darkpool client error: {0}")]
+    DarkpoolClient(#[from] DarkpoolClientError),
     /// An error de/serializing a value
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),

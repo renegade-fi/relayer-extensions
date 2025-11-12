@@ -23,6 +23,7 @@ use crate::{
 mod api;
 mod cli;
 mod crypto_mocks;
+mod darkpool_client;
 mod db;
 mod indexer;
 mod types;

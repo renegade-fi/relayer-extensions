@@ -15,6 +15,13 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
+dependencies = [
+ "alloy",
+]
+
+[[package]]
+name = "abi"
+version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade-contracts#1186dd6b30d33a20278a78ade3554fd0bb7b73d4"
 dependencies = [
  "alloy",
@@ -1433,7 +1440,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auth-server"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "aes-gcm",
  "alloy",
  "alloy-primitives 1.4.1",
@@ -3358,7 +3365,7 @@ name = "darkpool-client"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git#a0099e2a8f236a84677007505d17a46910fee3a9"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-contract",
  "alloy-primitives 1.4.1",
@@ -3388,6 +3395,7 @@ dependencies = [
 name = "darkpool-indexer"
 version = "0.1.0"
 dependencies = [
+ "abi 0.1.0",
  "alloy",
  "aws-config",
  "aws-sdk-sqs",
@@ -4604,7 +4612,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 name = "funds-manager"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-dyn-abi",
  "alloy-json-rpc",
@@ -8052,7 +8060,7 @@ dependencies = [
 name = "renegade-solver"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-contract",
  "alloy-primitives 1.4.1",
