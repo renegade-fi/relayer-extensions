@@ -4,7 +4,9 @@
 // TODO: Find a better location for this module?
 
 use alloy::primitives::Address;
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
+use renegade_circuit_types::{
+    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, intent::Intent,
+};
 use renegade_constants::Scalar;
 use renegade_crypto::hash::compute_poseidon_hash;
 use uuid::Uuid;
@@ -12,6 +14,18 @@ use uuid::Uuid;
 use crate::crypto_mocks::{
     recovery_stream::create_recovery_seed_csprng, share_stream::create_share_seed_csprng,
 };
+
+// -------------
+// | Constants |
+// -------------
+
+/// The name of the global (default) relayer matching pool
+const GLOBAL_MATCHING_POOL: &str = "global";
+
+// ---------
+// | Types |
+// ---------
+
 /// An account's master view seed
 pub struct MasterViewSeed {
     /// The ID of the seed owner's account
@@ -143,6 +157,95 @@ impl GenericStateObject {
             owner_address,
             public_shares,
             private_shares,
+        }
+    }
+}
+
+/// A balance state object
+#[derive(Clone)]
+pub struct BalanceStateObject {
+    /// The underlying balance circuit type
+    pub balance: Balance,
+    /// The seed of the balance's recovery stream
+    pub recovery_stream_seed: Scalar,
+    /// The ID of the account which owns the balance
+    pub account_id: Uuid,
+    /// Whether the balance is active
+    pub active: bool,
+    /// Whether public fills are allowed against this balance
+    pub allow_public_fills: bool,
+}
+
+impl BalanceStateObject {
+    /// Create a new balance state object
+    pub fn new(
+        mint: Address,
+        owner: Address,
+        relayer_fee_recipient: Address,
+        one_time_authority: Address,
+        recovery_stream_seed: Scalar,
+        account_id: Uuid,
+    ) -> Self {
+        let balance = Balance::new(mint, owner, relayer_fee_recipient, one_time_authority);
+
+        Self {
+            balance,
+            recovery_stream_seed,
+            account_id,
+            active: true,
+            // We default to disallowing public fills on newly-created balances to err on the side
+            // caution. This is a user decision that must be communicated from the
+            // relayer.
+            allow_public_fills: false,
+        }
+    }
+}
+
+/// An intent state object
+#[derive(Clone)]
+pub struct IntentStateObject {
+    /// The underlying intent circuit type
+    pub intent: Intent,
+    /// The seed of the intent's recovery stream
+    pub recovery_stream_seed: Scalar,
+    /// The ID of the account which owns the intent
+    pub account_id: Uuid,
+    /// Whether the intent is active
+    pub active: bool,
+    /// The matching pool to which the intent is allocated
+    pub matching_pool: String,
+    /// Whether the intent allows external matches
+    pub allow_external_matches: bool,
+    /// The minimum fill size allowed for the intent
+    pub min_fill_size: Amount,
+    /// Whether to precompute a cancellation proof for the intent
+    pub precompute_cancellation_proof: bool,
+}
+
+impl IntentStateObject {
+    /// Create a new intent state object
+    pub fn new(
+        in_token: Address,
+        out_token: Address,
+        owner: Address,
+        min_price: FixedPoint,
+        amount_in: Amount,
+        recovery_stream_seed: Scalar,
+        account_id: Uuid,
+    ) -> Self {
+        let intent = Intent { in_token, out_token, owner, min_price, amount_in };
+
+        Self {
+            intent,
+            recovery_stream_seed,
+            account_id,
+            active: true,
+            // We set the remaining metadata fields to reasonable, safe defaults.
+            // These are user decisions that must be communicated from the relayer.
+            matching_pool: GLOBAL_MATCHING_POOL.to_string(),
+            allow_external_matches: false,
+            min_fill_size: amount_in,
+            precompute_cancellation_proof: false,
         }
     }
 }
