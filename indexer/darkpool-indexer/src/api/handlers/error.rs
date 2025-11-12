@@ -13,6 +13,9 @@ pub enum HandlerError {
     /// An error with AWS SQS
     #[error("SQS error: {0}")]
     Sqs(String),
+    /// An error with the RPC client
+    #[error("RPC client error: {0}")]
+    Rpc(String),
     /// An error parsing a value
     #[error("parse error: {0}")]
     Parse(String),
@@ -26,6 +29,11 @@ impl HandlerError {
     /// Create a new parse error
     pub fn parse<T: ToString>(msg: T) -> Self {
         Self::Parse(msg.to_string())
+    }
+
+    /// Create a new RPC error
+    pub fn rpc<T: ToString>(msg: T) -> Self {
+        Self::Rpc(msg.to_string())
     }
 }
 
