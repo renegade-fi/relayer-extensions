@@ -237,7 +237,7 @@ async fn handle_first_object_nullifier_spend(
         expected_state_object.recovery_stream.seed,
         expected_state_object.account_id,
         state_object_type,
-        expected_state_object.nullifier,
+        expected_state_object.recovery_id,
         expected_state_object.share_stream.seed,
         expected_state_object.owner_address,
         updated_public_shares,

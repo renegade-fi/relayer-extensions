@@ -41,17 +41,17 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get the expected state object record for a given nullifier, if one
+    /// Get the expected state object record for a given recovery ID, if one
     /// exists
     pub async fn get_expected_state_object(
         &self,
-        nullifier: Scalar,
+        recovery_id: Scalar,
         conn: &mut DbConn<'_>,
     ) -> Result<Option<ExpectedStateObject>, DbError> {
-        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
+        let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 
         expected_state_objects::table
-            .filter(expected_state_objects::nullifier.eq(nullifier_bigdecimal))
+            .filter(expected_state_objects::recovery_id.eq(recovery_id_bigdecimal))
             .first(conn)
             .await
             .optional()
