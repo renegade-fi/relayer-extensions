@@ -50,9 +50,6 @@ pub struct Cli {
     /// The Websocket RPC URL to use for listening to onchain events
     #[clap(long, env = "WS_RPC_URL")]
     pub ws_rpc_url: String,
-    #[clap(long, env = "DARKPOOL_ADDRESS")]
-    /// The address of the darkpool contract
-    pub darkpool_address: String,
 
     // -------------
     // | Telemetry |
