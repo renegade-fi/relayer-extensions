@@ -2,7 +2,9 @@
 
 use alloy::{providers::Provider, rpc::types::TransactionReceipt};
 use aws_sdk_sqs::types::Message;
-use darkpool_indexer_api::types::sqs::{MasterViewSeedMessage, NullifierSpendMessage, SqsMessage};
+use darkpool_indexer_api::types::sqs::{
+    MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage, SqsMessage,
+};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
 use tracing::warn;
@@ -11,7 +13,8 @@ use crate::{
     api::handlers::error::HandlerError,
     db::{client::DbConn, error::DbError},
     indexer::Indexer,
-    types::{ExpectedStateObject, GenericStateObject, MasterViewSeed, StateObjectType},
+    state_transitions::types::StateTransition,
+    types::{ExpectedStateObject, MasterViewSeed, StateObjectType},
 };
 
 // -------------
@@ -57,6 +60,9 @@ pub async fn handle_sqs_message(
         match message {
             SqsMessage::RegisterMasterViewSeed(message) => {
                 handle_master_view_seed_message(message, indexer).await?;
+            },
+            SqsMessage::RegisterRecoveryId(message) => {
+                handle_recovery_id_message(message, indexer).await?;
             },
             SqsMessage::NullifierSpend(message) => {
                 handle_nullifier_spend_message(message, indexer).await?;
@@ -121,9 +127,26 @@ pub async fn handle_master_view_seed_message(
     Ok(())
 }
 
+// === Recovery ID Message Handler ===
+
+/// Handle an SQS message representing the registration of a new recovery ID
+pub async fn handle_recovery_id_message(
+    message: RecoveryIdMessage,
+    indexer: &Indexer,
+) -> Result<(), HandlerError> {
+    let RecoveryIdMessage { recovery_id, tx_hash } = message;
+    let state_transition =
+        get_state_transition_for_recovery_id(recovery_id, tx_hash, indexer).await?;
+
+    indexer.state_applicator.apply_state_transition(state_transition).await?;
+
+    Ok(())
+}
+
 // === Nullifier Spend Message Handler ===
 
-/// Handle a SQS message representing the spending of a state object's nullifier
+/// Handle an SQS message representing the spending of a state object's
+/// nullifier
 pub async fn handle_nullifier_spend_message(
     message: NullifierSpendMessage,
     indexer: &Indexer,
@@ -168,6 +191,20 @@ pub async fn handle_nullifier_spend_message(
     .await?;
 
     Ok(())
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Get the state transition associated with the given recovery ID's
+/// registration
+async fn get_state_transition_for_recovery_id(
+    recovery_id: Scalar,
+    tx_hash: TxHash,
+    indexer: &Indexer,
+) -> Result<StateTransition, HandlerError> {
+    todo!()
 }
 
 /// Fetch the data necessary to index a nullifier spend
@@ -231,14 +268,14 @@ async fn handle_first_object_nullifier_spend(
     let NullifierSpendData { updated_public_shares, state_object_type, .. } = nullifier_spend_data;
 
     let private_shares: Vec<Scalar> =
-        expected_state_object.share_stream.clone().take(updated_public_shares.len()).collect();
+        expected_state_object.share_stream_seed.clone().take(updated_public_shares.len()).collect();
 
     let generic_state_object = GenericStateObject::new(
-        expected_state_object.recovery_stream.seed,
+        expected_state_object.recovery_stream_seed.seed,
         expected_state_object.account_id,
         state_object_type,
         expected_state_object.recovery_id,
-        expected_state_object.share_stream.seed,
+        expected_state_object.share_stream_seed.seed,
         expected_state_object.owner_address,
         updated_public_shares,
         private_shares,

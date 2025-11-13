@@ -25,6 +25,7 @@ mod cli;
 mod crypto_mocks;
 mod db;
 mod indexer;
+mod state_transitions;
 mod types;
 
 // -------------

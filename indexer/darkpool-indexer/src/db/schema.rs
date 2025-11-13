@@ -25,7 +25,6 @@ diesel::table! {
     expected_state_objects (recovery_id) {
         recovery_id -> Numeric,
         account_id -> Uuid,
-        owner_address -> Text,
         recovery_stream_seed -> Numeric,
         share_stream_seed -> Numeric,
     }
@@ -66,6 +65,13 @@ diesel::table! {
 diesel::table! {
     processed_nullifiers (nullifier) {
         nullifier -> Numeric,
+        block_number -> Numeric,
+    }
+}
+
+diesel::table! {
+    processed_recovery_ids (recovery_id) {
+        recovery_id -> Numeric,
         block_number -> Numeric,
     }
 }

@@ -36,6 +36,24 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update a master view seed
+    pub async fn update_master_view_seed(
+        &self,
+        master_view_seed: MasterViewSeed,
+        conn: &mut DbConn<'_>,
+    ) -> Result<(), DbError> {
+        let master_view_seed_model: MasterViewSeedModel = master_view_seed.into();
+
+        diesel::update(master_view_seeds::table)
+            .filter(master_view_seeds::account_id.eq(master_view_seed_model.account_id))
+            .set(master_view_seed_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------

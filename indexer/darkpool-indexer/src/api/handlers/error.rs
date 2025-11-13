@@ -2,14 +2,14 @@
 
 use aws_sdk_sqs::error::SdkError;
 
-use crate::db::error::DbError;
+use crate::state_transitions::error::StateTransitionError;
 
 /// Handler errors
 #[derive(Debug, thiserror::Error)]
 pub enum HandlerError {
-    /// An error in the database client
-    #[error("database error: {0}")]
-    Db(#[from] DbError),
+    /// An error in the state transition applicator
+    #[error("state transition error: {0}")]
+    StateTransition(#[from] StateTransitionError),
     /// An error with AWS SQS
     #[error("SQS error: {0}")]
     Sqs(String),

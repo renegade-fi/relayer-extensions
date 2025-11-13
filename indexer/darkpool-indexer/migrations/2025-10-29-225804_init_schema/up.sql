@@ -32,9 +32,8 @@ CREATE INDEX "idx_balances_account_id_active" ON "balances" ("account_id", "acti
 
 -- Stores information about state objects which are expected to be created
 CREATE TABLE "expected_state_objects"(
-	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
+	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
 	"account_id" UUID NOT NULL,
-	"owner_address" TEXT NOT NULL,
 	"recovery_stream_seed" NUMERIC(78) NOT NULL CHECK (recovery_stream_seed >= 0),
 	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0)
 );
@@ -44,6 +43,14 @@ CREATE TABLE "expected_state_objects"(
 -- Stores nullifiers which have already been processed
 CREATE TABLE "processed_nullifiers"(
 	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
+	"block_number" NUMERIC(78) NOT NULL CHECK (block_number >= 0)
+);
+
+-- PROCESSED RECOVERY IDs --
+
+-- Stores recovery IDs which have already been processed
+CREATE TABLE "processed_recovery_ids"(
+	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
 	"block_number" NUMERIC(78) NOT NULL CHECK (block_number >= 0)
 );
 

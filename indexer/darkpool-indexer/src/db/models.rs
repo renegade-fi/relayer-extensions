@@ -6,7 +6,7 @@ use alloy::primitives::Address;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,
-    prelude::{Insertable, Queryable},
+    prelude::{AsChangeset, Insertable, Queryable},
 };
 use renegade_circuit_types::{
     balance::{Balance, BalanceShare},
@@ -35,7 +35,7 @@ use crate::{
 // === Master View Seeds Table ===
 
 /// A master view seed record
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::db::schema::master_view_seeds)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MasterViewSeedModel {
@@ -127,9 +127,6 @@ pub struct ExpectedStateObjectModel {
     /// The ID of the account owning the state object associated with the
     /// nullifier
     pub account_id: Uuid,
-    /// The address of the owner of the state object associated with the
-    /// nullifier
-    pub owner_address: String,
     /// The recovery stream seed of the state object associated with the
     /// nullifier
     pub recovery_stream_seed: BigDecimal,
@@ -143,20 +140,17 @@ impl From<ExpectedStateObject> for ExpectedStateObjectModel {
         let ExpectedStateObject {
             recovery_id,
             account_id,
-            owner_address,
-            recovery_stream,
-            share_stream,
+            recovery_stream_seed,
+            share_stream_seed,
         } = value;
 
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
-        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream.seed);
-        let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
-        let owner_address_string = owner_address.to_string();
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream_seed);
 
         ExpectedStateObjectModel {
             recovery_id: recovery_id_bigdecimal,
             account_id,
-            owner_address: owner_address_string,
             recovery_stream_seed: recovery_stream_seed_bigdecimal,
             share_stream_seed: share_stream_seed_bigdecimal,
         }
@@ -168,7 +162,6 @@ impl From<ExpectedStateObjectModel> for ExpectedStateObject {
         let ExpectedStateObjectModel {
             recovery_id,
             account_id,
-            owner_address,
             recovery_stream_seed,
             share_stream_seed,
         } = value;
@@ -176,15 +169,12 @@ impl From<ExpectedStateObjectModel> for ExpectedStateObject {
         let recovery_id_scalar = bigdecimal_to_scalar(recovery_id);
         let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
         let share_stream_seed_scalar = bigdecimal_to_scalar(share_stream_seed);
-        let owner_address_alloy =
-            Address::from_str(&owner_address).expect("Owner address must be a valid address");
 
         ExpectedStateObject {
             recovery_id: recovery_id_scalar,
             account_id,
-            owner_address: owner_address_alloy,
-            recovery_stream: PoseidonCSPRNG::new(recovery_stream_seed_scalar),
-            share_stream: PoseidonCSPRNG::new(share_stream_seed_scalar),
+            recovery_stream_seed: recovery_stream_seed_scalar,
+            share_stream_seed: share_stream_seed_scalar,
         }
     }
 }
@@ -199,6 +189,19 @@ pub struct ProcessedNullifierModel {
     /// The nullifier
     pub nullifier: BigDecimal,
     /// The block number in which the nullifier was spent
+    pub block_number: BigDecimal,
+}
+
+// === Processed Recovery IDs Table ===
+
+/// A processed recovery ID record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::processed_recovery_ids)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ProcessedRecoveryIDModel {
+    /// The recovery ID
+    pub recovery_id: BigDecimal,
+    /// The block number in which the recovery ID was processed
     pub block_number: BigDecimal,
 }
 
