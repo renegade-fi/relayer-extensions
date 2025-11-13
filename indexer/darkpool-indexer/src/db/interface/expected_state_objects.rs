@@ -1,6 +1,6 @@
 //! Interface methods for interacting with the expected state objects table
 
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_constants::Scalar;
 
@@ -37,25 +37,40 @@ impl DbClient {
         Ok(())
     }
 
+    /// Delete an expected state object record
+    pub async fn delete_expected_state_object(
+        &self,
+        recovery_id: Scalar,
+        conn: &mut DbConn<'_>,
+    ) -> Result<(), DbError> {
+        let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
+
+        diesel::delete(expected_state_objects::table)
+            .filter(expected_state_objects::recovery_id.eq(recovery_id_bigdecimal))
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------
 
-    /// Get the expected state object record for a given nullifier, if one
-    /// exists
+    /// Get the expected state object record for a given recovery ID
     pub async fn get_expected_state_object(
         &self,
-        nullifier: Scalar,
+        recovery_id: Scalar,
         conn: &mut DbConn<'_>,
-    ) -> Result<Option<ExpectedStateObject>, DbError> {
-        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
+    ) -> Result<ExpectedStateObject, DbError> {
+        let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 
         expected_state_objects::table
-            .filter(expected_state_objects::nullifier.eq(nullifier_bigdecimal))
+            .filter(expected_state_objects::recovery_id.eq(recovery_id_bigdecimal))
             .first(conn)
             .await
-            .optional()
             .map_err(DbError::query)
-            .map(|maybe_record| maybe_record.map(ExpectedStateObjectModel::into))
+            .map(ExpectedStateObjectModel::into)
     }
 }
