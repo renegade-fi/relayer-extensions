@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub mod error;
+mod event_indexing;
 
 // -------------
 // | Constants |

@@ -37,6 +37,24 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update a balance record
+    pub async fn update_balance(
+        &self,
+        balance: BalanceStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let balance_model: BalanceModel = balance.into();
+
+        diesel::update(balances::table)
+            .filter(balances::recovery_stream_seed.eq(balance_model.recovery_stream_seed.clone()))
+            .set(balance_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::from)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------

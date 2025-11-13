@@ -1,12 +1,13 @@
 //! Defines the application-specific logic for creating a new balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use renegade_circuit_types::balance::BalanceShare;
 use renegade_constants::Scalar;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::{
     state_transitions::{
-        StateApplicator, error::StateTransitionError, types::CreateBalanceTransition,
+        StateApplicator, error::StateTransitionError,
     },
     types::{BalanceStateObject, ExpectedStateObject, MasterViewSeed},
 };
@@ -14,6 +15,17 @@ use crate::{
 // ---------
 // | Types |
 // ---------
+
+/// A transition representing the creation of a new balance object
+#[derive(Clone)]
+pub struct CreateBalanceTransition {
+    /// The recovery ID registered for the balance
+    pub recovery_id: Scalar,
+    /// The block number in which the recovery ID was registered
+    pub block_number: u64,
+    /// The public shares of the balance
+    pub public_share: BalanceShare,
+}
 
 /// The pre-state required for the creation of a new balance object
 struct BalanceCreationPrestate {
@@ -74,7 +86,7 @@ impl StateApplicator {
                 if balance_exists {
                     // We assume the balance details with which the record was originally inserted
                     // match those derived from the public shares
-                    info!("Balance record already exists for recovery stream seed {recovery_stream_seed}, skipping creation");
+                    warn!("Balance record already exists for recovery stream seed {recovery_stream_seed}, skipping creation");
                     return Ok(());
                 }
 
@@ -115,90 +127,9 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use alloy::primitives::Address;
-    use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
-    use renegade_circuit_types::{balance::Balance, state_wrapper::StateWrapper};
-
-    use crate::{db::{client::DbClient, error::DbError, test_utils::cleanup_test_db}, state_transitions::test_utils::{assert_csprng_state, gen_random_master_view_seed, setup_test_state_applicator}};
+    use crate::{db::{client::DbClient, error::DbError, test_utils::cleanup_test_db}, state_transitions::test_utils::{assert_csprng_state, gen_create_balance_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}};
 
     use super::*;
-
-    /// Sets up an expected state object in the DB, generating a new master view
-    /// seed for the account owning the state object.
-    ///
-    /// Returns the expected state object.
-    async fn setup_expected_state_object(
-        state_applicator: &StateApplicator,
-    ) -> Result<ExpectedStateObject, StateTransitionError> {
-        let mut master_view_seed = gen_random_master_view_seed();
-
-        let master_view_seed_message = MasterViewSeedMessage {
-            account_id: master_view_seed.account_id,
-            owner_address: master_view_seed.owner_address,
-            seed: master_view_seed.seed,
-        };
-
-        state_applicator.register_master_view_seed(master_view_seed_message).await?;
-
-        Ok(master_view_seed.next_expected_state_object())
-    }
-
-    /// Generate the state transition which should result in the given
-    /// expected state object being indexed as a new balance.
-    ///
-    /// Returns the create balance transition, along with the expected balance
-    /// object.
-    fn gen_create_balance_transition(
-        expected_state_object: &ExpectedStateObject,
-    ) -> (CreateBalanceTransition, StateWrapper<Balance>) {
-        let mint = Address::random();
-        let owner = Address::random();
-        let relayer_fee_recipient = Address::random();
-        let one_time_authority = Address::random();
-
-        let balance = Balance::new(
-            mint,
-            owner,
-            relayer_fee_recipient,
-            one_time_authority,
-        );
-
-        let mut wrapped_balance = StateWrapper::new(
-            balance,
-            expected_state_object.share_stream_seed,
-            expected_state_object.recovery_stream_seed,
-        );
-
-        // We progress the balance's recovery stream to represent the computation of the 0th recovery ID
-        wrapped_balance.recovery_stream.advance_by(1);
-
-        let transition = CreateBalanceTransition {
-            recovery_id: expected_state_object.recovery_id,
-            block_number: 0,
-            public_share: wrapped_balance.public_share(),
-        };
-
-        (transition, wrapped_balance)
-    }
-
-    /// Validate the indexing of a balance object against the expected
-    /// circuit type
-    async fn validate_balance_indexing(
-        db_client: &DbClient,
-        expected_balance: &StateWrapper<Balance>,
-    ) -> Result<(), DbError> {
-        let mut conn = db_client.get_db_conn().await?;
-
-        let nullifier = expected_balance.compute_nullifier();
-        let indexed_balance =
-            db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
-
-        // Assert that the indexed balance matches the expected balance.
-        // This covers the CSPRNG states, inner circuit type, and public shares.
-        assert_eq!(&indexed_balance.balance, expected_balance);
-
-        Ok(())
-    }
 
     /// Validate the rotation of an account's next expected state object
     async fn validate_expected_state_object_rotation(
