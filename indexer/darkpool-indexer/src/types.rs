@@ -5,7 +5,12 @@
 
 use alloy::primitives::Address;
 use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, intent::Intent, state_wrapper::StateWrapper,
+    Amount,
+    balance::{Balance, BalanceShare},
+    csprng::PoseidonCSPRNG,
+    intent::Intent,
+    state_wrapper::StateWrapper,
+    traits::{BaseType, SecretShareType},
 };
 use renegade_constants::Scalar;
 use uuid::Uuid;
@@ -19,7 +24,7 @@ use crate::crypto_mocks::{
 // -------------
 
 /// The name of the global (default) relayer matching pool
-const GLOBAL_MATCHING_POOL: &str = "global";
+const _GLOBAL_MATCHING_POOL: &str = "global";
 
 // ---------
 // | Types |
@@ -47,6 +52,14 @@ impl MasterViewSeed {
 
         Self { account_id, owner_address, seed, recovery_seed_csprng, share_seed_csprng }
     }
+
+    /// Generate the next expected state object for the account
+    pub fn next_expected_state_object(&mut self) -> ExpectedStateObject {
+        let recovery_stream_seed = self.recovery_seed_csprng.next().unwrap();
+        let share_stream_seed = self.share_seed_csprng.next().unwrap();
+
+        ExpectedStateObject::new(self.account_id, recovery_stream_seed, share_stream_seed)
+    }
 }
 
 /// A state object which is expected to be created
@@ -56,41 +69,22 @@ pub struct ExpectedStateObject {
     /// The ID of the account owning the state object associated with the
     /// nullifier
     pub account_id: Uuid,
-    /// The address of the owner of the state object associated with the
+    /// The recovery stream seed of the state object associated with the
     /// nullifier
-    pub owner_address: Address,
-    /// The recovery stream of the state object associated with the
+    pub recovery_stream_seed: Scalar,
+    /// The share stream seed of the state object associated with the
     /// nullifier
-    pub recovery_stream: PoseidonCSPRNG,
-    /// The share stream of the state object associated with the
-    /// nullifier
-    pub share_stream: PoseidonCSPRNG,
+    pub share_stream_seed: Scalar,
 }
 
 impl ExpectedStateObject {
     /// Create a new expected state object
-    pub fn new(
-        account_id: Uuid,
-        owner_address: Address,
-        recovery_stream_seed: Scalar,
-        share_stream_seed: Scalar,
-    ) -> Self {
+    pub fn new(account_id: Uuid, recovery_stream_seed: Scalar, share_stream_seed: Scalar) -> Self {
         let recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
-        let share_stream = PoseidonCSPRNG::new(share_stream_seed);
-
         let recovery_id = recovery_stream.get_ith(0);
 
-        Self { recovery_id, account_id, owner_address, recovery_stream, share_stream }
+        Self { recovery_id, account_id, recovery_stream_seed, share_stream_seed }
     }
-}
-
-/// The type of a state object
-#[derive(Clone)]
-pub enum StateObjectType {
-    /// An intent state object
-    Intent,
-    /// A balance state object
-    Balance,
 }
 
 /// A balance state object
@@ -102,6 +96,31 @@ pub struct BalanceStateObject {
     pub account_id: Uuid,
     /// Whether the balance is active
     pub active: bool,
+}
+
+impl BalanceStateObject {
+    /// Create a new balance state object
+    pub fn new(
+        public_share: BalanceShare,
+        recovery_stream_seed: Scalar,
+        share_stream_seed: Scalar,
+        account_id: Uuid,
+    ) -> Self {
+        // Compute the balance's private shares & reconstruct the plaintext
+        let mut share_stream = PoseidonCSPRNG::new(share_stream_seed);
+        let private_share = BalanceShare::from_scalars(&mut share_stream);
+        let balance_inner = public_share.add_shares(&private_share);
+
+        // Ensure that the recovery stream has been advanced to indicate the usage of
+        // the first recovery ID during the creation of the balance
+        let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
+        recovery_stream.index = 1;
+
+        let balance =
+            StateWrapper { inner: balance_inner, recovery_stream, share_stream, public_share };
+
+        Self { balance, account_id, active: true }
+    }
 }
 
 /// An intent state object

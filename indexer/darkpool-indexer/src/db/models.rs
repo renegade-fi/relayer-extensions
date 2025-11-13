@@ -6,7 +6,7 @@ use alloy::primitives::Address;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,
-    prelude::{Insertable, Queryable},
+    prelude::{AsChangeset, Insertable, Queryable},
 };
 use renegade_circuit_types::{
     balance::{Balance, BalanceShare},
@@ -35,7 +35,7 @@ use crate::{
 // === Master View Seeds Table ===
 
 /// A master view seed record
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::db::schema::master_view_seeds)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MasterViewSeedModel {
@@ -46,9 +46,9 @@ pub struct MasterViewSeedModel {
     /// The master view seed
     pub seed: BigDecimal,
     /// The index of the recovery seed CSPRNG
-    pub recovery_seed_csprng_index: BigDecimal,
+    pub recovery_seed_csprng_index: i64,
     /// The index of the share seed CSPRNG
-    pub share_seed_csprng_index: BigDecimal,
+    pub share_seed_csprng_index: i64,
 }
 
 impl From<MasterViewSeed> for MasterViewSeedModel {
@@ -64,8 +64,8 @@ impl From<MasterViewSeed> for MasterViewSeedModel {
         let seed_bigdecimal = scalar_to_bigdecimal(seed);
         let owner_address_string = owner_address.to_string();
 
-        let recovery_seed_csprng_index_bigdecimal = recovery_seed_csprng.index.into();
-        let share_seed_csprng_index_bigdecimal = share_seed_csprng.index.into();
+        let recovery_seed_csprng_index_bigdecimal = recovery_seed_csprng.index as i64;
+        let share_seed_csprng_index_bigdecimal = share_seed_csprng.index as i64;
 
         MasterViewSeedModel {
             account_id,
@@ -91,13 +91,8 @@ impl From<MasterViewSeedModel> for MasterViewSeed {
         let owner_address_address =
             Address::from_str(&owner_address).expect("Owner address must be a valid address");
 
-        let recovery_seed_csprng_index_u64 = recovery_seed_csprng_index
-            .to_u64()
-            .expect("Recovery seed CSPRNG index cannot be converted to u64");
-
-        let share_seed_csprng_index_u64 = share_seed_csprng_index
-            .to_u64()
-            .expect("Share seed CSPRNG index cannot be converted to u64");
+        let recovery_seed_csprng_index_u64 = recovery_seed_csprng_index as u64;
+        let share_seed_csprng_index_u64 = share_seed_csprng_index as u64;
 
         let mut recovery_seed_csprng = create_recovery_seed_csprng(seed_scalar);
         let mut share_seed_csprng = create_share_seed_csprng(seed_scalar);
@@ -127,9 +122,6 @@ pub struct ExpectedStateObjectModel {
     /// The ID of the account owning the state object associated with the
     /// nullifier
     pub account_id: Uuid,
-    /// The address of the owner of the state object associated with the
-    /// nullifier
-    pub owner_address: String,
     /// The recovery stream seed of the state object associated with the
     /// nullifier
     pub recovery_stream_seed: BigDecimal,
@@ -143,20 +135,17 @@ impl From<ExpectedStateObject> for ExpectedStateObjectModel {
         let ExpectedStateObject {
             recovery_id,
             account_id,
-            owner_address,
-            recovery_stream,
-            share_stream,
+            recovery_stream_seed,
+            share_stream_seed,
         } = value;
 
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
-        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream.seed);
-        let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
-        let owner_address_string = owner_address.to_string();
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+        let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream_seed);
 
         ExpectedStateObjectModel {
             recovery_id: recovery_id_bigdecimal,
             account_id,
-            owner_address: owner_address_string,
             recovery_stream_seed: recovery_stream_seed_bigdecimal,
             share_stream_seed: share_stream_seed_bigdecimal,
         }
@@ -168,7 +157,6 @@ impl From<ExpectedStateObjectModel> for ExpectedStateObject {
         let ExpectedStateObjectModel {
             recovery_id,
             account_id,
-            owner_address,
             recovery_stream_seed,
             share_stream_seed,
         } = value;
@@ -176,15 +164,12 @@ impl From<ExpectedStateObjectModel> for ExpectedStateObject {
         let recovery_id_scalar = bigdecimal_to_scalar(recovery_id);
         let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
         let share_stream_seed_scalar = bigdecimal_to_scalar(share_stream_seed);
-        let owner_address_alloy =
-            Address::from_str(&owner_address).expect("Owner address must be a valid address");
 
         ExpectedStateObject {
             recovery_id: recovery_id_scalar,
             account_id,
-            owner_address: owner_address_alloy,
-            recovery_stream: PoseidonCSPRNG::new(recovery_stream_seed_scalar),
-            share_stream: PoseidonCSPRNG::new(share_stream_seed_scalar),
+            recovery_stream_seed: recovery_stream_seed_scalar,
+            share_stream_seed: share_stream_seed_scalar,
         }
     }
 }
@@ -199,7 +184,20 @@ pub struct ProcessedNullifierModel {
     /// The nullifier
     pub nullifier: BigDecimal,
     /// The block number in which the nullifier was spent
-    pub block_number: BigDecimal,
+    pub block_number: i64,
+}
+
+// === Processed Recovery IDs Table ===
+
+/// A processed recovery ID record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::processed_recovery_ids)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ProcessedRecoveryIDModel {
+    /// The recovery ID
+    pub recovery_id: BigDecimal,
+    /// The block number in which the recovery ID was processed
+    pub block_number: i64,
 }
 
 // === Intents Table ===
@@ -212,11 +210,11 @@ pub struct IntentModel {
     /// The intent's recovery stream seed
     pub recovery_stream_seed: BigDecimal,
     /// The intent's version
-    pub version: BigDecimal,
+    pub version: i64,
     /// The intent's share stream seed
     pub share_stream_seed: BigDecimal,
     /// The intent's share stream index
-    pub share_stream_index: BigDecimal,
+    pub share_stream_index: i64,
     /// The intent's current (unspent) nullifier
     pub nullifier: BigDecimal,
     /// The intent's public shares
@@ -273,10 +271,10 @@ impl From<IntentStateObject> for IntentModel {
 
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream.seed);
         // The intent's version is the previous index in the recovery stream
-        let version_bigdecimal = (recovery_stream.index - 1).into();
+        let version_bigdecimal = (recovery_stream.index - 1) as i64;
 
         let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
-        let share_stream_index_bigdecimal = share_stream.index.into();
+        let share_stream_index_bigdecimal = share_stream.index as i64;
 
         let public_shares_bigdecimals =
             public_share.to_scalars().into_iter().map(scalar_to_bigdecimal).collect();
@@ -329,15 +327,14 @@ impl From<IntentModel> for IntentStateObject {
         } = value;
 
         let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
-        let version_u64 = version.to_u64().expect("Version cannot be converted to u64");
+        let version_u64 = version as u64;
         // The intent's recovery stream index is always one more than the version
         let recovery_stream_index = version_u64 + 1;
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed_scalar);
         recovery_stream.index = recovery_stream_index;
 
         let share_stream_seed_scalar = bigdecimal_to_scalar(share_stream_seed);
-        let share_stream_index_u64 =
-            share_stream_index.to_u64().expect("Share stream index cannot be converted to u64");
+        let share_stream_index_u64 = share_stream_index as u64;
 
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed_scalar);
         share_stream.index = share_stream_index_u64;
@@ -391,11 +388,11 @@ pub struct BalanceModel {
     /// The balance's recovery stream seed
     pub recovery_stream_seed: BigDecimal,
     /// The balance's version
-    pub version: BigDecimal,
+    pub version: i64,
     /// The balance's share stream seed
     pub share_stream_seed: BigDecimal,
     /// The balance's share stream index
-    pub share_stream_index: BigDecimal,
+    pub share_stream_index: i64,
     /// The balance's current (unspent) nullifier
     pub nullifier: BigDecimal,
     /// The balance's public shares
@@ -455,10 +452,10 @@ impl From<BalanceStateObject> for BalanceModel {
 
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream.seed);
         // The balance's version is the previous index in the recovery stream
-        let version_bigdecimal = (recovery_stream.index - 1).into();
+        let version_bigdecimal = (recovery_stream.index - 1) as i64;
 
         let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
-        let share_stream_index_bigdecimal = share_stream.index.into();
+        let share_stream_index_bigdecimal = share_stream.index as i64;
 
         let public_shares_bigdecimals =
             public_share.to_scalars().into_iter().map(scalar_to_bigdecimal).collect();
@@ -505,15 +502,14 @@ impl From<BalanceModel> for BalanceStateObject {
         } = value;
 
         let recovery_stream_seed_scalar = bigdecimal_to_scalar(recovery_stream_seed);
-        let version_u64 = version.to_u64().expect("Version cannot be converted to u64");
+        let version_u64 = version as u64;
         // The balance's recovery stream index is always one more than the version
         let recovery_stream_index = version_u64 + 1;
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed_scalar);
         recovery_stream.index = recovery_stream_index;
 
         let share_stream_seed_scalar = bigdecimal_to_scalar(share_stream_seed);
-        let share_stream_index_u64 =
-            share_stream_index.to_u64().expect("Share stream index cannot be converted to u64");
+        let share_stream_index_u64 = share_stream_index as u64;
 
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed_scalar);
         share_stream.index = share_stream_index_u64;
