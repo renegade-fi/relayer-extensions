@@ -24,7 +24,7 @@ impl DbClient {
     pub async fn create_balance(
         &self,
         balance: BalanceStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let balance_model: BalanceModel = balance.into();
 
@@ -45,7 +45,7 @@ impl DbClient {
     pub async fn get_balance(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<Option<BalanceStateObject>, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
@@ -62,7 +62,7 @@ impl DbClient {
     pub async fn balance_exists(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 

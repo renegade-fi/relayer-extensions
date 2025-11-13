@@ -22,7 +22,7 @@ impl DbClient {
         &self,
         recovery_id: Scalar,
         block_number: u64,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
         let block_number_i64 = block_number as i64;
@@ -49,7 +49,7 @@ impl DbClient {
     pub async fn check_recovery_id_processed(
         &self,
         recovery_id: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 

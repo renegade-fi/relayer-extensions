@@ -24,7 +24,7 @@ impl DbClient {
     pub async fn insert_expected_state_object(
         &self,
         expected_state_object: ExpectedStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let expected_state_object_model: ExpectedStateObjectModel = expected_state_object.into();
 
@@ -41,7 +41,7 @@ impl DbClient {
     pub async fn delete_expected_state_object(
         &self,
         recovery_id: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 
@@ -62,7 +62,7 @@ impl DbClient {
     pub async fn get_expected_state_object(
         &self,
         recovery_id: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<ExpectedStateObject, DbError> {
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 
