@@ -15,7 +15,14 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade-contracts.git#7ebbc7f754bf71bf123b8c4ae0bf2269b97e23c3"
+dependencies = [
+ "alloy",
+]
+
+[[package]]
+name = "abi"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade-contracts#1186dd6b30d33a20278a78ade3554fd0bb7b73d4"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -1364,7 +1371,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auth-server"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "aes-gcm",
  "alloy",
  "alloy-primitives",
@@ -3348,7 +3355,7 @@ name = "darkpool-client"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git?branch=v1#5ce6a1e0c571f5b712bba2acb768ca71f4b81e97"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-contract",
  "alloy-primitives",
@@ -3408,7 +3415,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "darkpool-types"
+name = "darkpool-indexer"
+version = "0.1.0"
+dependencies = [
+ "abi 0.1.0",
+ "alloy",
+ "ark-mpc",
+ "aws-config",
+ "aws-sdk-sqs",
+ "bb8",
+ "bigdecimal 0.4.9",
+ "circuit-types 0.1.0",
+ "clap",
+ "common 0.1.0",
+ "constants 0.1.0",
+ "darkpool-indexer-api",
+ "diesel",
+ "diesel-async",
+ "itertools 0.10.5",
+ "native-tls",
+ "postgres-native-tls",
+ "rand 0.8.5",
+ "renegade-crypto 0.1.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tiny-keccak",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "uuid 1.17.0",
+]
+
+[[package]]
+name = "darkpool-indexer-api"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2#f19b246eff2d2e3773eab8de3082279c7418acff"
 dependencies = [
@@ -4576,7 +4616,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 name = "funds-manager"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-dyn-abi",
  "alloy-json-rpc",
@@ -7954,7 +7994,7 @@ dependencies = [
 name = "renegade-solver"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-contract",
  "alloy-primitives",

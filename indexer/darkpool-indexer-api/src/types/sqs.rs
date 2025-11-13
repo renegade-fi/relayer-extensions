@@ -10,6 +10,8 @@ use uuid::Uuid;
 pub enum SqsMessage {
     /// A message representing the registration of a new master view seed
     RegisterMasterViewSeed(MasterViewSeedMessage),
+    /// A message representing the registration of a new recovery ID
+    RegisterRecoveryId(RecoveryIdMessage),
     /// A message representing the spending of a state object's nullifier
     /// onchain
     NullifierSpend(NullifierSpendMessage),
@@ -24,6 +26,15 @@ pub struct MasterViewSeedMessage {
     pub owner_address: Address,
     /// The master view seed
     pub seed: Scalar,
+}
+
+/// A message representing the registration of a new recovery ID
+#[derive(Serialize, Deserialize)]
+pub struct RecoveryIdMessage {
+    /// The recovery ID that was registered
+    pub recovery_id: Scalar,
+    /// The transaction hash of the recovery ID registration
+    pub tx_hash: TxHash,
 }
 
 /// A message representing the spending of a state object's nullifier onchain
