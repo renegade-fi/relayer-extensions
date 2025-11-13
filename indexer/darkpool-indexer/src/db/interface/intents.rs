@@ -21,7 +21,6 @@ impl DbClient {
     // -----------
 
     /// Insert an intent record representing a newly-created intent
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_intent(
         &self,
         intent: IntentStateObject,

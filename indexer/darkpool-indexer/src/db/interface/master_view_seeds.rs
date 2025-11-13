@@ -1,6 +1,6 @@
 //! Interface methods for interacting with the master view seeds table
 
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -36,6 +36,24 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update a master view seed
+    pub async fn update_master_view_seed(
+        &self,
+        master_view_seed: MasterViewSeed,
+        conn: &mut DbConn<'_>,
+    ) -> Result<(), DbError> {
+        let master_view_seed_model: MasterViewSeedModel = master_view_seed.into();
+
+        diesel::update(master_view_seeds::table)
+            .filter(master_view_seeds::account_id.eq(master_view_seed_model.account_id))
+            .set(master_view_seed_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::query)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------
@@ -52,5 +70,23 @@ impl DbClient {
             .await
             .map_err(DbError::query)
             .map(MasterViewSeedModel::into)
+    }
+
+    /// Check if a master view seed record exists for a given account
+    pub async fn master_view_seed_exists(
+        &self,
+        account_id: Uuid,
+        conn: &mut DbConn<'_>,
+    ) -> Result<bool, DbError> {
+        match master_view_seeds::table
+            .filter(master_view_seeds::account_id.eq(account_id))
+            .first::<MasterViewSeedModel>(conn)
+            .await
+            .optional()
+        {
+            Ok(Some(_)) => Ok(true),
+            Ok(None) => Ok(false),
+            Err(e) => Err(DbError::query(e)),
+        }
     }
 }
