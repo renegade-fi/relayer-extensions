@@ -6,9 +6,9 @@
 -- Stores darkpool balances
 CREATE TABLE "balances"(
 	"recovery_stream_seed" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
-	"version" NUMERIC(78) NOT NULL CHECK (version >= 0),
+	"version" BIGINT NOT NULL CHECK (version >= 0),
 	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0),
-	"share_stream_index" NUMERIC(78) NOT NULL CHECK (share_stream_index >= 0),
+	"share_stream_index" BIGINT NOT NULL CHECK (share_stream_index >= 0),
 	"nullifier" NUMERIC(78) NOT NULL CHECK (nullifier >= 0),
 	"public_shares" NUMERIC(78)[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"mint" TEXT NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE "expected_state_objects"(
 -- Stores nullifiers which have already been processed
 CREATE TABLE "processed_nullifiers"(
 	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
-	"block_number" NUMERIC(78) NOT NULL CHECK (block_number >= 0)
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
 );
 
 -- PROCESSED RECOVERY IDs --
@@ -51,7 +51,7 @@ CREATE TABLE "processed_nullifiers"(
 -- Stores recovery IDs which have already been processed
 CREATE TABLE "processed_recovery_ids"(
 	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
-	"block_number" NUMERIC(78) NOT NULL CHECK (block_number >= 0)
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
 );
 
 -- INTENTS --
@@ -59,9 +59,9 @@ CREATE TABLE "processed_recovery_ids"(
 -- Stores darkpool intents
 CREATE TABLE "intents"(
 	"recovery_stream_seed" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
-	"version" NUMERIC(78) NOT NULL CHECK (version >= 0),
+	"version" BIGINT NOT NULL CHECK (version >= 0),
 	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0),
-	"share_stream_index" NUMERIC(78) NOT NULL CHECK (share_stream_index >= 0),
+	"share_stream_index" BIGINT NOT NULL CHECK (share_stream_index >= 0),
 	"nullifier" NUMERIC(78) NOT NULL CHECK (nullifier >= 0),
 	"public_shares" NUMERIC(78)[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"input_mint" TEXT NOT NULL,
@@ -90,6 +90,6 @@ CREATE TABLE "master_view_seeds"(
 	"account_id" UUID NOT NULL PRIMARY KEY,
 	"owner_address" TEXT NOT NULL,
 	"seed" NUMERIC(78) NOT NULL CHECK (seed >= 0),
-	"recovery_seed_csprng_index" NUMERIC(78) NOT NULL CHECK (recovery_seed_csprng_index >= 0),
-	"share_seed_csprng_index" NUMERIC(78) NOT NULL CHECK (share_seed_csprng_index >= 0)
+	"recovery_seed_csprng_index" BIGINT NOT NULL CHECK (recovery_seed_csprng_index >= 0),
+	"share_seed_csprng_index" BIGINT NOT NULL CHECK (share_seed_csprng_index >= 0)
 );

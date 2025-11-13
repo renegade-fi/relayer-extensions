@@ -1,6 +1,5 @@
 //! Interface methods for interacting with the processed nullifiers table
 
-use bigdecimal::BigDecimal;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_constants::Scalar;
@@ -26,11 +25,11 @@ impl DbClient {
         conn: &mut DbConn<'_>,
     ) -> Result<(), DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
-        let block_number_bigdecimal = BigDecimal::from(block_number);
+        let block_number_i64 = block_number as i64;
 
         let processed_nullifier = ProcessedNullifierModel {
             nullifier: nullifier_bigdecimal,
-            block_number: block_number_bigdecimal,
+            block_number: block_number_i64,
         };
 
         diesel::insert_into(processed_nullifiers::table)

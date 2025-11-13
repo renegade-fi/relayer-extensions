@@ -12,6 +12,7 @@ use crate::{
 
 pub mod create_balance;
 pub mod error;
+pub mod register_master_view_seed;
 pub mod types;
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -34,8 +35,9 @@ impl StateApplicator {
         transition: StateTransition,
     ) -> Result<(), StateTransitionError> {
         match transition {
-            StateTransition::CreateBalance(create_balance_transition) => {
-                self.create_balance(create_balance_transition).await
+            StateTransition::CreateBalance(transition) => self.create_balance(transition).await,
+            StateTransition::RegisterMasterViewSeed(transition) => {
+                self.register_master_view_seed(transition).await
             },
         }
     }

@@ -6,6 +6,7 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::missing_docs_in_private_items)]
+#![feature(let_chains)]
 
 use std::collections::HashMap;
 
@@ -15,7 +16,6 @@ use tokio::task::JoinSet;
 use tracing::{error, warn};
 
 use crate::{
-    api::handlers::sqs::handle_sqs_message,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
 };
@@ -23,6 +23,7 @@ use crate::{
 mod api;
 mod cli;
 mod crypto_mocks;
+mod darkpool_client;
 mod db;
 mod indexer;
 mod state_transitions;
@@ -108,7 +109,7 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
                 // Process messages within a message group sequentially
                 for message in messages {
                     if let Err(e) =
-                        handle_sqs_message(message, &indexer_clone, &sqs_queue_url_clone).await
+                        indexer_clone.handle_sqs_message(message, &sqs_queue_url_clone).await
                     {
                         error!("Error handling SQS message: {e}")
                     }

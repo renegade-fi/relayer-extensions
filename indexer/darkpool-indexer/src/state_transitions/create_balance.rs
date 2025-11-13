@@ -1,5 +1,4 @@
-//! Defines the application-specific logic for applying a deposit into a new
-//! balance object.
+//! Defines the application-specific logic for creating a new balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;

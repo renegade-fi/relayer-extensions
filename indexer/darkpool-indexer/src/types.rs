@@ -24,7 +24,7 @@ use crate::crypto_mocks::{
 // -------------
 
 /// The name of the global (default) relayer matching pool
-const GLOBAL_MATCHING_POOL: &str = "global";
+const _GLOBAL_MATCHING_POOL: &str = "global";
 
 // ---------
 // | Types |
@@ -85,15 +85,6 @@ impl ExpectedStateObject {
 
         Self { recovery_id, account_id, recovery_stream_seed, share_stream_seed }
     }
-}
-
-/// The type of a state object
-#[derive(Clone)]
-pub enum StateObjectType {
-    /// An intent state object
-    Intent,
-    /// A balance state object
-    Balance,
 }
 
 /// A balance state object
