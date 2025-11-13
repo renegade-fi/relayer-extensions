@@ -3,10 +3,9 @@
 diesel::table! {
     balances (recovery_stream_seed) {
         recovery_stream_seed -> Numeric,
-        version -> Numeric,
-
+        version -> BigInt,
         share_stream_seed -> Numeric,
-        share_stream_index -> Numeric,
+        share_stream_index -> BigInt,
         nullifier -> Numeric,
         public_shares -> Array<Numeric>,
         mint -> Text,
@@ -33,9 +32,9 @@ diesel::table! {
 diesel::table! {
     intents (recovery_stream_seed) {
         recovery_stream_seed -> Numeric,
-        version -> Numeric,
+        version -> BigInt,
         share_stream_seed -> Numeric,
-        share_stream_index -> Numeric,
+        share_stream_index -> BigInt,
         nullifier -> Numeric,
         public_shares -> Array<Numeric>,
         input_mint -> Text,
@@ -57,22 +56,22 @@ diesel::table! {
         account_id -> Uuid,
         owner_address -> Text,
         seed -> Numeric,
-        recovery_seed_csprng_index -> Numeric,
-        share_seed_csprng_index -> Numeric,
+        recovery_seed_csprng_index -> BigInt,
+        share_seed_csprng_index -> BigInt,
     }
 }
 
 diesel::table! {
     processed_nullifiers (nullifier) {
         nullifier -> Numeric,
-        block_number -> Numeric,
+        block_number -> BigInt,
     }
 }
 
 diesel::table! {
     processed_recovery_ids (recovery_id) {
         recovery_id -> Numeric,
-        block_number -> Numeric,
+        block_number -> BigInt,
     }
 }
 
@@ -82,4 +81,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     intents,
     master_view_seeds,
     processed_nullifiers,
+    processed_recovery_ids,
 );
