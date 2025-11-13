@@ -32,7 +32,7 @@ impl DbClient {
             .values(balance_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -41,21 +41,20 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get a balance by its recovery stream seed
-    pub async fn get_balance(
+    /// Get a balance by its nullifier
+    pub async fn get_balance_by_nullifier(
         &self,
-        recovery_stream_seed: Scalar,
+        nullifier: Scalar,
         conn: &mut DbConn,
-    ) -> Result<Option<BalanceStateObject>, DbError> {
-        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+    ) -> Result<BalanceStateObject, DbError> {
+        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
 
         balances::table
-            .filter(balances::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .filter(balances::nullifier.eq(nullifier_bigdecimal))
             .first(conn)
             .await
-            .optional()
-            .map_err(DbError::query)
-            .map(|maybe_record| maybe_record.map(BalanceModel::into))
+            .map_err(DbError::from)
+            .map(BalanceModel::into)
     }
 
     /// Check if a balance record exists for a given recovery stream seed
@@ -74,7 +73,7 @@ impl DbClient {
         {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
-            Err(e) => Err(DbError::query(e)),
+            Err(e) => Err(DbError::from(e)),
         }
     }
 }

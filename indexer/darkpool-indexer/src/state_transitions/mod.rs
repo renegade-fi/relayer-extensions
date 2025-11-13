@@ -15,6 +15,9 @@ pub mod error;
 pub mod register_master_view_seed;
 pub mod types;
 
+#[cfg(test)]
+mod test_utils;
+
 /// The state applicator, responsible for applying high-level state transitions
 /// to the database
 #[derive(Clone)]

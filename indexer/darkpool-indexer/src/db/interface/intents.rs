@@ -32,7 +32,7 @@ impl DbClient {
             .values(intent_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -54,7 +54,7 @@ impl DbClient {
             .first(conn)
             .await
             .optional()
-            .map_err(DbError::query)
+            .map_err(DbError::from)
             .map(|maybe_record| maybe_record.map(IntentModel::into))
     }
 }

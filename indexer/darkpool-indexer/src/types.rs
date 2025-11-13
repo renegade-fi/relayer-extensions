@@ -63,6 +63,7 @@ impl MasterViewSeed {
 }
 
 /// A state object which is expected to be created
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExpectedStateObject {
     /// The expected recovery ID
     pub recovery_id: Scalar,

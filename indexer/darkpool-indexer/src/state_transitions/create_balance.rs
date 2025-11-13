@@ -112,3 +112,161 @@ impl StateApplicator {
         }).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloy::primitives::Address;
+    use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
+    use renegade_circuit_types::{balance::Balance, state_wrapper::StateWrapper};
+
+    use crate::{db::{client::DbClient, error::DbError, test_utils::cleanup_test_db}, state_transitions::test_utils::{assert_csprng_state, gen_random_master_view_seed, setup_test_state_applicator}};
+
+    use super::*;
+
+    /// Sets up an expected state object in the DB, generating a new master view
+    /// seed for the account owning the state object.
+    ///
+    /// Returns the expected state object.
+    async fn setup_expected_state_object(
+        state_applicator: &StateApplicator,
+    ) -> Result<ExpectedStateObject, StateTransitionError> {
+        let mut master_view_seed = gen_random_master_view_seed();
+
+        let master_view_seed_message = MasterViewSeedMessage {
+            account_id: master_view_seed.account_id,
+            owner_address: master_view_seed.owner_address,
+            seed: master_view_seed.seed,
+        };
+
+        state_applicator.register_master_view_seed(master_view_seed_message).await?;
+
+        Ok(master_view_seed.next_expected_state_object())
+    }
+
+    /// Generate the state transition which should result in the given
+    /// expected state object being indexed as a new balance.
+    ///
+    /// Returns the create balance transition, along with the expected balance
+    /// object.
+    fn gen_create_balance_transition(
+        expected_state_object: &ExpectedStateObject,
+    ) -> (CreateBalanceTransition, StateWrapper<Balance>) {
+        let mint = Address::random();
+        let owner = Address::random();
+        let relayer_fee_recipient = Address::random();
+        let one_time_authority = Address::random();
+
+        let balance = Balance::new(
+            mint,
+            owner,
+            relayer_fee_recipient,
+            one_time_authority,
+        );
+
+        let mut wrapped_balance = StateWrapper::new(
+            balance,
+            expected_state_object.share_stream_seed,
+            expected_state_object.recovery_stream_seed,
+        );
+
+        // We progress the balance's recovery stream to represent the computation of the 0th recovery ID
+        wrapped_balance.recovery_stream.advance_by(1);
+
+        let transition = CreateBalanceTransition {
+            recovery_id: expected_state_object.recovery_id,
+            block_number: 0,
+            public_share: wrapped_balance.public_share(),
+        };
+
+        (transition, wrapped_balance)
+    }
+
+    /// Validate the indexing of a balance object against the expected
+    /// circuit type
+    async fn validate_balance_indexing(
+        db_client: &DbClient,
+        expected_balance: &StateWrapper<Balance>,
+    ) -> Result<(), DbError> {
+        let mut conn = db_client.get_db_conn().await?;
+
+        let nullifier = expected_balance.compute_nullifier();
+        let indexed_balance =
+            db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
+
+        // Assert that the indexed balance matches the expected balance.
+        // This covers the CSPRNG states, inner circuit type, and public shares.
+        assert_eq!(&indexed_balance.balance, expected_balance);
+
+        Ok(())
+    }
+
+    /// Validate the rotation of an account's next expected state object
+    async fn validate_expected_state_object_rotation(
+        db_client: &DbClient,
+        old_expected_state_object: &ExpectedStateObject,
+    ) -> Result<(), DbError> {
+        let mut conn = db_client.get_db_conn().await?;
+
+        // Assert that the indexed master view seed's CSPRNG states are advanced
+        // correctly
+        let indexed_master_view_seed = db_client
+            .get_account_master_view_seed(old_expected_state_object.account_id, &mut conn)
+            .await?;
+
+        let recovery_seed_stream = &indexed_master_view_seed.recovery_seed_csprng;
+        assert_csprng_state(recovery_seed_stream, recovery_seed_stream.seed, 2);
+
+        let share_seed_stream = &indexed_master_view_seed.share_seed_csprng;
+        assert_csprng_state(share_seed_stream, share_seed_stream.seed, 2);
+
+        // Assert that the next expected state object is indexed correctly
+        let expected_recovery_stream_seed = recovery_seed_stream.get_ith(1);
+        let expected_share_stream_seed = share_seed_stream.get_ith(1);
+        let next_expected_state_object = ExpectedStateObject::new(
+            indexed_master_view_seed.account_id,
+            expected_recovery_stream_seed,
+            expected_share_stream_seed,
+        );
+
+        let indexed_next_expected_state_object = db_client
+            .get_expected_state_object(next_expected_state_object.recovery_id, &mut conn)
+            .await?;
+
+        assert_eq!(indexed_next_expected_state_object, next_expected_state_object);
+
+        // Assert that the old expected state object is deleted
+        let deleted_expected_state_object_res = db_client
+            .get_expected_state_object(old_expected_state_object.recovery_id, &mut conn)
+            .await;
+
+        assert!(matches!(deleted_expected_state_object_res, Err(DbError::DieselError(diesel::NotFound))));
+
+        Ok(())
+    }
+
+    /// Test that a balance creation is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+        let db_client = &test_applicator.db_client;
+
+        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
+        let (transition, wrapped_balance) =
+            gen_create_balance_transition(&expected_state_object);
+
+        // Index the balance creation
+        test_applicator.create_balance(transition.clone()).await?;
+
+        validate_balance_indexing(db_client, &wrapped_balance).await?;
+
+        validate_expected_state_object_rotation(db_client, &expected_state_object).await?;
+
+        // Assert that the recovery ID is marked as processed
+        let mut conn = db_client.get_db_conn().await?;
+        assert!(db_client.check_recovery_id_processed(transition.recovery_id, &mut conn).await?);
+
+        cleanup_test_db(postgres).await?;
+
+        Ok(())
+    }
+}

@@ -16,30 +16,12 @@ const TEST_DB_NAME: &str = "indexer_test";
 /// The migrations to apply to the test database
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-// ---------
-// | Types |
-// ---------
-
-pub struct TestDbClient {
-    /// The database client
-    pub client: DbClient,
-    /// The local PostgreSQL instance
-    pub postgres: PostgreSQL,
-}
-
-impl TestDbClient {
-    /// Get a reference to the database client
-    pub fn get_client(&self) -> &DbClient {
-        &self.client
-    }
-}
-
 // -----------
 // | Helpers |
 // -----------
 
 /// Set up a test database client targeting a local PostgreSQL instance
-pub async fn setup_test_db_client() -> Result<TestDbClient, DbError> {
+pub async fn setup_test_db() -> Result<(DbClient, PostgreSQL), DbError> {
     let mut postgres = PostgreSQL::default();
 
     postgres.setup().await.map_err(DbError::client_setup)?;
@@ -55,11 +37,11 @@ pub async fn setup_test_db_client() -> Result<TestDbClient, DbError> {
     let mut harness = AsyncMigrationHarness::new(conn);
     harness.run_pending_migrations(MIGRATIONS).map_err(DbError::client_setup)?;
 
-    Ok(TestDbClient { client, postgres })
+    Ok((client, postgres))
 }
 
 /// Clean up the test database instance.
-pub async fn cleanup_test_db(test_db_client: TestDbClient) -> Result<(), DbError> {
+pub async fn cleanup_test_db(postgres: PostgreSQL) -> Result<(), DbError> {
     // Drop all connections to the test database except the current one.
     // We do this here to avoid having to manually `drop` connections established
     // in tests before invoking this function.
@@ -72,7 +54,7 @@ pub async fn cleanup_test_db(test_db_client: TestDbClient) -> Result<(), DbError
 
     // Create a standalone connection to the test database for executing the above
     // query
-    let mut conn = create_unpooled_conn(&test_db_client).await?;
+    let mut conn = create_unpooled_conn(&postgres).await?;
 
     sql_query(drop_conns_query)
         .bind::<diesel::sql_types::Text, _>(TEST_DB_NAME.to_string())
@@ -84,8 +66,8 @@ pub async fn cleanup_test_db(test_db_client: TestDbClient) -> Result<(), DbError
     drop(conn);
 
     // Drop the test database & stop the PostgreSQL instance.
-    test_db_client.postgres.drop_database(TEST_DB_NAME).await.map_err(DbError::client_setup)?;
-    test_db_client.postgres.stop().await.map_err(DbError::client_setup)
+    postgres.drop_database(TEST_DB_NAME).await.map_err(DbError::client_setup)?;
+    postgres.stop().await.map_err(DbError::client_setup)
 }
 
 /// Create a new connection to the test database *without* using the connection
@@ -93,7 +75,7 @@ pub async fn cleanup_test_db(test_db_client: TestDbClient) -> Result<(), DbError
 ///
 /// This ensures that when the connection is dropped, it is terminated instead
 /// of being returned to the pool.
-async fn create_unpooled_conn(test_db_client: &TestDbClient) -> Result<AsyncPgConnection, DbError> {
-    let db_url = test_db_client.postgres.settings().url(TEST_DB_NAME);
+async fn create_unpooled_conn(postgres: &PostgreSQL) -> Result<AsyncPgConnection, DbError> {
+    let db_url = postgres.settings().url(TEST_DB_NAME);
     AsyncPgConnection::establish(&db_url).await.map_err(DbError::client_setup)
 }

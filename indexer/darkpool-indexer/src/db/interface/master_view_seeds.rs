@@ -31,7 +31,7 @@ impl DbClient {
             .values(master_view_seed_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -49,7 +49,7 @@ impl DbClient {
             .set(master_view_seed_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -68,7 +68,7 @@ impl DbClient {
             .filter(master_view_seeds::account_id.eq(account_id))
             .first(conn)
             .await
-            .map_err(DbError::query)
+            .map_err(DbError::from)
             .map(MasterViewSeedModel::into)
     }
 
@@ -86,7 +86,7 @@ impl DbClient {
         {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
-            Err(e) => Err(DbError::query(e)),
+            Err(e) => Err(DbError::from(e)),
         }
     }
 }

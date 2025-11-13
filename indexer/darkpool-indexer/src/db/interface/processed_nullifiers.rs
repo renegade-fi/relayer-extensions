@@ -36,7 +36,7 @@ impl DbClient {
             .values(processed_nullifier)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -61,7 +61,7 @@ impl DbClient {
         {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
-            Err(e) => Err(DbError::query(e)),
+            Err(e) => Err(DbError::from(e)),
         }
     }
 }

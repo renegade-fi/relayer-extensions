@@ -13,6 +13,7 @@ pub enum StateTransition {
 }
 
 /// A transition representing the creation of a new balance object
+#[derive(Clone)]
 pub struct CreateBalanceTransition {
     /// The recovery ID registered for the balance
     pub recovery_id: Scalar,
