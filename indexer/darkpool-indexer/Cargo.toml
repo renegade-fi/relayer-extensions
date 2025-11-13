@@ -36,6 +36,7 @@ serde_json = "1.0"
 
 # === Blockchain === #
 alloy = { workspace = true }
+renegade-solidity-abi = { package = "abi", path = "/Users/akirillo/code/renegade-contracts/abi", features = ["v2"] }
 
 # === Crypto === #
 tiny-keccak = { version = "2.0", features = ["keccak", "sha3"] }
