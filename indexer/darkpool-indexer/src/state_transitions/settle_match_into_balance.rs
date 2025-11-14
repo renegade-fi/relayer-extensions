@@ -1,4 +1,4 @@
-//! Defines the application-specific logic for paying fees accrued on a balance
+//! Defines the application-specific logic for settling a match into a balance
 //! object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
@@ -11,12 +11,12 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 // | Types |
 // ---------
 
-/// A transition representing the payment of fees accrued on a balance object
+/// A transition representing the settlement of a match into a balance object
 #[derive(Clone)]
-pub struct PayFeesTransition {
-    /// The now-spent nullifier of the balance on which fees were paid
+pub struct SettleMatchIntoBalanceTransition {
+    /// The now-spent nullifier of the balance being settled into
     pub nullifier: Scalar,
-    /// The block number in which the fees were paid
+    /// The block number in which the match was settled
     pub block_number: u64,
     /// The public share of the new relayer fee in the balance
     pub new_relayer_fee_public_share: Scalar,
@@ -31,12 +31,18 @@ pub struct PayFeesTransition {
 // --------------------------------
 
 impl StateApplicator {
-    /// Pay fees accrued on a balance object
-    pub async fn pay_fees(
+    /// Settle a match into a balance object
+    pub async fn settle_match_into_balance(
         &self,
-        transition: PayFeesTransition,
+        transition: SettleMatchIntoBalanceTransition,
     ) -> Result<(), StateTransitionError> {
-        let PayFeesTransition { nullifier, block_number, new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share } = transition;
+        let SettleMatchIntoBalanceTransition {
+            nullifier,
+            block_number,
+            new_relayer_fee_public_share,
+            new_protocol_fee_public_share,
+            new_amount_public_share,
+        } = transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
@@ -51,7 +57,7 @@ impl StateApplicator {
         
                 if nullifier_processed {
                     warn!(
-                        "Nullifier {nullifier} has already been processed, skipping fee payment indexing"
+                        "Nullifier {nullifier} has already been processed, skipping indexing of match settlement into balance"
                     );
 
                     return Ok(());
@@ -72,11 +78,11 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_pay_fees_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
+    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_settle_match_into_balance_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
 
-    /// Test that a fee payment is indexed correctly.
+    /// Test that a match settlement into a balance is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_pay_fees() -> Result<(), StateTransitionError> {
+    async fn test_settle_match_into_balance() -> Result<(), StateTransitionError> {
         let (test_applicator, postgres) = setup_test_state_applicator().await?;
         let db_client = &test_applicator.db_client;
 
@@ -87,18 +93,18 @@ mod tests {
 
         test_applicator.create_balance(create_balance_transition.clone()).await?;
 
-        // Generate the subsequent fee payment transition
-        let (pay_fees_transition, updated_wrapped_balance) =
-            gen_pay_fees_transition(&initial_wrapped_balance);
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_balance_transition, updated_wrapped_balance) =
+            gen_settle_match_into_balance_transition(&initial_wrapped_balance);
 
-        // Index the fee payment
-        test_applicator.pay_fees(pay_fees_transition.clone()).await?;
+        // Index the match settlement
+        test_applicator.settle_match_into_balance(settle_match_into_balance_transition.clone()).await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_nullifier_processed(pay_fees_transition.nullifier, &mut conn).await?);
+        assert!(db_client.check_nullifier_processed(settle_match_into_balance_transition.nullifier, &mut conn).await?);
 
         cleanup_test_db(postgres).await?;
 
