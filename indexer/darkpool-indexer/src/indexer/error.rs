@@ -22,6 +22,9 @@ pub enum IndexerError {
     /// An invalid selector was encountered
     #[error("invalid selector: {0}")]
     InvalidSelector(String),
+    /// An invalid settlement bundle was encountered
+    #[error("invalid settlement bundle: {0}")]
+    InvalidSettlementBundle(String),
     /// An error in the database client
     #[error("database error: {0}")]
     Db(#[from] DbError),
@@ -46,6 +49,11 @@ impl IndexerError {
     /// Create a new parse error
     pub fn parse<T: ToString>(msg: T) -> Self {
         Self::Parse(msg.to_string())
+    }
+
+    /// Create a new invalid settlement bundle error
+    pub fn invalid_settlement_bundle<T: ToString>(msg: T) -> Self {
+        Self::InvalidSettlementBundle(msg.to_string())
     }
 }
 
