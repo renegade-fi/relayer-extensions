@@ -13,6 +13,7 @@ use crate::{
     indexer::{Indexer, error::IndexerError},
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition, deposit::DepositTransition,
+        withdraw::WithdrawTransition,
     },
 };
 
@@ -33,7 +34,9 @@ impl Indexer {
             depositCall::SELECTOR => {
                 self.compute_deposit_state_transition(nullifier, tx_hash, &calldata).await
             },
-            withdrawCall::SELECTOR => todo!(),
+            withdrawCall::SELECTOR => {
+                self.compute_withdraw_state_transition(nullifier, tx_hash, &calldata).await
+            },
             payFeesCall::SELECTOR => todo!(),
             settleMatchCall::SELECTOR => todo!(),
             _ => Err(IndexerError::InvalidSelector(hex::encode_prefixed(selector))),
@@ -110,6 +113,28 @@ impl Indexer {
             u256_to_scalar(&deposit_call.depositProofBundle.statement.newAmountShare);
 
         Ok(StateTransition::Deposit(DepositTransition {
+            nullifier,
+            block_number,
+            new_amount_public_share,
+        }))
+    }
+
+    /// Compute a `Withdraw` state transition associated with the now-spent
+    /// nullifier in a `withdraw` call
+    async fn compute_withdraw_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let withdraw_call = withdrawCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let new_amount_public_share =
+            u256_to_scalar(&withdraw_call.withdrawalProofBundle.statement.newAmountShare);
+
+        Ok(StateTransition::Withdraw(WithdrawTransition {
             nullifier,
             block_number,
             new_amount_public_share,
