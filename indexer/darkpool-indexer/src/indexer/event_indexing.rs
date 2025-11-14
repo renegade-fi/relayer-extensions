@@ -21,7 +21,8 @@ use crate::{
     indexer::{Indexer, error::IndexerError},
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
+        pay_fees::PayFeesTransition, settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        withdraw::WithdrawTransition,
     },
 };
 
@@ -115,6 +116,10 @@ impl SettlementBundleData {
         )))
     }
 }
+
+// --------------------------
+// | Indexer Implementation |
+// --------------------------
 
 impl Indexer {
     /// Get the state transition associated with the spending of the given
@@ -330,9 +335,19 @@ impl Indexer {
                 .xor(maybe_party1_balance_shares)
                 .ok_or(IndexerError::invalid_settlement_bundle("no new balance public shares"))?;
 
-        todo!()
+        Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
+            nullifier,
+            block_number,
+            new_relayer_fee_public_share,
+            new_protocol_fee_public_share,
+            new_amount_public_share,
+        })))
     }
 }
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Try to decode the new balance public shares from the match party's
 /// settlement bundle & obligation bundle.
