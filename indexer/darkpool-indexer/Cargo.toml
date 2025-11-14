@@ -13,6 +13,7 @@ renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/co
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
 clap = { version = "4.5.3", features = ["derive", "env"] }
+futures-util = "0.3"
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
