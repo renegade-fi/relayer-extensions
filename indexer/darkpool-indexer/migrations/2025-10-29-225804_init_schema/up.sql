@@ -46,6 +46,8 @@ CREATE TABLE "processed_nullifiers"(
 	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
 );
 
+CREATE INDEX "idx_processed_nullifiers_block_number" ON "processed_nullifiers" ("block_number");
+
 -- PROCESSED RECOVERY IDs --
 
 -- Stores recovery IDs which have already been processed
@@ -53,6 +55,8 @@ CREATE TABLE "processed_recovery_ids"(
 	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
 	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
 );
+
+CREATE INDEX "idx_processed_recovery_ids_block_number" ON "processed_recovery_ids" ("block_number");
 
 -- INTENTS --
 

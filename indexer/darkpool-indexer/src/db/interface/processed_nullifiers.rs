@@ -64,4 +64,19 @@ impl DbClient {
             Err(e) => Err(DbError::from(e)),
         }
     }
+
+    /// Get the latest processed nullifier block number, if one exists
+    pub async fn get_latest_processed_nullifier_block(
+        &self,
+        conn: &mut DbConn,
+    ) -> Result<Option<u64>, DbError> {
+        processed_nullifiers::table
+            .select(processed_nullifiers::block_number)
+            .order(processed_nullifiers::block_number.desc())
+            .first::<i64>(conn)
+            .await
+            .optional()
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.map(|block_number| block_number as u64))
+    }
 }

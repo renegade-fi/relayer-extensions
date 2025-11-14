@@ -14,7 +14,7 @@ pub mod utils;
 #[derive(Clone)]
 pub struct DarkpoolClient {
     /// The darkpool contract instance
-    darkpool: IDarkpoolV2Instance<DynProvider>,
+    pub darkpool: IDarkpoolV2Instance<DynProvider>,
 }
 
 impl DarkpoolClient {
