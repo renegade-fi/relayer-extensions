@@ -5,19 +5,31 @@ use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, max_amount, state_wrapper::StateWrapper,
+    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, max_amount,
+    state_wrapper::StateWrapper,
 };
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use uuid::Uuid;
 
 use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
         StateApplicator, create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
+        error::StateTransitionError, pay_fees::PayFeesTransition,
+        settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
     },
     types::{ExpectedStateObject, MasterViewSeed},
 };
+
+// -------------
+// | Constants |
+// -------------
+
+/// The relayer fee used for testing, as an f64
+const RELAYER_FEE_F64: f64 = 0.001; // 1bp
+/// The protocol fee used for testing, as an f64
+const PROTOCOL_FEE_F64: f64 = 0.001; // 1bp
 
 // ----------------------
 // | Test Setup Helpers |
@@ -36,6 +48,16 @@ pub async fn setup_test_state_applicator()
 // | Test Data Helpers |
 // ---------------------
 
+/// Get the relayer fee as a fixed point
+pub fn relayer_fee() -> FixedPoint {
+    FixedPoint::from_f64_round_down(RELAYER_FEE_F64)
+}
+
+/// Get the protocol fee as a fixed point
+pub fn protocol_fee() -> FixedPoint {
+    FixedPoint::from_f64_round_down(PROTOCOL_FEE_F64)
+}
+
 /// Generate a random amount valid in a wallet
 ///
 /// Leave buffer for additions and subtractions
@@ -44,6 +66,11 @@ pub fn random_amount() -> Amount {
     let amt = (0..max_amount()).sample_single(&mut rng);
 
     amt / 10
+}
+
+/// Add two amounts, saturating up to the maximum amount
+fn add_up_to_max(amount_a: Amount, amount_b: Amount) -> Amount {
+    amount_a.saturating_add(amount_b).min(max_amount())
 }
 
 /// Generate a random master view seed
@@ -155,10 +182,10 @@ fn update_balance_amount(balance: &mut StateWrapper<Balance>, new_amount: Amount
     new_amount_public_share
 }
 
-/// Update the fees in a balance.
+/// Update the amount & fees in a balance.
 ///
 /// Returns the public shares of the new fees & amount.
-fn update_balance_fees(
+fn update_balance_amount_and_fees(
     balance: &mut StateWrapper<Balance>,
     new_relayer_fee_balance: Amount,
     new_protocol_fee_balance: Amount,
@@ -201,8 +228,7 @@ pub fn gen_deposit_transition(
     let mut updated_balance = initial_balance.clone();
 
     // Apply a random deposit amount to the balance
-    let new_amount =
-        (initial_balance.inner.amount.saturating_add(random_amount())).min(max_amount());
+    let new_amount = add_up_to_max(initial_balance.inner.amount, random_amount());
     let new_amount_public_share = update_balance_amount(&mut updated_balance, new_amount);
 
     // Construct the associated deposit transition
@@ -259,7 +285,7 @@ pub fn gen_pay_fees_transition(
     }
 
     let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
-        update_balance_fees(
+        update_balance_amount_and_fees(
             &mut updated_balance,
             new_relayer_fee_balance,
             new_protocol_fee_balance,
@@ -268,6 +294,51 @@ pub fn gen_pay_fees_transition(
 
     // Construct the associated fee payment transition
     let transition = PayFeesTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        new_relayer_fee_public_share,
+        new_protocol_fee_public_share,
+        new_amount_public_share,
+    };
+
+    (transition, updated_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// balance being updated with a match settlement.
+///
+/// Returns the match settlement transition, along with the updated balance.
+pub fn gen_settle_match_into_balance_transition(
+    initial_balance: &StateWrapper<Balance>,
+) -> (SettleMatchIntoBalanceTransition, StateWrapper<Balance>) {
+    let spent_nullifier = initial_balance.compute_nullifier();
+
+    let mut updated_balance = initial_balance.clone();
+
+    // Apply a random match receive amount to the balance
+    let match_amount = random_amount();
+
+    let relayer_fee_amount = scalar_to_u128(&relayer_fee().floor_mul_int(match_amount));
+    let protocol_fee_amount = scalar_to_u128(&protocol_fee().floor_mul_int(match_amount));
+    let net_match_amount =
+        match_amount.saturating_sub(relayer_fee_amount).saturating_sub(protocol_fee_amount);
+
+    let new_amount = add_up_to_max(initial_balance.inner.amount, net_match_amount);
+    let new_relayer_fee_balance =
+        add_up_to_max(initial_balance.inner.relayer_fee_balance, relayer_fee_amount);
+    let new_protocol_fee_balance =
+        add_up_to_max(initial_balance.inner.protocol_fee_balance, protocol_fee_amount);
+
+    let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
+        update_balance_amount_and_fees(
+            &mut updated_balance,
+            new_relayer_fee_balance,
+            new_protocol_fee_balance,
+            new_amount,
+        );
+
+    // Construct the associated match settlement transition
+    let transition = SettleMatchIntoBalanceTransition {
         nullifier: spent_nullifier,
         block_number: 0,
         new_relayer_fee_public_share,
