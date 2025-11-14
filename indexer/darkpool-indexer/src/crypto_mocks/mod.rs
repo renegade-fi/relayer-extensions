@@ -2,4 +2,4 @@
 
 pub mod recovery_stream;
 pub mod share_stream;
-mod utils;
+pub mod utils;
