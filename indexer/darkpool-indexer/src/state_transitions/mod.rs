@@ -11,7 +11,8 @@ use crate::{
     db::client::DbClient,
     state_transitions::{
         create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
+        error::StateTransitionError, pay_fees::PayFeesTransition,
+        settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
     },
 };
 
@@ -20,6 +21,7 @@ pub mod deposit;
 pub mod error;
 pub mod pay_fees;
 pub mod register_master_view_seed;
+pub mod settle_match_into_balance;
 pub mod withdraw;
 
 #[cfg(test)]
@@ -41,6 +43,8 @@ pub enum StateTransition {
     Withdraw(WithdrawTransition),
     /// The payment of fees accrued on a balance object
     PayFees(PayFeesTransition),
+    /// The settlement of a match into a balance object
+    SettleMatchIntoBalance(SettleMatchIntoBalanceTransition),
 }
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -70,6 +74,9 @@ impl StateApplicator {
             StateTransition::Deposit(transition) => self.deposit(transition).await,
             StateTransition::Withdraw(transition) => self.withdraw(transition).await,
             StateTransition::PayFees(transition) => self.pay_fees(transition).await,
+            StateTransition::SettleMatchIntoBalance(transition) => {
+                self.settle_match_into_balance(transition).await
+            },
         }
     }
 }
