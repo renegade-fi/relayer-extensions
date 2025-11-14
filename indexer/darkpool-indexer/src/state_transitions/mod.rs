@@ -11,13 +11,14 @@ use crate::{
     db::client::DbClient,
     state_transitions::{
         create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        error::StateTransitionError, withdraw::WithdrawTransition,
+        error::StateTransitionError, pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
     },
 };
 
 pub mod create_balance;
 pub mod deposit;
 pub mod error;
+pub mod pay_fees;
 pub mod register_master_view_seed;
 pub mod withdraw;
 
@@ -38,6 +39,8 @@ pub enum StateTransition {
     Deposit(DepositTransition),
     /// The withdrawal of funds from an existing balance object
     Withdraw(WithdrawTransition),
+    /// The payment of fees accrued on a balance object
+    PayFees(PayFeesTransition),
 }
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -66,6 +69,7 @@ impl StateApplicator {
             },
             StateTransition::Deposit(transition) => self.deposit(transition).await,
             StateTransition::Withdraw(transition) => self.withdraw(transition).await,
+            StateTransition::PayFees(transition) => self.pay_fees(transition).await,
         }
     }
 }

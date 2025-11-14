@@ -13,7 +13,7 @@ use crate::{
     indexer::{Indexer, error::IndexerError},
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        withdraw::WithdrawTransition,
+        pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
     },
 };
 
@@ -37,7 +37,9 @@ impl Indexer {
             withdrawCall::SELECTOR => {
                 self.compute_withdraw_state_transition(nullifier, tx_hash, &calldata).await
             },
-            payFeesCall::SELECTOR => todo!(),
+            payFeesCall::SELECTOR => {
+                self.compute_pay_fees_state_transition(nullifier, tx_hash, &calldata).await
+            },
             settleMatchCall::SELECTOR => todo!(),
             _ => Err(IndexerError::InvalidSelector(hex::encode_prefixed(selector))),
         }
@@ -137,6 +139,37 @@ impl Indexer {
         Ok(StateTransition::Withdraw(WithdrawTransition {
             nullifier,
             block_number,
+            new_amount_public_share,
+        }))
+    }
+
+    /// Compute a `PayFees` state transition associated with the now-spent
+    /// nullifier in a `payFees` call
+    async fn compute_pay_fees_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let pay_fees_call = payFeesCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let [
+            new_relayer_fee_public_share_u256,
+            new_protocol_fee_public_share_u256,
+            new_amount_public_share_u256,
+        ] = pay_fees_call.feePaymentProofBundle.statement.newBalancePublicShares;
+
+        let new_relayer_fee_public_share = u256_to_scalar(&new_relayer_fee_public_share_u256);
+        let new_protocol_fee_public_share = u256_to_scalar(&new_protocol_fee_public_share_u256);
+        let new_amount_public_share = u256_to_scalar(&new_amount_public_share_u256);
+
+        Ok(StateTransition::PayFees(PayFeesTransition {
+            nullifier,
+            block_number,
+            new_relayer_fee_public_share,
+            new_protocol_fee_public_share,
             new_amount_public_share,
         }))
     }
