@@ -23,7 +23,7 @@ impl DbClient {
     pub async fn insert_master_view_seed(
         &self,
         master_view_seed: MasterViewSeed,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let master_view_seed_model: MasterViewSeedModel = master_view_seed.into();
 
@@ -31,7 +31,7 @@ impl DbClient {
             .values(master_view_seed_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -40,7 +40,7 @@ impl DbClient {
     pub async fn update_master_view_seed(
         &self,
         master_view_seed: MasterViewSeed,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let master_view_seed_model: MasterViewSeedModel = master_view_seed.into();
 
@@ -49,7 +49,7 @@ impl DbClient {
             .set(master_view_seed_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -62,13 +62,13 @@ impl DbClient {
     pub async fn get_account_master_view_seed(
         &self,
         account_id: Uuid,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<MasterViewSeed, DbError> {
         master_view_seeds::table
             .filter(master_view_seeds::account_id.eq(account_id))
             .first(conn)
             .await
-            .map_err(DbError::query)
+            .map_err(DbError::from)
             .map(MasterViewSeedModel::into)
     }
 
@@ -76,7 +76,7 @@ impl DbClient {
     pub async fn master_view_seed_exists(
         &self,
         account_id: Uuid,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         match master_view_seeds::table
             .filter(master_view_seeds::account_id.eq(account_id))
@@ -86,7 +86,7 @@ impl DbClient {
         {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
-            Err(e) => Err(DbError::query(e)),
+            Err(e) => Err(DbError::from(e)),
         }
     }
 }

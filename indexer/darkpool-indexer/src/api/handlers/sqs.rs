@@ -1,10 +1,13 @@
 //! Handler logic SQS messages polled by the darkpool indexer
 
 use aws_sdk_sqs::types::Message;
-use darkpool_indexer_api::types::sqs::{MasterViewSeedMessage, RecoveryIdMessage, SqsMessage};
+use darkpool_indexer_api::types::sqs::{
+    MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage, SqsMessage,
+};
 
 use crate::{
-    api::handlers::error::HandlerError, indexer::Indexer, state_transitions::types::StateTransition,
+    indexer::{Indexer, error::IndexerError},
+    state_transitions::StateTransition,
 };
 
 impl Indexer {
@@ -18,7 +21,7 @@ impl Indexer {
         &self,
         message: Message,
         sqs_queue_url: &str,
-    ) -> Result<(), HandlerError> {
+    ) -> Result<(), IndexerError> {
         if let Some(body) = message.body() {
             let message: SqsMessage = serde_json::from_str(body)?;
             match message {
@@ -28,8 +31,8 @@ impl Indexer {
                 SqsMessage::RegisterRecoveryId(message) => {
                     self.handle_recovery_id_message(message).await?;
                 },
-                SqsMessage::NullifierSpend(_) => {
-                    todo!()
+                SqsMessage::NullifierSpend(message) => {
+                    self.handle_nullifier_spend_message(message).await?;
                 },
             }
         }
@@ -57,7 +60,7 @@ impl Indexer {
     pub async fn handle_master_view_seed_message(
         &self,
         message: MasterViewSeedMessage,
-    ) -> Result<(), HandlerError> {
+    ) -> Result<(), IndexerError> {
         let state_transition = StateTransition::RegisterMasterViewSeed(message);
 
         self.state_applicator.apply_state_transition(state_transition).await?;
@@ -73,10 +76,28 @@ impl Indexer {
     pub async fn handle_recovery_id_message(
         &self,
         message: RecoveryIdMessage,
-    ) -> Result<(), HandlerError> {
+    ) -> Result<(), IndexerError> {
         let RecoveryIdMessage { recovery_id, tx_hash } = message;
         let state_transition =
-            self.darkpool_client.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;
+            self.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;
+
+        if let Some(state_transition) = state_transition {
+            self.state_applicator.apply_state_transition(state_transition).await?;
+        }
+
+        Ok(())
+    }
+
+    // === Nullifier Spend Message Handler ===
+
+    /// Handle an SQS message representing the spending of a state object's
+    /// nullifier onchain
+    pub async fn handle_nullifier_spend_message(
+        &self,
+        message: NullifierSpendMessage,
+    ) -> Result<(), IndexerError> {
+        let NullifierSpendMessage { nullifier, tx_hash } = message;
+        let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 
