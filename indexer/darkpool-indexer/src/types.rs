@@ -13,6 +13,7 @@ use renegade_circuit_types::{
     traits::{BaseType, SecretShareType},
 };
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
@@ -121,6 +122,22 @@ impl BalanceStateObject {
             StateWrapper { inner: balance_inner, recovery_stream, share_stream, public_share };
 
         Self { balance, account_id, active: true }
+    }
+
+    /// Update the balance amount using the given public share
+    pub fn update_amount(&mut self, new_amount_public_share: Scalar) {
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
+
+        // Update the public shares of the balance
+        let mut public_share = self.balance.public_share();
+        public_share.amount = new_amount_public_share;
+        self.balance.public_share = public_share;
+
+        // Update the plaintext balance amount
+        let new_amount_private_share = self.balance.share_stream.next().unwrap();
+        let new_amount_scalar = new_amount_public_share + new_amount_private_share;
+        self.balance.inner.amount = scalar_to_u128(&new_amount_scalar);
     }
 }
 
