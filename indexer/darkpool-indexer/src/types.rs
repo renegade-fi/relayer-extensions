@@ -141,8 +141,8 @@ impl BalanceStateObject {
         self.balance.inner.amount = scalar_to_u128(&new_amount_scalar);
     }
 
-    /// Update the fee & balance amounts using the given public shares
-    pub fn update_fees(
+    /// Update the balance amount & fees using the given public shares
+    pub fn update_amount_and_fees(
         &mut self,
         new_relayer_fee_public_share: Scalar,
         new_protocol_fee_public_share: Scalar,
