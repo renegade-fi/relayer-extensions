@@ -32,7 +32,7 @@ impl DbClient {
             .values(expected_state_object_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -49,7 +49,7 @@ impl DbClient {
             .filter(expected_state_objects::recovery_id.eq(recovery_id_bigdecimal))
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -70,7 +70,7 @@ impl DbClient {
             .filter(expected_state_objects::recovery_id.eq(recovery_id_bigdecimal))
             .first(conn)
             .await
-            .map_err(DbError::query)
+            .map_err(DbError::from)
             .map(ExpectedStateObjectModel::into)
     }
 }

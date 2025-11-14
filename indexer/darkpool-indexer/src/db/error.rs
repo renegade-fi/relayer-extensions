@@ -9,9 +9,6 @@ pub enum DbError {
     /// An error obtaining a connection from the pool
     #[error("pool connection error: {0}")]
     PoolConnection(String),
-    /// An error executing a query
-    #[error("query execution error: {0}")]
-    Query(String),
     /// An arbitrary Diesel error
     #[error("Diesel error: {0}")]
     DieselError(#[from] diesel::result::Error),
@@ -27,10 +24,5 @@ impl DbError {
     /// Create a new pool connection error
     pub fn pool_connection<T: ToString>(msg: T) -> Self {
         Self::PoolConnection(msg.to_string())
-    }
-
-    /// Create a new query execution error
-    pub fn query<T: ToString>(msg: T) -> Self {
-        Self::Query(msg.to_string())
     }
 }
