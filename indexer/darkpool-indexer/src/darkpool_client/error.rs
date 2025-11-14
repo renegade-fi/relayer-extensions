@@ -9,12 +9,9 @@ pub enum DarkpoolClientError {
     /// A recovery ID was not found in a call trace
     #[error("recovery ID not found")]
     RecoveryIdNotFound,
-    /// An invalid selector was provided
-    #[error("invalid selector: {0}")]
-    InvalidSelector(String),
-    /// An error decoding calldata
-    #[error("calldata decoding error: {0}")]
-    CalldataDecode(String),
+    /// A nullifier was not found in a call trace
+    #[error("nullifier not found")]
+    NullifierNotFound,
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -22,10 +19,5 @@ impl DarkpoolClientError {
     /// Create a new RPC error
     pub fn rpc<T: ToString>(msg: T) -> Self {
         Self::Rpc(msg.to_string())
-    }
-
-    /// Create a new calldata decoding error
-    pub fn calldata_decode<T: ToString>(msg: T) -> Self {
-        Self::CalldataDecode(msg.to_string())
     }
 }
