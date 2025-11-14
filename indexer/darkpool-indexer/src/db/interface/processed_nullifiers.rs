@@ -22,7 +22,7 @@ impl DbClient {
         &self,
         nullifier: Scalar,
         block_number: u64,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
         let block_number_i64 = block_number as i64;
@@ -36,7 +36,7 @@ impl DbClient {
             .values(processed_nullifier)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -49,7 +49,7 @@ impl DbClient {
     pub async fn check_nullifier_processed(
         &self,
         nullifier: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<bool, DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
 
@@ -61,7 +61,7 @@ impl DbClient {
         {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
-            Err(e) => Err(DbError::query(e)),
+            Err(e) => Err(DbError::from(e)),
         }
     }
 }
