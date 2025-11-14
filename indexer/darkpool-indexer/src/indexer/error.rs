@@ -3,6 +3,7 @@
 use aws_sdk_sqs::error::SdkError;
 
 use crate::{
+    chain_event_listener::error::ChainEventListenerError,
     darkpool_client::error::DarkpoolClientError, db::error::DbError,
     state_transitions::error::StateTransitionError,
 };
@@ -31,6 +32,9 @@ pub enum IndexerError {
     /// An error in the state transition applicator
     #[error("state transition error: {0}")]
     StateTransition(#[from] StateTransitionError),
+    /// An error in the chain event listener
+    #[error("chain event listener error: {0}")]
+    ChainEventListener(#[from] ChainEventListenerError),
     /// An error parsing a value
     #[error("parse error: {0}")]
     Parse(String),

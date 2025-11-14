@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod api;
+mod chain_event_listener;
 mod cli;
 mod crypto_mocks;
 mod darkpool_client;
@@ -48,8 +49,10 @@ async fn main() -> Result<(), IndexerError> {
 
     let mut tasks = JoinSet::new();
     tasks.spawn(run_sqs_consumer(indexer.clone(), cli.sqs_queue_url.clone()));
-
+    tasks.spawn(run_nullifier_spend_listener(indexer.clone(), cli.sqs_queue_url.clone()));
+    tasks.spawn(run_recovery_id_registration_listener(indexer.clone(), cli.sqs_queue_url.clone()));
     // TODO: Spawn HTTP server
+
     match tasks.join_next().await.expect("No tasks spawned") {
         Err(e) => error!("Error joining indexer task: {e}"),
         Ok(Ok(())) => warn!("Indexer task exited"),
@@ -117,4 +120,24 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
             });
         }
     }
+}
+
+/// Run the nullifier spend event listener, watching for nullifier spend events
+/// and forwarding them to the SQS queue
+async fn run_nullifier_spend_listener(
+    indexer: Indexer,
+    sqs_queue_url: String,
+) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_nullifiers(sqs_queue_url).await?;
+    Ok(())
+}
+
+/// Run the recovery ID registration event listener, watching for recovery ID
+/// registration events and forwarding them to the SQS queue
+async fn run_recovery_id_registration_listener(
+    indexer: Indexer,
+    sqs_queue_url: String,
+) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_recovery_ids(sqs_queue_url).await?;
+    Ok(())
 }
