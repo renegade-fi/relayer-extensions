@@ -1,6 +1,8 @@
 //! Common, low-level cryptographic utilities
 
+use renegade_circuit_types::{Amount, csprng::PoseidonCSPRNG};
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use tiny_keccak::Hasher;
 
 /// The output size of the Keccak-256 hash function in bytes
@@ -36,4 +38,12 @@ pub fn hash_to_scalar(msg: &[u8]) -> Scalar {
 
     // Perform modular reduction
     Scalar::from_be_bytes_mod_order(&extended_hash)
+}
+
+/// Decrypt an amount ciphertext using a stream cipher, advancing its internal
+/// state
+pub fn decrypt_amount(amount_public_share: Scalar, stream_cipher: &mut PoseidonCSPRNG) -> Amount {
+    let private_share = stream_cipher.next().unwrap();
+    let amount_scalar = amount_public_share + private_share;
+    scalar_to_u128(&amount_scalar)
 }
