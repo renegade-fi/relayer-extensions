@@ -5,15 +5,37 @@
 //! are defined over canonical object types & have no dependencies on external
 //! resources like the database or RPC client.
 
+use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
+
 use crate::{
     db::client::DbClient,
-    state_transitions::{error::StateTransitionError, types::StateTransition},
+    state_transitions::{
+        create_balance::CreateBalanceTransition, deposit::DepositTransition,
+        error::StateTransitionError,
+    },
 };
 
 pub mod create_balance;
+pub mod deposit;
 pub mod error;
 pub mod register_master_view_seed;
-pub mod types;
+
+#[cfg(test)]
+mod test_utils;
+
+// ---------
+// | Types |
+// ---------
+
+/// The type of a state transition
+pub enum StateTransition {
+    /// The registration of a new master view seed
+    RegisterMasterViewSeed(MasterViewSeedMessage),
+    /// The creation of a new balance object
+    CreateBalance(CreateBalanceTransition),
+    /// The deposit of funds into an existing balance object
+    Deposit(DepositTransition),
+}
 
 /// The state applicator, responsible for applying high-level state transitions
 /// to the database
@@ -39,6 +61,7 @@ impl StateApplicator {
             StateTransition::RegisterMasterViewSeed(transition) => {
                 self.register_master_view_seed(transition).await
             },
+            StateTransition::Deposit(transition) => self.deposit(transition).await,
         }
     }
 }
