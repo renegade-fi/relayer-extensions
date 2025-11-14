@@ -3,7 +3,7 @@
 use alloy::primitives::Address;
 use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
-use rand::{distributions::uniform::SampleRange, thread_rng};
+use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{
     Amount, balance::Balance, csprng::PoseidonCSPRNG, max_amount, state_wrapper::StateWrapper,
 };
@@ -14,7 +14,7 @@ use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
         StateApplicator, create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        error::StateTransitionError, withdraw::WithdrawTransition,
+        error::StateTransitionError, pay_fees::PayFeesTransition, withdraw::WithdrawTransition,
     },
     types::{ExpectedStateObject, MasterViewSeed},
 };
@@ -89,6 +89,8 @@ pub async fn setup_expected_state_object(
 /// Generate the state transition which should result in the given
 /// expected state object being indexed as a new balance.
 ///
+/// We create the balance with random fees & amounts for convenience in tests.
+///
 /// Returns the create balance transition, along with the expected balance
 /// object.
 pub fn gen_create_balance_transition(
@@ -98,10 +100,19 @@ pub fn gen_create_balance_transition(
     let owner = Address::random();
     let relayer_fee_recipient = Address::random();
     let one_time_authority = Address::random();
+    let relayer_fee_balance = random_amount();
+    let protocol_fee_balance = random_amount();
+    let amount = random_amount();
 
-    let mut balance = Balance::new(mint, owner, relayer_fee_recipient, one_time_authority);
-    let initial_amount = random_amount();
-    balance.amount = initial_amount;
+    let balance = Balance {
+        mint,
+        owner,
+        one_time_authority,
+        relayer_fee_recipient,
+        relayer_fee_balance,
+        protocol_fee_balance,
+        amount,
+    };
 
     let mut wrapped_balance = StateWrapper::new(
         balance,
@@ -142,6 +153,40 @@ fn update_balance_amount(balance: &mut StateWrapper<Balance>, new_amount: Amount
     balance.public_share = public_share;
 
     new_amount_public_share
+}
+
+/// Update the fees in a balance.
+///
+/// Returns the public shares of the new fees & amount.
+fn update_balance_fees(
+    balance: &mut StateWrapper<Balance>,
+    new_relayer_fee_balance: Amount,
+    new_protocol_fee_balance: Amount,
+    new_amount: Amount,
+) -> (Scalar, Scalar, Scalar) {
+    // Advance the recovery stream to indicate the next object version
+    balance.recovery_stream.advance_by(1);
+
+    // Update the balance fees & amount
+    balance.inner.relayer_fee_balance = new_relayer_fee_balance;
+    balance.inner.protocol_fee_balance = new_protocol_fee_balance;
+    balance.inner.amount = new_amount;
+
+    // We re-encrypt only the updated shares of the balance
+    let new_relayer_fee_public_share = balance.stream_cipher_encrypt(&new_relayer_fee_balance);
+    let new_protocol_fee_public_share = balance.stream_cipher_encrypt(&new_protocol_fee_balance);
+    let new_amount_public_share = balance.stream_cipher_encrypt(&new_amount);
+
+    // Update the public share of the balance
+    let mut public_share = balance.public_share();
+
+    public_share.relayer_fee_balance = new_relayer_fee_public_share;
+    public_share.protocol_fee_balance = new_protocol_fee_public_share;
+    public_share.amount = new_amount_public_share;
+
+    balance.public_share = public_share;
+
+    (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share)
 }
 
 /// Generate the state transition which should result in the given
@@ -185,6 +230,50 @@ pub fn gen_withdraw_transition(
     // Construct the associated withdrawal transition
     let transition =
         WithdrawTransition { nullifier: spent_nullifier, block_number: 0, new_amount_public_share };
+
+    (transition, updated_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// balance being updated with a fee payment.
+///
+/// Returns the fee payment transition, along with the updated balance.
+pub fn gen_pay_fees_transition(
+    initial_balance: &StateWrapper<Balance>,
+) -> (PayFeesTransition, StateWrapper<Balance>) {
+    let spent_nullifier = initial_balance.compute_nullifier();
+
+    let mut updated_balance = initial_balance.clone();
+
+    // Apply a random fee payment to the balance
+
+    // The balance amount itself remains unchanged
+    let new_amount = initial_balance.inner.amount;
+    let mut new_relayer_fee_balance = initial_balance.inner.relayer_fee_balance;
+    let mut new_protocol_fee_balance = initial_balance.inner.protocol_fee_balance;
+
+    if thread_rng().gen_bool(0.5) {
+        new_relayer_fee_balance = new_relayer_fee_balance.saturating_sub(random_amount());
+    } else {
+        new_protocol_fee_balance = new_protocol_fee_balance.saturating_sub(random_amount());
+    }
+
+    let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
+        update_balance_fees(
+            &mut updated_balance,
+            new_relayer_fee_balance,
+            new_protocol_fee_balance,
+            new_amount,
+        );
+
+    // Construct the associated fee payment transition
+    let transition = PayFeesTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        new_relayer_fee_public_share,
+        new_protocol_fee_public_share,
+        new_amount_public_share,
+    };
 
     (transition, updated_balance)
 }
