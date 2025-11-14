@@ -3,9 +3,9 @@
 use alloy::primitives::Address;
 use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
-use rand::{Rng, thread_rng};
+use rand::{distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, state_wrapper::StateWrapper,
+    Amount, balance::Balance, csprng::PoseidonCSPRNG, max_amount, state_wrapper::StateWrapper,
 };
 use renegade_constants::Scalar;
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
         StateApplicator, create_balance::CreateBalanceTransition, deposit::DepositTransition,
-        error::StateTransitionError,
+        error::StateTransitionError, withdraw::WithdrawTransition,
     },
     types::{ExpectedStateObject, MasterViewSeed},
 };
@@ -35,6 +35,16 @@ pub async fn setup_test_state_applicator()
 // ---------------------
 // | Test Data Helpers |
 // ---------------------
+
+/// Generate a random amount valid in a wallet
+///
+/// Leave buffer for additions and subtractions
+pub fn random_amount() -> Amount {
+    let mut rng = thread_rng();
+    let amt = (0..max_amount()).sample_single(&mut rng);
+
+    amt / 10
+}
 
 /// Generate a random master view seed
 pub fn gen_random_master_view_seed() -> MasterViewSeed {
@@ -89,7 +99,9 @@ pub fn gen_create_balance_transition(
     let relayer_fee_recipient = Address::random();
     let one_time_authority = Address::random();
 
-    let balance = Balance::new(mint, owner, relayer_fee_recipient, one_time_authority);
+    let mut balance = Balance::new(mint, owner, relayer_fee_recipient, one_time_authority);
+    let initial_amount = random_amount();
+    balance.amount = initial_amount;
 
     let mut wrapped_balance = StateWrapper::new(
         balance,
@@ -110,6 +122,28 @@ pub fn gen_create_balance_transition(
     (transition, wrapped_balance)
 }
 
+/// Update the amount of a balance.
+///
+/// Returns the public share of the new amount.
+fn update_balance_amount(balance: &mut StateWrapper<Balance>, new_amount: Amount) -> Scalar {
+    // Advance the recovery stream to indicate the next object version
+    balance.recovery_stream.advance_by(1);
+
+    // Update the balance amount
+    balance.inner.amount = new_amount;
+
+    // We re-encrypt only the updated shares of the balance, which in this case
+    // pertain only to the amount
+    let new_amount_public_share = balance.stream_cipher_encrypt(&new_amount);
+
+    // Update the public share of the balance
+    let mut public_share = balance.public_share();
+    public_share.amount = new_amount_public_share;
+    balance.public_share = public_share;
+
+    new_amount_public_share
+}
+
 /// Generate the state transition which should result in the given
 /// balance being updated with a deposit.
 ///
@@ -121,26 +155,36 @@ pub fn gen_deposit_transition(
 
     let mut updated_balance = initial_balance.clone();
 
-    // Advance the recovery stream to indicate the next object version
-    updated_balance.recovery_stream.advance_by(1);
-
     // Apply a random deposit amount to the balance
-    let deposit_amount: Amount = thread_rng().r#gen();
-    updated_balance.inner.amount += deposit_amount;
+    let new_amount =
+        (initial_balance.inner.amount.saturating_add(random_amount())).min(max_amount());
+    let new_amount_public_share = update_balance_amount(&mut updated_balance, new_amount);
 
-    // We re-encrypt only the updated shares of the balance, which in this case
-    // pertain only to the amount
-    let new_amount = updated_balance.inner.amount;
-    let new_amount_public_share = updated_balance.stream_cipher_encrypt(&new_amount);
-
-    // Update the public share of the balance
-    let mut public_share = updated_balance.public_share();
-    public_share.amount = new_amount_public_share;
-    updated_balance.public_share = public_share;
-
-    // Construct the associated nullifier spend data
+    // Construct the associated deposit transition
     let transition =
         DepositTransition { nullifier: spent_nullifier, block_number: 0, new_amount_public_share };
+
+    (transition, updated_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// balance being updated with a withdrawal.
+///
+/// Returns the withdrawal transition, along with the updated balance.
+pub fn gen_withdraw_transition(
+    initial_balance: &StateWrapper<Balance>,
+) -> (WithdrawTransition, StateWrapper<Balance>) {
+    let spent_nullifier = initial_balance.compute_nullifier();
+
+    let mut updated_balance = initial_balance.clone();
+
+    // Apply a random withdrawal amount to the balance
+    let new_amount = initial_balance.inner.amount.saturating_sub(random_amount());
+    let new_amount_public_share = update_balance_amount(&mut updated_balance, new_amount);
+
+    // Construct the associated withdrawal transition
+    let transition =
+        WithdrawTransition { nullifier: spent_nullifier, block_number: 0, new_amount_public_share };
 
     (transition, updated_balance)
 }
