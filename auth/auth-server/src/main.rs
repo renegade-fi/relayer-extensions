@@ -394,6 +394,19 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_external_match_request(path, headers, body, query_str).await
         });
 
+    let direct_malleable_match_path = warp::path("v0")
+        .and(warp::path("matching-engine"))
+        .and(warp::path("request-malleable-external-match"))
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_query_string())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
+            server.handle_direct_malleable_match_request(path, headers, body, query_str).await
+        });
+
     let order_book_depth_with_mint = warp::path("v0")
         .and(warp::path("order_book"))
         .and(warp::path("depth"))
@@ -440,6 +453,7 @@ async fn main() -> Result<(), AuthServerError> {
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
         .or(atomic_match_path)
+        .or(direct_malleable_match_path)
         .or(external_quote_path)
         .or(external_quote_assembly_path)
         .or(external_malleable_assembly_path)

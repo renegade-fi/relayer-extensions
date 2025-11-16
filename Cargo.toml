@@ -9,8 +9,6 @@ members = [
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
     "funds-manager/funds-manager-server",
-    "indexer/darkpool-indexer",
-    "indexer/darkpool-indexer-api",
     "price-reporter",
     "price-reporter-client",
     "prover-service/server",
