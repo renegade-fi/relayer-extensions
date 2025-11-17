@@ -18,13 +18,13 @@ use crate::error::AuthServerError;
 use crate::http_utils::request_response::overwrite_response_body;
 use crate::http_utils::stringify_formatter::json_deserialize;
 use crate::server::Server;
-use crate::server::api_handlers::external_match::{BytesResponse, RequestContext, ResponseContext};
-use crate::server::api_handlers::get_sdk_version;
-use crate::server::api_handlers::rfqt::helpers::{
+use crate::server::api_handlers::connectors::rfqt::helpers::{
     create_direct_match_request, create_quote_request, should_use_malleable_calldata,
     transform_match_bundle_to_rfqt_response, transform_quote_to_assemble_malleable_ctx,
 };
-use crate::server::api_handlers::rfqt::{MatchBundle, RequestContextVariant};
+use crate::server::api_handlers::connectors::rfqt::{MatchBundle, RequestContextVariant};
+use crate::server::api_handlers::external_match::{BytesResponse, RequestContext, ResponseContext};
+use crate::server::api_handlers::get_sdk_version;
 
 impl Server {
     /// Handle the RFQT Quote endpoint (`POST /rfqt/v3/quote`).

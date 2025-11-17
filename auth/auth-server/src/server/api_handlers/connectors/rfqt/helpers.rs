@@ -23,7 +23,7 @@ use renegade_util::{get_current_time_millis, hex::biguint_to_hex_addr};
 
 use crate::{
     error::AuthServerError,
-    server::api_handlers::{external_match::RequestContext, rfqt::MatchBundle},
+    server::api_handlers::{connectors::rfqt::MatchBundle, external_match::RequestContext},
 };
 
 // -------------
