@@ -75,6 +75,23 @@ impl DbClient {
             .map(BalanceModel::into)
     }
 
+    /// Get a balance by its recovery stream seed
+    pub async fn get_balance_by_recovery_stream_seed(
+        &self,
+        recovery_stream_seed: Scalar,
+        conn: &mut DbConn,
+    ) -> Result<Option<BalanceStateObject>, DbError> {
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+
+        balances::table
+            .filter(balances::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .first(conn)
+            .await
+            .optional()
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.map(BalanceModel::into))
+    }
+
     /// Check if a balance record exists for a given recovery stream seed
     pub async fn balance_exists(
         &self,
