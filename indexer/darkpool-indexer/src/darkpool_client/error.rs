@@ -12,6 +12,9 @@ pub enum DarkpoolClientError {
     /// A nullifier was not found in a call trace
     #[error("nullifier not found")]
     NullifierNotFound,
+    /// A public intent hash was not found in a call trace
+    #[error("public intent hash not found")]
+    PublicIntentHashNotFound,
 }
 
 #[allow(clippy::needless_pass_by_value)]
