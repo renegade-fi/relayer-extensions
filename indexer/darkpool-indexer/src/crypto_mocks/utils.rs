@@ -15,7 +15,7 @@ pub fn hash_to_scalar(msg: &[u8]) -> Scalar {
     let msg_hash = keccak256(msg);
 
     // Hash the hash again
-    let recursive_hash = keccak256(&msg_hash);
+    let recursive_hash = keccak256(msg_hash);
 
     // Concatenate the hashes
     let mut extended_hash = [0u8; B256::len_bytes() * 2];
