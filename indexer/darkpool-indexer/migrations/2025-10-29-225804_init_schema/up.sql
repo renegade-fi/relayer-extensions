@@ -62,9 +62,10 @@ CREATE INDEX "idx_processed_recovery_ids_block_number" ON "processed_recovery_id
 
 -- Stores public intent updates which have already been processed
 CREATE TABLE "processed_public_intent_updates"(
-	"intent_hash" TEXT NOT NULL PRIMARY KEY,
+	"intent_hash" TEXT NOT NULL,
 	"version" BIGINT NOT NULL CHECK (version >= 0),
-	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0),
+	PRIMARY KEY ("intent_hash", "version")
 );
 
 CREATE INDEX "idx_processed_public_intent_updates_block_number" ON "processed_public_intent_updates" ("block_number");
