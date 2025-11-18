@@ -1,6 +1,6 @@
 //! Interface methods for interacting with the public intents table
 
-use diesel::{ExpressionMethods, query_dsl::methods::FilterDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 
 use crate::{
@@ -51,5 +51,20 @@ impl DbClient {
             .await
             .map_err(DbError::from)
             .map(PublicIntentModel::into)
+    }
+
+    /// Check if a public intent record exists for a given intent hash
+    pub async fn public_intent_exists(
+        &self,
+        intent_hash: String,
+        conn: &mut DbConn,
+    ) -> Result<bool, DbError> {
+        public_intents::table
+            .filter(public_intents::intent_hash.eq(intent_hash))
+            .first::<PublicIntentModel>(conn)
+            .await
+            .optional()
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 }

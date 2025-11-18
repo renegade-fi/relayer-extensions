@@ -26,7 +26,7 @@ use crate::crypto_mocks::{
 // -------------
 
 /// The name of the global (default) relayer matching pool
-const _GLOBAL_MATCHING_POOL: &str = "global";
+const GLOBAL_MATCHING_POOL: &str = "global";
 
 // ---------
 // | Types |
@@ -212,6 +212,31 @@ pub struct PublicIntentStateObject {
     pub min_fill_size: Amount,
     /// Whether to precompute a cancellation proof for the intent
     pub precompute_cancellation_proof: bool,
+}
+
+impl PublicIntentStateObject {
+    /// Create a new public intent state object
+    pub fn new(intent_hash: String, intent: Intent, account_id: Uuid) -> Self {
+        // Select safe default values for the public intent
+        let version = 0;
+        let active = true;
+        let matching_pool = GLOBAL_MATCHING_POOL.to_string();
+        let allow_external_matches = false;
+        let min_fill_size = intent.amount_in;
+        let precompute_cancellation_proof = false;
+
+        Self {
+            intent_hash,
+            intent,
+            version,
+            account_id,
+            active,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        }
+    }
 }
 
 // TODO: Define remaining internal types

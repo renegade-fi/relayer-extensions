@@ -59,7 +59,7 @@ mod tests {
         // Retrieve the indexed master view seed
         let mut conn = db_client.get_db_conn().await?;
         let indexed_master_view_seed = db_client
-            .get_account_master_view_seed(expected_master_view_seed.account_id, &mut conn)
+            .get_master_view_seed_by_account_id(expected_master_view_seed.account_id, &mut conn)
             .await?;
 
         // The master view seed should have been indexed with its recovery & share seed

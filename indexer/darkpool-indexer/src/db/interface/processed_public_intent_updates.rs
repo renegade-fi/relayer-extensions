@@ -55,17 +55,14 @@ impl DbClient {
     ) -> Result<bool, DbError> {
         let version_i64 = version as i64;
 
-        match processed_public_intent_updates::table
+        processed_public_intent_updates::table
             .filter(processed_public_intent_updates::intent_hash.eq(intent_hash))
             .filter(processed_public_intent_updates::version.eq(version_i64))
             .first::<ProcessedPublicIntentUpdateModel>(conn)
             .await
             .optional()
-        {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(DbError::from(e)),
-        }
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 
     /// Get the latest processed public intent update block number, if one
