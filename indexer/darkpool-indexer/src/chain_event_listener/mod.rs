@@ -5,6 +5,7 @@ use aws_sdk_sqs::Client as SqsClient;
 use darkpool_indexer_api::types::sqs::{NullifierSpendMessage, RecoveryIdMessage};
 use futures_util::StreamExt;
 use renegade_crypto::fields::u256_to_scalar;
+use serde::Serialize;
 use tracing::info;
 
 use crate::{
@@ -26,6 +27,8 @@ pub struct ChainEventListener {
     pub recovery_id_start_block: u64,
     /// The AWS SQS client
     pub sqs_client: SqsClient,
+    /// The URL of the AWS SQS queue
+    pub sqs_queue_url: String,
 }
 
 impl ChainEventListener {
@@ -35,15 +38,19 @@ impl ChainEventListener {
         nullifier_start_block: u64,
         recovery_id_start_block: u64,
         sqs_client: SqsClient,
+        sqs_queue_url: String,
     ) -> Self {
-        Self { darkpool_client, nullifier_start_block, recovery_id_start_block, sqs_client }
+        Self {
+            darkpool_client,
+            nullifier_start_block,
+            recovery_id_start_block,
+            sqs_client,
+            sqs_queue_url,
+        }
     }
 
     /// Watch for nullifier spend events and forward them to the SQS queue
-    pub async fn watch_nullifiers(
-        &self,
-        sqs_queue_url: String,
-    ) -> Result<(), ChainEventListenerError> {
+    pub async fn watch_nullifiers(&self) -> Result<(), ChainEventListenerError> {
         let filter = self
             .darkpool_client
             .darkpool
@@ -55,23 +62,15 @@ impl ChainEventListener {
 
         while let Some(Ok((event, log))) = stream.next().await {
             let nullifier = u256_to_scalar(&event.nullifier);
-            let tx_hash = log
-                .transaction_hash
-                .ok_or(ChainEventListenerError::rpc("no tx hash for nullifier spend event"))?;
+            let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(format!(
+                "no tx hash for nullifier {nullifier} spend event"
+            )))?;
 
             let message = NullifierSpendMessage { nullifier, tx_hash };
-            let message_body = serde_json::to_string(&message)?;
 
             let nullifier_str = nullifier.to_string();
 
-            self.sqs_client
-                .send_message()
-                .queue_url(&sqs_queue_url)
-                .message_deduplication_id(&nullifier_str)
-                .message_group_id(&nullifier_str)
-                .message_body(message_body)
-                .send()
-                .await?;
+            self.send_sqs_message(message, nullifier_str.clone(), nullifier_str).await?;
         }
 
         Ok(())
@@ -79,10 +78,7 @@ impl ChainEventListener {
 
     /// Watch for recovery ID registration events and forward them to the SQS
     /// queue
-    pub async fn watch_recovery_ids(
-        &self,
-        sqs_queue_url: String,
-    ) -> Result<(), ChainEventListenerError> {
+    pub async fn watch_recovery_ids(&self) -> Result<(), ChainEventListenerError> {
         let filter = self
             .darkpool_client
             .darkpool
@@ -97,24 +93,37 @@ impl ChainEventListener {
 
         while let Some(Ok((event, log))) = stream.next().await {
             let recovery_id = u256_to_scalar(&event.recoveryId);
-            let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(
-                "no tx hash for recovery ID registration event",
-            ))?;
+            let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(format!(
+                "no tx hash for recovery ID {recovery_id} registration event"
+            )))?;
 
             let message = RecoveryIdMessage { recovery_id, tx_hash };
-            let message_body = serde_json::to_string(&message)?;
 
             let recovery_id_str = recovery_id.to_string();
 
-            self.sqs_client
-                .send_message()
-                .queue_url(&sqs_queue_url)
-                .message_deduplication_id(&recovery_id_str)
-                .message_group_id(&recovery_id_str)
-                .message_body(message_body)
-                .send()
-                .await?;
+            self.send_sqs_message(message, recovery_id_str.clone(), recovery_id_str).await?;
         }
+
+        Ok(())
+    }
+
+    /// Send a message to the SQS queue
+    pub async fn send_sqs_message<T: Serialize>(
+        &self,
+        message: T,
+        deduplication_id: String,
+        message_group_id: String,
+    ) -> Result<(), ChainEventListenerError> {
+        let message_body = serde_json::to_string(&message)?;
+
+        self.sqs_client
+            .send_message()
+            .queue_url(&self.sqs_queue_url)
+            .message_deduplication_id(&deduplication_id)
+            .message_group_id(&message_group_id)
+            .message_body(message_body)
+            .send()
+            .await?;
 
         Ok(())
     }

@@ -10,12 +10,14 @@ use aws_config::Region;
 use aws_sdk_sqs::Client as SqsClient;
 use renegade_common::types::chain::Chain;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
+use serde::Serialize;
 
 use crate::{
     chain_event_listener::ChainEventListener, cli::Cli, darkpool_client::DarkpoolClient,
     db::client::DbClient, indexer::error::IndexerError, state_transitions::StateApplicator,
 };
 
+mod backfill;
 pub mod error;
 mod event_indexing;
 
@@ -74,10 +76,14 @@ const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 /// The indexer struct. Stores handles to shared resources.
 #[derive(Clone)]
 pub struct Indexer {
+    /// The database client
+    pub db_client: DbClient,
     /// The state transition applicator
     pub state_applicator: StateApplicator,
     /// The AWS SQS client
     pub sqs_client: SqsClient,
+    /// The URL of the AWS SQS queue
+    pub sqs_queue_url: String,
     /// The darkpool client
     pub darkpool_client: DarkpoolClient,
     /// The chain event listener
@@ -88,14 +94,15 @@ impl Indexer {
     /// Build an indexer from the provided CLI arguments
     pub async fn build_from_cli(cli: &Cli) -> Result<Self, IndexerError> {
         // Set up the database client & state applicator
-        let db = DbClient::new(&cli.database_url).await?;
-        let state_applicator = StateApplicator::new(db.clone());
+        let db_client = DbClient::new(&cli.database_url).await?;
+        let state_applicator = StateApplicator::new(db_client.clone());
 
         // Set up the AWS SQS client
         let config =
             aws_config::from_env().region(Region::new(cli.sqs_region.clone())).load().await;
 
         let sqs_client = SqsClient::new(&config);
+        let sqs_queue_url = cli.sqs_queue_url.clone();
 
         // Set up the WebSocket RPC provider & darkpool client
         let ws = WsConnect::new(&cli.ws_rpc_url);
@@ -108,13 +115,13 @@ impl Indexer {
         let darkpool_client = DarkpoolClient::new(darkpool);
 
         // Set up the chain event listener
-        let mut conn = db.get_db_conn().await?;
-        let nullifier_start_block = db
+        let mut conn = db_client.get_db_conn().await?;
+        let nullifier_start_block = db_client
             .get_latest_processed_nullifier_block(&mut conn)
             .await?
             .unwrap_or_else(|| get_nullifier_start_block(cli.chain));
 
-        let recovery_id_start_block = db
+        let recovery_id_start_block = db_client
             .get_latest_processed_recovery_id_block(&mut conn)
             .await?
             .unwrap_or_else(|| get_recovery_id_start_block(cli.chain));
@@ -124,11 +131,40 @@ impl Indexer {
             nullifier_start_block,
             recovery_id_start_block,
             sqs_client.clone(),
+            sqs_queue_url.clone(),
         );
 
         // TODO: Parse remaining CLI arguments
 
-        Ok(Self { state_applicator, sqs_client, darkpool_client, chain_event_listener })
+        Ok(Self {
+            db_client,
+            state_applicator,
+            sqs_client,
+            sqs_queue_url,
+            darkpool_client,
+            chain_event_listener,
+        })
+    }
+
+    /// Send a message to the SQS queue
+    pub async fn send_sqs_message<T: Serialize>(
+        &self,
+        message: T,
+        deduplication_id: String,
+        message_group_id: String,
+    ) -> Result<(), IndexerError> {
+        let message_body = serde_json::to_string(&message)?;
+
+        self.sqs_client
+            .send_message()
+            .queue_url(&self.sqs_queue_url)
+            .message_deduplication_id(&deduplication_id)
+            .message_group_id(&message_group_id)
+            .message_body(message_body)
+            .send()
+            .await?;
+
+        Ok(())
     }
 }
 
