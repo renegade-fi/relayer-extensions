@@ -25,7 +25,10 @@ use crate::{
         bigdecimal_to_fixed_point, bigdecimal_to_scalar, fixed_point_to_bigdecimal,
         scalar_to_bigdecimal,
     },
-    types::{BalanceStateObject, ExpectedStateObject, IntentStateObject, MasterViewSeed},
+    types::{
+        BalanceStateObject, ExpectedStateObject, IntentStateObject, MasterViewSeed,
+        PublicIntentStateObject,
+    },
 };
 
 // ----------------
@@ -200,6 +203,21 @@ pub struct ProcessedRecoveryIDModel {
     pub block_number: i64,
 }
 
+// === Processed Public Intent Updates Table ===
+
+/// A processed public intent update record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::processed_public_intent_updates)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ProcessedPublicIntentUpdateModel {
+    /// The public intent's hash
+    pub intent_hash: String,
+    /// The public intent's version
+    pub version: i64,
+    /// The block number in which the public intent was updated
+    pub block_number: i64,
+}
+
 // === Intents Table ===
 
 /// An intent record
@@ -271,10 +289,10 @@ impl From<IntentStateObject> for IntentModel {
 
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream.seed);
         // The intent's version is the previous index in the recovery stream
-        let version_bigdecimal = (recovery_stream.index - 1) as i64;
+        let version_i64 = (recovery_stream.index - 1) as i64;
 
         let share_stream_seed_bigdecimal = scalar_to_bigdecimal(share_stream.seed);
-        let share_stream_index_bigdecimal = share_stream.index as i64;
+        let share_stream_index_i64 = share_stream.index as i64;
 
         let public_shares_bigdecimals =
             public_share.to_scalars().into_iter().map(scalar_to_bigdecimal).collect();
@@ -283,9 +301,9 @@ impl From<IntentStateObject> for IntentModel {
 
         IntentModel {
             recovery_stream_seed: recovery_stream_seed_bigdecimal,
-            version: version_bigdecimal,
+            version: version_i64,
             share_stream_seed: share_stream_seed_bigdecimal,
-            share_stream_index: share_stream_index_bigdecimal,
+            share_stream_index: share_stream_index_i64,
             nullifier: nullifier_bigdecimal,
             public_shares: public_shares_bigdecimals,
             account_id,
@@ -368,6 +386,136 @@ impl From<IntentModel> for IntentStateObject {
                 share_stream,
                 public_share: public_shares_scalars,
             },
+            account_id,
+            active,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size: min_fill_size_u128,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
+// === Public Intents Table ===
+
+/// A public intent record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::public_intents)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct PublicIntentModel {
+    /// The intent's hash
+    pub intent_hash: String,
+    /// The intent's version
+    pub version: i64,
+    /// The mint of the input token in the intent
+    pub input_mint: String,
+    /// The mint of the output token in the intent
+    pub output_mint: String,
+    /// The address of the intent's owner
+    pub owner_address: String,
+    /// The minimum price at which the intent can be filled
+    pub min_price: BigDecimal,
+    /// The amount of the input token to be traded via the intent
+    pub input_amount: BigDecimal,
+    /// The ID of the account owning the intent
+    pub account_id: Uuid,
+    /// Whether the intent is active
+    pub active: bool,
+    /// The matching pool to which the intent is allocated
+    pub matching_pool: String,
+    /// Whether the intent allows external matches
+    pub allow_external_matches: bool,
+    /// The minimum fill size allowed for the intent
+    pub min_fill_size: BigDecimal,
+    /// Whether to precompute a cancellation proof for the intent
+    pub precompute_cancellation_proof: bool,
+}
+
+impl From<PublicIntentStateObject> for PublicIntentModel {
+    fn from(value: PublicIntentStateObject) -> Self {
+        let PublicIntentStateObject {
+            intent_hash,
+            intent: Intent { in_token, out_token, owner, min_price, amount_in },
+            version,
+            account_id,
+            active,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        } = value;
+
+        let input_mint_string = in_token.to_string();
+        let output_mint_string = out_token.to_string();
+        let owner_address_string = owner.to_string();
+        let min_price_bigdecimal = fixed_point_to_bigdecimal(min_price);
+        let input_amount_bigdecimal = amount_in.into();
+
+        let version_i64 = version as i64;
+
+        let min_fill_size_bigdecimal = min_fill_size.into();
+
+        PublicIntentModel {
+            intent_hash,
+            version: version_i64,
+            account_id,
+            active,
+            input_mint: input_mint_string,
+            output_mint: output_mint_string,
+            owner_address: owner_address_string,
+            min_price: min_price_bigdecimal,
+            input_amount: input_amount_bigdecimal,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size: min_fill_size_bigdecimal,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
+impl From<PublicIntentModel> for PublicIntentStateObject {
+    fn from(value: PublicIntentModel) -> Self {
+        let PublicIntentModel {
+            intent_hash,
+            version,
+            account_id,
+            active,
+            input_mint,
+            output_mint,
+            owner_address,
+            min_price,
+            input_amount,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        } = value;
+
+        let version_u64 = version as u64;
+
+        let input_mint_address =
+            Address::from_str(&input_mint).expect("Input mint must be a valid address");
+        let output_mint_address =
+            Address::from_str(&output_mint).expect("Output mint must be a valid address");
+        let owner_address_address =
+            Address::from_str(&owner_address).expect("Owner address must be a valid address");
+        let min_price_fixed_point = bigdecimal_to_fixed_point(min_price);
+        let input_amount_u128 =
+            input_amount.to_u128().expect("Input amount cannot be converted to u128");
+
+        let min_fill_size_u128 =
+            min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
+
+        PublicIntentStateObject {
+            intent_hash,
+            intent: Intent {
+                in_token: input_mint_address,
+                out_token: output_mint_address,
+                owner: owner_address_address,
+                min_price: min_price_fixed_point,
+                amount_in: input_amount_u128,
+            },
+            version: version_u64,
             account_id,
             active,
             matching_pool,
