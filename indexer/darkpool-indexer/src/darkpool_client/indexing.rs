@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use alloy::{
-    primitives::TxHash,
+    primitives::{B256, TxHash},
     providers::{Provider, ext::DebugApi},
     rpc::types::trace::geth::{
         CallFrame, GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingOptions,
@@ -57,6 +57,27 @@ impl DarkpoolClient {
                     .any(|log| log.topics.clone().unwrap_or_default().contains(&recovery_id_topic))
             })
             .ok_or(DarkpoolClientError::RecoveryIdNotFound)
+    }
+
+    /// Find the call that created the given public intent in the given
+    /// transaction
+    pub async fn find_public_intent_creation_call(
+        &self,
+        intent_hash: B256,
+        tx_hash: TxHash,
+    ) -> Result<CallFrame, DarkpoolClientError> {
+        let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
+
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    // TODO: Also check for inclusion of public intent creation event signature in
+                    // topic 0, once the ABI is finalized.
+                    log.topics.clone().unwrap_or_default().contains(&intent_hash)
+                })
+            })
+            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
     }
 
     /// Fetch all darkpool calls made in the given transaction

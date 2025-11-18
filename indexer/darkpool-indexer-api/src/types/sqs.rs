@@ -1,6 +1,6 @@
 //! SQS message type definitions for the darkpool indexer
 
-use alloy_primitives::{Address, TxHash};
+use alloy_primitives::{Address, B256, TxHash};
 use renegade_constants::Scalar;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -52,9 +52,7 @@ pub struct NullifierSpendMessage {
 #[derive(Serialize, Deserialize)]
 pub struct CreatePublicIntentMessage {
     /// The intent hash
-    pub intent_hash: String,
-    /// The address of the intent's owner
-    pub owner_address: Address,
+    pub intent_hash: B256,
     /// The transaction hash of the public intent creation
     pub tx_hash: TxHash,
 }

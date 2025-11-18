@@ -115,10 +115,9 @@ impl Indexer {
         &self,
         message: CreatePublicIntentMessage,
     ) -> Result<(), IndexerError> {
-        let CreatePublicIntentMessage { intent_hash, owner_address, tx_hash } = message;
-        let state_transition = self
-            .get_state_transition_for_public_intent_creation(intent_hash, owner_address, tx_hash)
-            .await?;
+        let CreatePublicIntentMessage { intent_hash, tx_hash } = message;
+        let state_transition =
+            self.get_state_transition_for_public_intent_creation(intent_hash, tx_hash).await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 
