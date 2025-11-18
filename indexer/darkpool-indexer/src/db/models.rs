@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use alloy::primitives::Address;
+use alloy::primitives::{Address, B256};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,
@@ -445,6 +445,8 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             precompute_cancellation_proof,
         } = value;
 
+        let intent_hash_string = intent_hash.to_string();
+
         let input_mint_string = in_token.to_string();
         let output_mint_string = out_token.to_string();
         let owner_address_string = owner.to_string();
@@ -456,7 +458,7 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         let min_fill_size_bigdecimal = min_fill_size.into();
 
         PublicIntentModel {
-            intent_hash,
+            intent_hash: intent_hash_string,
             version: version_i64,
             account_id,
             active,
@@ -491,6 +493,9 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             precompute_cancellation_proof,
         } = value;
 
+        let intent_hash_b256 =
+            B256::from_str(&intent_hash).expect("Intent hash must be a valid B256");
+
         let version_u64 = version as u64;
 
         let input_mint_address =
@@ -507,7 +512,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
 
         PublicIntentStateObject {
-            intent_hash,
+            intent_hash: intent_hash_b256,
             intent: Intent {
                 in_token: input_mint_address,
                 out_token: output_mint_address,
