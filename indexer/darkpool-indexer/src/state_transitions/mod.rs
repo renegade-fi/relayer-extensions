@@ -10,13 +10,15 @@ use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
 use crate::{
     db::client::DbClient,
     state_transitions::{
-        create_balance::CreateBalanceTransition, deposit::DepositTransition,
+        create_balance::CreateBalanceTransition,
+        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         error::StateTransitionError, pay_fees::PayFeesTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
     },
 };
 
 pub mod create_balance;
+pub mod create_public_intent;
 pub mod deposit;
 pub mod error;
 pub mod pay_fees;
@@ -45,6 +47,8 @@ pub enum StateTransition {
     PayFees(PayFeesTransition),
     /// The settlement of a match into a balance object
     SettleMatchIntoBalance(SettleMatchIntoBalanceTransition),
+    /// The creation of a new public intent
+    CreatePublicIntent(CreatePublicIntentTransition),
 }
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -76,6 +80,9 @@ impl StateApplicator {
             StateTransition::PayFees(transition) => self.pay_fees(transition).await,
             StateTransition::SettleMatchIntoBalance(transition) => {
                 self.settle_match_into_balance(transition).await
+            },
+            StateTransition::CreatePublicIntent(transition) => {
+                self.create_public_intent(transition).await
             },
         }
     }

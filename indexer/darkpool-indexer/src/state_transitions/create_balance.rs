@@ -80,6 +80,9 @@ impl StateApplicator {
                     return Ok(());
                 }
 
+                // Mark the recovery ID as processed
+                self.db_client.mark_recovery_id_processed(recovery_id, block_number, conn).await?;
+
                 // Check if a balance record already exists for the recovery stream seed.
                 // This is possible in the case that we previously processed a metadata update message for the balance.
                 let balance_exists = self.db_client.balance_exists(recovery_stream_seed, conn).await?;
@@ -99,9 +102,6 @@ impl StateApplicator {
                 self.db_client.insert_expected_state_object(next_expected_state_object, conn).await?;
                 self.db_client.update_master_view_seed(master_view_seed, conn).await?;
 
-                // Mark the recovery ID as processed
-                self.db_client.mark_recovery_id_processed(recovery_id, block_number, conn).await?;
-
                 Ok(())
             }
             .scope_boxed()
@@ -117,7 +117,7 @@ impl StateApplicator {
                 let expected_state_object =
                     self.db_client.get_expected_state_object(recovery_id, conn).await?;
 
-                let master_view_seed = self.db_client.get_account_master_view_seed(expected_state_object.account_id, conn).await?;
+                let master_view_seed = self.db_client.get_master_view_seed_by_account_id(expected_state_object.account_id, conn).await?;
 
                 Ok(BalanceCreationPrestate { expected_state_object, master_view_seed })
             }.scope_boxed()
@@ -141,7 +141,7 @@ mod tests {
         // Assert that the indexed master view seed's CSPRNG states are advanced
         // correctly
         let indexed_master_view_seed = db_client
-            .get_account_master_view_seed(old_expected_state_object.account_id, &mut conn)
+            .get_master_view_seed_by_account_id(old_expected_state_object.account_id, &mut conn)
             .await?;
 
         let recovery_seed_stream = &indexed_master_view_seed.recovery_seed_csprng;

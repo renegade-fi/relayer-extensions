@@ -1,5 +1,6 @@
 //! Interface methods for interacting with the master view seeds table
 
+use alloy::primitives::Address;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
@@ -58,8 +59,8 @@ impl DbClient {
     // | Getters |
     // -----------
 
-    /// Get the master view seed for a given account
-    pub async fn get_account_master_view_seed(
+    /// Get the master view seed for a given account ID
+    pub async fn get_master_view_seed_by_account_id(
         &self,
         account_id: Uuid,
         conn: &mut DbConn,
@@ -72,21 +73,32 @@ impl DbClient {
             .map(MasterViewSeedModel::into)
     }
 
+    /// Get the master view seed for a given owner address
+    pub async fn get_master_view_seed_by_owner_address(
+        &self,
+        owner_address: Address,
+        conn: &mut DbConn,
+    ) -> Result<MasterViewSeed, DbError> {
+        master_view_seeds::table
+            .filter(master_view_seeds::owner_address.eq(owner_address.to_string()))
+            .first(conn)
+            .await
+            .map_err(DbError::from)
+            .map(MasterViewSeedModel::into)
+    }
+
     /// Check if a master view seed record exists for a given account
     pub async fn master_view_seed_exists(
         &self,
         account_id: Uuid,
         conn: &mut DbConn,
     ) -> Result<bool, DbError> {
-        match master_view_seeds::table
+        master_view_seeds::table
             .filter(master_view_seeds::account_id.eq(account_id))
             .first::<MasterViewSeedModel>(conn)
             .await
             .optional()
-        {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(DbError::from(e)),
-        }
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 }
