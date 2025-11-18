@@ -1,6 +1,9 @@
 //! Top-level indexer error definitions
 
+use std::fmt::Display;
+
 use aws_sdk_sqs::error::SdkError;
+use uuid::Uuid;
 
 use crate::{
     chain_event_listener::error::ChainEventListenerError,
@@ -41,6 +44,9 @@ pub enum IndexerError {
     /// An error de/serializing a value
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
+    /// An error backfilling a user's state
+    #[error("error backfilling state for account {0}")]
+    Backfill(Uuid),
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -64,5 +70,11 @@ impl IndexerError {
 impl<E, R> From<SdkError<E, R>> for IndexerError {
     fn from(value: SdkError<E, R>) -> Self {
         IndexerError::Sqs(value.to_string())
+    }
+}
+
+impl<E: Display> From<alloy::transports::RpcError<E>> for IndexerError {
+    fn from(e: alloy::transports::RpcError<E>) -> Self {
+        IndexerError::Rpc(e.to_string())
     }
 }
