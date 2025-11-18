@@ -2,7 +2,7 @@
 
 use alloy::{
     hex,
-    primitives::{TxHash, U256},
+    primitives::{Address, TxHash, U256},
     sol_types::{SolCall, SolValue},
 };
 use renegade_circuit_types::{balance::BalanceShare, traits::BaseType};
@@ -189,6 +189,23 @@ impl Indexer {
         Ok(Some(state_transition))
     }
 
+    /// Get the state transition associated with the creation of a new public
+    /// intent
+    pub async fn get_state_transition_for_public_intent_creation(
+        &self,
+        intent_hash: String,
+        owner_address: Address,
+        tx_hash: TxHash,
+    ) -> Result<StateTransition, IndexerError> {
+        todo!()
+    }
+}
+
+// -------------------
+// | Private Helpers |
+// -------------------
+
+impl Indexer {
     /// Compute a `CreateBalance` state transition associated with the
     /// newly-registered recovery ID in a `depositNewBalance` call
     async fn compute_create_balance_state_transition(
@@ -345,9 +362,9 @@ impl Indexer {
     }
 }
 
-// -----------
-// | Helpers |
-// -----------
+// ----------------------
+// | Non-Member Helpers |
+// ----------------------
 
 /// Try to decode the new balance public shares from the match party's
 /// settlement bundle & obligation bundle.

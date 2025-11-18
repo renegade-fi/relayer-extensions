@@ -15,6 +15,8 @@ pub enum SqsMessage {
     /// A message representing the spending of a state object's nullifier
     /// onchain
     NullifierSpend(NullifierSpendMessage),
+    /// A message representing the creation of a new public intent
+    CreatePublicIntent(CreatePublicIntentMessage),
 }
 
 /// A message representing the registration of a new master view seed
@@ -43,5 +45,16 @@ pub struct NullifierSpendMessage {
     /// The nullifier that was spent
     pub nullifier: Scalar,
     /// The transaction hash of the nullifier spend
+    pub tx_hash: TxHash,
+}
+
+/// A message representing the creation of a new public intent
+#[derive(Serialize, Deserialize)]
+pub struct CreatePublicIntentMessage {
+    /// The intent hash
+    pub intent_hash: String,
+    /// The address of the intent's owner
+    pub owner_address: Address,
+    /// The transaction hash of the public intent creation
     pub tx_hash: TxHash,
 }
