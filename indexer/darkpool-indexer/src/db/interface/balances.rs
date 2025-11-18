@@ -100,15 +100,12 @@ impl DbClient {
     ) -> Result<bool, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
-        match balances::table
+        balances::table
             .filter(balances::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
             .first::<BalanceModel>(conn)
             .await
             .optional()
-        {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(DbError::from(e)),
-        }
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 }

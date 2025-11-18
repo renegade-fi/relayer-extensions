@@ -53,16 +53,13 @@ impl DbClient {
     ) -> Result<bool, DbError> {
         let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
 
-        match processed_nullifiers::table
+        processed_nullifiers::table
             .filter(processed_nullifiers::nullifier.eq(nullifier_bigdecimal))
             .first::<ProcessedNullifierModel>(conn)
             .await
             .optional()
-        {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(DbError::from(e)),
-        }
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 
     /// Get the latest processed nullifier block number, if one exists

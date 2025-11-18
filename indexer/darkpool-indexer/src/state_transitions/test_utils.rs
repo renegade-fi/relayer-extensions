@@ -1,12 +1,12 @@
 //! Common utilities for state transition tests
 
-use alloy::primitives::Address;
+use alloy::{hex, primitives::Address};
 use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, max_amount,
-    state_wrapper::StateWrapper,
+    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, intent::Intent,
+    max_amount, state_wrapper::StateWrapper,
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
@@ -15,7 +15,8 @@ use uuid::Uuid;
 use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
-        StateApplicator, create_balance::CreateBalanceTransition, deposit::DepositTransition,
+        StateApplicator, create_balance::CreateBalanceTransition,
+        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         error::StateTransitionError, pay_fees::PayFeesTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
     },
@@ -93,14 +94,14 @@ pub fn get_expected_object_recovery_id(
     recovery_stream.get_ith(0)
 }
 
-/// Sets up an expected state object in the DB, generating a new master view
-/// seed for the account owning the state object.
+/// Generates a random master view seed and registers it via the state
+/// applicator.
 ///
-/// Returns the expected state object.
-pub async fn setup_expected_state_object(
+/// Returns the master view seed.
+pub async fn register_random_master_view_seed(
     state_applicator: &StateApplicator,
-) -> Result<ExpectedStateObject, StateTransitionError> {
-    let mut master_view_seed = gen_random_master_view_seed();
+) -> Result<MasterViewSeed, StateTransitionError> {
+    let master_view_seed = gen_random_master_view_seed();
 
     let master_view_seed_message = MasterViewSeedMessage {
         account_id: master_view_seed.account_id,
@@ -110,6 +111,17 @@ pub async fn setup_expected_state_object(
 
     state_applicator.register_master_view_seed(master_view_seed_message).await?;
 
+    Ok(master_view_seed)
+}
+
+/// Sets up an expected state object in the DB, generating a new master view
+/// seed for the account owning the state object.
+///
+/// Returns the expected state object.
+pub async fn setup_expected_state_object(
+    state_applicator: &StateApplicator,
+) -> Result<ExpectedStateObject, StateTransitionError> {
+    let mut master_view_seed = register_random_master_view_seed(state_applicator).await?;
     Ok(master_view_seed.next_expected_state_object())
 }
 
@@ -349,6 +361,26 @@ pub fn gen_settle_match_into_balance_transition(
     (transition, updated_balance)
 }
 
+/// Generate the state transition which should result in the given
+/// owner creating a new public intent
+pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
+    let mut rng = thread_rng();
+
+    let in_token = Address::random();
+    let out_token = Address::random();
+    let min_price = FixedPoint::from_f64_round_down(rng.r#gen());
+    let amount_in = random_amount();
+
+    let intent = Intent { in_token, out_token, owner, min_price, amount_in };
+
+    // Create a dummy intent hash, we don't need to actually hash the intent for
+    // testing
+    let intent_hash_bytes: [u8; 32] = rng.r#gen();
+    let intent_hash = hex::encode(intent_hash_bytes);
+
+    CreatePublicIntentTransition { intent, intent_hash, block_number: 0 }
+}
+
 // ---------------------------
 // | Test Validation Helpers |
 // ---------------------------
@@ -373,6 +405,23 @@ pub async fn validate_balance_indexing(
     // Assert that the indexed balance matches the expected balance.
     // This covers the CSPRNG states, inner circuit type, and public shares.
     assert_eq!(&indexed_balance.balance, expected_balance);
+
+    Ok(())
+}
+
+/// Validate the indexing of a public intent against the expected
+/// circuit type
+pub async fn validate_public_intent_indexing(
+    db_client: &DbClient,
+    intent_hash: String,
+    expected_intent: &Intent,
+) -> Result<(), DbError> {
+    let mut conn = db_client.get_db_conn().await?;
+
+    let indexed_public_intent = db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
+
+    // Assert that the indexed public intent matches the expected intent.
+    assert_eq!(&indexed_public_intent.intent, expected_intent);
 
     Ok(())
 }
