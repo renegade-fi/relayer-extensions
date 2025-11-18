@@ -62,7 +62,10 @@ renegade-config = { workspace = true }
 renegade-crypto = { workspace = true }
 renegade-util = { workspace = true, features = ["blockchain"] }
 renegade-api = { workspace = true }
-renegade-solidity-abi = { workspace = true, optional = true }
+renegade-solidity-abi = { workspace = true, optional = true, features = [
+    "v1",
+    "v1-relayer-types",
+] }
 renegade-system-clock = { workspace = true }
 
 # === Misc Dependencies === #
@@ -83,7 +86,7 @@ serde_json = { version = "1.0.139", features = ["arbitrary_precision"] }
 serde_urlencoded = "0.7"
 thiserror = "1.0"
 tracing = "0.1"
-uuid = { version = "1.15.1", features = ["serde", "v4"] }
+uuid = { version = "0.8.2", features = ["serde", "v4"] }
 
 [dev-dependencies]
 eyre = "0.6"

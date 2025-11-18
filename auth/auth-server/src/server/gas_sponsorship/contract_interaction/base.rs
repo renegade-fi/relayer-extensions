@@ -5,7 +5,7 @@ use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{SolCall, SolValue};
 use renegade_api::http::external_match::{ExternalMatchResponse, MalleableExternalMatchResponse};
-use renegade_solidity_abi::IDarkpool::{
+use renegade_solidity_abi::v1::IDarkpool::{
     executeMalleableAtomicMatchWithInputCall, processAtomicMatchSettleCall,
     processMalleableAtomicMatchSettleCall, sponsorAtomicMatchSettleCall,
     sponsorMalleableAtomicMatchSettleCall,

@@ -3,11 +3,11 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
+mod connectors;
 mod external_match;
 mod external_match_fees;
 mod key_management;
 mod order_book;
-mod rfqt;
 mod settlement;
 
 use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse};

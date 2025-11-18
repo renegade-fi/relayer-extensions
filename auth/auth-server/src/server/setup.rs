@@ -11,7 +11,7 @@ use std::{iter, sync::Arc, time::Duration};
 use crate::bundle_store::BundleStore;
 use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use crate::server::caching::ServerCache;
-use crate::telemetry::configure_telemtry_from_args;
+use crate::telemetry::configure_telemetry_from_args;
 use crate::{Cli, error::AuthServerError};
 use aes_gcm::{Aes128Gcm, KeyInit};
 use alloy::hex;
@@ -43,7 +43,7 @@ impl Server {
         args: Cli,
         system_clock: &SystemClock,
     ) -> Result<(Self, CancellationToken), AuthServerError> {
-        configure_telemtry_from_args(&args)?;
+        configure_telemetry_from_args(&args)?;
         setup_token_mapping(&args).await?;
 
         // Create the darkpool client

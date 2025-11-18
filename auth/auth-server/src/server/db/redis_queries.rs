@@ -30,12 +30,13 @@ impl Server {
         info: &GasSponsorshipInfo,
     ) -> Result<(), AuthServerError> {
         let mut client = self.redis_client.clone();
+        let redis_key = key.as_bytes();
         client
-            .json_set::<_, _, _, ()>(key, JSON_ROOT_PATH, info)
+            .json_set::<_, _, _, ()>(redis_key, JSON_ROOT_PATH, info)
             .await
             .map_err(AuthServerError::redis)?;
 
-        client.pexpire(key, MAX_QUOTE_AGE_MS).await.map_err(AuthServerError::redis)
+        client.pexpire(redis_key, MAX_QUOTE_AGE_MS).await.map_err(AuthServerError::redis)
     }
 
     // -----------
@@ -49,8 +50,10 @@ impl Server {
         key: Uuid,
     ) -> Result<Option<GasSponsorshipInfo>, AuthServerError> {
         let mut client = self.redis_client.clone();
-        let info_str: Option<String> =
-            client.json_get(key, JSON_ROOT_PATH).await.map_err(AuthServerError::redis)?;
+        let info_str: Option<String> = client
+            .json_get(key.as_bytes(), JSON_ROOT_PATH)
+            .await
+            .map_err(AuthServerError::redis)?;
 
         if info_str.is_none() {
             return Ok(None);

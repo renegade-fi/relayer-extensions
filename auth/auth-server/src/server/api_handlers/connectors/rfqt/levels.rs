@@ -8,7 +8,7 @@ use warp::{reject::Rejection, reply::Json};
 
 use crate::error::AuthServerError;
 use crate::server::Server;
-use crate::server::api_handlers::rfqt::helpers::{
+use crate::server::api_handlers::connectors::rfqt::helpers::{
     parse_levels_query_params, transform_depth_to_levels,
 };
 
