@@ -53,16 +53,13 @@ impl DbClient {
     ) -> Result<bool, DbError> {
         let recovery_id_bigdecimal = scalar_to_bigdecimal(recovery_id);
 
-        match processed_recovery_ids::table
+        processed_recovery_ids::table
             .filter(processed_recovery_ids::recovery_id.eq(recovery_id_bigdecimal))
             .first::<ProcessedRecoveryIDModel>(conn)
             .await
             .optional()
-        {
-            Ok(Some(_)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(DbError::from(e)),
-        }
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 
     /// Get the latest processed recovery ID block number, if one exists
