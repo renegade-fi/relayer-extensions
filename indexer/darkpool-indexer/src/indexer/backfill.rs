@@ -22,7 +22,7 @@ impl Indexer {
 
         let mut conn = self.db_client.get_db_conn().await?;
         let master_view_seed =
-            self.db_client.get_account_master_view_seed(account_id, &mut conn).await?;
+            self.db_client.get_master_view_seed_by_account_id(account_id, &mut conn).await?;
 
         // We restart our view of the master view seed's recovery seed CSPRNG so that we
         // can backfill from the very beginning of user state history

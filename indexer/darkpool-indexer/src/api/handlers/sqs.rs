@@ -2,7 +2,8 @@
 
 use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{
-    MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage, SqsMessage,
+    CreatePublicIntentMessage, MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage,
+    SqsMessage,
 };
 
 use crate::{
@@ -29,6 +30,9 @@ impl Indexer {
                 },
                 SqsMessage::NullifierSpend(message) => {
                     self.handle_nullifier_spend_message(message).await?;
+                },
+                SqsMessage::CreatePublicIntent(message) => {
+                    self.handle_create_public_intent_message(message).await?;
                 },
             }
         }
@@ -98,6 +102,23 @@ impl Indexer {
     ) -> Result<(), IndexerError> {
         let NullifierSpendMessage { nullifier, tx_hash } = message;
         let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
+
+        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Creation Message Handler ===
+
+    /// Handle an SQS message representing the creation of a new public intent
+    pub async fn handle_create_public_intent_message(
+        &self,
+        message: CreatePublicIntentMessage,
+    ) -> Result<(), IndexerError> {
+        let CreatePublicIntentMessage { intent_hash, owner_address, tx_hash } = message;
+        let state_transition = self
+            .get_state_transition_for_public_intent_creation(intent_hash, owner_address, tx_hash)
+            .await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 
