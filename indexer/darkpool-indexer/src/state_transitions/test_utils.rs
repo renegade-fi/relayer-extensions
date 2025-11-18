@@ -18,9 +18,11 @@ use crate::{
         StateApplicator, create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         error::StateTransitionError, pay_fees::PayFeesTransition,
-        settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
+        settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
+        withdraw::WithdrawTransition,
     },
-    types::{ExpectedStateObject, MasterViewSeed},
+    types::{ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
 };
 
 // -------------
@@ -376,6 +378,29 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
     let intent_hash = B256::random();
 
     CreatePublicIntentTransition { intent, intent_hash, block_number: 0 }
+}
+
+/// Generate the state transition which should result in the given
+/// public intent being updated with a match settlement.
+///
+/// Returns the match settlement transition.
+pub fn gen_settle_match_into_public_intent_transition(
+    initial_public_intent: &PublicIntentStateObject,
+) -> SettleMatchIntoPublicIntentTransition {
+    let mut updated_intent = initial_public_intent.clone();
+
+    // Apply a random match amount to the public intent
+    let match_amount = random_amount().min(initial_public_intent.intent.amount_in);
+    updated_intent.intent.amount_in -= match_amount;
+
+    updated_intent.version += 1;
+
+    SettleMatchIntoPublicIntentTransition {
+        intent_hash: updated_intent.intent_hash,
+        intent: updated_intent.intent,
+        version: updated_intent.version,
+        block_number: 0,
+    }
 }
 
 // ---------------------------
