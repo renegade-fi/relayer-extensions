@@ -191,4 +191,27 @@ pub struct IntentStateObject {
     pub precompute_cancellation_proof: bool,
 }
 
+/// A public intent state object
+#[derive(Clone)]
+pub struct PublicIntentStateObject {
+    /// The intent's hash
+    pub intent_hash: String,
+    /// The underlying intent circuit type
+    pub intent: Intent,
+    /// The intent's version
+    pub version: u64,
+    /// The ID of the account which owns the intent
+    pub account_id: Uuid,
+    /// Whether the intent is active
+    pub active: bool,
+    /// The matching pool to which the intent is allocated
+    pub matching_pool: String,
+    /// Whether the intent allows external matches
+    pub allow_external_matches: bool,
+    /// The minimum fill size allowed for the intent
+    pub min_fill_size: Amount,
+    /// Whether to precompute a cancellation proof for the intent
+    pub precompute_cancellation_proof: bool,
+}
+
 // TODO: Define remaining internal types
