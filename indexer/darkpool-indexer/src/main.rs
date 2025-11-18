@@ -48,9 +48,9 @@ async fn main() -> Result<(), IndexerError> {
     let indexer = Indexer::build_from_cli(&cli).await?;
 
     let mut tasks = JoinSet::new();
-    tasks.spawn(run_sqs_consumer(indexer.clone(), cli.sqs_queue_url.clone()));
-    tasks.spawn(run_nullifier_spend_listener(indexer.clone(), cli.sqs_queue_url.clone()));
-    tasks.spawn(run_recovery_id_registration_listener(indexer.clone(), cli.sqs_queue_url.clone()));
+    tasks.spawn(run_sqs_consumer(indexer.clone()));
+    tasks.spawn(run_nullifier_spend_listener(indexer.clone()));
+    tasks.spawn(run_recovery_id_registration_listener(indexer.clone()));
     // TODO: Spawn HTTP server
 
     match tasks.join_next().await.expect("No tasks spawned") {
@@ -64,14 +64,14 @@ async fn main() -> Result<(), IndexerError> {
 
 /// Run the SQS consumer, polling for new messages from the
 /// queue and handling them
-async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(), IndexerError> {
+async fn run_sqs_consumer(indexer: Indexer) -> Result<(), IndexerError> {
     loop {
         let messages = match indexer
             .sqs_client
             .receive_message()
             .max_number_of_messages(MAX_RECV_MESSAGES)
             .message_system_attribute_names(MessageSystemAttributeName::MessageGroupId)
-            .queue_url(&sqs_queue_url)
+            .queue_url(&indexer.sqs_queue_url)
             .send()
             .await
         {
@@ -107,13 +107,10 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
         // Process message groups concurrently
         for messages in message_groups.into_values() {
             let indexer_clone = indexer.clone();
-            let sqs_queue_url_clone = sqs_queue_url.clone();
             tokio::spawn(async move {
                 // Process messages within a message group sequentially
                 for message in messages {
-                    if let Err(e) =
-                        indexer_clone.handle_sqs_message(message, &sqs_queue_url_clone).await
-                    {
+                    if let Err(e) = indexer_clone.handle_sqs_message(message).await {
                         error!("Error handling SQS message: {e}")
                     }
                 }
@@ -124,20 +121,14 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
 
 /// Run the nullifier spend event listener, watching for nullifier spend events
 /// and forwarding them to the SQS queue
-async fn run_nullifier_spend_listener(
-    indexer: Indexer,
-    sqs_queue_url: String,
-) -> Result<(), IndexerError> {
-    indexer.chain_event_listener.watch_nullifiers(sqs_queue_url).await?;
+async fn run_nullifier_spend_listener(indexer: Indexer) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_nullifiers().await?;
     Ok(())
 }
 
 /// Run the recovery ID registration event listener, watching for recovery ID
 /// registration events and forwarding them to the SQS queue
-async fn run_recovery_id_registration_listener(
-    indexer: Indexer,
-    sqs_queue_url: String,
-) -> Result<(), IndexerError> {
-    indexer.chain_event_listener.watch_recovery_ids(sqs_queue_url).await?;
+async fn run_recovery_id_registration_listener(indexer: Indexer) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_recovery_ids().await?;
     Ok(())
 }
