@@ -13,7 +13,9 @@ use crate::{
         create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         error::StateTransitionError, pay_fees::PayFeesTransition,
-        settle_match_into_balance::SettleMatchIntoBalanceTransition, withdraw::WithdrawTransition,
+        settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
+        withdraw::WithdrawTransition,
     },
 };
 
@@ -24,6 +26,7 @@ pub mod error;
 pub mod pay_fees;
 pub mod register_master_view_seed;
 pub mod settle_match_into_balance;
+pub mod settle_match_into_public_intent;
 pub mod withdraw;
 
 #[cfg(test)]
@@ -49,6 +52,8 @@ pub enum StateTransition {
     SettleMatchIntoBalance(SettleMatchIntoBalanceTransition),
     /// The creation of a new public intent
     CreatePublicIntent(CreatePublicIntentTransition),
+    /// The settlement of a match into a public intent
+    SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition),
 }
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -83,6 +88,9 @@ impl StateApplicator {
             },
             StateTransition::CreatePublicIntent(transition) => {
                 self.create_public_intent(transition).await
+            },
+            StateTransition::SettleMatchIntoPublicIntent(transition) => {
+                self.settle_match_into_public_intent(transition).await
             },
         }
     }
