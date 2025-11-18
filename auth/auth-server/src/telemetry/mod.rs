@@ -19,7 +19,7 @@ const METRICS_PREFIX: &str = "auth-server";
 const DEFAULT_OTLP_COLLECTOR_ENDPOINT: &str = "http://localhost:4317";
 
 /// Configure telemetry from the command line arguments
-pub(crate) fn configure_telemtry_from_args(args: &Cli) -> Result<(), AuthServerError> {
+pub(crate) fn configure_telemetry_from_args(args: &Cli) -> Result<(), AuthServerError> {
     let metrics_config =
         MetricsConfig { metrics_prefix: METRICS_PREFIX.to_string(), ..Default::default() };
     configure_telemetry_with_metrics_config(

@@ -2,7 +2,7 @@
 
 use alloy_sol_types::{SolCall, sol};
 use renegade_darkpool_client::{base::conversion::ToCircuitType, conversion::u256_to_amount};
-use renegade_solidity_abi::IDarkpool::{
+use renegade_solidity_abi::v1::IDarkpool::{
     processAtomicMatchSettleCall, processMalleableAtomicMatchSettleCall,
 };
 
