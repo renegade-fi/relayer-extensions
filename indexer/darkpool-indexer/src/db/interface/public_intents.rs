@@ -36,6 +36,24 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update a public intent record
+    pub async fn update_public_intent(
+        &self,
+        public_intent: PublicIntentStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let public_intent_model: PublicIntentModel = public_intent.into();
+
+        diesel::update(public_intents::table)
+            .filter(public_intents::intent_hash.eq(public_intent_model.intent_hash.clone()))
+            .set(public_intent_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::from)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------
