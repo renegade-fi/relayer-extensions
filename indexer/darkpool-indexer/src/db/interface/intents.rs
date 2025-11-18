@@ -42,7 +42,7 @@ impl DbClient {
     // -----------
 
     /// Get an intent by its recovery stream seed
-    pub async fn get_intent(
+    pub async fn get_intent_by_recovery_stream_seed(
         &self,
         recovery_stream_seed: Scalar,
         conn: &mut DbConn,

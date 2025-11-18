@@ -17,11 +17,7 @@ impl Indexer {
 
     /// Handle a message polled from SQS, parsing it into the API message type
     /// and applying the appropriate handler logic
-    pub async fn handle_sqs_message(
-        &self,
-        message: Message,
-        sqs_queue_url: &str,
-    ) -> Result<(), IndexerError> {
+    pub async fn handle_sqs_message(&self, message: Message) -> Result<(), IndexerError> {
         if let Some(body) = message.body() {
             let message: SqsMessage = serde_json::from_str(body)?;
             match message {
@@ -40,7 +36,7 @@ impl Indexer {
         if let Some(receipt_handle) = message.receipt_handle() {
             self.sqs_client
                 .delete_message()
-                .queue_url(sqs_queue_url)
+                .queue_url(&self.sqs_queue_url)
                 .receipt_handle(receipt_handle)
                 .send()
                 .await?;
@@ -61,11 +57,15 @@ impl Indexer {
         &self,
         message: MasterViewSeedMessage,
     ) -> Result<(), IndexerError> {
+        let account_id = message.account_id;
         let state_transition = StateTransition::RegisterMasterViewSeed(message);
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 
-        // TODO: Kick off backfill
+        // Kick off a backfill for the user's state in the background, so that we can
+        // delete the master view seed message from SQS immediately
+        let self_clone = self.clone();
+        tokio::spawn(async move { self_clone.backfill_user_state(account_id).await });
 
         Ok(())
     }
