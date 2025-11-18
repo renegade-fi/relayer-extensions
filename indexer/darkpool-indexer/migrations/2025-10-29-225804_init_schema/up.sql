@@ -58,6 +58,17 @@ CREATE TABLE "processed_recovery_ids"(
 
 CREATE INDEX "idx_processed_recovery_ids_block_number" ON "processed_recovery_ids" ("block_number");
 
+-- PROCESSED PUBLIC INTENT UPDATES --
+
+-- Stores public intent updates which have already been processed
+CREATE TABLE "processed_public_intent_updates"(
+	"intent_hash" TEXT NOT NULL PRIMARY KEY,
+	"version" BIGINT NOT NULL CHECK (version >= 0),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
+
+CREATE INDEX "idx_processed_public_intent_updates_block_number" ON "processed_public_intent_updates" ("block_number");
+
 -- INTENTS --
 
 -- Stores darkpool intents
@@ -86,6 +97,28 @@ CREATE INDEX "idx_intents_nullifier" ON "intents" ("nullifier");
 
 -- Indexes an intent by its account ID & active flag
 CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active");
+
+-- PUBLIC INTENTS --
+
+-- Stores public darkpool intents
+CREATE TABLE "public_intents"(
+	"intent_hash" TEXT NOT NULL PRIMARY KEY,
+	"version" BIGINT NOT NULL CHECK (version >= 0),
+	"input_mint" TEXT NOT NULL,
+	"output_mint" TEXT NOT NULL,
+	"owner_address" TEXT NOT NULL,
+	"min_price" NUMERIC(78) NOT NULL CHECK (min_price >= 0),
+	"input_amount" NUMERIC(78) NOT NULL CHECK (input_amount >= 0),
+	"account_id" UUID NOT NULL,
+	"active" BOOL NOT NULL,
+	"matching_pool" TEXT NOT NULL,
+	"allow_external_matches" BOOL NOT NULL,
+	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0),
+	"precompute_cancellation_proof" BOOL NOT NULL
+);
+
+-- Indexes a public intent by its account ID & active flag
+CREATE INDEX "idx_public_intents_account_id_active" ON "public_intents" ("account_id", "active");
 
 -- MASTER VIEW SEEDS --
 
