@@ -1,5 +1,6 @@
 //! Defines the application-specific logic for creating a new public intent
 
+use alloy::primitives::B256;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::intent::Intent;
 use tracing::warn;
@@ -19,7 +20,7 @@ pub struct CreatePublicIntentTransition {
     /// The public intent to create
     pub intent: Intent,
     /// The intent hash
-    pub intent_hash: String,
+    pub intent_hash: B256,
     /// The block number in which the public intent was created
     pub block_number: u64,
 }
@@ -41,12 +42,12 @@ impl StateApplicator {
             self.db_client.get_master_view_seed_by_owner_address(intent.owner, &mut conn).await?;
 
         let public_intent =
-            PublicIntentStateObject::new(intent_hash.clone(), intent, master_view_seed.account_id);
+            PublicIntentStateObject::new(intent_hash, intent, master_view_seed.account_id);
 
         conn.transaction(move |conn| {
             async move {
                 // Check if the public intent creation has already been processed, no-oping if so
-                let public_intent_creation_processed = self.db_client.check_public_intent_update_processed(intent_hash.clone(), public_intent.version, conn).await?;
+                let public_intent_creation_processed = self.db_client.check_public_intent_update_processed(intent_hash, public_intent.version, conn).await?;
 
                 if public_intent_creation_processed {
                     warn!(
@@ -57,11 +58,11 @@ impl StateApplicator {
                 }
 
                 // Mark the public intent creation as processed
-                self.db_client.mark_public_intent_update_processed(intent_hash.clone(), public_intent.version, block_number, conn).await?;
+                self.db_client.mark_public_intent_update_processed(intent_hash, public_intent.version, block_number, conn).await?;
 
                 // Check if a public intent record already exists for the intent hash.
                 // This is possible in the case that we previously processed a metadata update message for the public intent.
-                let public_intent_exists = self.db_client.public_intent_exists(intent_hash.clone(), conn).await?;
+                let public_intent_exists = self.db_client.public_intent_exists(intent_hash, conn).await?;
                 if public_intent_exists {
                     warn!(
                         "Public intent record already exists for intent hash {intent_hash}, skipping creation"
@@ -101,13 +102,13 @@ mod tests {
         let master_view_seed = register_random_master_view_seed(&test_applicator).await?;
         let transition = gen_create_public_intent_transition(master_view_seed.owner_address);
 
-        let intent_hash = transition.intent_hash.clone();
+        let intent_hash = transition.intent_hash;
         let intent = transition.intent.clone();
 
         // Index the public intent creation
         test_applicator.create_public_intent(transition).await?;
 
-        validate_public_intent_indexing(db_client, intent_hash.clone(), &intent).await?;
+        validate_public_intent_indexing(db_client, intent_hash, &intent).await?;
 
         // Assert that the public intent creation was marked as processed
         let mut conn = db_client.get_db_conn().await?;

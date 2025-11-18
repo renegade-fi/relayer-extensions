@@ -3389,7 +3389,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.17",
- "tiny-keccak",
  "tokio",
  "tokio-postgres",
  "tracing",

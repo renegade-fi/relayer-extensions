@@ -3,7 +3,7 @@
 
 // TODO: Find a better location for this module?
 
-use alloy::primitives::Address;
+use alloy::primitives::{Address, B256};
 use renegade_circuit_types::{
     Amount,
     balance::{Balance, BalanceShare},
@@ -195,7 +195,7 @@ pub struct IntentStateObject {
 #[derive(Clone)]
 pub struct PublicIntentStateObject {
     /// The intent's hash
-    pub intent_hash: String,
+    pub intent_hash: B256,
     /// The underlying intent circuit type
     pub intent: Intent,
     /// The intent's version
@@ -216,7 +216,7 @@ pub struct PublicIntentStateObject {
 
 impl PublicIntentStateObject {
     /// Create a new public intent state object
-    pub fn new(intent_hash: String, intent: Intent, account_id: Uuid) -> Self {
+    pub fn new(intent_hash: B256, intent: Intent, account_id: Uuid) -> Self {
         // Select safe default values for the public intent
         let version = 0;
         let active = true;
