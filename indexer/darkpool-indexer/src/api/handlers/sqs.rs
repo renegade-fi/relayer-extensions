@@ -3,7 +3,7 @@
 use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{
     CreatePublicIntentMessage, MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage,
-    SqsMessage,
+    SqsMessage, UpdatePublicIntentMessage,
 };
 
 use crate::{
@@ -33,6 +33,9 @@ impl Indexer {
                 },
                 SqsMessage::CreatePublicIntent(message) => {
                     self.handle_create_public_intent_message(message).await?;
+                },
+                SqsMessage::UpdatePublicIntent(message) => {
+                    self.handle_update_public_intent_message(message).await?;
                 },
             }
         }
@@ -118,6 +121,23 @@ impl Indexer {
         let CreatePublicIntentMessage { intent_hash, tx_hash } = message;
         let state_transition =
             self.get_state_transition_for_public_intent_creation(intent_hash, tx_hash).await?;
+
+        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Update Message Handler ===
+
+    /// Handle an SQS message representing the update of a public intent
+    pub async fn handle_update_public_intent_message(
+        &self,
+        message: UpdatePublicIntentMessage,
+    ) -> Result<(), IndexerError> {
+        let UpdatePublicIntentMessage { intent_hash, version, tx_hash } = message;
+        let state_transition = self
+            .get_state_transition_for_public_intent_update(intent_hash, version, tx_hash)
+            .await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 

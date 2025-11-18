@@ -17,6 +17,8 @@ pub enum SqsMessage {
     NullifierSpend(NullifierSpendMessage),
     /// A message representing the creation of a new public intent
     CreatePublicIntent(CreatePublicIntentMessage),
+    /// A message representing the update of a public intent
+    UpdatePublicIntent(UpdatePublicIntentMessage),
 }
 
 /// A message representing the registration of a new master view seed
@@ -54,5 +56,16 @@ pub struct CreatePublicIntentMessage {
     /// The intent hash
     pub intent_hash: B256,
     /// The transaction hash of the public intent creation
+    pub tx_hash: TxHash,
+}
+
+/// A message representing the update of a public intent
+#[derive(Serialize, Deserialize)]
+pub struct UpdatePublicIntentMessage {
+    /// The intent hash
+    pub intent_hash: B256,
+    /// The post-update version of the public intent
+    pub version: u64,
+    /// The transaction hash of the public intent update
     pub tx_hash: TxHash,
 }
