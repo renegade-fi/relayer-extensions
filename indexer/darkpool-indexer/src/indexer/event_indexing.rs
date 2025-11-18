@@ -24,6 +24,7 @@ use crate::{
         StateTransition, create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         pay_fees::PayFeesTransition, settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
 };
@@ -243,6 +244,34 @@ impl Indexer {
 
         self.compute_create_public_intent_state_transition(intent_hash, tx_hash, &calldata).await
     }
+
+    /// Get the state transition associated with the update of a public intent
+    pub async fn get_state_transition_for_public_intent_update(
+        &self,
+        intent_hash: B256,
+        version: u64,
+        tx_hash: TxHash,
+    ) -> Result<StateTransition, IndexerError> {
+        let update_call =
+            self.darkpool_client.find_public_intent_update_call(intent_hash, tx_hash).await?;
+
+        let calldata = update_call.input;
+        let selector = get_selector(&calldata);
+
+        match selector {
+            settleMatchCall::SELECTOR => {
+                self.compute_settle_match_into_public_intent_state_transition(
+                    intent_hash,
+                    version,
+                    tx_hash,
+                    &calldata,
+                )
+                .await
+            },
+            // TODO: Handle intent cancellation once ABI is finalized
+            _ => Err(IndexerError::invalid_selector(selector)),
+        }
+    }
 }
 
 // -------------------
@@ -432,6 +461,39 @@ impl Indexer {
         Ok(StateTransition::CreatePublicIntent(CreatePublicIntentTransition {
             intent,
             intent_hash,
+            block_number,
+        }))
+    }
+
+    /// Compute a `SettleMatchIntoPublicIntent` state transition associated with
+    /// the settlement of a match into the given public intent in a
+    /// `settleMatch` call
+    async fn compute_settle_match_into_public_intent_state_transition(
+        &self,
+        intent_hash: B256,
+        version: u64,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let settle_match_call =
+            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let maybe_party0_intent =
+            try_decode_public_intent(intent_hash, &settle_match_call.party0SettlementBundle)?;
+
+        let maybe_party1_intent =
+            try_decode_public_intent(intent_hash, &settle_match_call.party1SettlementBundle)?;
+
+        let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
+            IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
+        )?;
+
+        Ok(StateTransition::SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition {
+            intent,
+            intent_hash,
+            version,
             block_number,
         }))
     }
