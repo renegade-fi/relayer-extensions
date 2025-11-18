@@ -2,6 +2,7 @@
 
 use std::fmt::Display;
 
+use alloy::hex;
 use aws_sdk_sqs::error::SdkError;
 use uuid::Uuid;
 
@@ -64,6 +65,11 @@ impl IndexerError {
     /// Create a new invalid settlement bundle error
     pub fn invalid_settlement_bundle<T: ToString>(msg: T) -> Self {
         Self::InvalidSettlementBundle(msg.to_string())
+    }
+
+    /// Create a new invalid selector error
+    pub fn invalid_selector<T: AsRef<[u8]>>(selector: T) -> Self {
+        Self::InvalidSelector(hex::encode_prefixed(selector))
     }
 }
 

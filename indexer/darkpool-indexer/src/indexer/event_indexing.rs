@@ -1,11 +1,12 @@
 //! Indexer-specific logic for indexing onchain events
 
 use alloy::{
-    hex,
-    primitives::{Address, TxHash, U256},
+    primitives::{B256, TxHash, U256, keccak256},
     sol_types::{SolCall, SolValue},
 };
-use renegade_circuit_types::{balance::BalanceShare, traits::BaseType};
+use renegade_circuit_types::{
+    balance::BalanceShare, fixed_point::FixedPoint, intent::Intent, traits::BaseType,
+};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
@@ -17,10 +18,11 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 };
 
 use crate::{
-    darkpool_client::utils::get_selector,
+    darkpool_client::utils::{get_selector, u256_to_amount},
     indexer::{Indexer, error::IndexerError},
     state_transitions::{
-        StateTransition, create_balance::CreateBalanceTransition, deposit::DepositTransition,
+        StateTransition, create_balance::CreateBalanceTransition,
+        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
         pay_fees::PayFeesTransition, settle_match_into_balance::SettleMatchIntoBalanceTransition,
         withdraw::WithdrawTransition,
     },
@@ -81,6 +83,17 @@ impl SettlementBundleData {
         Some(u256_to_scalar(&nullifier_u256))
     }
 
+    /// Get the public intent hash from the settlement bundle data, if any
+    pub fn get_public_intent_hash(&self) -> Option<B256> {
+        match self {
+            Self::PublicIntentPublicBalance(bundle) => {
+                Some(keccak256(bundle.auth.permit.abi_encode()))
+            },
+            // Private-intent bundles don't contain a public intent hash
+            _ => None,
+        }
+    }
+
     /// Get the public shares for the new relayer fee, protocol fee, and amount
     /// in the private balance associated with this settlement bundle (if any).
     ///
@@ -114,6 +127,28 @@ impl SettlementBundleData {
             u256_to_scalar(&new_protocol_fee_public_share_u256),
             u256_to_scalar(&new_amount_public_share_u256),
         )))
+    }
+
+    /// Get the public intent from the settlement bundle data, if any
+    pub fn get_public_intent(&self) -> Option<Intent> {
+        match self {
+            Self::PublicIntentPublicBalance(bundle) => {
+                let sol_intent = &bundle.auth.permit.intent;
+
+                let min_price = FixedPoint::from_repr(u256_to_scalar(&sol_intent.minPrice.repr));
+                let amount_in = u256_to_amount(sol_intent.amountIn);
+
+                Some(Intent {
+                    in_token: sol_intent.inToken,
+                    out_token: sol_intent.outToken,
+                    owner: sol_intent.owner,
+                    min_price,
+                    amount_in,
+                })
+            },
+            // Private-intent bundles don't contain a public intent
+            _ => None,
+        }
     }
 }
 
@@ -160,7 +195,7 @@ impl Indexer {
                         "no balance or intent nullified in match tx 0x{tx_hash:#x}",
                     ))
             },
-            _ => Err(IndexerError::InvalidSelector(hex::encode_prefixed(selector))),
+            _ => Err(IndexerError::invalid_selector(selector)),
         }
     }
 
@@ -193,11 +228,20 @@ impl Indexer {
     /// intent
     pub async fn get_state_transition_for_public_intent_creation(
         &self,
-        intent_hash: String,
-        owner_address: Address,
+        intent_hash: B256,
         tx_hash: TxHash,
     ) -> Result<StateTransition, IndexerError> {
-        todo!()
+        let creation_call =
+            self.darkpool_client.find_public_intent_creation_call(intent_hash, tx_hash).await?;
+
+        let calldata = creation_call.input;
+        let selector = get_selector(&calldata);
+
+        if selector != settleMatchCall::SELECTOR {
+            return Err(IndexerError::invalid_selector(selector));
+        }
+
+        self.compute_create_public_intent_state_transition(intent_hash, tx_hash, &calldata).await
     }
 }
 
@@ -360,6 +404,37 @@ impl Indexer {
             new_amount_public_share,
         })))
     }
+
+    /// Compute a `CreatePublicIntent` state transition associated with
+    /// the newly-created public intent (of the given hash) in a `settleMatch`
+    /// call
+    async fn compute_create_public_intent_state_transition(
+        &self,
+        intent_hash: B256,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let settle_match_call =
+            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let maybe_party0_intent =
+            try_decode_public_intent(intent_hash, &settle_match_call.party0SettlementBundle)?;
+
+        let maybe_party1_intent =
+            try_decode_public_intent(intent_hash, &settle_match_call.party1SettlementBundle)?;
+
+        let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
+            IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
+        )?;
+
+        Ok(StateTransition::CreatePublicIntent(CreatePublicIntentTransition {
+            intent,
+            intent_hash,
+            block_number,
+        }))
+    }
 }
 
 // ----------------------
@@ -379,13 +454,34 @@ fn try_decode_balance_shares_for_party(
 ) -> Result<Option<(Scalar, Scalar, Scalar)>, IndexerError> {
     let settlement_bundle_data = decode_settlement_bundle_data(settlement_bundle)?;
 
-    let balance_nullified = settlement_bundle_data.get_balance_nullifier() == Some(nullifier);
+    let balance_nullifier = settlement_bundle_data.get_balance_nullifier();
 
-    if !balance_nullified {
+    if balance_nullifier != Some(nullifier) {
         return Ok(None);
     }
 
     settlement_bundle_data.get_new_balance_public_shares(obligation_bundle, is_party0)
+}
+
+/// Try to decode the public intent with the given hash from the given
+/// settlement bundle.
+///
+/// Returns `None` if the settlement bundle doesn't contain the public intent.
+fn try_decode_public_intent(
+    intent_hash: B256,
+    settlement_bundle: &SettlementBundle,
+) -> Result<Option<Intent>, IndexerError> {
+    let settlement_bundle_data = decode_settlement_bundle_data(settlement_bundle)?;
+
+    let public_intent_hash = settlement_bundle_data.get_public_intent_hash();
+
+    if public_intent_hash != Some(intent_hash) {
+        return Ok(None);
+    }
+
+    let maybe_intent = settlement_bundle_data.get_public_intent();
+
+    Ok(maybe_intent)
 }
 
 /// Decode the settlement bundle data for a renegade-settled bundle.

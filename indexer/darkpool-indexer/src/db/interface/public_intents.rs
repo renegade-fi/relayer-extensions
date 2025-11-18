@@ -1,5 +1,6 @@
 //! Interface methods for interacting with the public intents table
 
+use alloy::primitives::B256;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 
@@ -42,11 +43,13 @@ impl DbClient {
     /// Get a public intent by its hash
     pub async fn get_public_intent_by_hash(
         &self,
-        intent_hash: String,
+        intent_hash: B256,
         conn: &mut DbConn,
     ) -> Result<PublicIntentStateObject, DbError> {
+        let intent_hash_string = intent_hash.to_string();
+
         public_intents::table
-            .filter(public_intents::intent_hash.eq(intent_hash))
+            .filter(public_intents::intent_hash.eq(intent_hash_string))
             .first(conn)
             .await
             .map_err(DbError::from)
@@ -56,11 +59,13 @@ impl DbClient {
     /// Check if a public intent record exists for a given intent hash
     pub async fn public_intent_exists(
         &self,
-        intent_hash: String,
+        intent_hash: B256,
         conn: &mut DbConn,
     ) -> Result<bool, DbError> {
+        let intent_hash_string = intent_hash.to_string();
+
         public_intents::table
-            .filter(public_intents::intent_hash.eq(intent_hash))
+            .filter(public_intents::intent_hash.eq(intent_hash_string))
             .first::<PublicIntentModel>(conn)
             .await
             .optional()
