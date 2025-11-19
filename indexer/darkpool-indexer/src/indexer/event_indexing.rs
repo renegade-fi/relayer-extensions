@@ -22,6 +22,7 @@ use crate::{
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
+        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
@@ -52,10 +53,24 @@ impl Indexer {
             withdrawCall::SELECTOR => {
                 self.compute_withdraw_state_transition(nullifier, tx_hash, &calldata).await
             },
-            payPublicProtocolFeeCall::SELECTOR => todo!(),
-            payPublicRelayerFeeCall::SELECTOR => todo!(),
-            payPrivateProtocolFeeCall::SELECTOR => todo!(),
-            payPrivateRelayerFeeCall::SELECTOR => todo!(),
+            payPublicProtocolFeeCall::SELECTOR => {
+                self.compute_pay_public_protocol_fee_state_transition(nullifier, tx_hash, &calldata)
+                    .await
+            },
+            payPrivateProtocolFeeCall::SELECTOR => {
+                self.compute_pay_private_protocol_fee_state_transition(
+                    nullifier, tx_hash, &calldata,
+                )
+                .await
+            },
+            payPublicRelayerFeeCall::SELECTOR => {
+                self.compute_pay_public_relayer_fee_state_transition(nullifier, tx_hash, &calldata)
+                    .await
+            },
+            payPrivateRelayerFeeCall::SELECTOR => {
+                self.compute_pay_private_relayer_fee_state_transition(nullifier, tx_hash, &calldata)
+                    .await
+            },
             settleMatchCall::SELECTOR => {
                 let maybe_settle_match_into_balance_transition = self
                     .try_compute_settle_match_into_balance_state_transition(
@@ -225,6 +240,102 @@ impl Indexer {
             nullifier,
             block_number,
             new_amount_public_share,
+        }))
+    }
+
+    /// Compute a `PayProtocolFee` state transition associated with the
+    /// now-spent nullifier in a `payPublicProtocolFee` call
+    async fn compute_pay_public_protocol_fee_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let pay_public_protocol_fee_call =
+            payPublicProtocolFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let new_protocol_fee_public_share = u256_to_scalar(
+            &pay_public_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
+        );
+
+        Ok(StateTransition::PayProtocolFee(PayProtocolFeeTransition {
+            nullifier,
+            block_number,
+            new_protocol_fee_public_share,
+        }))
+    }
+
+    /// Compute a `PayProtocolFee` state transition associated with the
+    /// now-spent nullifier in a `payPrivateProtocolFee` call
+    async fn compute_pay_private_protocol_fee_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let pay_private_protocol_fee_call =
+            payPrivateProtocolFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let new_protocol_fee_public_share = u256_to_scalar(
+            &pay_private_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
+        );
+
+        Ok(StateTransition::PayProtocolFee(PayProtocolFeeTransition {
+            nullifier,
+            block_number,
+            new_protocol_fee_public_share,
+        }))
+    }
+
+    /// Compute a `PayRelayerFee` state transition associated with the
+    /// now-spent nullifier in a `payPublicRelayerFee` call
+    async fn compute_pay_public_relayer_fee_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let pay_public_relayer_fee_call =
+            payPublicRelayerFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let new_relayer_fee_public_share = u256_to_scalar(
+            &pay_public_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
+        );
+
+        Ok(StateTransition::PayRelayerFee(PayRelayerFeeTransition {
+            nullifier,
+            block_number,
+            new_relayer_fee_public_share,
+        }))
+    }
+
+    /// Compute a `PayRelayerFee` state transition associated with the
+    /// now-spent nullifier in a `payPrivateRelayerFee` call
+    async fn compute_pay_private_relayer_fee_state_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let pay_private_relayer_fee_call =
+            payPrivateRelayerFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let new_relayer_fee_public_share = u256_to_scalar(
+            &pay_private_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
+        );
+
+        Ok(StateTransition::PayRelayerFee(PayRelayerFeeTransition {
+            nullifier,
+            block_number,
+            new_relayer_fee_public_share,
         }))
     }
 

@@ -12,7 +12,8 @@ use crate::{
     state_transitions::{
         create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_fees::PayFeesTransition,
+        error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
@@ -23,7 +24,8 @@ pub mod create_balance;
 pub mod create_public_intent;
 pub mod deposit;
 pub mod error;
-pub mod pay_fees;
+pub mod pay_protocol_fee;
+pub mod pay_relayer_fee;
 pub mod register_master_view_seed;
 pub mod settle_match_into_balance;
 pub mod settle_match_into_public_intent;
@@ -46,8 +48,10 @@ pub enum StateTransition {
     Deposit(DepositTransition),
     /// The withdrawal of funds from an existing balance object
     Withdraw(WithdrawTransition),
-    /// The payment of fees accrued on a balance object
-    PayFees(PayFeesTransition),
+    /// The payment of the protocol fee accrued on a balance object
+    PayProtocolFee(PayProtocolFeeTransition),
+    /// The payment of the relayer fee accrued on a balance object
+    PayRelayerFee(PayRelayerFeeTransition),
     /// The settlement of a match into a balance object
     SettleMatchIntoBalance(SettleMatchIntoBalanceTransition),
     /// The creation of a new public intent
@@ -82,7 +86,8 @@ impl StateApplicator {
             },
             StateTransition::Deposit(transition) => self.deposit(transition).await,
             StateTransition::Withdraw(transition) => self.withdraw(transition).await,
-            StateTransition::PayFees(transition) => self.pay_fees(transition).await,
+            StateTransition::PayProtocolFee(transition) => self.pay_protocol_fee(transition).await,
+            StateTransition::PayRelayerFee(transition) => self.pay_relayer_fee(transition).await,
             StateTransition::SettleMatchIntoBalance(transition) => {
                 self.settle_match_into_balance(transition).await
             },
