@@ -113,7 +113,9 @@ impl Server {
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
         let key_desc = &ctx.user();
-        self.check_bundle_rate_limit(key_desc).await?;
+        if self.check_bundle_rate_limit(key_desc).await.is_err() {
+            return Err(AuthServerError::no_match_found());
+        };
         self.route_assembly_req(ctx).await?;
 
         // Apply gas sponsorship to the assembly request

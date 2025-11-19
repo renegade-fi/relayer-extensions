@@ -119,7 +119,12 @@ impl Server {
         ctx: &mut QuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
-        self.check_quote_rate_limit(&ctx.user()).await?;
+        // We return no content if the rate limit is exceeded
+        if self.check_quote_rate_limit(&ctx.user()).await.is_err()
+            || self.check_bundle_rate_limit(&ctx.user()).await.is_err()
+        {
+            return Err(AuthServerError::no_match_found());
+        };
         self.route_quote_req(ctx).await?;
 
         // Apply gas sponsorship to the quote request

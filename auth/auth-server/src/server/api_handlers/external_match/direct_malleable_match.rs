@@ -118,7 +118,9 @@ impl Server {
         ctx: &mut DirectMalleableMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
-        self.check_bundle_rate_limit(&ctx.user()).await?;
+        if self.check_bundle_rate_limit(&ctx.user()).await.is_err() {
+            return Err(AuthServerError::no_match_found());
+        };
         self.route_direct_malleable_match_req(ctx).await?;
 
         // Apply gas sponsorship to the match request
