@@ -1,4 +1,4 @@
-//! Defines the application-specific logic for paying fees accrued on a balance
+//! Defines the application-specific logic for paying the relayer fee accrued on a balance
 //! object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
@@ -11,19 +11,15 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 // | Types |
 // ---------
 
-/// A transition representing the payment of fees accrued on a balance object
+/// A transition representing the payment of the relayer fee accrued on a balance object
 #[derive(Clone)]
-pub struct PayFeesTransition {
-    /// The now-spent nullifier of the balance on which fees were paid
+pub struct PayRelayerFeeTransition {
+    /// The now-spent nullifier of the balance on which the relayer fee was paid
     pub nullifier: Scalar,
-    /// The block number in which the fees were paid
+    /// The block number in which the relayer fee was paid
     pub block_number: u64,
     /// The public share of the new relayer fee in the balance
     pub new_relayer_fee_public_share: Scalar,
-    /// The public share of the new protocol fee in the balance
-    pub new_protocol_fee_public_share: Scalar,
-    /// The public share of the new amount in the balance
-    pub new_amount_public_share: Scalar,
 }
 
 // --------------------------------
@@ -31,17 +27,17 @@ pub struct PayFeesTransition {
 // --------------------------------
 
 impl StateApplicator {
-    /// Pay fees accrued on a balance object
-    pub async fn pay_fees(
+    /// Pay the relayer fee accrued on a balance object
+    pub async fn pay_relayer_fee(
         &self,
-        transition: PayFeesTransition,
+        transition: PayRelayerFeeTransition,
     ) -> Result<(), StateTransitionError> {
-        let PayFeesTransition { nullifier, block_number, new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share } = transition;
+        let PayRelayerFeeTransition { nullifier, block_number, new_relayer_fee_public_share } = transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
 
-        balance.update_amount_and_fees(new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share);
+        balance.update_relayer_fee(new_relayer_fee_public_share);
 
         conn.transaction(move |conn| {
             async move {
@@ -72,11 +68,11 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_pay_fees_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
+    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_pay_relayer_fee_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
 
-    /// Test that a fee payment is indexed correctly.
+    /// Test that a relayer fee payment is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_pay_fees() -> Result<(), StateTransitionError> {
+    async fn test_pay_relayer_fee() -> Result<(), StateTransitionError> {
         let (test_applicator, postgres) = setup_test_state_applicator().await?;
         let db_client = &test_applicator.db_client;
 
@@ -89,10 +85,10 @@ mod tests {
 
         // Generate the subsequent fee payment transition
         let (pay_fees_transition, updated_wrapped_balance) =
-            gen_pay_fees_transition(&initial_wrapped_balance);
+            gen_pay_relayer_fee_transition(&initial_wrapped_balance);
 
         // Index the fee payment
-        test_applicator.pay_fees(pay_fees_transition.clone()).await?;
+        test_applicator.pay_relayer_fee(pay_fees_transition.clone()).await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 
