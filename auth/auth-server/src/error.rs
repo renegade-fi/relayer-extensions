@@ -5,6 +5,9 @@ use thiserror::Error;
 use crate::ApiError;
 use price_reporter_client::error::PriceReporterClientError;
 
+/// The message indicating no match was found
+const ERR_NO_MATCH_FOUND: &str = "No match found";
+
 /// Custom error type for server errors
 #[derive(Error, Debug, Clone)]
 pub enum AuthServerError {
@@ -38,6 +41,9 @@ pub enum AuthServerError {
     /// Gas sponsorship error
     #[error("Gas sponsorship error: {0}")]
     GasSponsorship(String),
+    /// A no content (HTTP 204) error
+    #[error("No content: {0}")]
+    NoContent(String),
     /// Price reporter error
     #[error("Price reporter error: {0}")]
     PriceReporter(#[from] PriceReporterClientError),
@@ -68,16 +74,28 @@ impl AuthServerError {
         Self::BadRequest(msg.to_string())
     }
 
+    /// Create a new custom error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn custom<T: ToString>(msg: T) -> Self {
+        Self::Custom(msg.to_string())
+    }
+
+    /// Create a new darkpool client error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn darkpool_client<T: ToString>(msg: T) -> Self {
+        Self::DarkpoolClient(msg.to_string())
+    }
+
     /// Create a new database connection error
     #[allow(clippy::needless_pass_by_value)]
     pub fn db<T: ToString>(msg: T) -> Self {
         Self::DatabaseConnection(msg.to_string())
     }
 
-    /// Create a new redis connection error
+    /// Create a new decryption error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn redis<T: ToString>(msg: T) -> Self {
-        Self::RedisConnection(msg.to_string())
+    pub fn decryption<T: ToString>(msg: T) -> Self {
+        Self::Decryption(msg.to_string())
     }
 
     /// Create a new encryption error
@@ -86,10 +104,33 @@ impl AuthServerError {
         Self::Encryption(msg.to_string())
     }
 
-    /// Create a new decryption error
+    /// Create a new gas cost sampler error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn decryption<T: ToString>(msg: T) -> Self {
-        Self::Decryption(msg.to_string())
+    pub fn gas_cost_sampler<T: ToString>(msg: T) -> Self {
+        Self::GasCostSampler(msg.to_string())
+    }
+
+    /// Create a new gas sponsorship error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn gas_sponsorship<T: ToString>(msg: T) -> Self {
+        Self::GasSponsorship(msg.to_string())
+    }
+
+    /// Create a new no content error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn no_content<T: ToString>(msg: T) -> Self {
+        Self::NoContent(msg.to_string())
+    }
+
+    /// Create a new no match found error
+    pub fn no_match_found() -> Self {
+        Self::no_content(ERR_NO_MATCH_FOUND)
+    }
+
+    /// Create a new redis connection error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn redis<T: ToString>(msg: T) -> Self {
+        Self::RedisConnection(msg.to_string())
     }
 
     /// Create a new serde error
@@ -104,40 +145,16 @@ impl AuthServerError {
         Self::Setup(msg.to_string())
     }
 
-    /// Create a new unauthorized error
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn unauthorized<T: ToString>(msg: T) -> Self {
-        Self::Unauthorized(msg.to_string())
-    }
-
-    /// Create a new gas sponsorship error
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn gas_sponsorship<T: ToString>(msg: T) -> Self {
-        Self::GasSponsorship(msg.to_string())
-    }
-
     /// Create a new signing error
     #[allow(clippy::needless_pass_by_value)]
     pub fn signing<T: ToString>(msg: T) -> Self {
         Self::Signing(msg.to_string())
     }
 
-    /// Create a new custom error
+    /// Create a new unauthorized error
     #[allow(clippy::needless_pass_by_value)]
-    pub fn custom<T: ToString>(msg: T) -> Self {
-        Self::Custom(msg.to_string())
-    }
-
-    /// Create a new darkpool client error
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn darkpool_client<T: ToString>(msg: T) -> Self {
-        Self::DarkpoolClient(msg.to_string())
-    }
-
-    /// Create a new gas cost sampler error
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn gas_cost_sampler<T: ToString>(msg: T) -> Self {
-        Self::GasCostSampler(msg.to_string())
+    pub fn unauthorized<T: ToString>(msg: T) -> Self {
+        Self::Unauthorized(msg.to_string())
     }
 }
 
@@ -151,6 +168,7 @@ impl From<AuthServerError> for ApiError {
             },
             AuthServerError::BadRequest(e) | AuthServerError::Serde(e) => ApiError::BadRequest(e),
             AuthServerError::RateLimit => ApiError::TooManyRequests,
+            AuthServerError::NoContent(e) => ApiError::NoContent(e),
             _ => ApiError::InternalError(err.to_string()),
         }
     }

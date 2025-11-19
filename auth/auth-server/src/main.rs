@@ -166,6 +166,9 @@ pub enum ApiError {
     /// A bad request error
     #[error("Bad request: {0}")]
     BadRequest(String),
+    /// A no content (HTTP 204) error
+    #[error("{0}")]
+    NoContent(String),
     /// A rate limit exceeded error
     #[error("Rate limit exceeded")]
     TooManyRequests,
@@ -554,6 +557,7 @@ fn api_error_to_reply(api_error: &ApiError) -> WithStatus<Json> {
         ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
         ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"),
         ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+        ApiError::NoContent(msg) => (StatusCode::NO_CONTENT, msg.as_str()),
     };
 
     json_error(message, code)
