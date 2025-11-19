@@ -17,7 +17,8 @@ use crate::{
     state_transitions::{
         StateApplicator, create_balance::CreateBalanceTransition,
         create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_fees::PayFeesTransition,
+        error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
@@ -230,6 +231,54 @@ fn update_balance_amount_and_fees(
     (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share)
 }
 
+/// Update the protocol fee in a balance.
+///
+/// Returns the public share of the new protocol fee.
+fn update_balance_protocol_fee(
+    balance: &mut StateWrapper<Balance>,
+    new_protocol_fee_balance: Amount,
+) -> Scalar {
+    // Advance the recovery stream to indicate the next object version
+    balance.recovery_stream.advance_by(1);
+
+    // Update the protocol fee
+    balance.inner.protocol_fee_balance = new_protocol_fee_balance;
+
+    // We re-encrypt only the updated protocol fee
+    let new_protocol_fee_public_share = balance.stream_cipher_encrypt(&new_protocol_fee_balance);
+
+    // Update the public share of the balance
+    let mut public_share = balance.public_share();
+    public_share.protocol_fee_balance = new_protocol_fee_public_share;
+    balance.public_share = public_share;
+
+    new_protocol_fee_public_share
+}
+
+/// Update the relayer fee in a balance.
+///
+/// Returns the public share of the new relayer fee.
+fn update_balance_relayer_fee(
+    balance: &mut StateWrapper<Balance>,
+    new_relayer_fee_balance: Amount,
+) -> Scalar {
+    // Advance the recovery stream to indicate the next object version
+    balance.recovery_stream.advance_by(1);
+
+    // Update the relayer fee
+    balance.inner.relayer_fee_balance = new_relayer_fee_balance;
+
+    // We re-encrypt only the updated relayer fee
+    let new_relayer_fee_public_share = balance.stream_cipher_encrypt(&new_relayer_fee_balance);
+
+    // Update the public share of the balance
+    let mut public_share = balance.public_share();
+    public_share.relayer_fee_balance = new_relayer_fee_public_share;
+    balance.public_share = public_share;
+
+    new_relayer_fee_public_share
+}
+
 /// Generate the state transition which should result in the given
 /// balance being updated with a deposit.
 ///
@@ -275,44 +324,56 @@ pub fn gen_withdraw_transition(
 }
 
 /// Generate the state transition which should result in the given
-/// balance being updated with a fee payment.
+/// balance being updated with a protocol fee payment.
 ///
-/// Returns the fee payment transition, along with the updated balance.
-pub fn gen_pay_fees_transition(
+/// Returns the protocol fee payment transition, along with the updated balance.
+pub fn gen_pay_protocol_fee_transition(
     initial_balance: &StateWrapper<Balance>,
-) -> (PayFeesTransition, StateWrapper<Balance>) {
+) -> (PayProtocolFeeTransition, StateWrapper<Balance>) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
 
     // Apply a random fee payment to the balance
+    let new_protocol_fee_balance =
+        initial_balance.inner.protocol_fee_balance.saturating_sub(random_amount());
 
-    // The balance amount itself remains unchanged
-    let new_amount = initial_balance.inner.amount;
-    let mut new_relayer_fee_balance = initial_balance.inner.relayer_fee_balance;
-    let mut new_protocol_fee_balance = initial_balance.inner.protocol_fee_balance;
-
-    if thread_rng().gen_bool(0.5) {
-        new_relayer_fee_balance = new_relayer_fee_balance.saturating_sub(random_amount());
-    } else {
-        new_protocol_fee_balance = new_protocol_fee_balance.saturating_sub(random_amount());
-    }
-
-    let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
-        update_balance_amount_and_fees(
-            &mut updated_balance,
-            new_relayer_fee_balance,
-            new_protocol_fee_balance,
-            new_amount,
-        );
+    let new_protocol_fee_public_share =
+        update_balance_protocol_fee(&mut updated_balance, new_protocol_fee_balance);
 
     // Construct the associated fee payment transition
-    let transition = PayFeesTransition {
+    let transition = PayProtocolFeeTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        new_protocol_fee_public_share,
+    };
+
+    (transition, updated_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// balance being updated with a relayer fee payment.
+///
+/// Returns the relayer fee payment transition, along with the updated balance.
+pub fn gen_pay_relayer_fee_transition(
+    initial_balance: &StateWrapper<Balance>,
+) -> (PayRelayerFeeTransition, StateWrapper<Balance>) {
+    let spent_nullifier = initial_balance.compute_nullifier();
+
+    let mut updated_balance = initial_balance.clone();
+
+    // Apply a random fee payment to the balance
+    let new_relayer_fee_balance =
+        initial_balance.inner.relayer_fee_balance.saturating_sub(random_amount());
+
+    let new_relayer_fee_public_share =
+        update_balance_relayer_fee(&mut updated_balance, new_relayer_fee_balance);
+
+    // Construct the associated fee payment transition
+    let transition = PayRelayerFeeTransition {
         nullifier: spent_nullifier,
         block_number: 0,
         new_relayer_fee_public_share,
-        new_protocol_fee_public_share,
-        new_amount_public_share,
     };
 
     (transition, updated_balance)

@@ -170,6 +170,40 @@ impl BalanceStateObject {
         self.balance.inner.protocol_fee_balance = new_protocol_fee;
         self.balance.inner.amount = new_amount;
     }
+
+    /// Update the protocol fee amount using the given public share
+    pub fn update_protocol_fee(&mut self, new_protocol_fee_public_share: Scalar) {
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
+
+        // Update the public shares of the balance
+        let mut public_share = self.balance.public_share();
+        public_share.protocol_fee_balance = new_protocol_fee_public_share;
+        self.balance.public_share = public_share;
+
+        // Update the plaintext protocol fee
+        let share_stream = &mut self.balance.share_stream;
+        let new_protocol_fee = decrypt_amount(new_protocol_fee_public_share, share_stream);
+
+        self.balance.inner.protocol_fee_balance = new_protocol_fee;
+    }
+
+    /// Update the relayer fee amount using the given public share
+    pub fn update_relayer_fee(&mut self, new_relayer_fee_public_share: Scalar) {
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
+
+        // Update the public shares of the balance
+        let mut public_share = self.balance.public_share();
+        public_share.relayer_fee_balance = new_relayer_fee_public_share;
+        self.balance.public_share = public_share;
+
+        // Update the plaintext relayer fee
+        let share_stream = &mut self.balance.share_stream;
+        let new_relayer_fee = decrypt_amount(new_relayer_fee_public_share, share_stream);
+
+        self.balance.inner.relayer_fee_balance = new_relayer_fee;
+    }
 }
 
 /// An intent state object
