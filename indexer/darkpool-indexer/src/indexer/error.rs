@@ -30,6 +30,9 @@ pub enum IndexerError {
     /// An invalid settlement bundle was encountered
     #[error("invalid settlement bundle: {0}")]
     InvalidSettlementBundle(String),
+    /// An invalid obligation bundle was encountered
+    #[error("invalid obligation bundle: {0}")]
+    InvalidObligationBundle(String),
     /// An error in the database client
     #[error("database error: {0}")]
     Db(#[from] DbError),
@@ -65,6 +68,11 @@ impl IndexerError {
     /// Create a new invalid settlement bundle error
     pub fn invalid_settlement_bundle<T: ToString>(msg: T) -> Self {
         Self::InvalidSettlementBundle(msg.to_string())
+    }
+
+    /// Create a new invalid obligation bundle error
+    pub fn invalid_obligation_bundle<T: ToString>(msg: T) -> Self {
+        Self::InvalidObligationBundle(msg.to_string())
     }
 
     /// Create a new invalid selector error
