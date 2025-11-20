@@ -14,7 +14,9 @@ use crate::{
             obligation_bundle::ObligationBundleData, settlement_bundle::SettlementBundleData,
         },
     },
-    state_transitions::settle_match_into_balance::BalanceUpdateData,
+    state_transitions::{
+        create_intent::IntentCreationData, settle_match_into_balance::BalanceUpdateData,
+    },
     types::ObligationAmounts,
 };
 
@@ -103,17 +105,17 @@ fn get_balance_update_data(
     }
 }
 
-/// Try to decode the public shares for the given party's newly-created intent
-/// from the given settlement & obligation bundles.
+/// Try to decode the intent creation data for the given party's newly-created
+/// intent from the given settlement & obligation bundles.
 ///
 /// Returns `None` if the settlement bundle does not contain a newly-created
 /// intent with a matching recovery ID.
-pub fn try_decode_new_intent_shares_for_party(
+pub fn try_decode_intent_creation_data(
     recovery_id: Scalar,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,
-) -> Result<Option<IntentShare>, IndexerError> {
+) -> Result<Option<IntentCreationData>, IndexerError> {
     let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
@@ -123,45 +125,44 @@ pub fn try_decode_new_intent_shares_for_party(
         return Ok(None);
     }
 
-    get_new_intent_public_shares(&settlement_bundle_data, &obligation_bundle_data, is_party0)
+    get_intent_creation_data(&settlement_bundle_data, &obligation_bundle_data, is_party0)
 }
 
-/// Get the public shares for the given party's newly-created intent, if
+/// Get the intent creation data for the given party's newly-created intent, if
 /// this was a first-fill bundle
-fn get_new_intent_public_shares(
+fn get_intent_creation_data(
     settlement_bundle_data: &SettlementBundleData,
     obligation_bundle_data: &ObligationBundleData,
     is_party0: bool,
-) -> Result<Option<IntentShare>, IndexerError> {
+) -> Result<Option<IntentCreationData>, IndexerError> {
     match settlement_bundle_data {
         SettlementBundleData::PrivateIntentPublicBalanceFirstFill(bundle) => {
             let mut public_shares_iter =
                 bundle.auth.statement.intentPublicShare.iter().map(u256_to_scalar);
 
-            Ok(Some(IntentShare::from_scalars(&mut public_shares_iter)))
+            let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
+
+            Ok(Some(IntentCreationData::NewIntentShare { updated_intent_share }))
         },
         SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
             // of the intent amount
-            let post_update_public_shares_u256_iter =
-                bundle.auth.statement.intentPublicShare.iter();
+            let pre_match_intent_shares =
+                bundle.auth.statement.intentPublicShare.each_ref().map(u256_to_scalar);
 
-            // We replicate the contract logic for updating the intent amount public share
-            let pre_update_amount_public_share_u256 = bundle.settlementStatement.amountPublicShare;
+            let pre_match_amount_share =
+                u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
 
             let ObligationAmounts { amount_in, .. } =
                 obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
                     IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
                 )?;
 
-            let post_update_amount_public_share_u256 =
-                pre_update_amount_public_share_u256 - amount_in;
-
-            let mut public_shares_iter = post_update_public_shares_u256_iter
-                .chain(iter::once(&post_update_amount_public_share_u256))
-                .map(u256_to_scalar);
-
-            Ok(Some(IntentShare::from_scalars(&mut public_shares_iter)))
+            Ok(Some(IntentCreationData::RenegadeSettledPublicFill {
+                pre_match_intent_shares,
+                pre_match_amount_share,
+                amount_in,
+            }))
         },
         SettlementBundleData::RenegadeSettledPrivateFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
@@ -177,7 +178,9 @@ fn get_new_intent_public_shares(
                 .chain(iter::once(&amount_public_share_u256))
                 .map(u256_to_scalar);
 
-            Ok(Some(IntentShare::from_scalars(&mut public_shares_iter)))
+            let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
+
+            Ok(Some(IntentCreationData::NewIntentShare { updated_intent_share }))
         },
         // Non-first-fill bundles don't create a new intent
         _ => Ok(None),
