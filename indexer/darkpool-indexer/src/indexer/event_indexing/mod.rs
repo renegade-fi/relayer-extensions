@@ -20,7 +20,7 @@ use crate::{
         event_indexing::{
             types::settlement_bundle::SettlementBundleData,
             utils::{
-                try_decode_balance_shares_for_party, try_decode_new_intent_shares_for_party,
+                try_decode_balance_update_data, try_decode_new_intent_shares_for_party,
                 try_decode_updated_intent_amount_share_for_party,
             },
         },
@@ -362,38 +362,36 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let maybe_party0_balance_shares = try_decode_balance_shares_for_party(
+        let maybe_party0_balance_update_data = try_decode_balance_update_data(
             nullifier,
             &settle_match_call.party0SettlementBundle,
             &settle_match_call.obligationBundle,
             true, // is_party0
         )?;
 
-        let maybe_party1_balance_shares = try_decode_balance_shares_for_party(
+        let maybe_party1_balance_update_data = try_decode_balance_update_data(
             nullifier,
             &settle_match_call.party1SettlementBundle,
             &settle_match_call.obligationBundle,
             false, // is_party0
         )?;
 
-        let maybe_balance_shares = maybe_party0_balance_shares.or(maybe_party1_balance_shares);
+        let maybe_balance_update_data =
+            maybe_party0_balance_update_data.or(maybe_party1_balance_update_data);
 
-        // If we could not decode balance shares for either party,
+        // If we could not decode balance update data for either party,
         // the spent nullifier must pertain to one of the intents nullified in the
         // match.
-        if maybe_balance_shares.is_none() {
+        if maybe_balance_update_data.is_none() {
             return Ok(None);
         }
 
-        let [new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share] =
-            maybe_balance_shares.unwrap();
+        let balance_update_data = maybe_balance_update_data.unwrap();
 
         Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
             nullifier,
             block_number,
-            new_relayer_fee_public_share,
-            new_protocol_fee_public_share,
-            new_amount_public_share,
+            balance_update_data,
         })))
     }
 

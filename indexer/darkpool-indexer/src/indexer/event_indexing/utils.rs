@@ -7,11 +7,15 @@ use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{ObligationBundle, SettlementBundle};
 
-use crate::indexer::{
-    error::IndexerError,
-    event_indexing::types::{
-        obligation_bundle::ObligationBundleData, settlement_bundle::SettlementBundleData,
+use crate::{
+    indexer::{
+        error::IndexerError,
+        event_indexing::types::{
+            obligation_bundle::ObligationBundleData, settlement_bundle::SettlementBundleData,
+        },
     },
+    state_transitions::settle_match_into_balance::BalanceUpdateData,
+    types::ObligationAmounts,
 };
 
 /// Try to decode the new balance public shares from the match party's
@@ -19,12 +23,12 @@ use crate::indexer::{
 ///
 /// Returns `None` if the spent nullifier does not match the party's input or
 /// output balance nullifier.
-pub fn try_decode_balance_shares_for_party(
+pub fn try_decode_balance_update_data(
     nullifier: Scalar,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,
-) -> Result<Option<[Scalar; 3]>, IndexerError> {
+) -> Result<Option<BalanceUpdateData>, IndexerError> {
     let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
@@ -35,14 +39,14 @@ pub fn try_decode_balance_shares_for_party(
         settlement_bundle_data.get_balance_nullifier(false /* is_input_balance */);
 
     if in_balance_nullifier == Some(nullifier) {
-        get_updated_balance_public_shares(
+        get_balance_update_data(
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
             true, // is_input_balance
         )
     } else if out_balance_nullifier == Some(nullifier) {
-        get_updated_balance_public_shares(
+        get_balance_update_data(
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
@@ -55,68 +59,48 @@ pub fn try_decode_balance_shares_for_party(
     }
 }
 
-/// Get the public shares for the new relayer fee, protocol fee, and amount
-/// in the private balance associated with this settlement bundle (if any).
-///
-/// In the case of private-fill bundles, we parse the updated shares from
-/// the obligation bundle data.
-fn get_updated_balance_public_shares(
+/// Get the balance update data associated with this settlement & obligation
+/// bundle (if any)
+fn get_balance_update_data(
     settlement_bundle_data: &SettlementBundleData,
     obligation_bundle_data: &ObligationBundleData,
     is_party0: bool,
     is_input_balance: bool,
-) -> Result<Option<[Scalar; 3]>, IndexerError> {
-    let [
-        new_relayer_fee_public_share_u256,
-        new_protocol_fee_public_share_u256,
-        new_amount_public_share_u256,
-    ] = match settlement_bundle_data {
+) -> Result<Option<BalanceUpdateData>, IndexerError> {
+    match settlement_bundle_data {
         // For public-fill bundles, we parse the pre-update balance public shares & replicate the
         // contract logic for updating them
         SettlementBundleData::RenegadeSettledIntentFirstFill(_)
         | SettlementBundleData::RenegadeSettledIntent(_) => {
-            let [
-                new_relayer_fee_public_share_u256,
-                new_protocol_fee_public_share_u256,
-                mut new_amount_public_share_u256,
-            ] = settlement_bundle_data
-                .get_pre_update_balance_public_shares(is_input_balance)
-                .unwrap(); // It's safe to unwrap in this match arm
+            let pre_update_balance_shares =
+                settlement_bundle_data.get_pre_update_balance_shares(is_input_balance).unwrap(); // It's safe to unwrap in this match arm
 
-            // TODO: Account for fee amounts
-            if is_input_balance {
-                let amount_in = obligation_bundle_data.get_amount_in(is_party0).ok_or(
+            let obligation_amounts =
+                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
                     IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
                 )?;
-                new_amount_public_share_u256 -= amount_in
-            } else {
-                let amount_out = obligation_bundle_data.get_amount_out(is_party0).ok_or(
-                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-                )?;
-                new_amount_public_share_u256 += amount_out;
-            }
 
-            [
-                new_relayer_fee_public_share_u256,
-                new_protocol_fee_public_share_u256,
-                new_amount_public_share_u256,
-            ]
+            Ok(Some(BalanceUpdateData::PublicFill {
+                pre_update_balance_shares,
+                obligation_amounts,
+                is_input_balance,
+            }))
         },
         // For private-fill bundles, we parse the updated balance public shares directly from the
         // obligation bundle data
         SettlementBundleData::RenegadeSettledPrivateFirstFill(_)
-        | SettlementBundleData::RenegadeSettledPrivateFill(_) => obligation_bundle_data
-            .get_updated_balance_public_shares(is_party0, is_input_balance)
-            .ok_or(IndexerError::invalid_obligation_bundle("expected private obligation bundle"))?,
-        // Natively-settled bundles don't update any balance state objects
-        _ => return Ok(None),
-    };
+        | SettlementBundleData::RenegadeSettledPrivateFill(_) => {
+            let updated_balance_shares = obligation_bundle_data
+                .get_balance_shares_in_private_match(is_party0, is_input_balance)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected private obligation bundle",
+                ))?;
 
-    Ok(Some([
-        u256_to_scalar(&new_relayer_fee_public_share_u256),
-        u256_to_scalar(&new_protocol_fee_public_share_u256),
-        u256_to_scalar(&new_amount_public_share_u256),
-    ]))
+            Ok(Some(BalanceUpdateData::PrivateFill { updated_balance_shares }))
+        },
+        // Natively-settled bundles don't update any balance state objects
+        _ => Ok(None),
+    }
 }
 
 /// Try to decode the public shares for the given party's newly-created intent
@@ -165,9 +149,10 @@ fn get_new_intent_public_shares(
             // We replicate the contract logic for updating the intent amount public share
             let pre_update_amount_public_share_u256 = bundle.settlementStatement.amountPublicShare;
 
-            let amount_in = obligation_bundle_data.get_amount_in(is_party0).ok_or(
-                IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-            )?;
+            let ObligationAmounts { amount_in, .. } =
+                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
+                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
+                )?;
 
             let post_update_amount_public_share_u256 =
                 pre_update_amount_public_share_u256 - amount_in;
@@ -243,9 +228,10 @@ fn get_updated_intent_amount_public_share(
             let pre_update_amount_public_share_u256 = bundle.settlementStatement.amountPublicShare;
 
             // We replicate the contract logic for updating the intent amount public share
-            let amount_in = obligation_bundle_data.get_amount_in(is_party0).ok_or(
-                IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-            )?;
+            let ObligationAmounts { amount_in, .. } =
+                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
+                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
+                )?;
 
             let post_update_amount_public_share_u256 =
                 pre_update_amount_public_share_u256 - amount_in;
