@@ -24,8 +24,9 @@ use crate::{
     },
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition,
-        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
+        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
+        deposit::DepositTransition, pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
@@ -429,18 +430,22 @@ impl Indexer {
             false, // is_party0
         )?;
 
-        let maybe_intent_share = maybe_party0_intent_share.or(maybe_party1_intent_share);
+        let maybe_public_share = maybe_party0_intent_share.or(maybe_party1_intent_share);
 
         // If we could not decode new intent shares for either party,
         // the registered recovery ID must not match the recovery ID of any
         // newly-created intents in the match.
-        if maybe_intent_share.is_none() {
+        if maybe_public_share.is_none() {
             return Ok(None);
         }
 
-        let intent_share = maybe_intent_share.unwrap();
+        let public_share = maybe_public_share.unwrap();
 
-        todo!()
+        Ok(Some(StateTransition::CreateIntent(CreateIntentTransition {
+            recovery_id,
+            block_number,
+            public_share,
+        })))
     }
 
     /// Compute a `CreatePublicIntent` state transition associated with
