@@ -19,7 +19,10 @@ use crate::{
         error::IndexerError,
         event_indexing::{
             types::settlement_bundle::SettlementBundleData,
-            utils::{try_decode_balance_shares_for_party, try_decode_new_intent_shares_for_party},
+            utils::{
+                try_decode_balance_shares_for_party, try_decode_new_intent_shares_for_party,
+                try_decode_updated_intent_amount_share_for_party,
+            },
         },
     },
     state_transitions::{
@@ -28,6 +31,7 @@ use crate::{
         deposit::DepositTransition, pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        settle_match_into_intent::SettleMatchIntoIntentTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
@@ -55,45 +59,40 @@ impl Indexer {
 
         match selector {
             depositCall::SELECTOR => {
-                self.compute_deposit_state_transition(nullifier, tx_hash, &calldata).await
+                self.compute_deposit_transition(nullifier, tx_hash, &calldata).await
             },
             withdrawCall::SELECTOR => {
-                self.compute_withdraw_state_transition(nullifier, tx_hash, &calldata).await
+                self.compute_withdraw_transition(nullifier, tx_hash, &calldata).await
             },
             payPublicProtocolFeeCall::SELECTOR => {
-                self.compute_pay_public_protocol_fee_state_transition(nullifier, tx_hash, &calldata)
-                    .await
+                self.compute_pay_public_protocol_fee_transition(nullifier, tx_hash, &calldata).await
             },
             payPrivateProtocolFeeCall::SELECTOR => {
-                self.compute_pay_private_protocol_fee_state_transition(
-                    nullifier, tx_hash, &calldata,
-                )
-                .await
+                self.compute_pay_private_protocol_fee_transition(nullifier, tx_hash, &calldata)
+                    .await
             },
             payPublicRelayerFeeCall::SELECTOR => {
-                self.compute_pay_public_relayer_fee_state_transition(nullifier, tx_hash, &calldata)
-                    .await
+                self.compute_pay_public_relayer_fee_transition(nullifier, tx_hash, &calldata).await
             },
             payPrivateRelayerFeeCall::SELECTOR => {
-                self.compute_pay_private_relayer_fee_state_transition(nullifier, tx_hash, &calldata)
-                    .await
+                self.compute_pay_private_relayer_fee_transition(nullifier, tx_hash, &calldata).await
             },
             settleMatchCall::SELECTOR => {
                 let maybe_settle_match_into_balance_transition = self
-                    .try_compute_settle_match_into_balance_state_transition(
-                        nullifier, tx_hash, &calldata,
-                    )
+                    .try_compute_settle_match_into_balance_transition(nullifier, tx_hash, &calldata)
                     .await?;
 
-                // TODO: Implement getting intent settlement transition
-                let maybe_settle_match_into_intent_transition = None;
+                let maybe_settle_match_into_intent_transition = self
+                    .try_compute_settle_match_into_intent_transition(nullifier, tx_hash, &calldata)
+                    .await?;
 
                 maybe_settle_match_into_balance_transition
-                    .xor(maybe_settle_match_into_intent_transition)
+                    .or(maybe_settle_match_into_intent_transition)
                     .ok_or(IndexerError::invalid_settlement_bundle(
                         "no balance or intent nullified in match tx 0x{tx_hash:#x}",
                     ))
             },
+            // TODO: Handle intent cancellation once ABI is finalized
             _ => Err(IndexerError::invalid_selector(selector)),
         }
     }
@@ -112,13 +111,11 @@ impl Indexer {
         let selector = get_selector(&calldata);
 
         let maybe_state_transition = match selector {
-            depositNewBalanceCall::SELECTOR => Some(
-                self.compute_create_balance_state_transition(recovery_id, tx_hash, &calldata)
-                    .await?,
-            ),
+            depositNewBalanceCall::SELECTOR => {
+                Some(self.compute_create_balance_transition(recovery_id, tx_hash, &calldata).await?)
+            },
             settleMatchCall::SELECTOR => {
-                self.try_compute_create_intent_state_transition(recovery_id, tx_hash, &calldata)
-                    .await?
+                self.try_compute_create_intent_transition(recovery_id, tx_hash, &calldata).await?
             },
             _ => None,
         };
@@ -143,7 +140,7 @@ impl Indexer {
             return Err(IndexerError::invalid_selector(selector));
         }
 
-        self.compute_create_public_intent_state_transition(intent_hash, tx_hash, &calldata).await
+        self.compute_create_public_intent_transition(intent_hash, tx_hash, &calldata).await
     }
 
     /// Get the state transition associated with the update of a public intent
@@ -161,7 +158,7 @@ impl Indexer {
 
         match selector {
             settleMatchCall::SELECTOR => {
-                self.compute_settle_match_into_public_intent_state_transition(
+                self.compute_settle_match_into_public_intent_transition(
                     intent_hash,
                     version,
                     tx_hash,
@@ -182,7 +179,7 @@ impl Indexer {
 impl Indexer {
     /// Compute a `CreateBalance` state transition associated with the
     /// newly-registered recovery ID in a `depositNewBalance` call
-    async fn compute_create_balance_state_transition(
+    async fn compute_create_balance_transition(
         &self,
         recovery_id: Scalar,
         tx_hash: TxHash,
@@ -211,7 +208,7 @@ impl Indexer {
 
     /// Compute a `Deposit` state transition associated with the now-spent
     /// nullifier in a `deposit` call
-    async fn compute_deposit_state_transition(
+    async fn compute_deposit_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -233,7 +230,7 @@ impl Indexer {
 
     /// Compute a `Withdraw` state transition associated with the now-spent
     /// nullifier in a `withdraw` call
-    async fn compute_withdraw_state_transition(
+    async fn compute_withdraw_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -255,7 +252,7 @@ impl Indexer {
 
     /// Compute a `PayProtocolFee` state transition associated with the
     /// now-spent nullifier in a `payPublicProtocolFee` call
-    async fn compute_pay_public_protocol_fee_state_transition(
+    async fn compute_pay_public_protocol_fee_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -279,7 +276,7 @@ impl Indexer {
 
     /// Compute a `PayProtocolFee` state transition associated with the
     /// now-spent nullifier in a `payPrivateProtocolFee` call
-    async fn compute_pay_private_protocol_fee_state_transition(
+    async fn compute_pay_private_protocol_fee_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -303,7 +300,7 @@ impl Indexer {
 
     /// Compute a `PayRelayerFee` state transition associated with the
     /// now-spent nullifier in a `payPublicRelayerFee` call
-    async fn compute_pay_public_relayer_fee_state_transition(
+    async fn compute_pay_public_relayer_fee_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -327,7 +324,7 @@ impl Indexer {
 
     /// Compute a `PayRelayerFee` state transition associated with the
     /// now-spent nullifier in a `payPrivateRelayerFee` call
-    async fn compute_pay_private_relayer_fee_state_transition(
+    async fn compute_pay_private_relayer_fee_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -352,9 +349,9 @@ impl Indexer {
     /// Try to compute a `SettleMatchIntoBalance` state transition associated
     /// with the now-spent nullifier in a `settleMatch` call.
     ///
-    /// Returns `None` if the spent nullifier does not match the balance
-    /// nullifier of either party.
-    async fn try_compute_settle_match_into_balance_state_transition(
+    /// Returns `None` if the spent nullifier does not match the input/output
+    /// balance nullifier of either party.
+    async fn try_compute_settle_match_into_balance_transition(
         &self,
         nullifier: Scalar,
         tx_hash: TxHash,
@@ -405,7 +402,7 @@ impl Indexer {
     ///
     /// Returns `None` if the registered recovery ID does not match the recovery
     /// ID of any newly-created intents in the match.
-    async fn try_compute_create_intent_state_transition(
+    async fn try_compute_create_intent_transition(
         &self,
         recovery_id: Scalar,
         tx_hash: TxHash,
@@ -448,10 +445,59 @@ impl Indexer {
         })))
     }
 
+    /// Try to compute a `SettleMatchIntoIntent` state transition associated
+    /// with the now-spent nullifier in a `settleMatch` call.
+    ///
+    /// Returns `None` if the spent nullifier does not match the intent
+    /// nullifier of either party.
+    async fn try_compute_settle_match_into_intent_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let settle_match_call =
+            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let maybe_party0_new_amount_share = try_decode_updated_intent_amount_share_for_party(
+            nullifier,
+            &settle_match_call.party0SettlementBundle,
+            &settle_match_call.obligationBundle,
+            true, // is_party0
+        )?;
+
+        let maybe_party1_new_amount_share = try_decode_updated_intent_amount_share_for_party(
+            nullifier,
+            &settle_match_call.party1SettlementBundle,
+            &settle_match_call.obligationBundle,
+            false, // is_party0
+        )?;
+
+        let maybe_new_amount_share =
+            maybe_party0_new_amount_share.or(maybe_party1_new_amount_share);
+
+        // If we could not decode the updated intent amount share for either party,
+        // the spent nullifier must pertain to one of the balances nullified in the
+        // match.
+        if maybe_new_amount_share.is_none() {
+            return Ok(None);
+        }
+
+        let new_amount_public_share = maybe_new_amount_share.unwrap();
+
+        Ok(Some(StateTransition::SettleMatchIntoIntent(SettleMatchIntoIntentTransition {
+            nullifier,
+            block_number,
+            new_amount_public_share,
+        })))
+    }
+
     /// Compute a `CreatePublicIntent` state transition associated with
     /// the newly-created public intent (of the given hash) in a `settleMatch`
     /// call
-    async fn compute_create_public_intent_state_transition(
+    async fn compute_create_public_intent_transition(
         &self,
         intent_hash: B256,
         tx_hash: TxHash,
@@ -474,7 +520,7 @@ impl Indexer {
         let maybe_party1_intent =
             party1_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
-        let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
+        let intent = maybe_party0_intent.or(maybe_party1_intent).ok_or(
             IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
         )?;
 
@@ -488,7 +534,7 @@ impl Indexer {
     /// Compute a `SettleMatchIntoPublicIntent` state transition associated with
     /// the settlement of a match into the given public intent in a
     /// `settleMatch` call
-    async fn compute_settle_match_into_public_intent_state_transition(
+    async fn compute_settle_match_into_public_intent_transition(
         &self,
         intent_hash: B256,
         version: u64,
@@ -512,7 +558,7 @@ impl Indexer {
         let maybe_party1_intent =
             party1_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
-        let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
+        let intent = maybe_party0_intent.or(maybe_party1_intent).ok_or(
             IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
         )?;
 
