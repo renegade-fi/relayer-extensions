@@ -8,7 +8,7 @@ use renegade_circuit_types::{
     Amount,
     balance::{Balance, BalanceShare},
     csprng::PoseidonCSPRNG,
-    intent::Intent,
+    intent::{Intent, IntentShare},
     state_wrapper::StateWrapper,
     traits::{BaseType, SecretShareType},
 };
@@ -225,6 +225,45 @@ pub struct IntentStateObject {
     pub precompute_cancellation_proof: bool,
 }
 
+impl IntentStateObject {
+    /// Create a new intent state object
+    pub fn new(
+        public_share: IntentShare,
+        recovery_stream_seed: Scalar,
+        share_stream_seed: Scalar,
+        account_id: Uuid,
+    ) -> Self {
+        // Compute the intent's private shares & reconstruct the plaintext
+        let mut share_stream = PoseidonCSPRNG::new(share_stream_seed);
+        let private_share = IntentShare::from_scalars(&mut share_stream);
+        let intent_inner = public_share.add_shares(&private_share);
+
+        // Ensure that the recovery stream has been advanced to indicate the usage of
+        // the first recovery ID during the creation of the intent
+        let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
+        recovery_stream.index = 1;
+
+        let intent =
+            StateWrapper { inner: intent_inner, recovery_stream, share_stream, public_share };
+
+        // Select safe default values for the intent metadata
+        let matching_pool = GLOBAL_MATCHING_POOL.to_string();
+        let allow_external_matches = false;
+        let min_fill_size = intent.inner.amount_in;
+        let precompute_cancellation_proof = false;
+
+        Self {
+            intent,
+            account_id,
+            active: true,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
 /// A public intent state object
 #[derive(Clone)]
 pub struct PublicIntentStateObject {
@@ -251,7 +290,7 @@ pub struct PublicIntentStateObject {
 impl PublicIntentStateObject {
     /// Create a new public intent state object
     pub fn new(intent_hash: B256, intent: Intent, account_id: Uuid) -> Self {
-        // Select safe default values for the public intent
+        // Select safe default values for the public intent metadata
         let version = 0;
         let active = true;
         let matching_pool = GLOBAL_MATCHING_POOL.to_string();
