@@ -2,11 +2,15 @@
 //! obligation bundles
 
 use alloy::{primitives::U256, sol_types::SolValue};
+use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
     ObligationBundle, PrivateObligationBundle, SettlementObligation,
 };
 
-use crate::indexer::error::IndexerError;
+use crate::{
+    indexer::error::IndexerError,
+    types::{BalanceSharesInMatch, ObligationAmounts},
+};
 
 // -------------
 // | Constants |
@@ -64,28 +68,31 @@ impl TryFrom<&ObligationBundle> for ObligationBundleData {
 }
 
 impl ObligationBundleData {
-    /// Get the updated input/output balance public shares for the given party,
+    /// Get the balance update data for the given party,
     /// if this is a private obligation bundle
-    pub fn get_updated_balance_public_shares(
+    pub fn get_balance_shares_in_private_match(
         &self,
         is_party0: bool,
         is_input_balance: bool,
-    ) -> Option<[U256; 3]> {
-        match self {
+    ) -> Option<BalanceSharesInMatch> {
+        let [relayer_fee_public_share, protocol_fee_public_share, amount_public_share] = match self
+        {
             Self::Private(private_obligation_bundle) => match (is_party0, is_input_balance) {
-                (true, true) => Some(private_obligation_bundle.statement.newInBalancePublicShares0),
-                (true, false) => {
-                    Some(private_obligation_bundle.statement.newOutBalancePublicShares0)
-                },
-                (false, true) => {
-                    Some(private_obligation_bundle.statement.newInBalancePublicShares1)
-                },
-                (false, false) => {
-                    Some(private_obligation_bundle.statement.newOutBalancePublicShares1)
-                },
+                (true, true) => private_obligation_bundle.statement.newInBalancePublicShares0,
+                (true, false) => private_obligation_bundle.statement.newOutBalancePublicShares0,
+                (false, true) => private_obligation_bundle.statement.newInBalancePublicShares1,
+                (false, false) => private_obligation_bundle.statement.newOutBalancePublicShares1,
             },
-            _ => None,
+            _ => return None,
         }
+        .each_ref()
+        .map(u256_to_scalar);
+
+        Some(BalanceSharesInMatch {
+            relayer_fee_public_share,
+            protocol_fee_public_share,
+            amount_public_share,
+        })
     }
 
     /// Get the updated public share of the intent amount for the given party,
@@ -103,33 +110,22 @@ impl ObligationBundleData {
         }
     }
 
-    /// Get the input amount on the given party's obligation bundle, if this is
-    /// a public obligation bundle
-    pub fn get_amount_in(&self, is_party0: bool) -> Option<U256> {
-        match self {
+    /// Get the input & output amounts on the given party's obligation bundle,
+    /// if this is a public obligation bundle
+    pub fn get_public_obligation_amounts(&self, is_party0: bool) -> Option<ObligationAmounts> {
+        let [amount_in, amount_out] = match self {
             Self::Public { party0_obligation, party1_obligation } => {
                 if is_party0 {
-                    Some(party0_obligation.amountIn)
+                    [party0_obligation.amountIn, party1_obligation.amountOut]
                 } else {
-                    Some(party1_obligation.amountIn)
+                    [party1_obligation.amountIn, party0_obligation.amountOut]
                 }
             },
-            _ => None,
+            _ => return None,
         }
-    }
+        .each_ref()
+        .map(u256_to_scalar);
 
-    /// Get the output amount on the given party's obligation bundle, if this is
-    /// a public obligation bundle
-    pub fn get_amount_out(&self, is_party0: bool) -> Option<U256> {
-        match self {
-            Self::Public { party0_obligation, party1_obligation } => {
-                if is_party0 {
-                    Some(party0_obligation.amountOut)
-                } else {
-                    Some(party1_obligation.amountOut)
-                }
-            },
-            _ => None,
-        }
+        Some(ObligationAmounts { amount_in, amount_out })
     }
 }
