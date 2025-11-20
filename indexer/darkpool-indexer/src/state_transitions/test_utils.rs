@@ -16,9 +16,9 @@ use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
         StateApplicator, create_balance::CreateBalanceTransition,
-        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
-        pay_relayer_fee::PayRelayerFeeTransition,
+        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
+        deposit::DepositTransition, error::StateTransitionError,
+        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
@@ -84,6 +84,16 @@ pub fn gen_random_master_view_seed() -> MasterViewSeed {
     let seed = Scalar::random(&mut thread_rng());
 
     MasterViewSeed::new(account_id, owner_address, seed)
+}
+
+/// Generate a random intent for the given owner
+pub fn gen_random_intent(owner: Address) -> Intent {
+    let in_token = Address::random();
+    let out_token = Address::random();
+    let min_price = FixedPoint::from_f64_round_down(thread_rng().r#gen());
+    let amount_in = random_amount();
+
+    Intent { in_token, out_token, owner, min_price, amount_in }
 }
 
 /// Compute the first recovery ID of the nth expected state object for the given
@@ -173,6 +183,37 @@ pub fn gen_create_balance_transition(
     };
 
     (transition, wrapped_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// expected state object being indexed as a new intent.
+///
+/// Returns the create intent transition, along with the expected intent
+/// object.
+pub fn gen_create_intent_transition(
+    expected_state_object: &ExpectedStateObject,
+) -> (CreateIntentTransition, StateWrapper<Intent>) {
+    let owner = Address::random();
+
+    let intent = gen_random_intent(owner);
+
+    let mut wrapped_intent = StateWrapper::new(
+        intent,
+        expected_state_object.share_stream_seed,
+        expected_state_object.recovery_stream_seed,
+    );
+
+    // We progress the balance's recovery stream to represent the computation of the
+    // 0th recovery ID
+    wrapped_intent.recovery_stream.advance_by(1);
+
+    let transition = CreateIntentTransition {
+        recovery_id: expected_state_object.recovery_id,
+        block_number: 0,
+        public_share: wrapped_intent.public_share(),
+    };
+
+    (transition, wrapped_intent)
 }
 
 /// Update the amount of a balance.
@@ -427,12 +468,7 @@ pub fn gen_settle_match_into_balance_transition(
 /// Generate the state transition which should result in the given
 /// owner creating a new public intent
 pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
-    let in_token = Address::random();
-    let out_token = Address::random();
-    let min_price = FixedPoint::from_f64_round_down(thread_rng().r#gen());
-    let amount_in = random_amount();
-
-    let intent = Intent { in_token, out_token, owner, min_price, amount_in };
+    let intent = gen_random_intent(owner);
 
     // Create a dummy intent hash, we don't need to actually hash the intent for
     // testing
@@ -474,6 +510,52 @@ pub fn assert_csprng_state(csprng: &PoseidonCSPRNG, expected_seed: Scalar, expec
     assert_eq!(csprng.index, expected_index);
 }
 
+/// Validate the rotation of an account's next expected state object
+pub async fn validate_expected_state_object_rotation(
+    db_client: &DbClient,
+    old_expected_state_object: &ExpectedStateObject,
+) -> Result<(), DbError> {
+    let mut conn = db_client.get_db_conn().await?;
+
+    // Assert that the indexed master view seed's CSPRNG states are advanced
+    // correctly
+    let indexed_master_view_seed = db_client
+        .get_master_view_seed_by_account_id(old_expected_state_object.account_id, &mut conn)
+        .await?;
+
+    let recovery_seed_stream = &indexed_master_view_seed.recovery_seed_csprng;
+    assert_csprng_state(recovery_seed_stream, recovery_seed_stream.seed, 2);
+
+    let share_seed_stream = &indexed_master_view_seed.share_seed_csprng;
+    assert_csprng_state(share_seed_stream, share_seed_stream.seed, 2);
+
+    // Assert that the next expected state object is indexed correctly
+    let expected_recovery_stream_seed = recovery_seed_stream.get_ith(1);
+    let expected_share_stream_seed = share_seed_stream.get_ith(1);
+    let next_expected_state_object = ExpectedStateObject::new(
+        indexed_master_view_seed.account_id,
+        expected_recovery_stream_seed,
+        expected_share_stream_seed,
+    );
+
+    let indexed_next_expected_state_object = db_client
+        .get_expected_state_object(next_expected_state_object.recovery_id, &mut conn)
+        .await?;
+
+    assert_eq!(indexed_next_expected_state_object, next_expected_state_object);
+
+    // Assert that the old expected state object is deleted
+    let deleted_expected_state_object_res =
+        db_client.get_expected_state_object(old_expected_state_object.recovery_id, &mut conn).await;
+
+    assert!(matches!(
+        deleted_expected_state_object_res,
+        Err(DbError::DieselError(diesel::NotFound))
+    ));
+
+    Ok(())
+}
+
 /// Validate the indexing of a balance object against the expected
 /// circuit type
 pub async fn validate_balance_indexing(
@@ -488,6 +570,24 @@ pub async fn validate_balance_indexing(
     // Assert that the indexed balance matches the expected balance.
     // This covers the CSPRNG states, inner circuit type, and public shares.
     assert_eq!(&indexed_balance.balance, expected_balance);
+
+    Ok(())
+}
+
+/// Validate the indexing of an intent object against the expected
+/// circuit type
+pub async fn validate_intent_indexing(
+    db_client: &DbClient,
+    expected_intent: &StateWrapper<Intent>,
+) -> Result<(), DbError> {
+    let mut conn = db_client.get_db_conn().await?;
+
+    let nullifier = expected_intent.compute_nullifier();
+    let indexed_intent = db_client.get_intent_by_nullifier(nullifier, &mut conn).await?;
+
+    // Assert that the indexed intent matches the expected intent.
+    // This covers the CSPRNG states, inner circuit type, and public shares.
+    assert_eq!(&indexed_intent.intent, expected_intent);
 
     Ok(())
 }

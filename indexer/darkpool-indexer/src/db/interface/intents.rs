@@ -41,6 +41,22 @@ impl DbClient {
     // | Getters |
     // -----------
 
+    /// Get an intent by its nullifier
+    pub async fn get_intent_by_nullifier(
+        &self,
+        nullifier: Scalar,
+        conn: &mut DbConn,
+    ) -> Result<IntentStateObject, DbError> {
+        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
+
+        intents::table
+            .filter(intents::nullifier.eq(nullifier_bigdecimal))
+            .first(conn)
+            .await
+            .map_err(DbError::from)
+            .map(IntentModel::into)
+    }
+
     /// Get an intent by its recovery stream seed
     pub async fn get_intent_by_recovery_stream_seed(
         &self,
@@ -56,5 +72,22 @@ impl DbClient {
             .optional()
             .map_err(DbError::from)
             .map(|maybe_record| maybe_record.map(IntentModel::into))
+    }
+
+    /// Check if an intent record exists for a given recovery stream seed
+    pub async fn intent_exists(
+        &self,
+        recovery_stream_seed: Scalar,
+        conn: &mut DbConn,
+    ) -> Result<bool, DbError> {
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+
+        intents::table
+            .filter(intents::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .first::<IntentModel>(conn)
+            .await
+            .optional()
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
     }
 }
