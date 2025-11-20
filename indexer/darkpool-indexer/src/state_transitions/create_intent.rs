@@ -1,7 +1,9 @@
 //! Defines the application-specific logic for creating a new intent object
 
+use std::iter;
+
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::intent::IntentShare;
+use renegade_circuit_types::{intent::IntentShare, traits::BaseType};
 use renegade_constants::Scalar;
 use tracing::warn;
 
@@ -18,8 +20,28 @@ pub struct CreateIntentTransition {
     pub recovery_id: Scalar,
     /// The block number in which the recovery ID was registered
     pub block_number: u64,
-    /// The public shares of the intent
-    pub public_share: IntentShare,
+    /// The data required to create a new intent object
+    pub intent_creation_data: IntentCreationData,
+}
+
+/// The data required to create a new intent object
+#[derive(Clone)]
+pub enum IntentCreationData {
+    /// A complete set of updated intent public shares, available in natively-settled private-intent matches,
+    /// and Renegade-settled private-fill matches
+    NewIntentShare {
+        updated_intent_share: IntentShare
+    },
+    /// The data needed to construct the intent shares for a Renegade-settled public-fill match,
+    /// where only the pre-match amount public share is leaked
+    RenegadeSettledPublicFill {
+        /// The pre-match intent public shares, *excluding* the updated amount public share
+        pre_match_intent_shares: [Scalar; IntentShare::NUM_SCALARS - 1],
+        /// The pre-match amount public share
+        pre_match_amount_share: Scalar,
+        /// The input amount on the obligation bundle
+        amount_in: Scalar,
+    }
 }
 
 /// The pre-state required for the creation of a new intent object
@@ -40,7 +62,9 @@ impl StateApplicator {
         &self,
         transition: CreateIntentTransition,
     ) -> Result<(), StateTransitionError> {
-        let CreateIntentTransition { recovery_id, block_number, public_share } = transition;
+        let CreateIntentTransition { recovery_id, block_number, intent_creation_data } = transition;
+
+        let public_share = get_new_intent_shares(intent_creation_data);
 
         let IntentCreationPrestate { expected_state_object, mut master_view_seed } = self.get_intent_creation_prestate(recovery_id).await?;
 
@@ -117,6 +141,22 @@ impl StateApplicator {
                 Ok(IntentCreationPrestate { expected_state_object, master_view_seed })
             }.scope_boxed()
         }).await
+    }
+}
+
+// ----------------------
+// | Non-Member Helpers |
+// ----------------------
+
+/// Get the new intent shares from the intent creation data
+fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShare {
+    match intent_creation_data {
+        IntentCreationData::NewIntentShare { updated_intent_share } => updated_intent_share,
+        IntentCreationData::RenegadeSettledPublicFill { pre_match_intent_shares, pre_match_amount_share, amount_in: obligation_amount_in } => {
+            let updated_amount_share = pre_match_amount_share - obligation_amount_in;
+            let mut intent_shares_iter = pre_match_intent_shares.into_iter().chain(iter::once(updated_amount_share));
+            IntentShare::from_scalars(&mut intent_shares_iter)
+        }
     }
 }
 
