@@ -2,7 +2,7 @@
 //! settlement bundles
 
 use alloy::{
-    primitives::{B256, U256, keccak256},
+    primitives::{B256, keccak256},
     sol_types::SolValue,
 };
 use renegade_circuit_types::{fixed_point::FixedPoint, intent::Intent};
@@ -15,7 +15,10 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
     RenegadeSettledPrivateFirstFillBundle, SettlementBundle,
 };
 
-use crate::{darkpool_client::utils::u256_to_amount, indexer::error::IndexerError};
+use crate::{
+    darkpool_client::utils::u256_to_amount, indexer::error::IndexerError,
+    types::BalanceSharesInMatch,
+};
 
 // -------------
 // | Constants |
@@ -176,28 +179,37 @@ impl SettlementBundleData {
     /// Get the pre-update input/output balance public shares from the
     /// settlement bundle data, if it was a Renegade-settled, public-fill
     /// bundle
-    pub fn get_pre_update_balance_public_shares(
+    pub fn get_pre_update_balance_shares(
         &self,
         is_input_balance: bool,
-    ) -> Option<[U256; 3]> {
-        match self {
+    ) -> Option<BalanceSharesInMatch> {
+        let [relayer_fee_public_share, protocol_fee_public_share, amount_public_share] = match self
+        {
             Self::RenegadeSettledIntentFirstFill(bundle) => {
                 if is_input_balance {
-                    Some(bundle.settlementStatement.inBalancePublicShares)
+                    bundle.settlementStatement.inBalancePublicShares
                 } else {
-                    Some(bundle.settlementStatement.outBalancePublicShares)
+                    bundle.settlementStatement.outBalancePublicShares
                 }
             },
             Self::RenegadeSettledIntent(bundle) => {
                 if is_input_balance {
-                    Some(bundle.settlementStatement.inBalancePublicShares)
+                    bundle.settlementStatement.inBalancePublicShares
                 } else {
-                    Some(bundle.settlementStatement.outBalancePublicShares)
+                    bundle.settlementStatement.outBalancePublicShares
                 }
             },
             // Natively-settled / private-fill bundles don't leak pre-update balance public shares
-            _ => None,
+            _ => return None,
         }
+        .each_ref()
+        .map(u256_to_scalar);
+
+        Some(BalanceSharesInMatch {
+            relayer_fee_public_share,
+            protocol_fee_public_share,
+            amount_public_share,
+        })
     }
 
     /// Try to decode the public intent with the given hash from the given
