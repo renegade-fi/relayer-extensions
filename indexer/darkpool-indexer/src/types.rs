@@ -141,30 +141,31 @@ impl BalanceStateObject {
         self.balance.inner.amount = scalar_to_u128(&new_amount_scalar);
     }
 
-    /// Update the balance amount & fees using the given public shares
-    pub fn update_amount_and_fees(
-        &mut self,
-        new_relayer_fee_public_share: Scalar,
-        new_protocol_fee_public_share: Scalar,
-        new_amount_public_share: Scalar,
-    ) {
+    /// Apply the balance updates resulting from a match settlement
+    pub fn update_from_match(&mut self, balance_shares_in_match: BalanceSharesInMatch) {
+        let BalanceSharesInMatch {
+            relayer_fee_public_share,
+            protocol_fee_public_share,
+            amount_public_share,
+        } = balance_shares_in_match;
+
         // Advance the recovery stream to indicate the next object version
         self.balance.recovery_stream.advance_by(1);
 
         // Update the public shares of the balance
         let mut public_share = self.balance.public_share();
 
-        public_share.relayer_fee_balance = new_relayer_fee_public_share;
-        public_share.protocol_fee_balance = new_protocol_fee_public_share;
-        public_share.amount = new_amount_public_share;
+        public_share.relayer_fee_balance = relayer_fee_public_share;
+        public_share.protocol_fee_balance = protocol_fee_public_share;
+        public_share.amount = amount_public_share;
 
         self.balance.public_share = public_share;
 
         // Update the plaintext balance fees & amount
         let share_stream = &mut self.balance.share_stream;
-        let new_relayer_fee = decrypt_amount(new_relayer_fee_public_share, share_stream);
-        let new_protocol_fee = decrypt_amount(new_protocol_fee_public_share, share_stream);
-        let new_amount = decrypt_amount(new_amount_public_share, share_stream);
+        let new_relayer_fee = decrypt_amount(relayer_fee_public_share, share_stream);
+        let new_protocol_fee = decrypt_amount(protocol_fee_public_share, share_stream);
+        let new_amount = decrypt_amount(amount_public_share, share_stream);
 
         self.balance.inner.relayer_fee_balance = new_relayer_fee;
         self.balance.inner.protocol_fee_balance = new_protocol_fee;
@@ -204,6 +205,28 @@ impl BalanceStateObject {
 
         self.balance.inner.relayer_fee_balance = new_relayer_fee;
     }
+}
+
+/// The public shares of a balance that are updated as a result of a match
+/// settlement
+#[derive(Clone)]
+pub struct BalanceSharesInMatch {
+    /// The public share of the relayer fee in the balance
+    pub relayer_fee_public_share: Scalar,
+    /// The public share of the protocol fee in the balance
+    pub protocol_fee_public_share: Scalar,
+    /// The public share of the amount in the balance
+    pub amount_public_share: Scalar,
+}
+
+/// A struct representing the input/output amounts parsed from a public
+/// obligation bundle associated with a match settlement
+#[derive(Clone)]
+pub struct ObligationAmounts {
+    /// The input amount on the obligation bundle
+    pub amount_in: Scalar,
+    /// The output amount on the obligation bundle
+    pub amount_out: Scalar,
 }
 
 /// An intent state object

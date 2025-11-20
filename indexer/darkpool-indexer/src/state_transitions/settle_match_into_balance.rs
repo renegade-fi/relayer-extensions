@@ -5,7 +5,7 @@ use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
 use tracing::warn;
 
-use crate::state_transitions::{StateApplicator, error::StateTransitionError};
+use crate::{state_transitions::{StateApplicator, error::StateTransitionError}, types::{BalanceSharesInMatch, ObligationAmounts}};
 
 // ---------
 // | Types |
@@ -18,12 +18,27 @@ pub struct SettleMatchIntoBalanceTransition {
     pub nullifier: Scalar,
     /// The block number in which the match was settled
     pub block_number: u64,
-    /// The public share of the new relayer fee in the balance
-    pub new_relayer_fee_public_share: Scalar,
-    /// The public share of the new protocol fee in the balance
-    pub new_protocol_fee_public_share: Scalar,
-    /// The public share of the new amount in the balance
-    pub new_amount_public_share: Scalar,
+    /// The data required to update a balance resulting from a match settlement
+    pub balance_update_data: BalanceUpdateData,
+}
+
+/// The data required to update a balance resulting from a match settlement
+#[derive(Clone)]
+pub enum BalanceUpdateData {
+    /// A balance update resulting from a public fill being settled
+    PublicFill {
+        /// The pre-update balance shares affected by the match
+        pre_update_balance_shares: BalanceSharesInMatch,
+        /// The input/output amounts parsed from the public obligation bundle
+        obligation_amounts: ObligationAmounts,
+        /// Whether the balance being settled into is the input balance
+        is_input_balance: bool,
+    },
+    /// A balance update resulting from a private fill being settled
+    PrivateFill {
+        /// The updated balance shares resulting from the match settlement
+        updated_balance_shares: BalanceSharesInMatch,
+    }
 }
 
 // --------------------------------
@@ -39,15 +54,15 @@ impl StateApplicator {
         let SettleMatchIntoBalanceTransition {
             nullifier,
             block_number,
-            new_relayer_fee_public_share,
-            new_protocol_fee_public_share,
-            new_amount_public_share,
+            balance_update_data,
         } = transition;
+
+        let updated_balance_shares = get_updated_balance_public_shares(balance_update_data);
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
 
-        balance.update_amount_and_fees(new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share);
+        balance.update_from_match(updated_balance_shares);
 
         conn.transaction(move |conn| {
             async move {
@@ -73,6 +88,32 @@ impl StateApplicator {
                 
             }.scope_boxed()
         }).await
+    }
+}
+
+// ----------------------
+// | Non-Member Helpers |
+// ----------------------
+
+/// Get the updated balance shares resulting from a match settlement
+fn get_updated_balance_public_shares(balance_update_data: BalanceUpdateData) -> BalanceSharesInMatch {
+    match balance_update_data {
+        BalanceUpdateData::PublicFill { pre_update_balance_shares, obligation_amounts, is_input_balance } => {
+            let BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, mut amount_public_share } = pre_update_balance_shares;
+
+            let ObligationAmounts { amount_in, amount_out } = obligation_amounts;
+
+            if is_input_balance {
+                amount_public_share -= amount_in;
+            } else {
+                amount_public_share += amount_out;
+            }
+
+            // TODO: Account for fee accrual & one-time authority rotation
+
+            BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, amount_public_share }
+        },
+        BalanceUpdateData::PrivateFill { updated_balance_shares } => updated_balance_shares,
     }
 }
 
