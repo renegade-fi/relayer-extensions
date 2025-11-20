@@ -15,6 +15,7 @@ use crate::{
         error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        settle_match_into_intent::SettleMatchIntoIntentTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
@@ -29,6 +30,7 @@ pub mod pay_protocol_fee;
 pub mod pay_relayer_fee;
 pub mod register_master_view_seed;
 pub mod settle_match_into_balance;
+pub mod settle_match_into_intent;
 pub mod settle_match_into_public_intent;
 pub mod withdraw;
 
@@ -57,6 +59,8 @@ pub enum StateTransition {
     SettleMatchIntoBalance(SettleMatchIntoBalanceTransition),
     /// The creation of a new intent object
     CreateIntent(CreateIntentTransition),
+    /// The settlement of a match into an intent object
+    SettleMatchIntoIntent(SettleMatchIntoIntentTransition),
     /// The creation of a new public intent
     CreatePublicIntent(CreatePublicIntentTransition),
     /// The settlement of a match into a public intent
@@ -95,6 +99,9 @@ impl StateApplicator {
                 self.settle_match_into_balance(transition).await
             },
             StateTransition::CreateIntent(transition) => self.create_intent(transition).await,
+            StateTransition::SettleMatchIntoIntent(transition) => {
+                self.settle_match_into_intent(transition).await
+            },
             StateTransition::CreatePublicIntent(transition) => {
                 self.create_public_intent(transition).await
             },

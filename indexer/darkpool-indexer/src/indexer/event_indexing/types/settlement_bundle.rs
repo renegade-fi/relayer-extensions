@@ -131,6 +131,20 @@ impl SettlementBundleData {
         Some(u256_to_scalar(&nullifier_u256))
     }
 
+    /// Get the intent nullifier from the settlement bundle data, if one was
+    /// spent
+    pub fn get_intent_nullifier(&self) -> Option<Scalar> {
+        let nullifier_u256 = match self {
+            Self::PrivateIntentPublicBalance(bundle) => bundle.auth.statement.oldIntentNullifier,
+            Self::RenegadeSettledIntent(bundle) => bundle.auth.statement.oldIntentNullifier,
+            Self::RenegadeSettledPrivateFill(bundle) => bundle.auth.statement.oldIntentNullifier,
+            // Public-intent & first-fill bundles don't spend an intent nullifier
+            _ => return None,
+        };
+
+        Some(u256_to_scalar(&nullifier_u256))
+    }
+
     /// Get the recovery ID of the intent from the settlement bundle data, if
     /// any
     pub fn get_intent_recovery_id(&self) -> Option<Scalar> {
