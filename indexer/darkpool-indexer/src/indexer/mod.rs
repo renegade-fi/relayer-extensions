@@ -20,7 +20,6 @@ use crate::{
 mod backfill;
 pub mod error;
 mod event_indexing;
-mod settlement_bundle;
 
 // -------------
 // | Constants |

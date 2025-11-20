@@ -17,7 +17,10 @@ use crate::{
     indexer::{
         Indexer,
         error::IndexerError,
-        settlement_bundle::{try_decode_balance_shares_for_party, try_decode_public_intent},
+        event_indexing::{
+            types::settlement_bundle::SettlementBundleData,
+            utils::{try_decode_balance_shares_for_party, try_decode_new_intent_shares_for_party},
+        },
     },
     state_transitions::{
         StateTransition, create_balance::CreateBalanceTransition,
@@ -28,6 +31,9 @@ use crate::{
         withdraw::WithdrawTransition,
     },
 };
+
+mod types;
+mod utils;
 
 // --------------------------
 // | Indexer Implementation |
@@ -104,16 +110,19 @@ impl Indexer {
         let calldata = recovery_id_registration_call.input;
         let selector = get_selector(&calldata);
 
-        let state_transition = match selector {
-            depositNewBalanceCall::SELECTOR => {
+        let maybe_state_transition = match selector {
+            depositNewBalanceCall::SELECTOR => Some(
                 self.compute_create_balance_state_transition(recovery_id, tx_hash, &calldata)
+                    .await?,
+            ),
+            settleMatchCall::SELECTOR => {
+                self.try_compute_create_intent_state_transition(recovery_id, tx_hash, &calldata)
                     .await?
             },
-            // TODO: Implement getting intent registration transitions
-            _ => return Ok(None),
+            _ => None,
         };
 
-        Ok(Some(state_transition))
+        Ok(maybe_state_transition)
     }
 
     /// Get the state transition associated with the creation of a new public
@@ -369,17 +378,17 @@ impl Indexer {
             false, // is_party0
         )?;
 
+        let maybe_balance_shares = maybe_party0_balance_shares.or(maybe_party1_balance_shares);
+
         // If we could not decode balance shares for either party,
         // the spent nullifier must pertain to one of the intents nullified in the
         // match.
-        if maybe_party0_balance_shares.is_none() && maybe_party1_balance_shares.is_none() {
+        if maybe_balance_shares.is_none() {
             return Ok(None);
         }
 
-        let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
-            maybe_party0_balance_shares
-                .xor(maybe_party1_balance_shares)
-                .ok_or(IndexerError::invalid_settlement_bundle("no new balance public shares"))?;
+        let [new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share] =
+            maybe_balance_shares.unwrap();
 
         Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
             nullifier,
@@ -388,6 +397,50 @@ impl Indexer {
             new_protocol_fee_public_share,
             new_amount_public_share,
         })))
+    }
+
+    /// Try to compute a `CreateIntent` state transition associated with the
+    /// newly-registered recovery ID in a `settleMatch` call.
+    ///
+    /// Returns `None` if the registered recovery ID does not match the recovery
+    /// ID of any newly-created intents in the match.
+    async fn try_compute_create_intent_state_transition(
+        &self,
+        recovery_id: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let settle_match_call =
+            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let maybe_party0_intent_share = try_decode_new_intent_shares_for_party(
+            recovery_id,
+            &settle_match_call.party0SettlementBundle,
+            &settle_match_call.obligationBundle,
+            true, // is_party0
+        )?;
+
+        let maybe_party1_intent_share = try_decode_new_intent_shares_for_party(
+            recovery_id,
+            &settle_match_call.party1SettlementBundle,
+            &settle_match_call.obligationBundle,
+            false, // is_party0
+        )?;
+
+        let maybe_intent_share = maybe_party0_intent_share.or(maybe_party1_intent_share);
+
+        // If we could not decode new intent shares for either party,
+        // the registered recovery ID must not match the recovery ID of any
+        // newly-created intents in the match.
+        if maybe_intent_share.is_none() {
+            return Ok(None);
+        }
+
+        let intent_share = maybe_intent_share.unwrap();
+
+        todo!()
     }
 
     /// Compute a `CreatePublicIntent` state transition associated with
@@ -404,11 +457,17 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
+        let party0_settlement_bundle_data: SettlementBundleData =
+            (&settle_match_call.party0SettlementBundle).try_into()?;
+
+        let party1_settlement_bundle_data: SettlementBundleData =
+            (&settle_match_call.party1SettlementBundle).try_into()?;
+
         let maybe_party0_intent =
-            try_decode_public_intent(intent_hash, &settle_match_call.party0SettlementBundle)?;
+            party0_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
         let maybe_party1_intent =
-            try_decode_public_intent(intent_hash, &settle_match_call.party1SettlementBundle)?;
+            party1_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
         let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
             IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
@@ -436,11 +495,17 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
+        let party0_settlement_bundle_data: SettlementBundleData =
+            (&settle_match_call.party0SettlementBundle).try_into()?;
+
+        let party1_settlement_bundle_data: SettlementBundleData =
+            (&settle_match_call.party1SettlementBundle).try_into()?;
+
         let maybe_party0_intent =
-            try_decode_public_intent(intent_hash, &settle_match_call.party0SettlementBundle)?;
+            party0_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
         let maybe_party1_intent =
-            try_decode_public_intent(intent_hash, &settle_match_call.party1SettlementBundle)?;
+            party1_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
 
         let intent = maybe_party0_intent.xor(maybe_party1_intent).ok_or(
             IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
