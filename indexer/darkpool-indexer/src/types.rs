@@ -13,7 +13,6 @@ use renegade_circuit_types::{
     traits::{BaseType, SecretShareType},
 };
 use renegade_constants::Scalar;
-use renegade_crypto::fields::scalar_to_u128;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
@@ -136,9 +135,9 @@ impl BalanceStateObject {
         self.balance.public_share = public_share;
 
         // Update the plaintext balance amount
-        let new_amount_private_share = self.balance.share_stream.next().unwrap();
-        let new_amount_scalar = new_amount_public_share + new_amount_private_share;
-        self.balance.inner.amount = scalar_to_u128(&new_amount_scalar);
+        let share_stream = &mut self.balance.share_stream;
+        let new_amount = decrypt_amount(new_amount_public_share, share_stream);
+        self.balance.inner.amount = new_amount;
     }
 
     /// Apply the balance updates resulting from a match settlement
@@ -209,7 +208,7 @@ impl BalanceStateObject {
 
 /// The public shares of a balance that are updated as a result of a match
 /// settlement
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct BalanceSharesInMatch {
     /// The public share of the relayer fee in the balance
     pub relayer_fee_public_share: Scalar,
@@ -284,6 +283,22 @@ impl IntentStateObject {
             min_fill_size,
             precompute_cancellation_proof,
         }
+    }
+
+    /// Update the intent amount using the given public share
+    pub fn update_amount(&mut self, new_amount_public_share: Scalar) {
+        // Advance the recovery stream to indicate the next object version
+        self.intent.recovery_stream.advance_by(1);
+
+        // Update the public shares of the intent
+        let mut public_share = self.intent.public_share();
+        public_share.amount_in = new_amount_public_share;
+        self.intent.public_share = public_share;
+
+        // Update the plaintext intent amount
+        let share_stream = &mut self.intent.share_stream;
+        let new_amount = decrypt_amount(new_amount_public_share, share_stream);
+        self.intent.inner.amount_in = new_amount;
     }
 }
 
