@@ -3405,15 +3405,8 @@ version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2#5a1d8994ffcc17c1fa62e95e451222d716adbe76"
 dependencies = [
  "alloy-primitives 1.4.1",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "crypto",
- "itertools 0.10.5",
- "jf-primitives",
- "mpc-plonk",
- "mpc-relation",
- "rand 0.8.5",
+ "circuit-types 0.1.0",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
 ]
 

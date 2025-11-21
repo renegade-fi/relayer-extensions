@@ -3,6 +3,7 @@
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_constants::Scalar;
+use uuid::Uuid;
 
 use crate::{
     db::{
@@ -107,5 +108,20 @@ impl DbClient {
             .optional()
             .map_err(DbError::from)
             .map(|maybe_record| maybe_record.is_some())
+    }
+
+    /// Get all of a user's active intent state objects
+    pub async fn get_account_active_intents(
+        &self,
+        account_id: Uuid,
+        conn: &mut DbConn,
+    ) -> Result<Vec<IntentStateObject>, DbError> {
+        intents::table
+            .filter(intents::account_id.eq(account_id))
+            .filter(intents::active.eq(true))
+            .load(conn)
+            .await
+            .map_err(DbError::from)
+            .map(|intents| intents.into_iter().map(IntentModel::into).collect())
     }
 }
