@@ -105,7 +105,7 @@ fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementD
                 amount_public_share += amount_out;
             }
 
-            // TODO: Account for fee accrual & one-time authority rotation
+            // TODO: One-time authority rotation once ABI is finalized
 
             BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, amount_public_share }
         },
