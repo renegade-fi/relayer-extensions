@@ -7,6 +7,7 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![feature(let_chains)]
+#![feature(trait_alias)]
 
 use std::collections::HashMap;
 
