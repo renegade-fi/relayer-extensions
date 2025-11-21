@@ -1,8 +1,6 @@
 //! Internal type definitions used throughout the darkpool indexer, used as the
 //! canonical representations of data outside of the external API & DB layers.
 
-// TODO: Find a better location for this module?
-
 use alloy::primitives::{Address, B256};
 use renegade_circuit_types::{
     Amount,
@@ -349,5 +347,3 @@ impl PublicIntentStateObject {
         }
     }
 }
-
-// TODO: Define remaining internal types
