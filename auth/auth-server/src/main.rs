@@ -417,8 +417,8 @@ async fn main() -> Result<(), AuthServerError> {
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
-        .and_then(|_mint, path, headers, server: Arc<Server>| async move {
-            server.handle_order_book_request(path, headers).await
+        .and_then(|mint, path, headers, server: Arc<Server>| async move {
+            server.handle_order_book_request_with_mint(mint, path, headers).await
         });
 
     let order_book_depth = warp::path("v0")
@@ -429,7 +429,7 @@ async fn main() -> Result<(), AuthServerError> {
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
         .and_then(|path, headers, server: Arc<Server>| async move {
-            server.handle_order_book_request(path, headers).await
+            server.handle_all_pairs_order_book_depth_request(path, headers).await
         });
 
     let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
