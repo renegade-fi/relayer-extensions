@@ -1,4 +1,4 @@
-//! Handler logic SQS messages polled by the darkpool indexer
+//! Handler logic for SQS messages polled by the darkpool indexer
 
 use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{
