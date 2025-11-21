@@ -15,22 +15,23 @@ use crate::{
         },
     },
     state_transitions::{
-        create_intent::IntentCreationData, settle_match_into_balance::BalanceUpdateData,
+        create_intent::IntentCreationData, settle_match_into_balance::BalanceSettlementData,
+        settle_match_into_intent::IntentSettlementData,
     },
     types::ObligationAmounts,
 };
 
-/// Try to decode the new balance public shares from the match party's
+/// Try to decode the balance settlement data from the match party's
 /// settlement bundle & obligation bundle.
 ///
 /// Returns `None` if the spent nullifier does not match the party's input or
 /// output balance nullifier.
-pub fn try_decode_balance_update_data(
+pub fn try_decode_balance_settlement_data(
     nullifier: Scalar,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,
-) -> Result<Option<BalanceUpdateData>, IndexerError> {
+) -> Result<Option<BalanceSettlementData>, IndexerError> {
     let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
@@ -41,14 +42,14 @@ pub fn try_decode_balance_update_data(
         settlement_bundle_data.get_balance_nullifier(false /* is_input_balance */);
 
     if in_balance_nullifier == Some(nullifier) {
-        get_balance_update_data(
+        get_balance_settlement_data(
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
             true, // is_input_balance
         )
     } else if out_balance_nullifier == Some(nullifier) {
-        get_balance_update_data(
+        get_balance_settlement_data(
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
@@ -61,14 +62,14 @@ pub fn try_decode_balance_update_data(
     }
 }
 
-/// Get the balance update data associated with this settlement & obligation
+/// Get the balance settlement data associated with this settlement & obligation
 /// bundle (if any)
-fn get_balance_update_data(
+fn get_balance_settlement_data(
     settlement_bundle_data: &SettlementBundleData,
     obligation_bundle_data: &ObligationBundleData,
     is_party0: bool,
     is_input_balance: bool,
-) -> Result<Option<BalanceUpdateData>, IndexerError> {
+) -> Result<Option<BalanceSettlementData>, IndexerError> {
     match settlement_bundle_data {
         // For public-fill bundles, we parse the pre-update balance public shares & replicate the
         // contract logic for updating them
@@ -82,7 +83,7 @@ fn get_balance_update_data(
                     IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
                 )?;
 
-            Ok(Some(BalanceUpdateData::PublicFill {
+            Ok(Some(BalanceSettlementData::PublicFill {
                 pre_update_balance_shares,
                 obligation_amounts,
                 is_input_balance,
@@ -98,7 +99,7 @@ fn get_balance_update_data(
                     "expected private obligation bundle",
                 ))?;
 
-            Ok(Some(BalanceUpdateData::PrivateFill { updated_balance_shares }))
+            Ok(Some(BalanceSettlementData::PrivateFill(updated_balance_shares)))
         },
         // Natively-settled bundles don't update any balance state objects
         _ => Ok(None),
@@ -142,7 +143,7 @@ fn get_intent_creation_data(
 
             let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
 
-            Ok(Some(IntentCreationData::NewIntentShare { updated_intent_share }))
+            Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
         },
         SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
@@ -167,37 +168,37 @@ fn get_intent_creation_data(
         SettlementBundleData::RenegadeSettledPrivateFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
             // of the intent amount
-            let public_shares_u256_iter = bundle.auth.statement.intentPublicShare.iter();
+            let pre_match_shares_iter =
+                bundle.auth.statement.intentPublicShare.iter().map(u256_to_scalar);
 
-            let amount_public_share_u256 =
+            let amount_public_share =
                 obligation_bundle_data.get_updated_intent_amount_public_share(is_party0).ok_or(
                     IndexerError::invalid_obligation_bundle("expected private obligation bundle"),
                 )?;
 
-            let mut public_shares_iter = public_shares_u256_iter
-                .chain(iter::once(&amount_public_share_u256))
-                .map(u256_to_scalar);
+            let mut public_shares_iter =
+                pre_match_shares_iter.chain(iter::once(amount_public_share));
 
             let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
 
-            Ok(Some(IntentCreationData::NewIntentShare { updated_intent_share }))
+            Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
         },
         // Non-first-fill bundles don't create a new intent
         _ => Ok(None),
     }
 }
 
-/// Try to decode the public share of the updated intent amount for the given
-/// party from the given settlement & obligation bundles.
+/// Try to decode the intent settlement data for the given party from the given
+/// settlement & obligation bundles.
 ///
 /// Returns `None` if the settlement bundle does not contain an updated intent
 /// with a matching nullifier.
-pub fn try_decode_updated_intent_amount_share_for_party(
+pub fn try_decode_intent_settlement_data(
     nullifier: Scalar,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,
-) -> Result<Option<Scalar>, IndexerError> {
+) -> Result<Option<IntentSettlementData>, IndexerError> {
     let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
@@ -207,28 +208,26 @@ pub fn try_decode_updated_intent_amount_share_for_party(
         return Ok(None);
     }
 
-    get_updated_intent_amount_public_share(
-        &settlement_bundle_data,
-        &obligation_bundle_data,
-        is_party0,
-    )
+    get_intent_settlement_data(&settlement_bundle_data, &obligation_bundle_data, is_party0)
 }
 
-/// Get the public share of the updated intent amount for the given party, if
-/// this was a non-first-fill bundle
-fn get_updated_intent_amount_public_share(
+/// Get the intent settlement data for the given party, if this was a
+/// non-first-fill bundle
+fn get_intent_settlement_data(
     settlement_bundle_data: &SettlementBundleData,
     obligation_bundle_data: &ObligationBundleData,
     is_party0: bool,
-) -> Result<Option<Scalar>, IndexerError> {
+) -> Result<Option<IntentSettlementData>, IndexerError> {
     match settlement_bundle_data {
         SettlementBundleData::PrivateIntentPublicBalance(bundle) => {
-            Ok(Some(u256_to_scalar(&bundle.auth.statement.newAmountShare)))
+            let updated_amount_share = u256_to_scalar(&bundle.auth.statement.newAmountShare);
+            Ok(Some(IntentSettlementData::UpdatedAmountShare(updated_amount_share)))
         },
         SettlementBundleData::RenegadeSettledIntent(bundle) => {
             // The `amountPublicShare` field in the settlement statement is the pre-update
             // public share of the intent amount
-            let pre_update_amount_public_share_u256 = bundle.settlementStatement.amountPublicShare;
+            let pre_match_amount_share =
+                u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
 
             // We replicate the contract logic for updating the intent amount public share
             let ObligationAmounts { amount_in, .. } =
@@ -236,18 +235,18 @@ fn get_updated_intent_amount_public_share(
                     IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
                 )?;
 
-            let post_update_amount_public_share_u256 =
-                pre_update_amount_public_share_u256 - amount_in;
-
-            Ok(Some(u256_to_scalar(&post_update_amount_public_share_u256)))
+            Ok(Some(IntentSettlementData::RenegadeSettledPublicFill {
+                pre_match_amount_share,
+                amount_in,
+            }))
         },
         SettlementBundleData::RenegadeSettledPrivateFill(_) => {
-            let amount_public_share_u256 =
+            let amount_public_share =
                 obligation_bundle_data.get_updated_intent_amount_public_share(is_party0).ok_or(
                     IndexerError::invalid_obligation_bundle("expected private obligation bundle"),
                 )?;
 
-            Ok(Some(u256_to_scalar(&amount_public_share_u256)))
+            Ok(Some(IntentSettlementData::UpdatedAmountShare(amount_public_share)))
         },
         // First-fill bundles don't create a new intent
         _ => Ok(None),

@@ -221,7 +221,7 @@ pub struct ProcessedPublicIntentUpdateModel {
 // === Intents Table ===
 
 /// An intent record
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::db::schema::intents)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct IntentModel {
