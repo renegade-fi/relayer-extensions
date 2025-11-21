@@ -15,6 +15,9 @@ use crate::{
 /// Indexer errors
 #[derive(Debug, thiserror::Error)]
 pub enum IndexerError {
+    /// An error setting up telemetry
+    #[error("error setting up telemetry: {0}")]
+    Telemetry(String),
     /// An error with AWS SQS
     #[error("SQS error: {0}")]
     Sqs(String),
@@ -55,6 +58,11 @@ pub enum IndexerError {
 
 #[allow(clippy::needless_pass_by_value)]
 impl IndexerError {
+    /// Create a new telemetry error
+    pub fn telemetry<T: ToString>(msg: T) -> Self {
+        Self::Telemetry(msg.to_string())
+    }
+
     /// Create a new RPC error
     pub fn rpc<T: ToString>(msg: T) -> Self {
         Self::Rpc(msg.to_string())
