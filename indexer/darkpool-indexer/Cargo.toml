@@ -9,6 +9,7 @@ renegade-constants = { package = "constants", path = "/Users/akirillo/code/reneg
 renegade-common = { package = "common", path = "/Users/akirillo/code/renegade/common" }
 renegade-crypto = { path = "/Users/akirillo/code/renegade/renegade-crypto" }
 renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
+renegade-util = { package = "util", path = "/Users/akirillo/code/renegade/util" }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -32,6 +33,8 @@ aws-sdk-sqs = "1.50.0"
 darkpool-indexer-api = { path = "../darkpool-indexer-api" }
 serde = "1.0"
 serde_json = "1.0"
+warp = { version = "0.4", features = ["server"] }
+base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
@@ -41,6 +44,7 @@ renegade-solidity-abi = { package = "abi", path = "/Users/akirillo/code/renegade
 thiserror = { workspace = true }
 tracing = { workspace = true }
 itertools = "0.10"
+bytes = "1.10.1"
 
 [dev-dependencies]
 # === DB === #

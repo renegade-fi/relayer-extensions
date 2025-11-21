@@ -8,7 +8,7 @@ use alloy::{
 };
 use aws_config::Region;
 use aws_sdk_sqs::Client as SqsClient;
-use renegade_common::types::chain::Chain;
+use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use serde::Serialize;
 
@@ -88,11 +88,15 @@ pub struct Indexer {
     pub darkpool_client: DarkpoolClient,
     /// The chain event listener
     pub chain_event_listener: ChainEventListener,
+    /// The authentication key for the HTTP API
+    pub http_auth_key: Option<HmacKey>,
 }
 
 impl Indexer {
     /// Build an indexer from the provided CLI arguments
     pub async fn build_from_cli(cli: &Cli) -> Result<Self, IndexerError> {
+        cli.configure_telemetry()?;
+
         // Set up the database client & state applicator
         let db_client = DbClient::new(&cli.database_url).await?;
         let state_applicator = StateApplicator::new(db_client.clone());
@@ -134,6 +138,12 @@ impl Indexer {
             sqs_queue_url.clone(),
         );
 
+        let http_auth_key = cli
+            .auth_key
+            .as_ref()
+            .map(|key_str| HmacKey::from_base64_string(key_str).map_err(IndexerError::parse))
+            .transpose()?;
+
         // TODO: Parse remaining CLI arguments
 
         Ok(Self {
@@ -143,6 +153,7 @@ impl Indexer {
             sqs_queue_url,
             darkpool_client,
             chain_event_listener,
+            http_auth_key,
         })
     }
 
