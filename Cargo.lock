@@ -3474,34 +3474,9 @@ name = "darkpool-indexer-api"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2#f19b246eff2d2e3773eab8de3082279c7418acff"
 dependencies = [
- "alloy-primitives",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2)",
- "itertools 0.10.5",
- "jf-primitives",
- "mpc-plonk",
- "mpc-relation",
- "rand 0.8.5",
- "serde",
-]
-
-[[package]]
-name = "darkpool-types"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
-dependencies = [
- "alloy-primitives",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "alloy-primitives 1.4.1",
+ "circuit-types 0.1.0",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "itertools 0.10.5",
- "jf-primitives",
- "mpc-plonk",
- "mpc-relation",
- "rand 0.8.5",
  "serde",
 ]
 
