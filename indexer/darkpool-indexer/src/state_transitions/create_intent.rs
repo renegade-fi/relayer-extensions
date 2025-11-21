@@ -29,9 +29,7 @@ pub struct CreateIntentTransition {
 pub enum IntentCreationData {
     /// A complete set of updated intent public shares, available in natively-settled private-intent matches,
     /// and Renegade-settled private-fill matches
-    NewIntentShare {
-        updated_intent_share: IntentShare
-    },
+    NewIntentShare(IntentShare),
     /// The data needed to construct the intent shares for a Renegade-settled public-fill match,
     /// where only the pre-match amount public share is leaked
     RenegadeSettledPublicFill {
@@ -151,7 +149,7 @@ impl StateApplicator {
 /// Get the new intent shares from the intent creation data
 fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShare {
     match intent_creation_data {
-        IntentCreationData::NewIntentShare { updated_intent_share } => updated_intent_share,
+        IntentCreationData::NewIntentShare(updated_intent_share) => updated_intent_share,
         IntentCreationData::RenegadeSettledPublicFill { pre_match_intent_shares, pre_match_amount_share, amount_in: obligation_amount_in } => {
             let updated_amount_share = pre_match_amount_share - obligation_amount_in;
             let mut intent_shares_iter = pre_match_intent_shares.into_iter().chain(iter::once(updated_amount_share));

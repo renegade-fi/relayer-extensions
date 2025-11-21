@@ -19,12 +19,12 @@ pub struct SettleMatchIntoBalanceTransition {
     /// The block number in which the match was settled
     pub block_number: u64,
     /// The data required to update a balance resulting from a match settlement
-    pub balance_update_data: BalanceUpdateData,
+    pub balance_settlement_data: BalanceSettlementData,
 }
 
 /// The data required to update a balance resulting from a match settlement
 #[derive(Clone)]
-pub enum BalanceUpdateData {
+pub enum BalanceSettlementData {
     /// A balance update resulting from a public fill being settled
     PublicFill {
         /// The pre-update balance shares affected by the match
@@ -34,11 +34,8 @@ pub enum BalanceUpdateData {
         /// Whether the balance being settled into is the input balance
         is_input_balance: bool,
     },
-    /// A balance update resulting from a private fill being settled
-    PrivateFill {
-        /// The updated balance shares resulting from the match settlement
-        updated_balance_shares: BalanceSharesInMatch,
-    }
+    /// A balance update resulting from a private fill being settled. Contains the updated balance shares resulting from the match settlement.
+    PrivateFill(BalanceSharesInMatch),
 }
 
 // --------------------------------
@@ -54,10 +51,10 @@ impl StateApplicator {
         let SettleMatchIntoBalanceTransition {
             nullifier,
             block_number,
-            balance_update_data,
+            balance_settlement_data,
         } = transition;
 
-        let updated_balance_shares = get_updated_balance_public_shares(balance_update_data);
+        let updated_balance_shares = get_updated_balance_public_shares(balance_settlement_data);
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
@@ -85,7 +82,6 @@ impl StateApplicator {
                 self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
 
                 Ok(())
-                
             }.scope_boxed()
         }).await
     }
@@ -96,9 +92,9 @@ impl StateApplicator {
 // ----------------------
 
 /// Get the updated balance shares resulting from a match settlement
-fn get_updated_balance_public_shares(balance_update_data: BalanceUpdateData) -> BalanceSharesInMatch {
-    match balance_update_data {
-        BalanceUpdateData::PublicFill { pre_update_balance_shares, obligation_amounts, is_input_balance } => {
+fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementData) -> BalanceSharesInMatch {
+    match balance_settlement_data {
+        BalanceSettlementData::PublicFill { pre_update_balance_shares, obligation_amounts, is_input_balance } => {
             let BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, mut amount_public_share } = pre_update_balance_shares;
 
             let ObligationAmounts { amount_in, amount_out } = obligation_amounts;
@@ -113,7 +109,7 @@ fn get_updated_balance_public_shares(balance_update_data: BalanceUpdateData) -> 
 
             BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, amount_public_share }
         },
-        BalanceUpdateData::PrivateFill { updated_balance_shares } => updated_balance_shares,
+        BalanceSettlementData::PrivateFill (updated_balance_shares) => updated_balance_shares,
     }
 }
 
