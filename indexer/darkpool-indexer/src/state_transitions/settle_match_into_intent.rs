@@ -98,3 +98,40 @@ fn get_updated_intent_amount_public_share(intent_settlement_data: IntentSettleme
         },
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_intent_transition, gen_settle_match_into_intent_transition, setup_expected_state_object, setup_test_state_applicator, validate_intent_indexing}}};
+
+    /// Test that a match settlement into an intent is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_match_into_intent() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+        let db_client = &test_applicator.db_client;
+
+        // Index the initial intent creation
+        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
+        let (create_intent_transition, initial_wrapped_intent) =
+            gen_create_intent_transition(&expected_state_object);
+
+        test_applicator.create_intent(create_intent_transition.clone()).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_intent_transition, updated_wrapped_intent) =
+            gen_settle_match_into_intent_transition(&initial_wrapped_intent);
+
+        // Index the match settlement
+        test_applicator.settle_match_into_intent(settle_match_into_intent_transition.clone()).await?;
+
+        validate_intent_indexing(db_client, &updated_wrapped_intent).await?;
+
+        // Assert that the nullifier is marked as processed
+        let mut conn = db_client.get_db_conn().await?;
+        assert!(db_client.check_nullifier_processed(settle_match_into_intent_transition.nullifier, &mut conn).await?);
+
+        cleanup_test_db(postgres).await?;
+
+        Ok(())
+    }
+}

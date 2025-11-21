@@ -15,15 +15,20 @@ use uuid::Uuid;
 use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
-        StateApplicator, create_balance::CreateBalanceTransition,
-        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
-        deposit::DepositTransition, error::StateTransitionError,
-        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
-        settle_match_into_balance::SettleMatchIntoBalanceTransition,
+        StateApplicator,
+        create_balance::CreateBalanceTransition,
+        create_intent::{CreateIntentTransition, IntentCreationData},
+        create_public_intent::CreatePublicIntentTransition,
+        deposit::DepositTransition,
+        error::StateTransitionError,
+        pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
+        settle_match_into_balance::{BalanceSettlementData, SettleMatchIntoBalanceTransition},
+        settle_match_into_intent::{IntentSettlementData, SettleMatchIntoIntentTransition},
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
-    types::{ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
+    types::{BalanceSharesInMatch, ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
 };
 
 // -------------
@@ -207,10 +212,14 @@ pub fn gen_create_intent_transition(
     // 0th recovery ID
     wrapped_intent.recovery_stream.advance_by(1);
 
+    // For now, we simply use the `NewIntentShare` variant of the intent creation
+    // data
+    let intent_creation_data = IntentCreationData::NewIntentShare(wrapped_intent.public_share());
+
     let transition = CreateIntentTransition {
         recovery_id: expected_state_object.recovery_id,
         block_number: 0,
-        public_share: wrapped_intent.public_share(),
+        intent_creation_data,
     };
 
     (transition, wrapped_intent)
@@ -318,6 +327,27 @@ fn update_balance_relayer_fee(
     balance.public_share = public_share;
 
     new_relayer_fee_public_share
+}
+
+/// Update the amount in an intent.
+///
+/// Returns the public share of the new amount.
+fn update_intent_amount(intent: &mut StateWrapper<Intent>, new_amount: Amount) -> Scalar {
+    // Advance the recovery stream to indicate the next object version
+    intent.recovery_stream.advance_by(1);
+
+    // Update the intent amount
+    intent.inner.amount_in = new_amount;
+
+    // Re-encrypt the updated amount share
+    let new_amount_public_share = intent.stream_cipher_encrypt(&new_amount);
+
+    // Update the public share of the intent
+    let mut public_share = intent.public_share();
+    public_share.amount_in = new_amount_public_share;
+    intent.public_share = public_share;
+
+    new_amount_public_share
 }
 
 /// Generate the state transition which should result in the given
@@ -445,7 +475,7 @@ pub fn gen_settle_match_into_balance_transition(
     let new_protocol_fee_balance =
         add_up_to_max(initial_balance.inner.protocol_fee_balance, protocol_fee_amount);
 
-    let (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share) =
+    let (relayer_fee_public_share, protocol_fee_public_share, amount_public_share) =
         update_balance_amount_and_fees(
             &mut updated_balance,
             new_relayer_fee_balance,
@@ -453,13 +483,19 @@ pub fn gen_settle_match_into_balance_transition(
             new_amount,
         );
 
+    // For now, we simply use the `PrivateFill` variant of the balance settlement
+    // data
+    let balance_settlement_data = BalanceSettlementData::PrivateFill(BalanceSharesInMatch {
+        relayer_fee_public_share,
+        protocol_fee_public_share,
+        amount_public_share,
+    });
+
     // Construct the associated match settlement transition
     let transition = SettleMatchIntoBalanceTransition {
         nullifier: spent_nullifier,
         block_number: 0,
-        new_relayer_fee_public_share,
-        new_protocol_fee_public_share,
-        new_amount_public_share,
+        balance_settlement_data,
     };
 
     (transition, updated_balance)
@@ -498,6 +534,38 @@ pub fn gen_settle_match_into_public_intent_transition(
         version: updated_intent.version,
         block_number: 0,
     }
+}
+
+/// Generate the state transition which should result in the given
+/// intent being updated with a match settlement.
+///
+/// Returns the match settlement transition, along with the updated intent.
+pub fn gen_settle_match_into_intent_transition(
+    initial_intent: &StateWrapper<Intent>,
+) -> (SettleMatchIntoIntentTransition, StateWrapper<Intent>) {
+    let spent_nullifier = initial_intent.compute_nullifier();
+
+    let mut updated_intent = initial_intent.clone();
+
+    // Apply a random match amount to the intent
+    let match_amount = random_amount();
+
+    let new_amount = initial_intent.inner.amount_in.saturating_sub(match_amount);
+
+    let amount_public_share = update_intent_amount(&mut updated_intent, new_amount);
+
+    // For now, we simply use the `UpdatedAmountShare` variant of the intent
+    // settlement data
+    let intent_settlement_data = IntentSettlementData::UpdatedAmountShare(amount_public_share);
+
+    // Construct the associated match settlement transition
+    let transition = SettleMatchIntoIntentTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        intent_settlement_data,
+    };
+
+    (transition, updated_intent)
 }
 
 // ---------------------------
