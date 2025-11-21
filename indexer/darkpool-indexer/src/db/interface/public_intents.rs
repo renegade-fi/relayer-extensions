@@ -3,6 +3,7 @@
 use alloy::primitives::B256;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
+use uuid::Uuid;
 
 use crate::{
     db::{
@@ -89,5 +90,20 @@ impl DbClient {
             .optional()
             .map_err(DbError::from)
             .map(|maybe_record| maybe_record.is_some())
+    }
+
+    /// Get all of a user's active public intent state objects
+    pub async fn get_account_active_public_intents(
+        &self,
+        account_id: Uuid,
+        conn: &mut DbConn,
+    ) -> Result<Vec<PublicIntentStateObject>, DbError> {
+        public_intents::table
+            .filter(public_intents::account_id.eq(account_id))
+            .filter(public_intents::active.eq(true))
+            .load(conn)
+            .await
+            .map_err(DbError::from)
+            .map(|public_intents| public_intents.into_iter().map(PublicIntentModel::into).collect())
     }
 }

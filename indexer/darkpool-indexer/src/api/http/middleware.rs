@@ -70,6 +70,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<WithStatus<String>, Reje
         let (code, message) = match api_error {
             ApiError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e.clone()),
             ApiError::BadRequest(e) => (StatusCode::BAD_REQUEST, e.clone()),
+            ApiError::InternalServerError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
         };
 
         Ok(warp::reply::with_status(message, code))

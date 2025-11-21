@@ -2,6 +2,7 @@
 //! canonical representations of data outside of the external API & DB layers.
 
 use alloy::primitives::{Address, B256};
+use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
 use renegade_circuit_types::{
     Amount,
     balance::{Balance, BalanceShare},
@@ -204,6 +205,20 @@ impl BalanceStateObject {
     }
 }
 
+impl From<BalanceStateObject> for ApiBalance {
+    fn from(value: BalanceStateObject) -> Self {
+        let BalanceStateObject { balance, .. } = value;
+        ApiBalance { balance }
+    }
+}
+
+impl From<BalanceStateObject> for ApiStateObject {
+    fn from(value: BalanceStateObject) -> Self {
+        let api_balance: ApiBalance = value.into();
+        api_balance.into()
+    }
+}
+
 /// The public shares of a balance that are updated as a result of a match
 /// settlement
 #[derive(Clone, Copy)]
@@ -300,6 +315,34 @@ impl IntentStateObject {
     }
 }
 
+impl From<IntentStateObject> for ApiIntent {
+    fn from(value: IntentStateObject) -> Self {
+        let IntentStateObject {
+            intent,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+            ..
+        } = value;
+
+        ApiIntent {
+            intent,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
+impl From<IntentStateObject> for ApiStateObject {
+    fn from(value: IntentStateObject) -> Self {
+        let api_intent: ApiIntent = value.into();
+        api_intent.into()
+    }
+}
+
 /// A public intent state object
 #[derive(Clone)]
 pub struct PublicIntentStateObject {
@@ -345,5 +388,37 @@ impl PublicIntentStateObject {
             min_fill_size,
             precompute_cancellation_proof,
         }
+    }
+}
+
+impl From<PublicIntentStateObject> for ApiPublicIntent {
+    fn from(value: PublicIntentStateObject) -> Self {
+        let PublicIntentStateObject {
+            intent_hash,
+            intent,
+            version,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+            ..
+        } = value;
+
+        ApiPublicIntent {
+            intent_hash,
+            intent,
+            version,
+            matching_pool,
+            allow_external_matches,
+            min_fill_size,
+            precompute_cancellation_proof,
+        }
+    }
+}
+
+impl From<PublicIntentStateObject> for ApiStateObject {
+    fn from(value: PublicIntentStateObject) -> Self {
+        let api_public_intent: ApiPublicIntent = value.into();
+        api_public_intent.into()
     }
 }
