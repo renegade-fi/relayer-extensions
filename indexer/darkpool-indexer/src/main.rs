@@ -9,7 +9,7 @@
 #![feature(let_chains)]
 #![feature(trait_alias)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use aws_sdk_sqs::types::{Message, MessageSystemAttributeName};
 use clap::Parser;
@@ -17,6 +17,7 @@ use tokio::task::JoinSet;
 use tracing::{error, warn};
 
 use crate::{
+    api::http::routes::http_routes,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
 };
@@ -49,10 +50,17 @@ async fn main() -> Result<(), IndexerError> {
     let indexer = Indexer::build_from_cli(&cli).await?;
 
     let mut tasks = JoinSet::new();
+
+    // Spawn SQS consumer
     tasks.spawn(run_sqs_consumer(indexer.clone()));
+
+    // Spawn onchain event listeners
     tasks.spawn(run_nullifier_spend_listener(indexer.clone()));
     tasks.spawn(run_recovery_id_registration_listener(indexer.clone()));
-    // TODO: Spawn HTTP server
+    // TODO: Run public intent event listeners
+
+    // Spawn HTTP server
+    tasks.spawn(run_http_server(indexer.clone(), cli.http_port));
 
     match tasks.join_next().await.expect("No tasks spawned") {
         Err(e) => error!("Error joining indexer task: {e}"),
@@ -65,7 +73,7 @@ async fn main() -> Result<(), IndexerError> {
 
 /// Run the SQS consumer, polling for new messages from the
 /// queue and handling them
-async fn run_sqs_consumer(indexer: Indexer) -> Result<(), IndexerError> {
+async fn run_sqs_consumer(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     loop {
         let messages = match indexer
             .sqs_client
@@ -122,14 +130,20 @@ async fn run_sqs_consumer(indexer: Indexer) -> Result<(), IndexerError> {
 
 /// Run the nullifier spend event listener, watching for nullifier spend events
 /// and forwarding them to the SQS queue
-async fn run_nullifier_spend_listener(indexer: Indexer) -> Result<(), IndexerError> {
+async fn run_nullifier_spend_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     indexer.chain_event_listener.watch_nullifiers().await?;
     Ok(())
 }
 
 /// Run the recovery ID registration event listener, watching for recovery ID
 /// registration events and forwarding them to the SQS queue
-async fn run_recovery_id_registration_listener(indexer: Indexer) -> Result<(), IndexerError> {
+async fn run_recovery_id_registration_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     indexer.chain_event_listener.watch_recovery_ids().await?;
+    Ok(())
+}
+
+/// Run the HTTP API server
+async fn run_http_server(indexer: Arc<Indexer>, port: u16) -> Result<(), IndexerError> {
+    warp::serve(http_routes(indexer)).run(([0, 0, 0, 0], port)).await;
     Ok(())
 }
