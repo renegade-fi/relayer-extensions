@@ -37,6 +37,24 @@ impl DbClient {
         Ok(())
     }
 
+    /// Update an intent record
+    pub async fn update_intent(
+        &self,
+        intent: IntentStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let intent_model: IntentModel = intent.into();
+
+        diesel::update(intents::table)
+            .filter(intents::recovery_stream_seed.eq(intent_model.recovery_stream_seed.clone()))
+            .set(intent_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::from)?;
+
+        Ok(())
+    }
+
     // -----------
     // | Getters |
     // -----------
