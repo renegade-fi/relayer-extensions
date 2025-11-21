@@ -20,8 +20,8 @@ use crate::{
         event_indexing::{
             types::settlement_bundle::SettlementBundleData,
             utils::{
-                try_decode_balance_update_data, try_decode_intent_creation_data,
-                try_decode_updated_intent_amount_share_for_party,
+                try_decode_balance_settlement_data, try_decode_intent_creation_data,
+                try_decode_intent_settlement_data,
             },
         },
     },
@@ -362,36 +362,36 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let maybe_party0_balance_update_data = try_decode_balance_update_data(
+        let maybe_party0_balance_settlement_data = try_decode_balance_settlement_data(
             nullifier,
             &settle_match_call.party0SettlementBundle,
             &settle_match_call.obligationBundle,
             true, // is_party0
         )?;
 
-        let maybe_party1_balance_update_data = try_decode_balance_update_data(
+        let maybe_party1_balance_settlement_data = try_decode_balance_settlement_data(
             nullifier,
             &settle_match_call.party1SettlementBundle,
             &settle_match_call.obligationBundle,
             false, // is_party0
         )?;
 
-        let maybe_balance_update_data =
-            maybe_party0_balance_update_data.or(maybe_party1_balance_update_data);
+        let maybe_balance_settlement_data =
+            maybe_party0_balance_settlement_data.or(maybe_party1_balance_settlement_data);
 
-        // If we could not decode balance update data for either party,
+        // If we could not decode balance settlement data for either party,
         // the spent nullifier must pertain to one of the intents nullified in the
         // match.
-        if maybe_balance_update_data.is_none() {
+        if maybe_balance_settlement_data.is_none() {
             return Ok(None);
         }
 
-        let balance_update_data = maybe_balance_update_data.unwrap();
+        let balance_settlement_data = maybe_balance_settlement_data.unwrap();
 
         Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
             nullifier,
             block_number,
-            balance_update_data,
+            balance_settlement_data,
         })))
     }
 
@@ -460,36 +460,36 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let maybe_party0_new_amount_share = try_decode_updated_intent_amount_share_for_party(
+        let maybe_party0_intent_settlement_data = try_decode_intent_settlement_data(
             nullifier,
             &settle_match_call.party0SettlementBundle,
             &settle_match_call.obligationBundle,
             true, // is_party0
         )?;
 
-        let maybe_party1_new_amount_share = try_decode_updated_intent_amount_share_for_party(
+        let maybe_party1_intent_settlement_data = try_decode_intent_settlement_data(
             nullifier,
             &settle_match_call.party1SettlementBundle,
             &settle_match_call.obligationBundle,
             false, // is_party0
         )?;
 
-        let maybe_new_amount_share =
-            maybe_party0_new_amount_share.or(maybe_party1_new_amount_share);
+        let maybe_intent_settlement_data =
+            maybe_party0_intent_settlement_data.or(maybe_party1_intent_settlement_data);
 
         // If we could not decode the updated intent amount share for either party,
         // the spent nullifier must pertain to one of the balances nullified in the
         // match.
-        if maybe_new_amount_share.is_none() {
+        if maybe_intent_settlement_data.is_none() {
             return Ok(None);
         }
 
-        let new_amount_public_share = maybe_new_amount_share.unwrap();
+        let intent_settlement_data = maybe_intent_settlement_data.unwrap();
 
         Ok(Some(StateTransition::SettleMatchIntoIntent(SettleMatchIntoIntentTransition {
             nullifier,
             block_number,
-            new_amount_public_share,
+            intent_settlement_data,
         })))
     }
 

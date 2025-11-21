@@ -1,7 +1,8 @@
 //! Defines a wrapper type & parsing utilities for the various kinds of
 //! obligation bundles
 
-use alloy::{primitives::U256, sol_types::SolValue};
+use alloy::sol_types::SolValue;
+use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
     ObligationBundle, PrivateObligationBundle, SettlementObligation,
@@ -97,17 +98,19 @@ impl ObligationBundleData {
 
     /// Get the updated public share of the intent amount for the given party,
     /// if this is a private obligation bundle
-    pub fn get_updated_intent_amount_public_share(&self, is_party0: bool) -> Option<U256> {
-        match self {
+    pub fn get_updated_intent_amount_public_share(&self, is_party0: bool) -> Option<Scalar> {
+        let updated_amount_share = match self {
             Self::Private(private_obligation_bundle) => {
                 if is_party0 {
-                    Some(private_obligation_bundle.statement.newAmountPublicShare0)
+                    private_obligation_bundle.statement.newAmountPublicShare0
                 } else {
-                    Some(private_obligation_bundle.statement.newAmountPublicShare1)
+                    private_obligation_bundle.statement.newAmountPublicShare1
                 }
             },
-            _ => None,
-        }
+            _ => return None,
+        };
+
+        Some(u256_to_scalar(&updated_amount_share))
     }
 
     /// Get the input & output amounts on the given party's obligation bundle,
