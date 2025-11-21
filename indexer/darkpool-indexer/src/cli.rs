@@ -2,6 +2,27 @@
 
 use clap::Parser;
 use renegade_common::types::chain::Chain;
+use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
+
+use crate::indexer::error::IndexerError;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The prefix for metrics
+const METRICS_PREFIX: &str = "darkpool-indexer";
+
+/// The statsd host to use for metrics
+const DEFAULT_STATSD_HOST: &str = "127.0.0.1";
+/// The statsd port to use for metrics
+const DEFAULT_STATSD_PORT: u16 = 8125;
+/// The default OTLP collector endpoint
+const DEFAULT_OTLP_COLLECTOR_ENDPOINT: &str = "http://localhost:4317";
+
+// ------------------
+// | CLI Definition |
+// ------------------
 
 /// The darkpool indexer CLI
 #[rustfmt::skip]
@@ -58,4 +79,23 @@ pub struct Cli {
     /// Whether or not to forward telemetry to Datadog
     #[clap(long, env = "ENABLE_DATADOG")]
     pub datadog_enabled: bool,
+}
+
+impl Cli {
+    /// Configure the telemetry stack for the indexer
+    pub fn configure_telemetry(&self) -> Result<(), IndexerError> {
+        let metrics_config =
+            MetricsConfig { metrics_prefix: METRICS_PREFIX.to_string(), ..Default::default() };
+
+        configure_telemetry_with_metrics_config(
+            self.datadog_enabled, // datadog_enabled
+            self.datadog_enabled, // otlp_enabled
+            self.datadog_enabled, // metrics_enabled
+            DEFAULT_OTLP_COLLECTOR_ENDPOINT.to_string(),
+            DEFAULT_STATSD_HOST,
+            DEFAULT_STATSD_PORT,
+            Some(metrics_config),
+        )
+        .map_err(IndexerError::telemetry)
+    }
 }
