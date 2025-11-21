@@ -1,6 +1,8 @@
 //! Defines the indexer struct, a dependency injection container which stores
 //! handles to shared resources
 
+use std::sync::Arc;
+
 use alloy::{
     hex,
     primitives::Address,
@@ -94,7 +96,7 @@ pub struct Indexer {
 
 impl Indexer {
     /// Build an indexer from the provided CLI arguments
-    pub async fn build_from_cli(cli: &Cli) -> Result<Self, IndexerError> {
+    pub async fn build_from_cli(cli: &Cli) -> Result<Arc<Self>, IndexerError> {
         cli.configure_telemetry()?;
 
         // Set up the database client & state applicator
@@ -146,7 +148,7 @@ impl Indexer {
 
         // TODO: Parse remaining CLI arguments
 
-        Ok(Self {
+        let indexer = Self {
             db_client,
             state_applicator,
             sqs_client,
@@ -154,7 +156,9 @@ impl Indexer {
             darkpool_client,
             chain_event_listener,
             http_auth_key,
-        })
+        };
+
+        Ok(Arc::new(indexer))
     }
 
     /// Send a message to the SQS queue

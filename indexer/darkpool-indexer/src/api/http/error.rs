@@ -8,14 +8,22 @@ pub enum ApiError {
     /// An unauthorized error
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+    /// A bad request error
+    #[error("bad request: {0}")]
+    BadRequest(String),
 }
 
 impl Reject for ApiError {}
 
+#[allow(clippy::needless_pass_by_value)]
 impl ApiError {
     /// Create a new `Unauthorized` error
-    #[allow(clippy::needless_pass_by_value)]
     pub fn unauthorized<T: ToString>(e: T) -> Self {
         Self::Unauthorized(e.to_string())
+    }
+
+    /// Create a new `BadRequest` error
+    pub fn bad_request<T: ToString>(e: T) -> Self {
+        Self::BadRequest(e.to_string())
     }
 }
