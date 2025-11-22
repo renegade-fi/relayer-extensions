@@ -2,9 +2,9 @@
 
 mod assemble_malleable_quote;
 mod assemble_quote;
+mod direct_malleable_match;
 mod direct_match;
 mod quote;
-mod direct_malleable_match;
 
 use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
