@@ -15,6 +15,7 @@ renegade-util = { package = "util", path = "/Users/akirillo/code/renegade/util" 
 tokio = { version = "1.10", features = ["full"] }
 clap = { version = "4.5.3", features = ["derive", "env"] }
 futures-util = "0.3"
+async-trait = "0.1"
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }

@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use aws_sdk_sqs::error::SdkError;
+use crate::message_queue::error::MessageQueueError;
 
 /// The error type that the chain event listener emits
 #[derive(Debug, thiserror::Error)]
@@ -10,9 +10,9 @@ pub enum ChainEventListenerError {
     /// An error with the RPC client
     #[error("RPC client error: {0}")]
     Rpc(String),
-    /// An error with AWS SQS
-    #[error("SQS error: {0}")]
-    Sqs(String),
+    /// An error with the message queue
+    #[error("message queue error: {0}")]
+    MessageQueue(#[from] MessageQueueError),
     /// An error de/serializing a value
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
@@ -29,11 +29,5 @@ impl ChainEventListenerError {
 impl<E: Display> From<alloy::transports::RpcError<E>> for ChainEventListenerError {
     fn from(e: alloy::transports::RpcError<E>) -> Self {
         ChainEventListenerError::Rpc(e.to_string())
-    }
-}
-
-impl<E, R> From<SdkError<E, R>> for ChainEventListenerError {
-    fn from(value: SdkError<E, R>) -> Self {
-        ChainEventListenerError::Sqs(value.to_string())
     }
 }
