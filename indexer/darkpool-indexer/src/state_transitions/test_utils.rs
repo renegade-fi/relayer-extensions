@@ -1,7 +1,7 @@
 //! Common utilities for state transition tests
 
 use alloy::primitives::{Address, B256};
-use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
+use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{

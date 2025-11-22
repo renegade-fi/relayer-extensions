@@ -3,13 +3,12 @@
 use std::fmt::Display;
 
 use alloy::hex;
-use aws_sdk_sqs::error::SdkError;
 use uuid::Uuid;
 
 use crate::{
     chain_event_listener::error::ChainEventListenerError,
     darkpool_client::error::DarkpoolClientError, db::error::DbError,
-    state_transitions::error::StateTransitionError,
+    message_queue::error::MessageQueueError, state_transitions::error::StateTransitionError,
 };
 
 /// Indexer errors
@@ -18,9 +17,9 @@ pub enum IndexerError {
     /// An error setting up telemetry
     #[error("error setting up telemetry: {0}")]
     Telemetry(String),
-    /// An error with AWS SQS
-    #[error("SQS error: {0}")]
-    Sqs(String),
+    /// An error with the message queue
+    #[error("message queue error: {0}")]
+    MessageQueue(#[from] MessageQueueError),
     /// An error in the RPC client
     #[error("RPC client error: {0}")]
     Rpc(String),
@@ -86,12 +85,6 @@ impl IndexerError {
     /// Create a new invalid selector error
     pub fn invalid_selector<T: AsRef<[u8]>>(selector: T) -> Self {
         Self::InvalidSelector(hex::encode_prefixed(selector))
-    }
-}
-
-impl<E, R> From<SdkError<E, R>> for IndexerError {
-    fn from(value: SdkError<E, R>) -> Self {
-        IndexerError::Sqs(value.to_string())
     }
 }
 

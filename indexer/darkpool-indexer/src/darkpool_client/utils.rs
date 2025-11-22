@@ -31,6 +31,5 @@ pub fn u256_to_amount(u256: U256) -> Amount {
     // Take the LSBs of the `U256`
     let le_bytes = u256.to_le_bytes_vec();
     let trimmed: [u8; 16] = le_bytes[..16].try_into().unwrap();
-    let amount = Amount::from_le_bytes(trimmed);
-    amount
+    Amount::from_le_bytes(trimmed)
 }
