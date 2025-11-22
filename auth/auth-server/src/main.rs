@@ -432,6 +432,16 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_all_pairs_order_book_depth_request(path, headers).await
         });
 
+    let exchange_metadata_path = warp::path("v0")
+        .and(warp::path("exchange-metadata"))
+        .and(warp::get())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, server: Arc<Server>| async move {
+            server.handle_exchange_metadata_request(path, headers).await
+        });
+
     let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -482,6 +492,7 @@ async fn main() -> Result<(), AuthServerError> {
         .or(remove_user_fee_override)
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
+        .or(exchange_metadata_path)
         .or(rfqt_levels_path)
         .or(rfqt_quote_path)
         .or(okx_pricing_path)
