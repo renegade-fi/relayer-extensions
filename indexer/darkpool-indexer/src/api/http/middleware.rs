@@ -94,7 +94,7 @@ async fn verify_hmac_auth(
 ) -> Result<(Bytes,), Rejection> {
     match &indexer.http_auth_key {
         Some(hmac_key) => {
-            validate_expiring_auth(path.as_str(), &headers, &body, &hmac_key)
+            validate_expiring_auth(path.as_str(), &headers, &body, hmac_key)
                 .map_err(ApiError::unauthorized)?;
         },
         None => {

@@ -1,7 +1,7 @@
 //! Defines the application-specific logic for registering a new master view
 //! seed
 
-use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
+use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use tracing::warn;
 
