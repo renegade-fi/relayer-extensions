@@ -5,7 +5,7 @@
 //! are defined over canonical object types & have no dependencies on external
 //! resources like the database or RPC client.
 
-use darkpool_indexer_api::types::sqs::MasterViewSeedMessage;
+use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 
 use crate::{
     db::client::DbClient,

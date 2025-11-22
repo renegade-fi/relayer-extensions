@@ -1,7 +1,9 @@
 //! Defines the process for backfilling a user's state
 
 use alloy::primitives::TxHash;
-use darkpool_indexer_api::types::sqs::{NullifierSpendMessage, RecoveryIdMessage};
+use darkpool_indexer_api::types::message_queue::{
+    Message, NullifierSpendMessage, RecoveryIdMessage,
+};
 use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
 use tokio::task::JoinSet;
@@ -12,6 +14,7 @@ use crate::{
     crypto_mocks::recovery_stream::sample_next_nullifier,
     darkpool_client::utils::scalar_to_b256,
     indexer::{Indexer, error::IndexerError},
+    message_queue::MessageQueue,
 };
 
 impl Indexer {
@@ -156,23 +159,24 @@ impl Indexer {
                 break Ok(());
             }
 
-            // Otherwise, we enqueue a nullifier spend message into SQS for subsequent
-            // indexing
+            // Otherwise, we enqueue a nullifier spend message for subsequent indexing
             let spend_event = maybe_spend_event.unwrap();
             let tx_hash = spend_event.transaction_hash.ok_or(IndexerError::rpc(format!(
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;
 
-            let nullifier_spend_message = NullifierSpendMessage { nullifier, tx_hash };
+            let nullifier_spend_message =
+                Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
 
             // We use the object's recovery stream seed as a message group ID so that all
-            // SQS messages enqueued by this backfill task are processed sequentially
-            self.send_sqs_message(
-                &nullifier_spend_message,
-                nullifier.to_string(),
-                recovery_stream.seed.to_string(),
-            )
-            .await?;
+            // messages enqueued by this backfill task are processed sequentially
+            self.message_queue
+                .send_message(
+                    nullifier_spend_message,
+                    nullifier.to_string(),
+                    recovery_stream.seed.to_string(),
+                )
+                .await?;
 
             // Finally, we compute the next nullifier & repeat
             nullifier = sample_next_nullifier(&mut recovery_stream);
@@ -192,16 +196,18 @@ impl Indexer {
             recovery_stream.seed
         );
 
-        let recovery_id_message = RecoveryIdMessage { recovery_id, tx_hash };
+        let recovery_id_message =
+            Message::RegisterRecoveryId(RecoveryIdMessage { recovery_id, tx_hash });
 
         // We use the object's recovery stream seed as a message group ID so that all
-        // SQS messages enqueued by this backfill task are processed sequentially
-        self.send_sqs_message(
-            recovery_id_message,
-            recovery_id.to_string(),
-            recovery_stream.seed.to_string(),
-        )
-        .await?;
+        // messages enqueued by this backfill task are processed sequentially
+        self.message_queue
+            .send_message(
+                recovery_id_message,
+                recovery_id.to_string(),
+                recovery_stream.seed.to_string(),
+            )
+            .await?;
 
         // We then sample the first nullifier for the object, and proceed to the main
         // backfill process

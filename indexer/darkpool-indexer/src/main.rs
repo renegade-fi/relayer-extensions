@@ -9,9 +9,8 @@
 #![feature(let_chains)]
 #![feature(trait_alias)]
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use aws_sdk_sqs::types::{Message, MessageSystemAttributeName};
 use clap::Parser;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
@@ -20,6 +19,7 @@ use crate::{
     api::http::routes::http_routes,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
+    message_queue::MessageQueue,
 };
 
 mod api;
@@ -29,15 +29,9 @@ mod crypto_mocks;
 mod darkpool_client;
 mod db;
 mod indexer;
+mod message_queue;
 mod state_transitions;
 mod types;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The maximum number of messages to receive from SQS
-const MAX_RECV_MESSAGES: i32 = 10;
 
 // --------
 // | Main |
@@ -51,8 +45,8 @@ async fn main() -> Result<(), IndexerError> {
 
     let mut tasks = JoinSet::new();
 
-    // Spawn SQS consumer
-    tasks.spawn(run_sqs_consumer(indexer.clone()));
+    // Spawn message queue consumer
+    tasks.spawn(run_message_queue_consumer(indexer.clone()));
 
     // Spawn onchain event listeners
     tasks.spawn(run_nullifier_spend_listener(indexer.clone()));
@@ -71,56 +65,20 @@ async fn main() -> Result<(), IndexerError> {
     Ok(())
 }
 
-/// Run the SQS consumer, polling for new messages from the
+/// Run the message queue consumer, polling for new messages from the
 /// queue and handling them
-async fn run_sqs_consumer(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
+async fn run_message_queue_consumer(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     loop {
-        let messages = match indexer
-            .sqs_client
-            .receive_message()
-            .max_number_of_messages(MAX_RECV_MESSAGES)
-            .message_system_attribute_names(MessageSystemAttributeName::MessageGroupId)
-            .queue_url(&indexer.sqs_queue_url)
-            .send()
-            .await
-        {
-            Ok(messages) => messages,
-            Err(e) => {
-                error!("Error receiving messages from SQS: {e}");
-                continue;
-            },
-        };
-
-        // Group messages by message ID.
-        // This is necessary because SQS may return multiple messages from multiple
-        // message groups in one `receive_message()` call.
-        // We want to be sure we processing messages sequentially within a message
-        // group, but concurrently across different message groups.
-        let mut message_groups: HashMap<String, Vec<Message>> = HashMap::new();
-        for message in messages.messages.unwrap_or_default() {
-            let message_group_id = message
-                .attributes()
-                .and_then(|a| a.get(&MessageSystemAttributeName::MessageGroupId).cloned());
-
-            if message_group_id.is_none() {
-                warn!(
-                    "Message {} from SQS has no message group ID, skipping",
-                    message.message_id().unwrap_or_default()
-                );
-                continue;
-            }
-
-            message_groups.entry(message_group_id.unwrap()).or_default().push(message);
-        }
+        let message_groups = indexer.message_queue.poll_messages().await?;
 
         // Process message groups concurrently
         for messages in message_groups.into_values() {
             let indexer_clone = indexer.clone();
             tokio::spawn(async move {
                 // Process messages within a message group sequentially
-                for message in messages {
-                    if let Err(e) = indexer_clone.handle_sqs_message(message).await {
-                        error!("Error handling SQS message: {e}")
+                for (message, deletion_id) in messages {
+                    if let Err(e) = indexer_clone.handle_message(message, deletion_id).await {
+                        error!("Error handling queue message: {e}")
                     }
                 }
             });
@@ -129,14 +87,14 @@ async fn run_sqs_consumer(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
 }
 
 /// Run the nullifier spend event listener, watching for nullifier spend events
-/// and forwarding them to the SQS queue
+/// and forwarding them to the message queue
 async fn run_nullifier_spend_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     indexer.chain_event_listener.watch_nullifiers().await?;
     Ok(())
 }
 
 /// Run the recovery ID registration event listener, watching for recovery ID
-/// registration events and forwarding them to the SQS queue
+/// registration events and forwarding them to the message queue
 async fn run_recovery_id_registration_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
     indexer.chain_event_listener.watch_recovery_ids().await?;
     Ok(())

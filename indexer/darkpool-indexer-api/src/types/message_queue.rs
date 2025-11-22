@@ -1,13 +1,13 @@
-//! SQS message type definitions for the darkpool indexer
+//! Message type definitions for the darkpool indexer
 
 use alloy_primitives::{Address, B256, TxHash};
 use renegade_constants::Scalar;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// The top-level enum of all possible SQS messages
-#[derive(Serialize, Deserialize)]
-pub enum SqsMessage {
+/// The top-level enum of all possible message queue messages
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Message {
     /// A message representing the registration of a new master view seed
     RegisterMasterViewSeed(MasterViewSeedMessage),
     /// A message representing the registration of a new recovery ID
@@ -22,7 +22,7 @@ pub enum SqsMessage {
 }
 
 /// A message representing the registration of a new master view seed
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MasterViewSeedMessage {
     /// The account ID of the seed owner
     pub account_id: Uuid,
@@ -33,7 +33,7 @@ pub struct MasterViewSeedMessage {
 }
 
 /// A message representing the registration of a new recovery ID
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RecoveryIdMessage {
     /// The recovery ID that was registered
     pub recovery_id: Scalar,
@@ -42,7 +42,7 @@ pub struct RecoveryIdMessage {
 }
 
 /// A message representing the spending of a state object's nullifier onchain
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct NullifierSpendMessage {
     /// The nullifier that was spent
     pub nullifier: Scalar,
@@ -51,7 +51,7 @@ pub struct NullifierSpendMessage {
 }
 
 /// A message representing the creation of a new public intent
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CreatePublicIntentMessage {
     /// The intent hash
     pub intent_hash: B256,
@@ -60,7 +60,7 @@ pub struct CreatePublicIntentMessage {
 }
 
 /// A message representing the update of a public intent
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct UpdatePublicIntentMessage {
     /// The intent hash
     pub intent_hash: B256,
