@@ -1,15 +1,17 @@
 //! An onchain event listener, subscribes to relevant darkpool events and
 //! forwards them to the indexer
 
-use aws_sdk_sqs::Client as SqsClient;
-use darkpool_indexer_api::types::sqs::{NullifierSpendMessage, RecoveryIdMessage};
+use darkpool_indexer_api::types::message_queue::{
+    Message, NullifierSpendMessage, RecoveryIdMessage,
+};
 use futures_util::StreamExt;
 use renegade_crypto::fields::u256_to_scalar;
-use serde::Serialize;
 use tracing::info;
 
 use crate::{
-    chain_event_listener::error::ChainEventListenerError, darkpool_client::DarkpoolClient,
+    chain_event_listener::error::ChainEventListenerError,
+    darkpool_client::DarkpoolClient,
+    message_queue::{DynMessageQueue, MessageQueue},
 };
 
 pub mod error;
@@ -25,10 +27,8 @@ pub struct ChainEventListener {
     /// The block number from which to start listening for recovery ID
     /// registration events
     pub recovery_id_start_block: u64,
-    /// The AWS SQS client
-    pub sqs_client: SqsClient,
-    /// The URL of the AWS SQS queue
-    pub sqs_queue_url: String,
+    /// The message queue
+    pub message_queue: DynMessageQueue<Message>,
 }
 
 impl ChainEventListener {
@@ -37,19 +37,12 @@ impl ChainEventListener {
         darkpool_client: DarkpoolClient,
         nullifier_start_block: u64,
         recovery_id_start_block: u64,
-        sqs_client: SqsClient,
-        sqs_queue_url: String,
+        message_queue: DynMessageQueue<Message>,
     ) -> Self {
-        Self {
-            darkpool_client,
-            nullifier_start_block,
-            recovery_id_start_block,
-            sqs_client,
-            sqs_queue_url,
-        }
+        Self { darkpool_client, nullifier_start_block, recovery_id_start_block, message_queue }
     }
 
-    /// Watch for nullifier spend events and forward them to the SQS queue
+    /// Watch for nullifier spend events and forward them to the message queue
     pub async fn watch_nullifiers(&self) -> Result<(), ChainEventListenerError> {
         let filter = self
             .darkpool_client
@@ -66,18 +59,18 @@ impl ChainEventListener {
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;
 
-            let message = NullifierSpendMessage { nullifier, tx_hash };
+            let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
 
             let nullifier_str = nullifier.to_string();
 
-            self.send_sqs_message(message, nullifier_str.clone(), nullifier_str).await?;
+            self.message_queue.send_message(message, nullifier_str.clone(), nullifier_str).await?;
         }
 
         Ok(())
     }
 
-    /// Watch for recovery ID registration events and forward them to the SQS
-    /// queue
+    /// Watch for recovery ID registration events and forward them to the
+    /// message queue
     pub async fn watch_recovery_ids(&self) -> Result<(), ChainEventListenerError> {
         let filter = self
             .darkpool_client
@@ -97,33 +90,14 @@ impl ChainEventListener {
                 "no tx hash for recovery ID {recovery_id} registration event"
             )))?;
 
-            let message = RecoveryIdMessage { recovery_id, tx_hash };
+            let message = Message::RegisterRecoveryId(RecoveryIdMessage { recovery_id, tx_hash });
 
             let recovery_id_str = recovery_id.to_string();
 
-            self.send_sqs_message(message, recovery_id_str.clone(), recovery_id_str).await?;
+            self.message_queue
+                .send_message(message, recovery_id_str.clone(), recovery_id_str)
+                .await?;
         }
-
-        Ok(())
-    }
-
-    /// Send a message to the SQS queue
-    pub async fn send_sqs_message<T: Serialize>(
-        &self,
-        message: T,
-        deduplication_id: String,
-        message_group_id: String,
-    ) -> Result<(), ChainEventListenerError> {
-        let message_body = serde_json::to_string(&message)?;
-
-        self.sqs_client
-            .send_message()
-            .queue_url(&self.sqs_queue_url)
-            .message_deduplication_id(&deduplication_id)
-            .message_group_id(&message_group_id)
-            .message_body(message_body)
-            .send()
-            .await?;
 
         Ok(())
     }

@@ -3368,6 +3368,7 @@ version = "0.1.0"
 dependencies = [
  "abi 0.1.0",
  "alloy",
+ "async-trait",
  "aws-config",
  "aws-sdk-sqs",
  "base64 0.22.1",
