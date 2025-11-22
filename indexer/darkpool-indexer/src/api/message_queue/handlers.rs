@@ -1,13 +1,14 @@
-//! Handler logic for SQS messages polled by the darkpool indexer
+//! Handler logic for messages polled from the message queue by the darkpool
+//! indexer
 
-use aws_sdk_sqs::types::Message;
-use darkpool_indexer_api::types::sqs::{
-    CreatePublicIntentMessage, MasterViewSeedMessage, NullifierSpendMessage, RecoveryIdMessage,
-    SqsMessage, UpdatePublicIntentMessage,
+use darkpool_indexer_api::types::message_queue::{
+    CreatePublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
+    RecoveryIdMessage, UpdatePublicIntentMessage,
 };
 
 use crate::{
     indexer::{Indexer, error::IndexerError},
+    message_queue::MessageQueue,
     state_transitions::StateTransition,
 };
 
@@ -16,38 +17,32 @@ impl Indexer {
     // | Top-Level Message Handler |
     // -----------------------------
 
-    /// Handle a message polled from SQS, parsing it into the API message type
-    /// and applying the appropriate handler logic
-    pub async fn handle_sqs_message(&self, message: Message) -> Result<(), IndexerError> {
-        if let Some(body) = message.body() {
-            let message: SqsMessage = serde_json::from_str(body)?;
-            match message {
-                SqsMessage::RegisterMasterViewSeed(message) => {
-                    self.handle_master_view_seed_message(message).await?;
-                },
-                SqsMessage::RegisterRecoveryId(message) => {
-                    self.handle_recovery_id_message(message).await?;
-                },
-                SqsMessage::NullifierSpend(message) => {
-                    self.handle_nullifier_spend_message(message).await?;
-                },
-                SqsMessage::CreatePublicIntent(message) => {
-                    self.handle_create_public_intent_message(message).await?;
-                },
-                SqsMessage::UpdatePublicIntent(message) => {
-                    self.handle_update_public_intent_message(message).await?;
-                },
-            }
+    /// Handle a message polled from the message queue, parsing it into the API
+    /// message type and applying the appropriate handler logic
+    pub async fn handle_message(
+        &self,
+        message: Message,
+        deletion_id: String,
+    ) -> Result<(), IndexerError> {
+        match message {
+            Message::RegisterMasterViewSeed(message) => {
+                self.handle_master_view_seed_message(message).await?;
+            },
+            Message::RegisterRecoveryId(message) => {
+                self.handle_recovery_id_message(message).await?;
+            },
+            Message::NullifierSpend(message) => {
+                self.handle_nullifier_spend_message(message).await?;
+            },
+            Message::CreatePublicIntent(message) => {
+                self.handle_create_public_intent_message(message).await?;
+            },
+            Message::UpdatePublicIntent(message) => {
+                self.handle_update_public_intent_message(message).await?;
+            },
         }
 
-        if let Some(receipt_handle) = message.receipt_handle() {
-            self.sqs_client
-                .delete_message()
-                .queue_url(&self.sqs_queue_url)
-                .receipt_handle(receipt_handle)
-                .send()
-                .await?;
-        }
+        self.message_queue.delete_message(deletion_id).await?;
 
         Ok(())
     }
@@ -58,8 +53,7 @@ impl Indexer {
 
     // === Master View Seed Message Handler ===
 
-    /// Handle a SQS message representing the registration of a new master view
-    /// seed
+    /// Handle a message representing the registration of a new master view seed
     pub async fn handle_master_view_seed_message(
         &self,
         message: MasterViewSeedMessage,
@@ -79,7 +73,7 @@ impl Indexer {
 
     // === Recovery ID Message Handler ===
 
-    /// Handle an SQS message representing the registration of a new recovery ID
+    /// Handle a message representing the registration of a new recovery ID
     pub async fn handle_recovery_id_message(
         &self,
         message: RecoveryIdMessage,
@@ -97,8 +91,8 @@ impl Indexer {
 
     // === Nullifier Spend Message Handler ===
 
-    /// Handle an SQS message representing the spending of a state object's
-    /// nullifier onchain
+    /// Handle a message representing the spending of a state object's nullifier
+    /// onchain
     pub async fn handle_nullifier_spend_message(
         &self,
         message: NullifierSpendMessage,
@@ -113,7 +107,7 @@ impl Indexer {
 
     // === Public Intent Creation Message Handler ===
 
-    /// Handle an SQS message representing the creation of a new public intent
+    /// Handle a message representing the creation of a new public intent
     pub async fn handle_create_public_intent_message(
         &self,
         message: CreatePublicIntentMessage,
@@ -129,7 +123,7 @@ impl Indexer {
 
     // === Public Intent Update Message Handler ===
 
-    /// Handle an SQS message representing the update of a public intent
+    /// Handle a message representing the update of a public intent
     pub async fn handle_update_public_intent_message(
         &self,
         message: UpdatePublicIntentMessage,

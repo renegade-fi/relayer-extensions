@@ -8,15 +8,18 @@ use alloy::{
     primitives::Address,
     providers::{Provider, ProviderBuilder, WsConnect},
 };
-use aws_config::Region;
-use aws_sdk_sqs::Client as SqsClient;
+use darkpool_indexer_api::types::message_queue::Message;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
-use serde::Serialize;
 
 use crate::{
-    chain_event_listener::ChainEventListener, cli::Cli, darkpool_client::DarkpoolClient,
-    db::client::DbClient, indexer::error::IndexerError, state_transitions::StateApplicator,
+    chain_event_listener::ChainEventListener,
+    cli::Cli,
+    darkpool_client::DarkpoolClient,
+    db::client::DbClient,
+    indexer::error::IndexerError,
+    message_queue::{DynMessageQueue, sqs::SqsMessageQueue},
+    state_transitions::StateApplicator,
 };
 
 mod backfill;
@@ -82,10 +85,8 @@ pub struct Indexer {
     pub db_client: DbClient,
     /// The state transition applicator
     pub state_applicator: StateApplicator,
-    /// The AWS SQS client
-    pub sqs_client: SqsClient,
-    /// The URL of the AWS SQS queue
-    pub sqs_queue_url: String,
+    /// The message queue
+    pub message_queue: DynMessageQueue<Message>,
     /// The darkpool client
     pub darkpool_client: DarkpoolClient,
     /// The chain event listener
@@ -103,12 +104,11 @@ impl Indexer {
         let db_client = DbClient::new(&cli.database_url).await?;
         let state_applicator = StateApplicator::new(db_client.clone());
 
-        // Set up the AWS SQS client
-        let config =
-            aws_config::from_env().region(Region::new(cli.sqs_region.clone())).load().await;
+        // Set up the message queue client
+        let sqs_message_queue =
+            SqsMessageQueue::new(cli.sqs_region.clone(), cli.sqs_queue_url.clone()).await;
 
-        let sqs_client = SqsClient::new(&config);
-        let sqs_queue_url = cli.sqs_queue_url.clone();
+        let message_queue = DynMessageQueue::new(sqs_message_queue);
 
         // Set up the WebSocket RPC provider & darkpool client
         let ws = WsConnect::new(&cli.ws_rpc_url);
@@ -136,8 +136,7 @@ impl Indexer {
             darkpool_client.clone(),
             nullifier_start_block,
             recovery_id_start_block,
-            sqs_client.clone(),
-            sqs_queue_url.clone(),
+            message_queue.clone(),
         );
 
         let http_auth_key = cli
@@ -151,35 +150,13 @@ impl Indexer {
         let indexer = Self {
             db_client,
             state_applicator,
-            sqs_client,
-            sqs_queue_url,
+            message_queue,
             darkpool_client,
             chain_event_listener,
             http_auth_key,
         };
 
         Ok(Arc::new(indexer))
-    }
-
-    /// Send a message to the SQS queue
-    pub async fn send_sqs_message<T: Serialize>(
-        &self,
-        message: T,
-        deduplication_id: String,
-        message_group_id: String,
-    ) -> Result<(), IndexerError> {
-        let message_body = serde_json::to_string(&message)?;
-
-        self.sqs_client
-            .send_message()
-            .queue_url(&self.sqs_queue_url)
-            .message_deduplication_id(&deduplication_id)
-            .message_group_id(&message_group_id)
-            .message_body(message_body)
-            .send()
-            .await?;
-
-        Ok(())
     }
 }
 
