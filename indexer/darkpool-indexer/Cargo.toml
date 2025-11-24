@@ -3,6 +3,9 @@ name = "darkpool-indexer"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+integration = []
+
 [dependencies]
 # === Renegade === #
 renegade-constants = { package = "constants", path = "/Users/akirillo/code/renegade/constants" }
