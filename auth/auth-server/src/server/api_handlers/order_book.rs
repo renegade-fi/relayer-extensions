@@ -11,7 +11,7 @@ use warp::reject::Rejection;
 
 use super::{Server, log_unsuccessful_relayer_request};
 use crate::error::AuthServerError;
-use crate::http_utils::request_response::overwrite_response_body;
+use crate::http_utils::request_response::{overwrite_response_body, should_stringify_numbers};
 use crate::server::api_handlers::external_match::BytesResponse;
 use crate::telemetry::helpers::record_relayer_request_500;
 
@@ -33,9 +33,12 @@ impl Server {
             .authorize_request(path_str, "" /* query_str */, &headers, &[] /* body */)
             .await?;
 
+        // Check if stringification is requested
+        let should_stringify = should_stringify_numbers(&headers);
+
         // Forward the request, return errors immediately if the request fails
         let mut resp =
-            self.handle_order_book_request_internal(path_str, &key_desc, headers).await?;
+            self.handle_order_book_request_internal(path_str, &key_desc, headers.clone()).await?;
         if !resp.status().is_success() {
             return Ok(resp);
         }
@@ -44,7 +47,7 @@ impl Server {
         let mut depth: PriceAndDepth =
             serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
         self.replace_relayer_fee_rate(key_id, &mut depth).await?;
-        overwrite_response_body(&mut resp, depth, false /* stringify */)?;
+        overwrite_response_body(&mut resp, depth, should_stringify)?;
 
         Ok(resp)
     }
@@ -64,6 +67,9 @@ impl Server {
         let (key_desc, key_id) = self
             .authorize_request(path_str, "" /* query_str */, &headers, &[] /* body */)
             .await?;
+
+        // Check if stringification is requested before headers are moved
+        let should_stringify = should_stringify_numbers(&headers);
 
         // Forward the request
         let mut resp =
@@ -98,7 +104,7 @@ impl Server {
             .collect::<Result<Vec<_>, _>>()?;
 
         body.pairs = pairs;
-        overwrite_response_body(&mut resp, body, false /* stringify */)?;
+        overwrite_response_body(&mut resp, body, should_stringify)?;
 
         Ok(resp)
     }
