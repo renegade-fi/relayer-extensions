@@ -10,6 +10,9 @@ use crate::message_queue::error::MessageQueueError;
 pub mod error;
 pub mod sqs;
 
+#[cfg(feature = "integration")]
+pub mod mock_message_queue;
+
 // ----------------
 // | Type Aliases |
 // ----------------

@@ -1,3 +1,3 @@
-//! SQS API logic for the darkpool indexer
+//! Message queue API logic for the darkpool indexer
 
 pub mod handlers;
