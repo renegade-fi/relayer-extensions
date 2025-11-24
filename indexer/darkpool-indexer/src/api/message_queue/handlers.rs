@@ -64,7 +64,7 @@ impl Indexer {
         self.state_applicator.apply_state_transition(state_transition).await?;
 
         // Kick off a backfill for the user's state in the background, so that we can
-        // delete the master view seed message from SQS immediately
+        // delete the master view seed message from the queue immediately
         let self_clone = self.clone();
         tokio::spawn(async move { self_clone.backfill_user_state(account_id).await });
 
