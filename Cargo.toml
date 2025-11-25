@@ -48,12 +48,12 @@ renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi
 
 
 # === Blockchain Dependencies === #
-alloy-contract = "1.0.32"
-alloy-sol-types = "1.0.32"
-alloy-dyn-abi = "1.0.32"
-alloy-json-rpc = "1.0.32"
-alloy-primitives = "1.0.32"
-alloy = "1.0.32"
+alloy-contract = "1.0.42"
+alloy-sol-types = "1.0.42"
+alloy-dyn-abi = "1.0.42"
+alloy-json-rpc = "1.0.42"
+alloy-primitives = "1.0.42"
+alloy = "1.0.42"
 
 # === Database Dependencies === #
 diesel = { version = "2.3" }

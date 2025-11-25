@@ -70,7 +70,7 @@ renegade-test-helpers = { package = "test-helpers", path = "/Users/akirillo/code
 inventory = "0.3"
 
 # === Blockchain === #
-alloy = { workspace = true, features = ["getrandom"] }
+alloy = { workspace = true, features = ["getrandom", "provider-anvil-node"] }
 
 # === Misc === #
 rand = "0.8"
