@@ -1,37 +1,17 @@
 //! The darkpool indexer, responsible for maintaining views of committed user
 //! state
 
-#![deny(unsafe_code)]
-#![deny(missing_docs)]
-#![deny(clippy::needless_pass_by_value)]
-#![deny(clippy::needless_pass_by_ref_mut)]
-#![deny(clippy::missing_docs_in_private_items)]
-#![feature(let_chains)]
-#![feature(trait_alias)]
-
 use std::sync::Arc;
 
 use clap::Parser;
-use tokio::task::JoinSet;
-use tracing::{error, warn};
-
-use crate::{
+use darkpool_indexer::{
     api::http::routes::http_routes,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
     message_queue::MessageQueue,
 };
-
-mod api;
-mod chain_event_listener;
-mod cli;
-mod crypto_mocks;
-mod darkpool_client;
-mod db;
-mod indexer;
-mod message_queue;
-mod state_transitions;
-mod types;
+use tokio::task::JoinSet;
+use tracing::{error, warn};
 
 // --------
 // | Main |
