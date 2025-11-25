@@ -2839,6 +2839,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2973,7 +2982,7 @@ dependencies = [
  "bimap",
  "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "clap",
- "colored",
+ "colored 2.2.0",
  "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "darkpool-client",
@@ -3405,13 +3414,16 @@ dependencies = [
  "bytes",
  "circuit-types 0.1.0",
  "clap",
+ "colored 3.0.0",
  "common 0.1.0",
  "constants 0.1.0",
  "darkpool-indexer-api",
  "diesel",
  "diesel-async",
  "diesel_migrations",
+ "eyre",
  "futures-util",
+ "inventory",
  "itertools 0.10.5",
  "native-tls",
  "postgres-native-tls",
@@ -3420,6 +3432,7 @@ dependencies = [
  "renegade-crypto 0.1.0",
  "serde",
  "serde_json",
+ "test-helpers",
  "thiserror 2.0.17",
  "tokio",
  "tokio-postgres",
@@ -5611,6 +5624,15 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc61209c082fbeb19919bee74b176221b27223e27b65d781eb91af24eb1fb46e"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -9698,6 +9720,20 @@ dependencies = [
  "dirs-next",
  "rustversion",
  "winapi",
+]
+
+[[package]]
+name = "test-helpers"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "futures",
+ "itertools 0.10.5",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
