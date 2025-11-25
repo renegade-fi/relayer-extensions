@@ -4,7 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-integration = []
+integration = [
+    "diesel_migrations",
+    "postgresql_embedded",
+    "diesel-async/migrations",
+]
+
+[[test]]
+name = "integration"
+path = "integration/main.rs"
+harness = false
+required-features = ["integration"]
 
 [dependencies]
 # === Renegade === #
@@ -22,7 +32,9 @@ async-trait = "0.1"
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
+diesel_migrations = { version = "2.3", optional = true }
 diesel-async = { workspace = true, features = ["postgres", "deadpool"] }
+postgresql_embedded = { version = "0.19", features = ["tokio", "bundled"], optional = true }
 native-tls = { workspace = true }
 postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
@@ -51,13 +63,16 @@ itertools = "0.10"
 bytes = "1.10.1"
 
 [dev-dependencies]
-# === DB === #
-postgresql_embedded = { version = "0.19", features = ["tokio", "bundled"] }
-diesel_migrations = "2.3"
-diesel-async = { workspace = true, features = ["migrations"] }
+# === Renegade === #
+renegade-test-helpers = { package = "test-helpers", path = "/Users/akirillo/code/renegade/test-helpers" }
+
+# === Runtime === #
+inventory = "0.3"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["getrandom"] }
 
 # === Misc === #
 rand = "0.8"
+colored = "3"
+eyre = "0.6"

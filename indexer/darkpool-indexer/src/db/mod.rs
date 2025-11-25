@@ -10,5 +10,5 @@ pub mod interface;
 pub mod models;
 mod utils;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "integration"))]
 pub mod test_utils;
