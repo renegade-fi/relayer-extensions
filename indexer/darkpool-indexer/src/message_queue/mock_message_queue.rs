@@ -50,9 +50,9 @@ pub struct MockMessageQueue<M> {
     message_groups: Mutex<HashMap<String, VecDeque<MockMessage<M>>>>,
 }
 
-impl<M> MockMessageQueue<M> {
-    /// Create a new mock message queue
-    pub fn new() -> Self {
+impl<M> Default for MockMessageQueue<M> {
+    /// Create a default mock message queue
+    fn default() -> Self {
         Self { message_groups: Mutex::new(HashMap::new()) }
     }
 }
@@ -162,7 +162,7 @@ mod tests {
     /// Test the basic send/poll functionality of the mock message queue
     #[tokio::test]
     async fn test_basic_send_poll() {
-        let message_queue = MockMessageQueue::new();
+        let message_queue = MockMessageQueue::default();
 
         // Send 3 unique messages to the first message group
         send_unique_messages(&message_queue, vec![0, 1, 2], FIRST_MESSAGE_GROUP).await.unwrap();
@@ -185,7 +185,7 @@ mod tests {
     /// Test the message deletion functionality of the mock message queue
     #[tokio::test]
     async fn test_delete_message() {
-        let message_queue = MockMessageQueue::new();
+        let message_queue = MockMessageQueue::default();
 
         // Send 3 unique messages to the first message group
         send_unique_messages(&message_queue, vec![0, 1, 2], FIRST_MESSAGE_GROUP).await.unwrap();
@@ -211,7 +211,7 @@ mod tests {
     /// deleted
     #[tokio::test]
     async fn test_send_after_delete() {
-        let message_queue = MockMessageQueue::new();
+        let message_queue = MockMessageQueue::default();
 
         // Send 3 unique messages to the first message group
         send_unique_messages(&message_queue, vec![0, 1, 2], FIRST_MESSAGE_GROUP).await.unwrap();
@@ -248,7 +248,7 @@ mod tests {
     /// blocking one another
     #[tokio::test]
     async fn test_multiple_message_groups() {
-        let message_queue = MockMessageQueue::new();
+        let message_queue = MockMessageQueue::default();
 
         // Send 3 unique messages to both message groups
         send_unique_messages(&message_queue, vec![0, 1, 2], FIRST_MESSAGE_GROUP).await.unwrap();

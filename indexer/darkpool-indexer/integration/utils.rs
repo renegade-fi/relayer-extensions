@@ -1,5 +1,12 @@
 //! Common utilities for integration tests
 
+use std::{fs, path::Path, str::FromStr};
+
+use alloy::{
+    primitives::{Address, U256},
+    providers::{DynProvider, Provider, ProviderBuilder, WsConnect, ext::AnvilApi},
+    signers::local::PrivateKeySigner,
+};
 use darkpool_indexer::{
     chain_event_listener::ChainEventListener,
     darkpool_client::DarkpoolClient,
@@ -8,20 +15,47 @@ use darkpool_indexer::{
     message_queue::{DynMessageQueue, mock_message_queue::MockMessageQueue},
     state_transitions::StateApplicator,
 };
-use eyre::Result;
+use eyre::{Result, eyre};
 use postgresql_embedded::PostgreSQL;
+use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
+use serde_json::Value;
+use tokio::runtime::Runtime;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The deployments file key for the Darkpool proxy contract
+const DARKPOOL_PROXY_DEPLOYMENT_KEY: &str = "DarkpoolProxy";
+/// The deployments file key for the base token contract
+const BASE_TOKEN_DEPLOYMENT_KEY: &str = "BaseToken";
+/// The deployments file key for the quote token contract
+const QUOTE_TOKEN_DEPLOYMENT_KEY: &str = "QuoteToken";
+/// The deployments file key for the WETH contract
+const WETH_DEPLOYMENT_KEY: &str = "Weth";
+/// The deployments file key for the Permit2 contract
+const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Construct a indexer instance for integration testing
-pub async fn build_test_indexer() -> Result<(Indexer, PostgreSQL)> {
+pub async fn build_test_indexer(
+    anvil_ws_url: &str,
+    pkey: &str,
+    deployments_path: &Path,
+) -> Result<(Indexer, PostgreSQL)> {
     // Set up a test DB client & state applicator
     let (db_client, postgres) = setup_test_db().await?;
     let state_applicator = StateApplicator::new(db_client.clone());
 
     // Set up the mock message queue
-    let message_queue = DynMessageQueue::new(MockMessageQueue::new());
+    let message_queue = DynMessageQueue::new(MockMessageQueue::default());
 
     // Set up the darkpool client
-    let darkpool_client: DarkpoolClient = build_test_darkpool_client();
+    let darkpool_client: DarkpoolClient =
+        build_test_darkpool_client(anvil_ws_url, pkey, deployments_path).await?;
 
     let chain_event_listener = ChainEventListener::new(
         darkpool_client.clone(),
@@ -43,7 +77,82 @@ pub async fn build_test_indexer() -> Result<(Indexer, PostgreSQL)> {
 }
 
 /// Construct a test darkpool client, targeting a local Anvil node w/ the
-/// darkpool deployed
-fn build_test_darkpool_client() -> DarkpoolClient {
-    todo!()
+/// darkpool contracts deployed
+async fn build_test_darkpool_client(
+    anvil_ws_url: &str,
+    pkey: &str,
+    deployments_path: &Path,
+) -> Result<DarkpoolClient> {
+    let wallet = PrivateKeySigner::from_str(pkey)?;
+    let wallet_address = wallet.address();
+
+    let ws = WsConnect::new(anvil_ws_url);
+    let ws_provider = ProviderBuilder::default().wallet(wallet).connect_ws(ws).await?.erased();
+
+    fund_test_wallet(&ws_provider, wallet_address, deployments_path).await?;
+
+    let darkpool_address = read_deployment(DARKPOOL_PROXY_DEPLOYMENT_KEY, deployments_path)?;
+
+    let darkpool = IDarkpoolV2Instance::new(darkpool_address, ws_provider);
+    Ok(DarkpoolClient::new(darkpool))
+}
+
+/// Fund the test wallet with the deployed mock ERC20s, and approve the Permit2
+/// contract as a spender
+async fn fund_test_wallet(
+    provider: &DynProvider,
+    wallet_address: Address,
+    deployments_path: &Path,
+) -> Result<()> {
+    let base_token_addr = read_deployment(BASE_TOKEN_DEPLOYMENT_KEY, deployments_path)?;
+    let quote_token_addr = read_deployment(QUOTE_TOKEN_DEPLOYMENT_KEY, deployments_path)?;
+    let weth_addr = read_deployment(WETH_DEPLOYMENT_KEY, deployments_path)?;
+
+    provider.anvil_deal_erc20(wallet_address, base_token_addr, U256::MAX).await?;
+    provider.anvil_deal_erc20(wallet_address, quote_token_addr, U256::MAX).await?;
+    provider.anvil_deal_erc20(wallet_address, weth_addr, U256::MAX).await?;
+
+    let permit2_addr = read_deployment(PERMIT2_DEPLOYMENT_KEY, deployments_path)?;
+
+    provider
+        .anvil_set_erc20_allowance(wallet_address, permit2_addr, base_token_addr, U256::MAX)
+        .await?;
+
+    provider
+        .anvil_set_erc20_allowance(wallet_address, permit2_addr, quote_token_addr, U256::MAX)
+        .await?;
+
+    provider.anvil_set_erc20_allowance(wallet_address, permit2_addr, weth_addr, U256::MAX).await?;
+
+    Ok(())
+}
+
+/// Read an address from the deployments.json file
+///
+/// Returns the address for the given key, or an error if not found
+pub fn read_deployment(key: &str, deployments_path: &Path) -> Result<Address> {
+    // Read the deployments file
+    let content = fs::read_to_string(deployments_path)?;
+    let json: Value = serde_json::from_str(&content)?;
+
+    // Get the address string
+    let addr_str = json
+        .get(key)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| eyre!("Key {} not found in deployments file", key))?;
+
+    // Parse into Address
+    let address = Address::from_str(addr_str)?;
+    Ok(address)
+}
+
+/// Run a future synchronously in a new tokio runtime.
+///
+/// The future is expected to return an `eyre::Result` which gets unwrapped and
+/// returned.
+pub fn run_blocking<F, T>(fut: F) -> T
+where
+    F: Future<Output = Result<T>>,
+{
+    Runtime::new().unwrap().block_on(fut).unwrap()
 }
