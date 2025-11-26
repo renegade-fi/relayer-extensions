@@ -120,7 +120,7 @@ impl Server {
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
         let key_desc = &ctx.user();
-        if self.check_bundle_rate_limit(key_desc).await.is_err() {
+        if self.consume_bundle_rate_limit_token(key_desc).await.is_err() {
             return Err(AuthServerError::no_match_found());
         };
 
