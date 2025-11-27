@@ -45,6 +45,8 @@ const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
 /// The name of the matching pool to route to if the execution cost rate limit
 /// is exceeded
 const GLOBAL_MATCHING_POOL: &str = "global";
+/// The default relayer fee to charge if no per-user or per-asset fee is set
+pub(crate) const DEFAULT_RELAYER_FEE: f64 = 0.0001; // 1bp
 
 /// A type alias for the response context for endpoints that return a match
 /// bundle

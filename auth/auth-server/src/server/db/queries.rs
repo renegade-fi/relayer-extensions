@@ -4,7 +4,10 @@ use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{error::AuthServerError, server::Server};
+use crate::{
+    error::AuthServerError,
+    server::{Server, api_handlers::DEFAULT_RELAYER_FEE},
+};
 
 use super::{
     models::{
@@ -147,13 +150,14 @@ impl Server {
             SELECT COALESCE(
                 (SELECT fee FROM user_fees WHERE id = $1 AND asset = $2),
                 (SELECT fee FROM asset_default_fees WHERE asset = $2),
-                0.0::float4
+                $3::float4
             ) as fee
         ";
 
         let fee_res: FeeResult = diesel::sql_query(query)
             .bind::<diesel::sql_types::Uuid, _>(user_id)
             .bind::<diesel::sql_types::Text, _>(&asset)
+            .bind::<diesel::sql_types::Float, _>(DEFAULT_RELAYER_FEE as f32)
             .load::<FeeResult>(&mut conn)
             .await
             .map_err(AuthServerError::db)?
