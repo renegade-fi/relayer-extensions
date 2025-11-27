@@ -1,0 +1,27 @@
+services:
+  anvil:
+    image: anvil
+    build:
+      context: anvil
+      dockerfile: Dockerfile
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: "curl -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}' http://localhost:8545 || exit 1"
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+  indexer:
+    build:
+      context: ../../../
+      dockerfile: indexer/darkpool-indexer/integration/Dockerfile
+      additional_contexts:
+        anvil: "service:anvil"
+    command: >
+      cargo test -p darkpool-indexer --test integration --features "integration" --
+        --deployments /deployments.json
+    tty: true
+    depends_on:
+      anvil:
+        condition: service_healthy
