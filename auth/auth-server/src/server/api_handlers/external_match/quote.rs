@@ -120,8 +120,9 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
         // We return no content if the rate limit is exceeded
-        if self.check_quote_rate_limit(&ctx.user()).await.is_err()
-            || self.check_bundle_rate_limit(&ctx.user()).await.is_err()
+        let user = &ctx.user();
+        if self.consume_quote_rate_limit_token(user).await.is_err()
+            || self.peek_bundle_rate_limit(user).await
         {
             return Err(AuthServerError::no_match_found());
         };
