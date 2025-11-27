@@ -23,11 +23,12 @@
 use chrono::TimeDelta;
 use redis::aio::ConnectionManager as RedisConnection;
 use tracing::{error, instrument, warn};
+use uuid::Uuid;
 
 use crate::{
     error::AuthServerError,
     server::{
-        db::create_redis_client,
+        db::{create_redis_client, models::RateLimitMethod},
         rate_limiter::{
             execution_cost_rate_limiter::ExecutionCostRateLimiter,
             redis_rate_limiter::RedisRateLimiter,
@@ -63,9 +64,11 @@ impl Server {
     #[instrument(skip(self))]
     pub async fn consume_quote_rate_limit_token(
         &self,
+        key_id: Uuid,
         key_description: &str,
     ) -> Result<(), AuthServerError> {
-        if !self.rate_limiter.consume_quote_token(key_description).await {
+        let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Quote).await?;
+        if !self.rate_limiter.consume_quote_token(key_description, max_tokens).await {
             warn!("Quote rate limit exceeded for key: {key_description}");
             return Err(AuthServerError::RateLimit);
         }
@@ -78,9 +81,11 @@ impl Server {
     #[instrument(skip(self))]
     pub async fn consume_bundle_rate_limit_token(
         &self,
+        key_id: Uuid,
         key_description: &str,
     ) -> Result<(), AuthServerError> {
-        if !self.rate_limiter.consume_bundle_token(key_description).await {
+        let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Assemble).await?;
+        if !self.rate_limiter.consume_bundle_token(key_description, max_tokens).await {
             warn!("Bundle rate limit exceeded for key: {key_description}");
             return Err(AuthServerError::RateLimit);
         }
@@ -89,15 +94,20 @@ impl Server {
 
     /// Peek at the bundle rate limit
     ///
-    /// Returns true if the rate limit is exceeded otherwise false
+    /// Returns an error if the rate limit is exceeded
     #[instrument(skip(self))]
-    pub async fn peek_bundle_rate_limit(&self, key_description: &str) -> bool {
-        let is_exceeded = self.rate_limiter.check_bundle_rate_limit(key_description).await;
-        if is_exceeded {
+    pub async fn peek_bundle_rate_limit(
+        &self,
+        key_id: Uuid,
+        key_description: &str,
+    ) -> Result<(), AuthServerError> {
+        let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Assemble).await?;
+        if self.rate_limiter.check_bundle_rate_limit(key_description, max_tokens).await {
             warn!("Bundle rate limit exceeded for key: {key_description}");
+            return Err(AuthServerError::RateLimit);
         }
 
-        is_exceeded
+        Ok(())
     }
 
     /// Check the gas sponsorship rate limiter
@@ -213,8 +223,9 @@ impl AuthServerRateLimiter {
     ///
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
-    pub async fn consume_quote_token(&self, user_id: &str) -> bool {
-        match self.quote_rate_limiter.increment_consumed(user_id, 1.0).await {
+    pub async fn consume_quote_token(&self, user_id: &str, max_tokens: Option<u32>) -> bool {
+        let max_tokens = max_tokens.map(|t| t as f64);
+        match self.quote_rate_limiter.increment_consumed(user_id, 1.0, max_tokens).await {
             Ok(_) => true,
             Err(AuthServerError::RateLimit) => false,
             Err(e) => {
@@ -228,8 +239,9 @@ impl AuthServerRateLimiter {
     ///
     /// If no token is available (rate limit reached), this method returns
     /// false, otherwise true
-    pub async fn consume_bundle_token(&self, user_id: &str) -> bool {
-        match self.bundle_rate_limiter.increment_consumed(user_id, 1.0).await {
+    pub async fn consume_bundle_token(&self, user_id: &str, max_tokens: Option<u32>) -> bool {
+        let max_tokens = max_tokens.map(|t| t as f64);
+        match self.bundle_rate_limiter.increment_consumed(user_id, 1.0, max_tokens).await {
             Ok(_) => true,
             Err(AuthServerError::RateLimit) => false,
             Err(e) => {
@@ -242,8 +254,9 @@ impl AuthServerRateLimiter {
     /// Check the bundle rate limit
     ///
     /// Returns true if the rate limit is exceeded otherwise false
-    pub async fn check_bundle_rate_limit(&self, user_id: &str) -> bool {
-        self.bundle_rate_limiter.rate_limit_exceeded(user_id).await.unwrap_or(false)
+    pub async fn check_bundle_rate_limit(&self, user_id: &str, max_tokens: Option<u32>) -> bool {
+        let max_tokens = max_tokens.map(|t| t as f64);
+        self.bundle_rate_limiter.rate_limit_exceeded(user_id, max_tokens).await.unwrap_or(false)
     }
 
     /// Increment the number of tokens available to a given user
@@ -253,7 +266,10 @@ impl AuthServerRateLimiter {
 
     /// Check if the given user has any remaining gas sponsorship budget
     pub async fn check_gas_sponsorship(&self, user_id: &str) -> Result<bool, AuthServerError> {
-        let exceeded = self.gas_sponsorship_rate_limiter.rate_limit_exceeded(user_id).await?;
+        let exceeded = self
+            .gas_sponsorship_rate_limiter
+            .rate_limit_exceeded(user_id, None /* max_tokens */)
+            .await?;
         Ok(!exceeded)
     }
 

@@ -12,7 +12,7 @@ use crate::{
 use super::{
     models::{
         ApiKey, AssetDefaultFee, FeeResult, NewApiKey, NewAssetDefaultFee, NewUserFee,
-        UserAssetFeeQueryResult,
+        RateLimitMethod, RateLimitResult, UserAssetFeeQueryResult,
     },
     schema::{api_keys, asset_default_fees, user_fees},
 };
@@ -313,5 +313,47 @@ impl Server {
         }
 
         Ok(())
+    }
+
+    // ---------------
+    // | Rate Limits |
+    // ---------------
+
+    /// Get the rate limit for a given API key and method
+    ///
+    /// Returns the configured rate limit if it exists, otherwise None
+    pub async fn get_rate_limit(
+        &self,
+        api_key_id: Uuid,
+        method: RateLimitMethod,
+    ) -> Result<Option<u32>, AuthServerError> {
+        // Check the cache first (supports negative caching)
+        if let Some(cached) = self.cache.get_rate_limit(api_key_id, method) {
+            return Ok(cached);
+        }
+
+        // Query the database using raw SQL to handle the enum type
+        let mut conn = self.get_db_conn().await?;
+        let query = "
+            SELECT requests_per_minute
+            FROM rate_limits
+            WHERE api_key_id = $1
+              AND method::text = $2
+            LIMIT 1
+        ";
+
+        let mut result = diesel::sql_query(query)
+            .bind::<diesel::sql_types::Uuid, _>(api_key_id)
+            .bind::<diesel::sql_types::Text, _>(method.as_str())
+            .load::<RateLimitResult>(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+        drop(conn); // Drop the connection to release the mutable borrow on `self`
+
+        // Cache the rate limit (including None for negative caching)
+        let limit = result.pop().map(|r| r.requests_per_minute as u32);
+        self.cache.cache_rate_limit(api_key_id, method, limit);
+
+        Ok(limit)
     }
 }
