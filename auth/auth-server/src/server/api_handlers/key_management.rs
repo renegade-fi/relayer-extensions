@@ -2,10 +2,11 @@
 
 use crate::{
     http_utils::request_response::empty_json_reply,
-    server::{db::models::NewApiKey, helpers::aes_encrypt},
+    server::db::models::{NewApiKey, NewRateLimit, RateLimitMethod},
+    server::helpers::aes_encrypt,
 };
 use auth_server_api::{
-    CreateApiKeyRequest,
+    CreateApiKeyRequest, SetRateLimitRequest,
     key_management::{AllKeysResponse, ApiKey as UserFacingApiKey},
 };
 use bytes::Bytes;
@@ -118,6 +119,36 @@ impl Server {
         self.authorize_management_request(&path, &headers, &body)?;
         self.remove_whitelist_entry_query(key_id).await?;
         self.cache.clear_key(key_id);
+
+        Ok(empty_json_reply())
+    }
+
+    /// Set a rate limit for an API key
+    ///
+    /// This sets the maximum requests per minute for a given API key and method
+    /// (quote or assemble).
+    #[instrument(skip_all)]
+    pub async fn set_rate_limit(
+        &self,
+        key_id: Uuid,
+        path: FullPath,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Result<Json, Rejection> {
+        // Check management auth on the request
+        self.authorize_management_request(&path, &headers, &body)?;
+
+        // Deserialize the request
+        let req: SetRateLimitRequest =
+            serde_json::from_slice(&body).map_err(ApiError::bad_request)?;
+
+        let method = RateLimitMethod::from_str(&req.method).ok_or_else(|| {
+            ApiError::bad_request("Invalid method, must be 'quote' or 'assemble'")
+        })?;
+
+        // Create and insert the rate limit
+        let new_rate_limit = NewRateLimit::new(key_id, method, req.requests_per_minute);
+        self.set_rate_limit_query(new_rate_limit).await?;
 
         Ok(empty_json_reply())
     }
