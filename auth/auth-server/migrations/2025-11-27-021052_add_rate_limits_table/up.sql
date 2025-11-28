@@ -5,7 +5,7 @@ CREATE TYPE rate_limit_method AS ENUM ('quote', 'assemble');
 CREATE TABLE rate_limits (
     api_key_id UUID NOT NULL,
     method rate_limit_method NOT NULL,
-    rate_limit INTEGER NOT NULL,
+    requests_per_minute INTEGER NOT NULL,
     PRIMARY KEY (api_key_id, method),
     FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE
 );

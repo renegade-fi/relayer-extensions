@@ -118,7 +118,9 @@ impl Server {
         ctx: &mut DirectMalleableMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
         // Check the rate limit
-        if self.consume_bundle_rate_limit_token(&ctx.user()).await.is_err() {
+        let key = ctx.key_id();
+        let user = &ctx.user();
+        if self.consume_bundle_rate_limit_token(key, user).await.is_err() {
             return Err(AuthServerError::no_match_found());
         };
         self.route_direct_malleable_match_req(ctx).await?;

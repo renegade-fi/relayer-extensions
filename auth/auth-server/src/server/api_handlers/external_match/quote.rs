@@ -118,12 +118,16 @@ impl Server {
         &self,
         ctx: &mut QuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
-        // Check the rate limit
-        // We return no content if the rate limit is exceeded
-        let user = &ctx.user();
-        if self.consume_quote_rate_limit_token(user).await.is_err()
-            || self.peek_bundle_rate_limit(user).await
-        {
+        // Check the quote and bundle rate limits in parallel
+        // We return no content if either rate limit is exceeded
+        let key = ctx.key_id();
+        let user = ctx.user();
+        let (quote_res, bundle_res) = tokio::join!(
+            self.consume_quote_rate_limit_token(key, &user),
+            self.peek_bundle_rate_limit(key, &user),
+        );
+
+        if quote_res.is_err() || bundle_res.is_err() {
             return Err(AuthServerError::no_match_found());
         };
         self.route_quote_req(ctx).await?;

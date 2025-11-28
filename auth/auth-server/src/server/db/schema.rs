@@ -31,7 +31,7 @@ diesel::table! {
     rate_limits (api_key_id, method) {
         api_key_id -> Uuid,
         method -> RateLimitMethod,
-        rate_limit -> Int4,
+        requests_per_minute -> Int4,
     }
 }
 
