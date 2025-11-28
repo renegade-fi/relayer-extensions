@@ -34,6 +34,11 @@ pub const API_KEYS_PATH: &str = "api-keys";
 /// POST /api-keys/{id}/deactivate
 pub const DEACTIVATE_API_KEY_PATH: &str = "/api-keys/{id}/deactivate";
 
+/// The path to set a rate limit for an API key
+///
+/// POST /api-keys/{id}/rate-limit
+pub const SET_RATE_LIMIT_PATH: &str = "/api-keys/{id}/rate-limit";
+
 /// A request to create a new API key
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateApiKeyRequest {
@@ -45,6 +50,15 @@ pub struct CreateApiKeyRequest {
     pub secret: String,
     /// A description of the API key's purpose
     pub description: String,
+}
+
+/// A request to set a rate limit for an API key
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetRateLimitRequest {
+    /// The rate limit method ("quote" or "assemble")
+    pub method: String,
+    /// The maximum number of requests per minute
+    pub requests_per_minute: u32,
 }
 
 /// An external quote response from the auth server, potentially with

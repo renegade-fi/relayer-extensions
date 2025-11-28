@@ -199,3 +199,20 @@ impl RateLimit {
         self.requests_per_minute as u32
     }
 }
+
+/// New rate limit for insertion (not using Insertable due to custom enum type)
+pub struct NewRateLimit {
+    /// The API key ID
+    pub api_key_id: Uuid,
+    /// The rate limit method
+    pub method: RateLimitMethod,
+    /// The requests per minute limit
+    pub requests_per_minute: u32,
+}
+
+impl NewRateLimit {
+    /// Create a new rate limit entry
+    pub fn new(api_key_id: Uuid, method: RateLimitMethod, requests_per_minute: u32) -> Self {
+        Self { api_key_id, method, requests_per_minute }
+    }
+}

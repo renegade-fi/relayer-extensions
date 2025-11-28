@@ -289,6 +289,20 @@ async fn main() -> Result<(), AuthServerError> {
             server.remove_whitelist_entry(id, path, headers, body).await
         });
 
+    // Set a rate limit for an API key
+    let set_rate_limit = warp::path(API_KEYS_PATH)
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("rate-limit"))
+        .and(warp::path::end())
+        .and(warp::post())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(with_server(server.clone()))
+        .and_then(|id, path, headers, body, server: Arc<Server>| async move {
+            server.set_rate_limit(id, path, headers, body).await
+        });
+
     // Get all user fees
     let get_all_user_fees = warp::path!("v0" / "fees" / "get-per-user-fees")
         .and(warp::get())
@@ -483,6 +497,7 @@ async fn main() -> Result<(), AuthServerError> {
         .or(expire_api_key)
         .or(whitelist_api_key)
         .or(remove_whitelist_entry)
+        .or(set_rate_limit)
         .or(add_api_key)
         .or(get_all_keys)
         .or(get_all_user_fees)

@@ -11,8 +11,8 @@ use crate::{
 
 use super::{
     models::{
-        ApiKey, AssetDefaultFee, FeeResult, NewApiKey, NewAssetDefaultFee, NewUserFee,
-        RateLimitMethod, RateLimitResult, UserAssetFeeQueryResult,
+        ApiKey, AssetDefaultFee, FeeResult, NewApiKey, NewAssetDefaultFee, NewRateLimit,
+        NewUserFee, RateLimitMethod, RateLimitResult, UserAssetFeeQueryResult,
     },
     schema::{api_keys, asset_default_fees, user_fees},
 };
@@ -355,5 +355,37 @@ impl Server {
         self.cache.cache_rate_limit(api_key_id, method, limit);
 
         Ok(limit)
+    }
+
+    /// Upsert a rate limit for a given API key and method
+    pub async fn set_rate_limit_query(
+        &self,
+        new_rate_limit: NewRateLimit,
+    ) -> Result<(), AuthServerError> {
+        let api_key_id = new_rate_limit.api_key_id;
+        let method = new_rate_limit.method;
+
+        // Use raw SQL for upsert since diesel doesn't handle custom enum types
+        // well with on_conflict
+        let mut conn = self.get_db_conn().await?;
+        let query = "
+            INSERT INTO rate_limits (api_key_id, method, requests_per_minute)
+            VALUES ($1, $2::rate_limit_method, $3)
+            ON CONFLICT (api_key_id, method)
+            DO UPDATE SET requests_per_minute = $3
+        ";
+
+        diesel::sql_query(query)
+            .bind::<diesel::sql_types::Uuid, _>(api_key_id)
+            .bind::<diesel::sql_types::Text, _>(method.as_str())
+            .bind::<diesel::sql_types::Integer, _>(new_rate_limit.requests_per_minute as i32)
+            .execute(&mut conn)
+            .await
+            .map_err(AuthServerError::db)?;
+        drop(conn);
+
+        // Update the cache with the new rate limit
+        self.cache.cache_rate_limit(api_key_id, method, Some(new_rate_limit.requests_per_minute));
+        Ok(())
     }
 }
