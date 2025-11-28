@@ -11,7 +11,7 @@ use auth_server_api::{
 use diesel::prelude::*;
 use uuid::Uuid;
 
-use crate::server::db::schema::{api_keys, asset_default_fees, user_fees};
+use crate::server::db::schema::{api_keys, asset_default_fees, rate_limits, user_fees};
 
 #[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = api_keys)]
@@ -143,4 +143,59 @@ impl From<UserAssetFeeQueryResult> for UserAssetFeeEntry {
 pub struct FeeResult {
     #[diesel(sql_type = diesel::sql_types::Float)]
     pub fee: f32,
+}
+
+/// Result of a rate limit query
+#[derive(diesel::QueryableByName)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct RateLimitResult {
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    pub requests_per_minute: i32,
+}
+
+/// Rate limit method enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RateLimitMethod {
+    Quote,
+    Assemble,
+}
+
+impl RateLimitMethod {
+    /// Convert to database string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RateLimitMethod::Quote => "quote",
+            RateLimitMethod::Assemble => "assemble",
+        }
+    }
+
+    /// Parse from database string representation
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "quote" => Some(RateLimitMethod::Quote),
+            "assemble" => Some(RateLimitMethod::Assemble),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Queryable, Selectable, Clone)]
+#[diesel(table_name = rate_limits)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct RateLimit {
+    pub api_key_id: Uuid,
+    pub method: String,
+    pub requests_per_minute: i32,
+}
+
+impl RateLimit {
+    /// Get the rate limit method as an enum
+    pub fn method_enum(&self) -> Option<RateLimitMethod> {
+        RateLimitMethod::from_str(&self.method)
+    }
+
+    /// Get the requests per minute as u32
+    pub fn requests_per_minute_u32(&self) -> u32 {
+        self.requests_per_minute as u32
+    }
 }

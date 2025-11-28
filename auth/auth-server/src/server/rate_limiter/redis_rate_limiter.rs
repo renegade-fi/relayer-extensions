@@ -93,10 +93,15 @@ impl RedisRateLimiter {
     // --------------------
 
     /// Returns whether the rate limit has been exceeded for a given user key
-    pub async fn rate_limit_exceeded(&self, user_key: &str) -> Result<bool, AuthServerError> {
+    pub async fn rate_limit_exceeded(
+        &self,
+        user_key: &str,
+        max_tokens: Option<f64>,
+    ) -> Result<bool, AuthServerError> {
         let key = self.build_key(user_key);
         let consumed: f64 = self.redis().get::<_, Option<f64>>(key).await?.unwrap_or(0.);
-        let exceeded = consumed >= self.max_tokens;
+        let limit = max_tokens.unwrap_or(self.max_tokens);
+        let exceeded = consumed >= limit;
         Ok(exceeded)
     }
 
@@ -117,6 +122,7 @@ impl RedisRateLimiter {
         &self,
         user_key: &str,
         amount: f64,
+        max_tokens: Option<f64>,
     ) -> Result<f64, AuthServerError> {
         let key = self.build_key(user_key);
 
@@ -124,9 +130,10 @@ impl RedisRateLimiter {
         //  1. Token limit
         //  2. TTL for the rate limit key
         //  3. Amount to increment the rate limit key by
+        let limit = max_tokens.unwrap_or(self.max_tokens);
         let ttl = self.get_ttl_seconds();
         let mut invocation = INCR_LIMIT_SCRIPT.key(key);
-        invocation.arg(self.max_tokens).arg(ttl).arg(amount);
+        invocation.arg(limit).arg(ttl).arg(amount);
 
         let consumed: f64 = self.redis().invoke_script(&invocation).await?;
         if consumed == -1. {
