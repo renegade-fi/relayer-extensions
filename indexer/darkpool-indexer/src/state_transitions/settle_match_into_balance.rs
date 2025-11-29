@@ -2,10 +2,11 @@
 //! object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use renegade_circuit_types::balance::PostMatchBalanceShare;
 use renegade_constants::Scalar;
 use tracing::warn;
 
-use crate::{state_transitions::{StateApplicator, error::StateTransitionError}, types::{BalanceSharesInMatch, ObligationAmounts}};
+use crate::{state_transitions::{StateApplicator, error::StateTransitionError}, types::{ObligationAmounts}};
 
 // ---------
 // | Types |
@@ -28,14 +29,14 @@ pub enum BalanceSettlementData {
     /// A balance update resulting from a public fill being settled
     PublicFill {
         /// The pre-update balance shares affected by the match
-        pre_update_balance_shares: BalanceSharesInMatch,
+        pre_update_balance_shares: PostMatchBalanceShare,
         /// The input/output amounts parsed from the public obligation bundle
         obligation_amounts: ObligationAmounts,
         /// Whether the balance being settled into is the input balance
         is_input_balance: bool,
     },
     /// A balance update resulting from a private fill being settled. Contains the updated balance shares resulting from the match settlement.
-    PrivateFill(BalanceSharesInMatch),
+    PrivateFill(PostMatchBalanceShare),
 }
 
 // --------------------------------
@@ -59,7 +60,7 @@ impl StateApplicator {
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
 
-        balance.update_from_match(updated_balance_shares);
+        balance.update_from_match(&updated_balance_shares);
 
         conn.transaction(move |conn| {
             async move {
@@ -92,22 +93,22 @@ impl StateApplicator {
 // ----------------------
 
 /// Get the updated balance shares resulting from a match settlement
-fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementData) -> BalanceSharesInMatch {
+fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementData) -> PostMatchBalanceShare {
     match balance_settlement_data {
         BalanceSettlementData::PublicFill { pre_update_balance_shares, obligation_amounts, is_input_balance } => {
-            let BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, mut amount_public_share } = pre_update_balance_shares;
+            let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, mut amount } = pre_update_balance_shares;
 
             let ObligationAmounts { amount_in, amount_out } = obligation_amounts;
 
             if is_input_balance {
-                amount_public_share -= amount_in;
+                amount -= amount_in;
             } else {
-                amount_public_share += amount_out;
+                amount += amount_out;
             }
 
             // TODO: One-time authority rotation once ABI is finalized
 
-            BalanceSharesInMatch { relayer_fee_public_share, protocol_fee_public_share, amount_public_share }
+            PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
         },
         BalanceSettlementData::PrivateFill (updated_balance_shares) => updated_balance_shares,
     }
