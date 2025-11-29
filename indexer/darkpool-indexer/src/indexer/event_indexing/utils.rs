@@ -2,10 +2,18 @@
 
 use std::iter;
 
-use renegade_circuit_types::{intent::IntentShare, traits::BaseType};
+use renegade_circuit_types::{
+    balance::PostMatchBalanceShare,
+    fixed_point::FixedPointShare,
+    intent::{IntentShare, PreMatchIntentShare},
+    traits::BaseType,
+};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
-use renegade_solidity_abi::v2::IDarkpoolV2::{ObligationBundle, SettlementBundle};
+use renegade_solidity_abi::v2::IDarkpoolV2::{
+    IntentPreMatchShare, IntentPublicShare, ObligationBundle,
+    PostMatchBalanceShare as ContractPostMatchBalanceShare, SettlementBundle,
+};
 
 use crate::{
     indexer::{
@@ -15,7 +23,8 @@ use crate::{
         },
     },
     state_transitions::{
-        create_intent::IntentCreationData, settle_match_into_balance::BalanceSettlementData,
+        create_intent::{IntentCreationData, from_pre_match_intent_and_amount},
+        settle_match_into_balance::BalanceSettlementData,
         settle_match_into_intent::IntentSettlementData,
     },
     types::ObligationAmounts,
@@ -106,6 +115,21 @@ fn get_balance_settlement_data(
     }
 }
 
+/// Convert a contract `PostMatchBalanceShare` to a circuit
+/// `PostMatchBalanceShare`
+pub fn to_circuit_post_match_balance_share(
+    post_match_balance_share: &ContractPostMatchBalanceShare,
+) -> PostMatchBalanceShare {
+    let ContractPostMatchBalanceShare { relayerFeeBalance, protocolFeeBalance, amount } =
+        post_match_balance_share.clone();
+
+    let relayer_fee_balance = u256_to_scalar(&relayerFeeBalance);
+    let protocol_fee_balance = u256_to_scalar(&protocolFeeBalance);
+    let amount = u256_to_scalar(&amount);
+
+    PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
+}
+
 /// Try to decode the intent creation data for the given party's newly-created
 /// intent from the given settlement & obligation bundles.
 ///
@@ -138,10 +162,8 @@ fn get_intent_creation_data(
 ) -> Result<Option<IntentCreationData>, IndexerError> {
     match settlement_bundle_data {
         SettlementBundleData::PrivateIntentPublicBalanceFirstFill(bundle) => {
-            let mut public_shares_iter =
-                bundle.auth.statement.intentPublicShare.iter().map(u256_to_scalar);
-
-            let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
+            let updated_intent_share =
+                to_circuit_intent_share(&bundle.auth.statement.intentPublicShare);
 
             Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
         },
@@ -149,7 +171,7 @@ fn get_intent_creation_data(
             // The `intentPublicShare` field in the auth statement excludes the public share
             // of the intent amount
             let pre_match_intent_shares =
-                bundle.auth.statement.intentPublicShare.each_ref().map(u256_to_scalar);
+                to_circuit_pre_match_intent_share(&bundle.auth.statement.intentPublicShare);
 
             let pre_match_amount_share =
                 u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
@@ -168,24 +190,50 @@ fn get_intent_creation_data(
         SettlementBundleData::RenegadeSettledPrivateFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
             // of the intent amount
-            let pre_match_shares_iter =
-                bundle.auth.statement.intentPublicShare.iter().map(u256_to_scalar);
+            let pre_match_intent_share =
+                to_circuit_pre_match_intent_share(&bundle.auth.statement.intentPublicShare);
 
             let amount_public_share =
                 obligation_bundle_data.get_updated_intent_amount_public_share(is_party0).ok_or(
                     IndexerError::invalid_obligation_bundle("expected private obligation bundle"),
                 )?;
 
-            let mut public_shares_iter =
-                pre_match_shares_iter.chain(iter::once(amount_public_share));
-
-            let updated_intent_share = IntentShare::from_scalars(&mut public_shares_iter);
+            let updated_intent_share =
+                from_pre_match_intent_and_amount(pre_match_intent_share, amount_public_share);
 
             Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
         },
         // Non-first-fill bundles don't create a new intent
         _ => Ok(None),
     }
+}
+
+/// Convert a contract `IntentPublicShare` to a circuit `IntentShare`
+fn to_circuit_intent_share(contract_intent_share: &IntentPublicShare) -> IntentShare {
+    let IntentPublicShare { inToken, outToken, owner, minPrice, amountIn } =
+        contract_intent_share.clone();
+
+    let contract_pre_match_share = IntentPreMatchShare { inToken, outToken, owner, minPrice };
+    let pre_match_intent_share = to_circuit_pre_match_intent_share(&contract_pre_match_share);
+
+    let amount_in = u256_to_scalar(&amountIn);
+
+    from_pre_match_intent_and_amount(pre_match_intent_share, amount_in)
+}
+
+/// Convert a contract `IntentPreMatchShare` to a circuit `PreMatchIntentShare`
+fn to_circuit_pre_match_intent_share(
+    contract_pre_match_share: &IntentPreMatchShare,
+) -> PreMatchIntentShare {
+    let IntentPreMatchShare { inToken, outToken, owner, minPrice } = contract_pre_match_share;
+
+    let in_token = u256_to_scalar(inToken);
+    let out_token = u256_to_scalar(outToken);
+    let owner = u256_to_scalar(owner);
+
+    let min_price = FixedPointShare::from_scalars(&mut iter::once(u256_to_scalar(minPrice)));
+
+    PreMatchIntentShare { in_token, out_token, owner, min_price }
 }
 
 /// Try to decode the intent settlement data for the given party from the given
