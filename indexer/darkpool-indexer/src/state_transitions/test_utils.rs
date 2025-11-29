@@ -5,8 +5,13 @@ use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
 use renegade_circuit_types::{
-    Amount, balance::Balance, csprng::PoseidonCSPRNG, fixed_point::FixedPoint, intent::Intent,
-    max_amount, state_wrapper::StateWrapper,
+    Amount,
+    balance::{Balance, PostMatchBalanceShare},
+    csprng::PoseidonCSPRNG,
+    fixed_point::FixedPoint,
+    intent::Intent,
+    max_amount,
+    state_wrapper::StateWrapper,
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
@@ -28,7 +33,7 @@ use crate::{
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
-    types::{BalanceSharesInMatch, ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
+    types::{ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
 };
 
 // -------------
@@ -255,7 +260,7 @@ fn update_balance_amount_and_fees(
     new_relayer_fee_balance: Amount,
     new_protocol_fee_balance: Amount,
     new_amount: Amount,
-) -> (Scalar, Scalar, Scalar) {
+) -> PostMatchBalanceShare {
     // Advance the recovery stream to indicate the next object version
     balance.recovery_stream.advance_by(1);
 
@@ -265,20 +270,20 @@ fn update_balance_amount_and_fees(
     balance.inner.amount = new_amount;
 
     // We re-encrypt only the updated shares of the balance
-    let new_relayer_fee_public_share = balance.stream_cipher_encrypt(&new_relayer_fee_balance);
-    let new_protocol_fee_public_share = balance.stream_cipher_encrypt(&new_protocol_fee_balance);
-    let new_amount_public_share = balance.stream_cipher_encrypt(&new_amount);
+    let relayer_fee_balance = balance.stream_cipher_encrypt(&new_relayer_fee_balance);
+    let protocol_fee_balance = balance.stream_cipher_encrypt(&new_protocol_fee_balance);
+    let amount = balance.stream_cipher_encrypt(&new_amount);
 
     // Update the public share of the balance
     let mut public_share = balance.public_share();
 
-    public_share.relayer_fee_balance = new_relayer_fee_public_share;
-    public_share.protocol_fee_balance = new_protocol_fee_public_share;
-    public_share.amount = new_amount_public_share;
+    public_share.relayer_fee_balance = relayer_fee_balance;
+    public_share.protocol_fee_balance = protocol_fee_balance;
+    public_share.amount = amount;
 
     balance.public_share = public_share;
 
-    (new_relayer_fee_public_share, new_protocol_fee_public_share, new_amount_public_share)
+    PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
 }
 
 /// Update the protocol fee in a balance.
@@ -475,21 +480,16 @@ pub fn gen_settle_match_into_balance_transition(
     let new_protocol_fee_balance =
         add_up_to_max(initial_balance.inner.protocol_fee_balance, protocol_fee_amount);
 
-    let (relayer_fee_public_share, protocol_fee_public_share, amount_public_share) =
-        update_balance_amount_and_fees(
-            &mut updated_balance,
-            new_relayer_fee_balance,
-            new_protocol_fee_balance,
-            new_amount,
-        );
+    let post_match_balance_share = update_balance_amount_and_fees(
+        &mut updated_balance,
+        new_relayer_fee_balance,
+        new_protocol_fee_balance,
+        new_amount,
+    );
 
     // For now, we simply use the `PrivateFill` variant of the balance settlement
     // data
-    let balance_settlement_data = BalanceSettlementData::PrivateFill(BalanceSharesInMatch {
-        relayer_fee_public_share,
-        protocol_fee_public_share,
-        amount_public_share,
-    });
+    let balance_settlement_data = BalanceSettlementData::PrivateFill(post_match_balance_share);
 
     // Construct the associated match settlement transition
     let transition = SettleMatchIntoBalanceTransition {

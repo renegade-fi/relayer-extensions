@@ -2,6 +2,7 @@
 //! obligation bundles
 
 use alloy::sol_types::SolValue;
+use renegade_circuit_types::balance::PostMatchBalanceShare;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
@@ -9,8 +10,8 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 };
 
 use crate::{
-    indexer::error::IndexerError,
-    types::{BalanceSharesInMatch, ObligationAmounts},
+    indexer::{error::IndexerError, event_indexing::utils::to_circuit_post_match_balance_share},
+    types::ObligationAmounts,
 };
 
 // -------------
@@ -75,25 +76,18 @@ impl ObligationBundleData {
         &self,
         is_party0: bool,
         is_input_balance: bool,
-    ) -> Option<BalanceSharesInMatch> {
-        let [relayer_fee_public_share, protocol_fee_public_share, amount_public_share] = match self
-        {
+    ) -> Option<PostMatchBalanceShare> {
+        let shares = match self {
             Self::Private(private_obligation_bundle) => match (is_party0, is_input_balance) {
-                (true, true) => private_obligation_bundle.statement.newInBalancePublicShares0,
-                (true, false) => private_obligation_bundle.statement.newOutBalancePublicShares0,
-                (false, true) => private_obligation_bundle.statement.newInBalancePublicShares1,
-                (false, false) => private_obligation_bundle.statement.newOutBalancePublicShares1,
+                (true, true) => &private_obligation_bundle.statement.newInBalancePublicShares0,
+                (true, false) => &private_obligation_bundle.statement.newOutBalancePublicShares0,
+                (false, true) => &private_obligation_bundle.statement.newInBalancePublicShares1,
+                (false, false) => &private_obligation_bundle.statement.newOutBalancePublicShares1,
             },
             _ => return None,
-        }
-        .each_ref()
-        .map(u256_to_scalar);
+        };
 
-        Some(BalanceSharesInMatch {
-            relayer_fee_public_share,
-            protocol_fee_public_share,
-            amount_public_share,
-        })
+        Some(to_circuit_post_match_balance_share(shares))
     }
 
     /// Get the updated public share of the intent amount for the given party,
