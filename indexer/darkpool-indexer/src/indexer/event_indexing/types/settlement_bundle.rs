@@ -5,7 +5,9 @@ use alloy::{
     primitives::{B256, keccak256},
     sol_types::SolValue,
 };
-use renegade_circuit_types::{fixed_point::FixedPoint, intent::Intent};
+use renegade_circuit_types::{
+    balance::PostMatchBalanceShare, fixed_point::FixedPoint, intent::Intent,
+};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
@@ -16,8 +18,8 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 };
 
 use crate::{
-    darkpool_client::utils::u256_to_amount, indexer::error::IndexerError,
-    types::BalanceSharesInMatch,
+    darkpool_client::utils::u256_to_amount,
+    indexer::{error::IndexerError, event_indexing::utils::to_circuit_post_match_balance_share},
 };
 
 // -------------
@@ -182,34 +184,27 @@ impl SettlementBundleData {
     pub fn get_pre_update_balance_shares(
         &self,
         is_input_balance: bool,
-    ) -> Option<BalanceSharesInMatch> {
-        let [relayer_fee_public_share, protocol_fee_public_share, amount_public_share] = match self
-        {
+    ) -> Option<PostMatchBalanceShare> {
+        let shares = match self {
             Self::RenegadeSettledIntentFirstFill(bundle) => {
                 if is_input_balance {
-                    bundle.settlementStatement.inBalancePublicShares
+                    &bundle.settlementStatement.inBalancePublicShares
                 } else {
-                    bundle.settlementStatement.outBalancePublicShares
+                    &bundle.settlementStatement.outBalancePublicShares
                 }
             },
             Self::RenegadeSettledIntent(bundle) => {
                 if is_input_balance {
-                    bundle.settlementStatement.inBalancePublicShares
+                    &bundle.settlementStatement.inBalancePublicShares
                 } else {
-                    bundle.settlementStatement.outBalancePublicShares
+                    &bundle.settlementStatement.outBalancePublicShares
                 }
             },
             // Natively-settled / private-fill bundles don't leak pre-update balance public shares
             _ => return None,
-        }
-        .each_ref()
-        .map(u256_to_scalar);
+        };
 
-        Some(BalanceSharesInMatch {
-            relayer_fee_public_share,
-            protocol_fee_public_share,
-            amount_public_share,
-        })
+        Some(to_circuit_post_match_balance_share(shares))
     }
 
     /// Try to decode the public intent with the given hash from the given

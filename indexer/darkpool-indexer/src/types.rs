@@ -5,7 +5,7 @@ use alloy::primitives::{Address, B256};
 use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
 use renegade_circuit_types::{
     Amount,
-    balance::{Balance, BalanceShare},
+    balance::{Balance, BalanceShare, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
     intent::{Intent, IntentShare},
     state_wrapper::StateWrapper,
@@ -140,12 +140,9 @@ impl BalanceStateObject {
     }
 
     /// Apply the balance updates resulting from a match settlement
-    pub fn update_from_match(&mut self, balance_shares_in_match: BalanceSharesInMatch) {
-        let BalanceSharesInMatch {
-            relayer_fee_public_share,
-            protocol_fee_public_share,
-            amount_public_share,
-        } = balance_shares_in_match;
+    pub fn update_from_match(&mut self, post_match_balance_share: &PostMatchBalanceShare) {
+        let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount } =
+            post_match_balance_share;
 
         // Advance the recovery stream to indicate the next object version
         self.balance.recovery_stream.advance_by(1);
@@ -153,17 +150,17 @@ impl BalanceStateObject {
         // Update the public shares of the balance
         let mut public_share = self.balance.public_share();
 
-        public_share.relayer_fee_balance = relayer_fee_public_share;
-        public_share.protocol_fee_balance = protocol_fee_public_share;
-        public_share.amount = amount_public_share;
+        public_share.relayer_fee_balance = *relayer_fee_balance;
+        public_share.protocol_fee_balance = *protocol_fee_balance;
+        public_share.amount = *amount;
 
         self.balance.public_share = public_share;
 
         // Update the plaintext balance fees & amount
         let share_stream = &mut self.balance.share_stream;
-        let new_relayer_fee = decrypt_amount(relayer_fee_public_share, share_stream);
-        let new_protocol_fee = decrypt_amount(protocol_fee_public_share, share_stream);
-        let new_amount = decrypt_amount(amount_public_share, share_stream);
+        let new_relayer_fee = decrypt_amount(*relayer_fee_balance, share_stream);
+        let new_protocol_fee = decrypt_amount(*protocol_fee_balance, share_stream);
+        let new_amount = decrypt_amount(*amount, share_stream);
 
         self.balance.inner.relayer_fee_balance = new_relayer_fee;
         self.balance.inner.protocol_fee_balance = new_protocol_fee;
@@ -217,18 +214,6 @@ impl From<BalanceStateObject> for ApiStateObject {
         let api_balance: ApiBalance = value.into();
         api_balance.into()
     }
-}
-
-/// The public shares of a balance that are updated as a result of a match
-/// settlement
-#[derive(Clone, Copy)]
-pub struct BalanceSharesInMatch {
-    /// The public share of the relayer fee in the balance
-    pub relayer_fee_public_share: Scalar,
-    /// The public share of the protocol fee in the balance
-    pub protocol_fee_public_share: Scalar,
-    /// The public share of the amount in the balance
-    pub amount_public_share: Scalar,
 }
 
 /// A struct representing the input/output amounts parsed from a public
