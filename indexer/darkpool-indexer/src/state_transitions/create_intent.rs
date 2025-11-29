@@ -1,9 +1,7 @@
 //! Defines the application-specific logic for creating a new intent object
 
-use std::iter;
-
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{intent::IntentShare, traits::BaseType};
+use renegade_circuit_types::{intent::{IntentShare, PreMatchIntentShare}};
 use renegade_constants::Scalar;
 use tracing::warn;
 
@@ -34,7 +32,7 @@ pub enum IntentCreationData {
     /// where only the pre-match amount public share is leaked
     RenegadeSettledPublicFill {
         /// The pre-match intent public shares, *excluding* the updated amount public share
-        pre_match_intent_shares: [Scalar; IntentShare::NUM_SCALARS - 1],
+        pre_match_intent_shares: PreMatchIntentShare,
         /// The pre-match amount public share
         pre_match_amount_share: Scalar,
         /// The input amount on the obligation bundle
@@ -152,10 +150,19 @@ fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShar
         IntentCreationData::NewIntentShare(updated_intent_share) => updated_intent_share,
         IntentCreationData::RenegadeSettledPublicFill { pre_match_intent_shares, pre_match_amount_share, amount_in: obligation_amount_in } => {
             let updated_amount_share = pre_match_amount_share - obligation_amount_in;
-            let mut intent_shares_iter = pre_match_intent_shares.into_iter().chain(iter::once(updated_amount_share));
-            IntentShare::from_scalars(&mut intent_shares_iter)
+            from_pre_match_intent_and_amount(pre_match_intent_shares, updated_amount_share)
         }
     }
+}
+
+/// Construct a circuit `IntentShare` from a `PreMatchIntentShare` and an amount
+pub fn from_pre_match_intent_and_amount(
+    pre_match_intent_share: PreMatchIntentShare,
+    amount_in: Scalar,
+) -> IntentShare {
+    let PreMatchIntentShare { in_token, out_token, owner, min_price } = pre_match_intent_share;
+
+    IntentShare { in_token, out_token, owner, min_price, amount_in }
 }
 
 #[cfg(test)]
