@@ -10,10 +10,10 @@ use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use crate::{
     db::client::DbClient,
     state_transitions::{
-        create_balance::CreateBalanceTransition, create_intent::CreateIntentTransition,
-        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
-        pay_relayer_fee::PayRelayerFeeTransition,
+        cancel_order::CancelOrderTransition, create_balance::CreateBalanceTransition,
+        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
+        deposit::DepositTransition, error::StateTransitionError,
+        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_intent::SettleMatchIntoIntentTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
@@ -21,6 +21,7 @@ use crate::{
     },
 };
 
+pub mod cancel_order;
 pub mod create_balance;
 pub mod create_intent;
 pub mod create_public_intent;
@@ -65,6 +66,8 @@ pub enum StateTransition {
     CreatePublicIntent(CreatePublicIntentTransition),
     /// The settlement of a match into a public intent
     SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition),
+    /// The cancellation of an order
+    CancelOrder(CancelOrderTransition),
 }
 
 /// The state applicator, responsible for applying high-level state transitions
@@ -108,6 +111,7 @@ impl StateApplicator {
             StateTransition::SettleMatchIntoPublicIntent(transition) => {
                 self.settle_match_into_public_intent(transition).await
             },
+            StateTransition::CancelOrder(transition) => self.cancel_order(transition).await,
         }
     }
 }

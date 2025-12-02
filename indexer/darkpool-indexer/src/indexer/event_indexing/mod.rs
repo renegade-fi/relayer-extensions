@@ -8,8 +8,9 @@ use renegade_circuit_types::{balance::BalanceShare, traits::BaseType};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    depositCall, depositNewBalanceCall, payPrivateProtocolFeeCall, payPrivateRelayerFeeCall,
-    payPublicProtocolFeeCall, payPublicRelayerFeeCall, settleMatchCall, withdrawCall,
+    cancelOrderCall, depositCall, depositNewBalanceCall, payPrivateProtocolFeeCall,
+    payPrivateRelayerFeeCall, payPublicProtocolFeeCall, payPublicRelayerFeeCall, settleMatchCall,
+    withdrawCall,
 };
 
 use crate::{
@@ -26,10 +27,10 @@ use crate::{
         },
     },
     state_transitions::{
-        StateTransition, create_balance::CreateBalanceTransition,
-        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
-        deposit::DepositTransition, pay_protocol_fee::PayProtocolFeeTransition,
-        pay_relayer_fee::PayRelayerFeeTransition,
+        StateTransition, cancel_order::CancelOrderTransition,
+        create_balance::CreateBalanceTransition, create_intent::CreateIntentTransition,
+        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
+        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_intent::SettleMatchIntoIntentTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
@@ -92,7 +93,9 @@ impl Indexer {
                         "no balance or intent nullified in match tx 0x{tx_hash:#x}",
                     ))
             },
-            // TODO: Handle intent cancellation once ABI is finalized
+            cancelOrderCall::SELECTOR => {
+                self.compute_cancel_order_transition(nullifier, tx_hash).await
+            },
             _ => Err(IndexerError::invalid_selector(selector)),
         }
     }
@@ -567,5 +570,17 @@ impl Indexer {
             version,
             block_number,
         }))
+    }
+
+    /// Compute a `CancelOrder` state transition associated with the now-spent
+    /// nullifier in a `cancelOrder` call
+    async fn compute_cancel_order_transition(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+    ) -> Result<StateTransition, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        Ok(StateTransition::CancelOrder(CancelOrderTransition { nullifier, block_number }))
     }
 }
