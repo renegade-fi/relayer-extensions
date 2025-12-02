@@ -99,7 +99,6 @@ fn get_updated_intent_amount_public_share(intent_settlement_data: IntentSettleme
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_intent_transition, gen_settle_match_into_intent_transition, setup_expected_state_object, setup_test_state_applicator, validate_intent_indexing}}};

@@ -21,6 +21,7 @@ use crate::{
     db::{client::DbClient, error::DbError, test_utils::setup_test_db},
     state_transitions::{
         StateApplicator,
+        cancel_order::CancelOrderTransition,
         create_balance::CreateBalanceTransition,
         create_intent::{CreateIntentTransition, IntentCreationData},
         create_public_intent::CreatePublicIntentTransition,
@@ -566,6 +567,14 @@ pub fn gen_settle_match_into_intent_transition(
     };
 
     (transition, updated_intent)
+}
+
+/// Generate the state transition which should result in the given
+/// order (intent) being cancelled
+pub fn gen_cancel_order_transition(initial_intent: &StateWrapper<Intent>) -> CancelOrderTransition {
+    let spent_nullifier = initial_intent.compute_nullifier();
+
+    CancelOrderTransition { nullifier: spent_nullifier, block_number: 0 }
 }
 
 // ---------------------------
