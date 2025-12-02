@@ -15,6 +15,7 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade-contracts.git?branch=andrew%2Fcontracts-v2-patch#b778743ae4411749be8936fd90039f479e7251b2"
 dependencies = [
  "alloy",
 ]
@@ -2626,6 +2627,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2647,6 +2649,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-bn254",
@@ -2657,8 +2660,8 @@ dependencies = [
  "async-trait",
  "bigdecimal 0.3.1",
  "byteorder",
- "circuit-macros 0.1.0",
- "constants 0.1.0",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "futures",
  "hex",
  "itertools 0.10.5",
@@ -2671,7 +2674,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rand 0.8.5",
- "renegade-crypto 0.1.0",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "serde_json",
 ]
@@ -2711,6 +2714,7 @@ dependencies = [
 [[package]]
 name = "circuits"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-crypto-primitives",
@@ -2719,9 +2723,9 @@ dependencies = [
  "ark-mpc",
  "bigdecimal 0.3.1",
  "bitvec",
- "circuit-macros 0.1.0",
- "circuit-types 0.1.0",
- "constants 0.1.0",
+ "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "futures",
  "itertools 0.10.5",
  "jf-primitives",
@@ -2731,10 +2735,10 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "rand 0.8.5",
- "renegade-crypto 0.1.0",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "serde_json",
- "util 0.1.0",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
 ]
 
 [[package]]
@@ -2940,15 +2944,16 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "alloy",
  "ark-mpc",
  "async-trait",
  "base64 0.22.1",
  "bimap",
- "circuit-types 0.1.0",
- "circuits 0.1.0",
- "constants 0.1.0",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "circuits 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "crossbeam",
  "derivative",
  "ed25519-dalek 1.0.1",
@@ -2964,14 +2969,14 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "rand_core 0.5.1",
- "renegade-crypto 0.1.0",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "signature 2.2.0",
  "tokio",
  "tracing",
- "util 0.1.0",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "uuid 1.17.0",
 ]
 
@@ -3129,6 +3134,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3480,7 +3486,7 @@ dependencies = [
 name = "darkpool-indexer"
 version = "0.1.0"
 dependencies = [
- "abi 0.1.0",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts.git?branch=andrew%2Fcontracts-v2-patch)",
  "alloy",
  "async-trait",
  "aws-config",
@@ -3488,11 +3494,11 @@ dependencies = [
  "base64 0.22.1",
  "bigdecimal 0.4.9",
  "bytes",
- "circuit-types 0.1.0",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "clap",
  "colored 3.0.0",
- "common 0.1.0",
- "constants 0.1.0",
+ "common 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "darkpool-indexer-api",
  "diesel",
  "diesel-async",
@@ -3505,7 +3511,7 @@ dependencies = [
  "postgres-native-tls",
  "postgresql_embedded",
  "rand 0.8.5",
- "renegade-crypto 0.1.0",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "serde_json",
  "test-helpers",
@@ -3513,7 +3519,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
- "util 0.1.0",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "uuid 1.17.0",
  "warp 0.4.2",
 ]
@@ -3523,8 +3529,8 @@ name = "darkpool-indexer-api"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives 1.4.1",
- "circuit-types 0.1.0",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "uuid 1.17.0",
 ]
@@ -8040,13 +8046,14 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-ec",
  "ark-ff 0.4.2",
  "ark-mpc",
  "bigdecimal 0.3.1",
- "constants 0.1.0",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "itertools 0.10.5",
  "lazy_static",
  "num-bigint",
@@ -9801,6 +9808,7 @@ dependencies = [
 [[package]]
 name = "test-helpers"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "eyre",
  "futures",
@@ -10658,13 +10666,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#fc0600d83365a4df13d63cf7d5d9068c9a350dea"
 dependencies = [
  "alloy",
  "ark-ec",
  "ark-serialize 0.4.2",
  "chrono",
- "circuit-types 0.1.0",
- "constants 0.1.0",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "crossbeam",
  "eyre",
  "futures",
@@ -10684,7 +10693,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "rand 0.8.5",
- "renegade-crypto 0.1.0",
+ "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "serde",
  "serde_json",
  "tokio",

@@ -14,5 +14,4 @@ docker compose \
     --build \
     --force-recreate \
     --abort-on-container-exit \
-    --abort-on-container-failure \
     --timeout 1

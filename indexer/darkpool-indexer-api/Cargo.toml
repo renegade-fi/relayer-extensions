@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 # === Renegade === #
-renegade-constants = { workspace = true }
-renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 
 # === Blockchain === #
 alloy-primitives = { workspace = true }
