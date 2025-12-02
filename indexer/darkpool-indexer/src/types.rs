@@ -298,6 +298,11 @@ impl IntentStateObject {
         let new_amount = decrypt_amount(new_amount_public_share, share_stream);
         self.intent.inner.amount_in = new_amount;
     }
+
+    /// Cancel the intent
+    pub fn cancel(&mut self) {
+        self.active = false;
+    }
 }
 
 impl From<IntentStateObject> for ApiIntent {
