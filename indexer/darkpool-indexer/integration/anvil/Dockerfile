@@ -27,4 +27,4 @@ RUN chmod +x /deploy_contracts.sh
 # is included in the image
 RUN /deploy_contracts.sh
 
-ENTRYPOINT ["anvil", "--state", "/anvil-state.json"]
+ENTRYPOINT ["anvil", "--state", "/anvil-state.json", "--host", "0.0.0.0"]
