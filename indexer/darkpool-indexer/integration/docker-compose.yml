@@ -21,6 +21,7 @@ services:
     command: >
       cargo test -p darkpool-indexer --test integration --features "integration" --
         --deployments /deployments.json
+        --anvil-ws-url ws://anvil:8545
     tty: true
     depends_on:
       anvil:

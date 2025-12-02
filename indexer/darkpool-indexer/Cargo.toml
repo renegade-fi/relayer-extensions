@@ -18,11 +18,11 @@ required-features = ["integration"]
 
 [dependencies]
 # === Renegade === #
-renegade-constants = { package = "constants", path = "/Users/akirillo/code/renegade/constants" }
-renegade-common = { package = "common", path = "/Users/akirillo/code/renegade/common" }
-renegade-crypto = { path = "/Users/akirillo/code/renegade/renegade-crypto" }
-renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
-renegade-util = { package = "util", path = "/Users/akirillo/code/renegade/util" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -54,7 +54,7 @@ base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
-renegade-solidity-abi = { package = "abi", path = "/Users/akirillo/code/renegade-contracts/abi", features = ["v2"] }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2"] }
 
 # === Misc === #
 thiserror = { workspace = true }
@@ -64,7 +64,7 @@ bytes = "1.10.1"
 
 [dev-dependencies]
 # === Renegade === #
-renegade-test-helpers = { package = "test-helpers", path = "/Users/akirillo/code/renegade/test-helpers" }
+renegade-test-helpers = { package = "test-helpers", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 
 # === Runtime === #
 inventory = "0.3"
