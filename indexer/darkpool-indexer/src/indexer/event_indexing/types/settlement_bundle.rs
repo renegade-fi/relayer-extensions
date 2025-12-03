@@ -154,7 +154,7 @@ impl SettlementBundleData {
     /// any
     pub fn get_intent_recovery_id(&self) -> Option<Scalar> {
         let recovery_id_u256 = match self {
-            Self::PrivateIntentPublicBalanceFirstFill(_) => todo!(),
+            Self::PrivateIntentPublicBalanceFirstFill(bundle) => bundle.auth.statement.recoveryId,
             Self::PrivateIntentPublicBalance(bundle) => bundle.auth.statement.recoveryId,
             Self::RenegadeSettledIntentFirstFill(bundle) => bundle.auth.statement.intentRecoveryId,
             Self::RenegadeSettledIntent(bundle) => bundle.auth.statement.intentRecoveryId,
