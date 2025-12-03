@@ -11,8 +11,8 @@ use renegade_circuit_types::{
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    IntentPreMatchShare, IntentPublicShare, ObligationBundle,
-    PostMatchBalanceShare as ContractPostMatchBalanceShare, SettlementBundle,
+    IntentPreMatchShare, ObligationBundle, PostMatchBalanceShare as ContractPostMatchBalanceShare,
+    SettlementBundle,
 };
 
 use crate::{
@@ -162,8 +162,8 @@ fn get_intent_creation_data(
 ) -> Result<Option<IntentCreationData>, IndexerError> {
     match settlement_bundle_data {
         SettlementBundleData::PrivateIntentPublicBalanceFirstFill(bundle) => {
-            let updated_intent_share =
-                to_circuit_intent_share(&bundle.auth.statement.intentPublicShare);
+            let updated_intent_share: IntentShare =
+                bundle.auth.statement.intentPublicShare.clone().into();
 
             Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
         },
@@ -208,20 +208,8 @@ fn get_intent_creation_data(
     }
 }
 
-/// Convert a contract `IntentPublicShare` to a circuit `IntentShare`
-fn to_circuit_intent_share(contract_intent_share: &IntentPublicShare) -> IntentShare {
-    let IntentPublicShare { inToken, outToken, owner, minPrice, amountIn } =
-        contract_intent_share.clone();
-
-    let contract_pre_match_share = IntentPreMatchShare { inToken, outToken, owner, minPrice };
-    let pre_match_intent_share = to_circuit_pre_match_intent_share(&contract_pre_match_share);
-
-    let amount_in = u256_to_scalar(&amountIn);
-
-    from_pre_match_intent_and_amount(pre_match_intent_share, amount_in)
-}
-
-/// Convert a contract `IntentPreMatchShare` to a circuit `PreMatchIntentShare`
+/// Convert a contract `IntentPreMatchShare` to a circuit
+/// `PreMatchIntentShare`
 fn to_circuit_pre_match_intent_share(
     contract_pre_match_share: &IntentPreMatchShare,
 ) -> PreMatchIntentShare {
