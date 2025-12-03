@@ -95,7 +95,7 @@ mod tests {
         // Assert that the nullifier is marked as processed
         assert!(db_client.check_nullifier_processed(nullifier, &mut conn).await?);
 
-        cleanup_test_db(postgres).await?;
+        cleanup_test_db(&postgres).await?;
 
         Ok(())
     }

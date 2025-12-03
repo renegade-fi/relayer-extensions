@@ -23,7 +23,7 @@ use rand::thread_rng;
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use serde_json::Value;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 use uuid::Uuid;
 
 // -------------
@@ -91,7 +91,7 @@ async fn build_test_darkpool_client(
     let wallet_address = wallet.address();
 
     let ws = WsConnect::new(anvil_ws_url);
-    let ws_provider = ProviderBuilder::default().wallet(wallet).connect_ws(ws).await?.erased();
+    let ws_provider = ProviderBuilder::new().wallet(wallet).connect_ws(ws).await?.erased();
 
     fund_test_wallet(&ws_provider, wallet_address, deployments_path).await?;
 
@@ -182,13 +182,13 @@ pub async fn register_test_master_view_seed(
     Ok(())
 }
 
-/// Run a future synchronously in a new tokio runtime.
+/// Run a future synchronously in the current tokio runtime.
 ///
 /// The future is expected to return an `eyre::Result` which gets unwrapped and
 /// returned.
-pub fn run_blocking<F, T>(fut: F) -> T
+pub fn run_blocking_current<F, T>(fut: F) -> T
 where
     F: Future<Output = Result<T>>,
 {
-    Runtime::new().unwrap().block_on(fut).unwrap()
+    Handle::current().block_on(fut).unwrap()
 }

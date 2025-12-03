@@ -129,7 +129,7 @@ mod tests {
         let mut conn = db_client.get_db_conn().await?;
         assert!(db_client.check_nullifier_processed(settle_match_into_intent_transition.nullifier, &mut conn).await?);
 
-        cleanup_test_db(postgres).await?;
+        cleanup_test_db(&postgres).await?;
 
         Ok(())
     }
