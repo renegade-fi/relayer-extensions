@@ -3,3 +3,9 @@
 **/*.vscode
 **/Dockerfile
 **/target
+
+# Exclusions specific to darkpool-indexer integration build
+indexer/darkpool-indexer/integration/anvil
+indexer/darkpool-indexer/integration/docker-compose.yml
+indexer/darkpool-indexer/integration/run-integration-tests.sh
+indexer/darkpool-indexer/Dockerfile

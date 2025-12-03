@@ -6,11 +6,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8545:8545"
-    healthcheck:
-      test: "curl -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}' http://localhost:8545 || exit 1"
-      interval: 5s
-      timeout: 10s
-      retries: 3
 
   indexer:
     build:
@@ -24,5 +19,4 @@ services:
         --anvil-ws-url ws://anvil:8545
     tty: true
     depends_on:
-      anvil:
-        condition: service_healthy
+      - anvil

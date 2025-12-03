@@ -41,7 +41,7 @@ pub async fn setup_test_db() -> Result<(DbClient, PostgreSQL), DbError> {
 }
 
 /// Clean up the test database instance.
-pub async fn cleanup_test_db(postgres: PostgreSQL) -> Result<(), DbError> {
+pub async fn cleanup_test_db(postgres: &PostgreSQL) -> Result<(), DbError> {
     // Drop all connections to the test database except the current one.
     // We do this here to avoid having to manually `drop` connections established
     // in tests before invoking this function.
@@ -54,7 +54,7 @@ pub async fn cleanup_test_db(postgres: PostgreSQL) -> Result<(), DbError> {
 
     // Create a standalone connection to the test database for executing the above
     // query
-    let mut conn = create_unpooled_conn(&postgres).await?;
+    let mut conn = create_unpooled_conn(postgres).await?;
 
     sql_query(drop_conns_query)
         .bind::<diesel::sql_types::Text, _>(TEST_DB_NAME.to_string())
