@@ -23,7 +23,6 @@ pub struct BackfillRequest {
 // --------------------------
 
 /// A state object returned by the API
-// TODO: Add actual object types
 #[derive(Serialize, Deserialize)]
 pub enum ApiStateObject {
     /// A balance state object
