@@ -8,6 +8,9 @@ integration = [
     "diesel_migrations",
     "postgresql_embedded",
     "diesel-async/migrations",
+    "renegade-solidity-abi/transfer-auth",
+    "renegade-circuits",
+    "test-helpers",
 ]
 
 [[test]]
@@ -23,6 +26,9 @@ renegade-common = { package = "common", git = "https://github.com/renegade-fi/re
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", features = ["test_helpers"], optional = true }
+test-helpers = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", optional = true }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -54,7 +60,7 @@ base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2"] }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2", "v2-relayer-types", "transfer-auth"] }
 
 # === Misc === #
 thiserror = { workspace = true }
@@ -63,9 +69,6 @@ itertools = "0.10"
 bytes = "1.10.1"
 
 [dev-dependencies]
-# === Renegade === #
-renegade-test-helpers = { package = "test-helpers", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-
 # === Runtime === #
 inventory = "0.3"
 

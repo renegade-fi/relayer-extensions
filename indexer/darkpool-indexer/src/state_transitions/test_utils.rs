@@ -3,16 +3,17 @@
 use alloy::primitives::{Address, B256};
 use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
-use rand::{Rng, distributions::uniform::SampleRange, thread_rng};
+use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
     Amount,
-    balance::{Balance, PostMatchBalanceShare},
+    balance::{Balance, DarkpoolStateBalance, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
     fixed_point::FixedPoint,
     intent::Intent,
     max_amount,
     state_wrapper::StateWrapper,
 };
+use renegade_circuits::test_helpers::random_amount;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
 use uuid::Uuid;
@@ -71,16 +72,6 @@ pub fn relayer_fee() -> FixedPoint {
 /// Get the protocol fee as a fixed point
 pub fn protocol_fee() -> FixedPoint {
     FixedPoint::from_f64_round_down(PROTOCOL_FEE_F64)
-}
-
-/// Generate a random amount valid in a wallet
-///
-/// Leave buffer for additions and subtractions
-pub fn random_amount() -> Amount {
-    let mut rng = thread_rng();
-    let amt = (0..max_amount()).sample_single(&mut rng);
-
-    amt / 10
 }
 
 /// Add two amounts, saturating up to the maximum amount
@@ -158,7 +149,7 @@ pub async fn setup_expected_state_object(
 /// object.
 pub fn gen_create_balance_transition(
     expected_state_object: &ExpectedStateObject,
-) -> (CreateBalanceTransition, StateWrapper<Balance>) {
+) -> (CreateBalanceTransition, DarkpoolStateBalance) {
     let mint = Address::random();
     let owner = Address::random();
     let relayer_fee_recipient = Address::random();
@@ -234,7 +225,7 @@ pub fn gen_create_intent_transition(
 /// Update the amount of a balance.
 ///
 /// Returns the public share of the new amount.
-fn update_balance_amount(balance: &mut StateWrapper<Balance>, new_amount: Amount) -> Scalar {
+fn update_balance_amount(balance: &mut DarkpoolStateBalance, new_amount: Amount) -> Scalar {
     // Advance the recovery stream to indicate the next object version
     balance.recovery_stream.advance_by(1);
 
@@ -257,7 +248,7 @@ fn update_balance_amount(balance: &mut StateWrapper<Balance>, new_amount: Amount
 ///
 /// Returns the public shares of the new fees & amount.
 fn update_balance_amount_and_fees(
-    balance: &mut StateWrapper<Balance>,
+    balance: &mut DarkpoolStateBalance,
     new_relayer_fee_balance: Amount,
     new_protocol_fee_balance: Amount,
     new_amount: Amount,
@@ -291,7 +282,7 @@ fn update_balance_amount_and_fees(
 ///
 /// Returns the public share of the new protocol fee.
 fn update_balance_protocol_fee(
-    balance: &mut StateWrapper<Balance>,
+    balance: &mut DarkpoolStateBalance,
     new_protocol_fee_balance: Amount,
 ) -> Scalar {
     // Advance the recovery stream to indicate the next object version
@@ -315,7 +306,7 @@ fn update_balance_protocol_fee(
 ///
 /// Returns the public share of the new relayer fee.
 fn update_balance_relayer_fee(
-    balance: &mut StateWrapper<Balance>,
+    balance: &mut DarkpoolStateBalance,
     new_relayer_fee_balance: Amount,
 ) -> Scalar {
     // Advance the recovery stream to indicate the next object version
@@ -361,8 +352,8 @@ fn update_intent_amount(intent: &mut StateWrapper<Intent>, new_amount: Amount) -
 ///
 /// Returns the deposit transition, along with the updated balance.
 pub fn gen_deposit_transition(
-    initial_balance: &StateWrapper<Balance>,
-) -> (DepositTransition, StateWrapper<Balance>) {
+    initial_balance: &DarkpoolStateBalance,
+) -> (DepositTransition, DarkpoolStateBalance) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
@@ -383,8 +374,8 @@ pub fn gen_deposit_transition(
 ///
 /// Returns the withdrawal transition, along with the updated balance.
 pub fn gen_withdraw_transition(
-    initial_balance: &StateWrapper<Balance>,
-) -> (WithdrawTransition, StateWrapper<Balance>) {
+    initial_balance: &DarkpoolStateBalance,
+) -> (WithdrawTransition, DarkpoolStateBalance) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
@@ -405,8 +396,8 @@ pub fn gen_withdraw_transition(
 ///
 /// Returns the protocol fee payment transition, along with the updated balance.
 pub fn gen_pay_protocol_fee_transition(
-    initial_balance: &StateWrapper<Balance>,
-) -> (PayProtocolFeeTransition, StateWrapper<Balance>) {
+    initial_balance: &DarkpoolStateBalance,
+) -> (PayProtocolFeeTransition, DarkpoolStateBalance) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
@@ -433,8 +424,8 @@ pub fn gen_pay_protocol_fee_transition(
 ///
 /// Returns the relayer fee payment transition, along with the updated balance.
 pub fn gen_pay_relayer_fee_transition(
-    initial_balance: &StateWrapper<Balance>,
-) -> (PayRelayerFeeTransition, StateWrapper<Balance>) {
+    initial_balance: &DarkpoolStateBalance,
+) -> (PayRelayerFeeTransition, DarkpoolStateBalance) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
@@ -461,8 +452,8 @@ pub fn gen_pay_relayer_fee_transition(
 ///
 /// Returns the match settlement transition, along with the updated balance.
 pub fn gen_settle_match_into_balance_transition(
-    initial_balance: &StateWrapper<Balance>,
-) -> (SettleMatchIntoBalanceTransition, StateWrapper<Balance>) {
+    initial_balance: &DarkpoolStateBalance,
+) -> (SettleMatchIntoBalanceTransition, DarkpoolStateBalance) {
     let spent_nullifier = initial_balance.compute_nullifier();
 
     let mut updated_balance = initial_balance.clone();
@@ -637,7 +628,7 @@ pub async fn validate_expected_state_object_rotation(
 /// circuit type
 pub async fn validate_balance_indexing(
     db_client: &DbClient,
-    expected_balance: &StateWrapper<Balance>,
+    expected_balance: &DarkpoolStateBalance,
 ) -> Result<(), DbError> {
     let mut conn = db_client.get_db_conn().await?;
 

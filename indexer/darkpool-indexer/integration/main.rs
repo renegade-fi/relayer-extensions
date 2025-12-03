@@ -6,19 +6,16 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::missing_docs_in_private_items)]
 
-use std::{path::PathBuf, str::FromStr};
+use std::path::PathBuf;
 
-use alloy::{primitives::U256, providers::ext::AnvilApi, signers::local::PrivateKeySigner};
 use clap::Parser;
-use darkpool_indexer::{indexer::Indexer, types::MasterViewSeed};
-use postgresql_embedded::PostgreSQL;
-use renegade_test_helpers::{integration_test_main, types::TestVerbosity};
+use test_helpers::{integration_test_main, types::TestVerbosity};
 
-use crate::utils::{
-    build_test_indexer, gen_test_master_view_seed, register_test_master_view_seed, run_blocking,
-};
+use crate::test_args::TestArgs;
 
-mod utils;
+mod test_args;
+mod tests;
+pub(crate) mod utils;
 
 // -------------
 // | Constants |
@@ -52,37 +49,6 @@ struct CliArgs {
     verbosity: TestVerbosity,
 }
 
-#[derive(Clone)]
-struct TestArgs {
-    /// The indexer instance to test
-    indexer: Indexer,
-    /// The local PostgreSQL instance to use for testing
-    postgres: PostgreSQL,
-    /// The ID of the Anvil snapshot from which to run each test
-    anvil_snapshot_id: U256,
-    /// The test account's master view seed, which will be pre-allocated into
-    /// the indexer
-    test_master_view_seed: MasterViewSeed,
-}
-
-impl From<CliArgs> for TestArgs {
-    fn from(value: CliArgs) -> Self {
-        run_blocking(async {
-            let test_wallet = PrivateKeySigner::from_str(&value.pkey)?;
-            let test_master_view_seed = gen_test_master_view_seed(&test_wallet);
-
-            let (indexer, postgres) =
-                build_test_indexer(&value.anvil_ws_url, test_wallet, &value.deployments).await?;
-
-            let anvil_snapshot_id = indexer.darkpool_client.provider().anvil_snapshot().await?;
-
-            register_test_master_view_seed(&indexer, &test_master_view_seed).await?;
-
-            let test_args = Self { indexer, postgres, anvil_snapshot_id, test_master_view_seed };
-
-            Ok::<_, eyre::Report>(test_args)
-        })
-    }
-}
-
 integration_test_main!(CliArgs, TestArgs);
+
+// TODO: Graceful DB shutdown in harness teardown
