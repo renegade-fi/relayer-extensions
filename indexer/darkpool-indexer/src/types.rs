@@ -31,6 +31,7 @@ const GLOBAL_MATCHING_POOL: &str = "global";
 // ---------
 
 /// An account's master view seed
+#[derive(Clone)]
 pub struct MasterViewSeed {
     /// The ID of the seed owner's account
     pub account_id: Uuid,
