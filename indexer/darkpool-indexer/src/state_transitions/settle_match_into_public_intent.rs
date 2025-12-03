@@ -124,7 +124,7 @@ mod tests {
                 .await?
         );
 
-        cleanup_test_db(postgres).await?;
+        cleanup_test_db(&postgres).await?;
 
         Ok(())
     }
