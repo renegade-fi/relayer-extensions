@@ -1,5 +1,7 @@
 //! Utilities for sending blockchain transactions
 
+use std::time::Duration;
+
 use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::Ethereum,
@@ -34,11 +36,21 @@ pub async fn send_tx<C: CallDecoder>(tx: TestCallBuilder<'_, C>) -> Result<Trans
     let pending_tx = tx.send().await?;
 
     let tx_hash = *pending_tx.tx_hash();
-    let receipt = tx
-        .provider
-        .get_transaction_receipt(tx_hash)
-        .await?
-        .ok_or(eyre::eyre!("Transaction receipt not found for tx {tx_hash:#x}"))?;
 
-    Ok(receipt)
+    // Retry fetching the receipt up to 10 times
+    // The current version of alloy has issues watching the pending transaction
+    // directly, so we patch this here
+    let mut remaining_attempts = 10;
+    let provider = tx.provider;
+    while remaining_attempts > 0 {
+        match provider.get_transaction_receipt(tx_hash).await? {
+            Some(receipt) => return Ok(receipt),
+            None => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                remaining_attempts -= 1;
+            },
+        }
+    }
+
+    eyre::bail!("no tx receipt found after retries");
 }
