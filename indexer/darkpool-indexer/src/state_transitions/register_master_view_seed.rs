@@ -133,7 +133,7 @@ mod tests {
         validate_new_expected_state_object_indexing(&test_applicator.db_client, &master_view_seed)
             .await?;
 
-        cleanup_test_db(postgres).await?;
+        cleanup_test_db(&postgres).await?;
 
         Ok(())
     }
