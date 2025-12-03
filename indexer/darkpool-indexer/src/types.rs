@@ -5,9 +5,9 @@ use alloy::primitives::{Address, B256};
 use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
 use renegade_circuit_types::{
     Amount,
-    balance::{Balance, BalanceShare, PostMatchBalanceShare},
+    balance::{BalanceShare, DarkpoolStateBalance, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
-    intent::{Intent, IntentShare},
+    intent::{DarkpoolStateIntent, Intent, IntentShare},
     state_wrapper::StateWrapper,
     traits::{BaseType, SecretShareType},
 };
@@ -93,7 +93,7 @@ impl ExpectedStateObject {
 #[derive(Clone)]
 pub struct BalanceStateObject {
     /// The underlying balance circuit type
-    pub balance: StateWrapper<Balance>,
+    pub balance: DarkpoolStateBalance,
     /// The ID of the account which owns the balance
     pub account_id: Uuid,
     /// Whether the balance is active
@@ -231,7 +231,7 @@ pub struct ObligationAmounts {
 #[derive(Clone)]
 pub struct IntentStateObject {
     /// The underlying intent circuit type
-    pub intent: StateWrapper<Intent>,
+    pub intent: DarkpoolStateIntent,
     /// The ID of the account which owns the intent
     pub account_id: Uuid,
     /// Whether the intent is active

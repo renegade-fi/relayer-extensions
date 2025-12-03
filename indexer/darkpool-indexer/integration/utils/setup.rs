@@ -1,4 +1,4 @@
-//! Common utilities for integration tests
+//! Utilities for setting up the integration tests
 
 use std::{fs, path::Path, str::FromStr};
 
@@ -33,13 +33,13 @@ use uuid::Uuid;
 /// The deployments file key for the Darkpool proxy contract
 const DARKPOOL_PROXY_DEPLOYMENT_KEY: &str = "DarkpoolProxy";
 /// The deployments file key for the base token contract
-const BASE_TOKEN_DEPLOYMENT_KEY: &str = "BaseToken";
+pub(crate) const BASE_TOKEN_DEPLOYMENT_KEY: &str = "BaseToken";
 /// The deployments file key for the quote token contract
 const QUOTE_TOKEN_DEPLOYMENT_KEY: &str = "QuoteToken";
 /// The deployments file key for the WETH contract
 const WETH_DEPLOYMENT_KEY: &str = "Weth";
 /// The deployments file key for the Permit2 contract
-const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
+pub(crate) const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
 
 // -----------
 // | Helpers |
