@@ -145,8 +145,6 @@ impl Indexer {
             .map(|key_str| HmacKey::from_base64_string(key_str).map_err(IndexerError::parse))
             .transpose()?;
 
-        // TODO: Parse remaining CLI arguments
-
         let indexer = Self {
             db_client,
             state_applicator,
