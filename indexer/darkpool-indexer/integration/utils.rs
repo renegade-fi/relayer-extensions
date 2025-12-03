@@ -13,13 +13,18 @@ use darkpool_indexer::{
     db::test_utils::setup_test_db,
     indexer::Indexer,
     message_queue::{DynMessageQueue, mock_message_queue::MockMessageQueue},
-    state_transitions::StateApplicator,
+    state_transitions::{StateApplicator, StateTransition},
+    types::MasterViewSeed,
 };
+use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use eyre::{Result, eyre};
 use postgresql_embedded::PostgreSQL;
+use rand::thread_rng;
+use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use serde_json::Value;
 use tokio::runtime::Runtime;
+use uuid::Uuid;
 
 // -------------
 // | Constants |
@@ -43,7 +48,7 @@ const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
 /// Construct a indexer instance for integration testing
 pub async fn build_test_indexer(
     anvil_ws_url: &str,
-    pkey: &str,
+    wallet: PrivateKeySigner,
     deployments_path: &Path,
 ) -> Result<(Indexer, PostgreSQL)> {
     // Set up a test DB client & state applicator
@@ -55,7 +60,7 @@ pub async fn build_test_indexer(
 
     // Set up the darkpool client
     let darkpool_client: DarkpoolClient =
-        build_test_darkpool_client(anvil_ws_url, pkey, deployments_path).await?;
+        build_test_darkpool_client(anvil_ws_url, wallet, deployments_path).await?;
 
     let chain_event_listener = ChainEventListener::new(
         darkpool_client.clone(),
@@ -80,10 +85,9 @@ pub async fn build_test_indexer(
 /// darkpool contracts deployed
 async fn build_test_darkpool_client(
     anvil_ws_url: &str,
-    pkey: &str,
+    wallet: PrivateKeySigner,
     deployments_path: &Path,
 ) -> Result<DarkpoolClient> {
-    let wallet = PrivateKeySigner::from_str(pkey)?;
     let wallet_address = wallet.address();
 
     let ws = WsConnect::new(anvil_ws_url);
@@ -144,6 +148,38 @@ pub fn read_deployment(key: &str, deployments_path: &Path) -> Result<Address> {
     // Parse into Address
     let address = Address::from_str(addr_str)?;
     Ok(address)
+}
+
+/// Generate a master view seed for the given test wallet
+pub fn gen_test_master_view_seed(test_wallet: &PrivateKeySigner) -> MasterViewSeed {
+    let account_id = Uuid::new_v4();
+    let address = test_wallet.address();
+    let seed = Scalar::random(&mut thread_rng());
+
+    MasterViewSeed::new(account_id, address, seed)
+}
+
+/// Register the test account's master view seed into the indexer.
+///
+/// We do this by applying the state transition directly, bypassing the message
+/// queue and omitting side effects like triggering a backfill.
+pub async fn register_test_master_view_seed(
+    indexer: &Indexer,
+    master_view_seed: &MasterViewSeed,
+) -> Result<()> {
+    let account_id = master_view_seed.account_id;
+    let owner_address = master_view_seed.owner_address;
+    let seed = master_view_seed.seed;
+
+    let transition = StateTransition::RegisterMasterViewSeed(MasterViewSeedMessage {
+        account_id,
+        owner_address,
+        seed,
+    });
+
+    indexer.state_applicator.apply_state_transition(transition).await?;
+
+    Ok(())
 }
 
 /// Run a future synchronously in a new tokio runtime.

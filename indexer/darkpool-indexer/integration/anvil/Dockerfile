@@ -13,9 +13,9 @@ ENV PATH="/root/.huff/bin:${PATH}"
 
 # Clone the contracts repo
 # We ADD the version file first to cache the git clone appropriately
-ADD https://api.github.com/repos/renegade-fi/renegade-contracts/git/refs/heads/main /renegade-contracts-version.json
+ADD https://api.github.com/repos/renegade-fi/renegade-contracts/git/refs/heads/andrew/contracts-v2-patch /renegade-contracts-version.json
 WORKDIR /sources
-RUN git clone --recurse-submodules https://github.com/renegade-fi/renegade-contracts.git
+RUN git clone --recurse-submodules -b andrew/contracts-v2-patch https://github.com/renegade-fi/renegade-contracts.git
 
 WORKDIR /sources/renegade-contracts
 
