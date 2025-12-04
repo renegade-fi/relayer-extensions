@@ -4,6 +4,7 @@ use alloy::primitives::U256;
 use renegade_circuits::test_helpers::random_amount;
 
 pub(crate) mod balance;
+pub(crate) mod merkle;
 pub(crate) mod setup;
 pub(crate) mod transactions;
 

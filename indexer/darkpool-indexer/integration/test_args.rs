@@ -8,12 +8,15 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use darkpool_indexer::{
+    darkpool_client::DarkpoolClient,
     db::client::DbClient,
     indexer::{Indexer, error::IndexerError},
     message_queue::MessageQueue,
     types::MasterViewSeed,
 };
-use darkpool_indexer_api::types::message_queue::{Message, RecoveryIdMessage};
+use darkpool_indexer_api::types::message_queue::{
+    Message, NullifierSpendMessage, RecoveryIdMessage,
+};
 use eyre::Result;
 use postgresql_embedded::PostgreSQL;
 use renegade_circuit_types::csprng::PoseidonCSPRNG;
@@ -106,32 +109,49 @@ impl TestArgs {
         self.send_message(message, recovery_id_str.clone(), recovery_id_str).await
     }
 
+    /// Send a nullifier spend message to the indexer's message queue
+    pub async fn send_nullifier_spend_message(
+        &self,
+        nullifier: Scalar,
+        tx_hash: TxHash,
+    ) -> Result<()> {
+        let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
+        let nullifier_str = nullifier.to_string();
+        self.send_message(message, nullifier_str.clone(), nullifier_str).await
+    }
+
     /// Get a reference to the DB client
     pub fn db_client(&self) -> &DbClient {
         let test_context = self.expect_test_context();
         &test_context.indexer.db_client
     }
 
-    // --- RPC Client Helpers --- //
+    // --- Darkpool / RPC Client Helpers --- //
+
+    /// Get a reference to the darkpool client
+    pub fn darkpool_client(&self) -> &DarkpoolClient {
+        let test_context = self.expect_test_context();
+        &test_context.indexer.darkpool_client
+    }
 
     /// Get the chain ID of the Anvil node
     pub async fn chain_id(&self) -> Result<u64> {
-        let test_context = self.expect_test_context();
-        let chain_id = test_context.indexer.darkpool_client.provider().get_chain_id().await?;
+        let darkpool_client = self.darkpool_client();
+        let chain_id = darkpool_client.provider().get_chain_id().await?;
         Ok(chain_id)
     }
 
     /// Get the darkpool instance
     pub fn darkpool_instance(&self) -> IDarkpoolV2Instance<DynProvider> {
-        let test_context = self.expect_test_context();
-        test_context.indexer.darkpool_client.darkpool.clone()
+        let darkpool_client = self.darkpool_client();
+        darkpool_client.darkpool.clone()
     }
 
     /// Revert the Anvil node to the snapshot ID stored in the test context
     pub async fn revert_anvil_snapshot(&self) -> Result<()> {
         let test_context = self.expect_test_context();
         let anvil_snapshot_id = test_context.anvil_snapshot_id;
-        let provider = test_context.indexer.darkpool_client.provider();
+        let provider = self.darkpool_client().provider();
         provider.anvil_revert(anvil_snapshot_id).await?;
 
         Ok(())

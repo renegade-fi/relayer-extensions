@@ -27,16 +27,22 @@ impl DarkpoolClient {
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
-        let nullifier_topic = scalar_to_b256(nullifier);
 
-        calls
-            .into_iter()
-            .find(|call| {
-                call.logs
-                    .iter()
-                    .any(|log| log.topics.clone().unwrap_or_default().contains(&nullifier_topic))
-            })
-            .ok_or(DarkpoolClientError::NullifierNotFound)
+        // TEMP: use first callframe until nullifier spend events are implemented in the
+        // contracts
+        calls.first().ok_or(DarkpoolClientError::NullifierNotFound).cloned()
+
+        // let nullifier_topic = scalar_to_b256(nullifier);
+
+        // calls
+        //     .into_iter()
+        //     .find(|call| {
+        //         call.logs
+        //             .iter()
+        //             .any(|log|
+        // log.topics.clone().unwrap_or_default().contains(&nullifier_topic))
+        //     })
+        //     .ok_or(DarkpoolClientError::NullifierNotFound)
     }
 
     /// Find the call that registered the given recovery ID in the given
