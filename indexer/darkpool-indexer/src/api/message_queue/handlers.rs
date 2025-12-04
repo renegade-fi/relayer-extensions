@@ -5,6 +5,7 @@ use darkpool_indexer_api::types::message_queue::{
     CreatePublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
     RecoveryIdMessage, UpdatePublicIntentMessage,
 };
+use tracing::info;
 
 use crate::{
     indexer::{Indexer, error::IndexerError},
@@ -78,6 +79,8 @@ impl Indexer {
         &self,
         message: RecoveryIdMessage,
     ) -> Result<(), IndexerError> {
+        info!("Handling recovery ID message");
+
         let RecoveryIdMessage { recovery_id, tx_hash } = message;
         let state_transition =
             self.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;

@@ -11,6 +11,7 @@ use alloy::{
 use darkpool_indexer_api::types::message_queue::Message;
 use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
+use tracing::error;
 
 use crate::{
     chain_event_listener::ChainEventListener,
@@ -18,7 +19,7 @@ use crate::{
     darkpool_client::DarkpoolClient,
     db::client::DbClient,
     indexer::error::IndexerError,
-    message_queue::{DynMessageQueue, sqs::SqsMessageQueue},
+    message_queue::{DynMessageQueue, MessageQueue, sqs::SqsMessageQueue},
     state_transitions::StateApplicator,
 };
 
@@ -157,6 +158,51 @@ impl Indexer {
         Ok(Arc::new(indexer))
     }
 }
+
+// -------------------
+// | Service Helpers |
+// -------------------
+
+/// Run the message queue consumer, polling for new messages from the
+/// queue and handling them
+pub async fn run_message_queue_consumer(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
+    loop {
+        let message_groups = indexer.message_queue.poll_messages().await?;
+
+        // Process message groups concurrently
+        for messages in message_groups.into_values() {
+            let indexer_clone = indexer.clone();
+            tokio::spawn(async move {
+                // Process messages within a message group sequentially
+                for (message, deletion_id) in messages {
+                    if let Err(e) = indexer_clone.handle_message(message, deletion_id).await {
+                        error!("Error handling queue message: {e}")
+                    }
+                }
+            });
+        }
+    }
+}
+
+/// Run the nullifier spend event listener, watching for nullifier spend events
+/// and forwarding them to the message queue
+pub async fn run_nullifier_spend_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_nullifiers().await?;
+    Ok(())
+}
+
+/// Run the recovery ID registration event listener, watching for recovery ID
+/// registration events and forwarding them to the message queue
+pub async fn run_recovery_id_registration_listener(
+    indexer: Arc<Indexer>,
+) -> Result<(), IndexerError> {
+    indexer.chain_event_listener.watch_recovery_ids().await?;
+    Ok(())
+}
+
+// ------------------
+// | Config Helpers |
+// ------------------
 
 /// Get the darkpool address for the given chain
 fn get_darkpool_address(chain: Chain) -> Address {
