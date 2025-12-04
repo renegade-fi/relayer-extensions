@@ -100,6 +100,8 @@ impl Indexer {
         &self,
         message: NullifierSpendMessage,
     ) -> Result<(), IndexerError> {
+        info!("Handling nullifier spend message");
+
         let NullifierSpendMessage { nullifier, tx_hash } = message;
         let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
 

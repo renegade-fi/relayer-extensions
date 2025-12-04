@@ -9,9 +9,6 @@ integration = [
     "postgresql_embedded",
     "diesel-async/migrations",
     "renegade-solidity-abi/transfer-auth",
-    "renegade-circuits",
-    "test-helpers",
-    "tracing-subscriber",
 ]
 
 [[test]]
@@ -27,9 +24,6 @@ renegade-common = { package = "common", git = "https://github.com/renegade-fi/re
 renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", features = ["test_helpers"], optional = true }
-test-helpers = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", optional = true }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -61,16 +55,19 @@ base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2", "v2-relayer-types", "transfer-auth"] }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2", "v2-relayer-types"] }
 
 # === Misc === #
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 itertools = "0.10"
 bytes = "1.10.1"
 
 [dev-dependencies]
+# === Renegade === #
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", features = ["test_helpers"] }
+test-helpers = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+
 # === Runtime === #
 inventory = "0.3"
 
@@ -81,3 +78,5 @@ alloy = { workspace = true, features = ["getrandom", "provider-anvil-node"] }
 rand = "0.8"
 colored = "3"
 eyre = "0.6"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+num-bigint = "0.4"

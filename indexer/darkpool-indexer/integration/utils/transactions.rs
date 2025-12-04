@@ -7,12 +7,8 @@ use alloy::{
     network::Ethereum,
     providers::{DynProvider, Provider},
     rpc::types::TransactionReceipt,
-    sol_types::SolEvent,
 };
 use eyre::Result;
-use renegade_constants::Scalar;
-use renegade_crypto::fields::u256_to_scalar;
-use renegade_solidity_abi::v2::IDarkpoolV2::MerkleInsertion;
 use test_helpers::assert_eq_result;
 
 // ---------
@@ -57,18 +53,4 @@ pub async fn send_tx<C: CallDecoder>(tx: TestCallBuilder<'_, C>) -> Result<Trans
     }
 
     eyre::bail!("no tx receipt found after retries");
-}
-
-/// Get the first value inserted as a Merkle tree leaf in the given transaction
-pub async fn get_first_merkle_insertion(receipt: &TransactionReceipt) -> Result<Scalar> {
-    receipt
-        .logs()
-        .iter()
-        .find_map(|log| {
-            MerkleInsertion::decode_log(&log.inner)
-                .ok()
-                .map(|insertion| insertion.value)
-                .map(|value_u256| u256_to_scalar(&value_u256))
-        })
-        .ok_or(eyre::eyre!("No Merkle insertion found in receipt"))
 }
