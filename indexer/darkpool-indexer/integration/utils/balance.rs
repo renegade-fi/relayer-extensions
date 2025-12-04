@@ -3,6 +3,8 @@
 use alloy::{
     primitives::Address, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner,
 };
+use darkpool_indexer::api::http::handlers::get_all_active_user_state_objects;
+use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
 use renegade_circuit_types::{
     balance::{Balance, DarkpoolStateBalance},
@@ -31,10 +33,13 @@ use crate::{
 ///
 /// Assumes that the signer has already been funded with the deposit amount
 /// and that the Permit2 contract has been approved to spend the tokens.
+///
+/// Returns the transaction receipt, new balance state object, and its first
+/// recovery ID.
 pub async fn deposit_new_balance(
     args: &mut TestArgs,
     deposit: &Deposit,
-) -> Result<(TransactionReceipt, DarkpoolStateBalance)> {
+) -> Result<(TransactionReceipt, DarkpoolStateBalance, Scalar)> {
     // Build calldata for the balance creation
     let (witness, bundle) = gen_new_balance_deposit_proof_bundle(args, deposit)?;
     let commitment = u256_to_scalar(&bundle.statement.newBalanceCommitment);
@@ -55,8 +60,8 @@ pub async fn deposit_new_balance(
     );
 
     // Simulate the recovery ID computation that happens in the circuit
-    balance.compute_recovery_id();
-    Ok((receipt, balance))
+    let recovery_id = balance.compute_recovery_id();
+    Ok((receipt, balance, recovery_id))
 }
 
 /// Generate a proof bundle for a new balance deposit, returning it alongside
@@ -148,4 +153,18 @@ pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {
         token: args.base_token_address()?,
         amount: random_amount_u256(),
     })
+}
+
+/// Get the first balance state object for the first test account
+pub async fn get_party0_first_balance(args: &TestArgs) -> Result<DarkpoolStateBalance> {
+    let state_objects =
+        get_all_active_user_state_objects(args.party0_account_id(), args.db_client()).await?;
+
+    state_objects
+        .into_iter()
+        .find_map(|state_object| match state_object {
+            ApiStateObject::Balance(balance) => Some(balance.balance),
+            _ => None,
+        })
+        .ok_or(eyre::eyre!("Balance not found"))
 }

@@ -11,6 +11,7 @@ integration = [
     "renegade-solidity-abi/transfer-auth",
     "renegade-circuits",
     "test-helpers",
+    "tracing-subscriber",
 ]
 
 [[test]]
@@ -65,6 +66,7 @@ renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi
 # === Misc === #
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 itertools = "0.10"
 bytes = "1.10.1"
 

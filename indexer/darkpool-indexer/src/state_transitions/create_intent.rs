@@ -1,11 +1,14 @@
 //! Defines the application-specific logic for creating a new intent object
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{intent::{IntentShare, PreMatchIntentShare}};
+use renegade_circuit_types::intent::{IntentShare, PreMatchIntentShare};
 use renegade_constants::Scalar;
 use tracing::warn;
 
-use crate::{state_transitions::{StateApplicator, error::StateTransitionError}, types::{ExpectedStateObject, IntentStateObject, MasterViewSeed}};
+use crate::{
+    state_transitions::{StateApplicator, error::StateTransitionError},
+    types::{ExpectedStateObject, IntentStateObject, MasterViewSeed},
+};
 
 // ---------
 // | Types |
@@ -25,19 +28,22 @@ pub struct CreateIntentTransition {
 /// The data required to create a new intent object
 #[derive(Clone)]
 pub enum IntentCreationData {
-    /// A complete set of updated intent public shares, available in natively-settled private-intent matches,
-    /// and Renegade-settled private-fill matches
+    /// A complete set of updated intent public shares, available in
+    /// natively-settled private-intent matches, and Renegade-settled
+    /// private-fill matches
     NewIntentShare(IntentShare),
-    /// The data needed to construct the intent shares for a Renegade-settled public-fill match,
-    /// where only the pre-match amount public share is leaked
+    /// The data needed to construct the intent shares for a Renegade-settled
+    /// public-fill match, where only the pre-match amount public share is
+    /// leaked
     RenegadeSettledPublicFill {
-        /// The pre-match intent public shares, *excluding* the updated amount public share
+        /// The pre-match intent public shares, *excluding* the updated amount
+        /// public share
         pre_match_intent_shares: PreMatchIntentShare,
         /// The pre-match amount public share
         pre_match_amount_share: Scalar,
         /// The input amount on the obligation bundle
         amount_in: Scalar,
-    }
+    },
 }
 
 /// The pre-state required for the creation of a new intent object
@@ -62,7 +68,8 @@ impl StateApplicator {
 
         let public_share = get_new_intent_shares(intent_creation_data);
 
-        let IntentCreationPrestate { expected_state_object, mut master_view_seed } = self.get_intent_creation_prestate(recovery_id).await?;
+        let IntentCreationPrestate { expected_state_object, mut master_view_seed } =
+            self.get_intent_creation_prestate(recovery_id).await?;
 
         let ExpectedStateObject {
             recovery_id,
@@ -86,7 +93,7 @@ impl StateApplicator {
                 // Check if the recovery ID has already been processed, no-oping if so
                 let recovery_id_processed =
                     self.db_client.check_recovery_id_processed(recovery_id, conn).await?;
-        
+
                 if recovery_id_processed {
                     warn!(
                         "Recovery ID {recovery_id} has already been processed, skipping intent creation"
@@ -125,18 +132,26 @@ impl StateApplicator {
     }
 
     /// Get the pre-state required for the creation of a new intent object
-    async fn get_intent_creation_prestate(&self, recovery_id: Scalar) -> Result<IntentCreationPrestate, StateTransitionError> {
+    async fn get_intent_creation_prestate(
+        &self,
+        recovery_id: Scalar,
+    ) -> Result<IntentCreationPrestate, StateTransitionError> {
         let mut conn = self.db_client.get_db_conn().await?;
         conn.transaction(|conn| {
             async move {
                 let expected_state_object =
                     self.db_client.get_expected_state_object(recovery_id, conn).await?;
 
-                let master_view_seed = self.db_client.get_master_view_seed_by_account_id(expected_state_object.account_id, conn).await?;
+                let master_view_seed = self
+                    .db_client
+                    .get_master_view_seed_by_account_id(expected_state_object.account_id, conn)
+                    .await?;
 
                 Ok(IntentCreationPrestate { expected_state_object, master_view_seed })
-            }.scope_boxed()
-        }).await
+            }
+            .scope_boxed()
+        })
+        .await
     }
 }
 
@@ -148,10 +163,14 @@ impl StateApplicator {
 fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShare {
     match intent_creation_data {
         IntentCreationData::NewIntentShare(updated_intent_share) => updated_intent_share,
-        IntentCreationData::RenegadeSettledPublicFill { pre_match_intent_shares, pre_match_amount_share, amount_in: obligation_amount_in } => {
+        IntentCreationData::RenegadeSettledPublicFill {
+            pre_match_intent_shares,
+            pre_match_amount_share,
+            amount_in: obligation_amount_in,
+        } => {
             let updated_amount_share = pre_match_amount_share - obligation_amount_in;
             from_pre_match_intent_and_amount(pre_match_intent_shares, updated_amount_share)
-        }
+        },
     }
 }
 
@@ -167,7 +186,13 @@ pub fn from_pre_match_intent_and_amount(
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::test_utils::{gen_create_intent_transition, setup_expected_state_object, setup_test_state_applicator, validate_expected_state_object_rotation, validate_intent_indexing}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::test_utils::{
+            gen_create_intent_transition, setup_expected_state_object, setup_test_state_applicator,
+            validate_expected_state_object_rotation, validate_intent_indexing,
+        },
+    };
 
     use super::*;
 
@@ -178,8 +203,7 @@ mod tests {
         let db_client = &test_applicator.db_client;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (transition, wrapped_intent) =
-            gen_create_intent_transition(&expected_state_object);
+        let (transition, wrapped_intent) = gen_create_intent_transition(&expected_state_object);
 
         // Index the intent creation
         test_applicator.create_intent(transition.clone()).await?;
