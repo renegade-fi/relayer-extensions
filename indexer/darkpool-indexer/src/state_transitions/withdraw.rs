@@ -1,5 +1,5 @@
-//! Defines the application-specific logic for withdrawing funds from an existing
-//! balance object.
+//! Defines the application-specific logic for withdrawing funds from an
+//! existing balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
@@ -36,15 +36,15 @@ impl StateApplicator {
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
-        
+
         balance.update_amount(new_amount_public_share);
-        
+
         conn.transaction(move |conn| {
             async move {
                 // Check if the nullifier has already been processed, no-oping if so
                 let nullifier_processed =
                     self.db_client.check_nullifier_processed(nullifier, conn).await?;
-        
+
                 if nullifier_processed {
                     warn!(
                         "Nullifier {nullifier} has already been processed, skipping withdrawal indexing"
@@ -67,7 +67,17 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_withdraw_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::{
+            error::StateTransitionError,
+            test_utils::{
+                gen_create_balance_transition, gen_withdraw_transition,
+                setup_expected_state_object, setup_test_state_applicator,
+                validate_balance_indexing,
+            },
+        },
+    };
 
     /// Test that a withdrawal is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
@@ -93,7 +103,9 @@ mod tests {
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_nullifier_processed(withdraw_transition.nullifier, &mut conn).await?);
+        assert!(
+            db_client.check_nullifier_processed(withdraw_transition.nullifier, &mut conn).await?
+        );
 
         cleanup_test_db(&postgres).await?;
 
