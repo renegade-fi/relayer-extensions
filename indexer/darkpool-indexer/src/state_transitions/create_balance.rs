@@ -6,9 +6,7 @@ use renegade_constants::Scalar;
 use tracing::warn;
 
 use crate::{
-    state_transitions::{
-        StateApplicator, error::StateTransitionError,
-    },
+    state_transitions::{StateApplicator, error::StateTransitionError},
     types::{BalanceStateObject, ExpectedStateObject, MasterViewSeed},
 };
 
@@ -47,7 +45,8 @@ impl StateApplicator {
     ) -> Result<(), StateTransitionError> {
         let CreateBalanceTransition { recovery_id, block_number, public_share } = transition;
 
-        let BalanceCreationPrestate { expected_state_object, mut master_view_seed } = self.get_balance_creation_prestate(recovery_id).await?;
+        let BalanceCreationPrestate { expected_state_object, mut master_view_seed } =
+            self.get_balance_creation_prestate(recovery_id).await?;
 
         let ExpectedStateObject {
             recovery_id,
@@ -71,7 +70,7 @@ impl StateApplicator {
                 // Check if the recovery ID has already been processed, no-oping if so
                 let recovery_id_processed =
                     self.db_client.check_recovery_id_processed(recovery_id, conn).await?;
-        
+
                 if recovery_id_processed {
                     warn!(
                         "Recovery ID {recovery_id} has already been processed, skipping balance creation"
@@ -110,24 +109,39 @@ impl StateApplicator {
     }
 
     /// Get the pre-state required for the creation of a new balance object
-    async fn get_balance_creation_prestate(&self, recovery_id: Scalar) -> Result<BalanceCreationPrestate, StateTransitionError> {
+    async fn get_balance_creation_prestate(
+        &self,
+        recovery_id: Scalar,
+    ) -> Result<BalanceCreationPrestate, StateTransitionError> {
         let mut conn = self.db_client.get_db_conn().await?;
         conn.transaction(|conn| {
             async move {
                 let expected_state_object =
                     self.db_client.get_expected_state_object(recovery_id, conn).await?;
 
-                let master_view_seed = self.db_client.get_master_view_seed_by_account_id(expected_state_object.account_id, conn).await?;
+                let master_view_seed = self
+                    .db_client
+                    .get_master_view_seed_by_account_id(expected_state_object.account_id, conn)
+                    .await?;
 
                 Ok(BalanceCreationPrestate { expected_state_object, master_view_seed })
-            }.scope_boxed()
-        }).await
+            }
+            .scope_boxed()
+        })
+        .await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::test_utils::{gen_create_balance_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing, validate_expected_state_object_rotation}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::test_utils::{
+            gen_create_balance_transition, setup_expected_state_object,
+            setup_test_state_applicator, validate_balance_indexing,
+            validate_expected_state_object_rotation,
+        },
+    };
 
     use super::*;
 
@@ -138,8 +152,7 @@ mod tests {
         let db_client = &test_applicator.db_client;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (transition, wrapped_balance) =
-            gen_create_balance_transition(&expected_state_object);
+        let (transition, wrapped_balance) = gen_create_balance_transition(&expected_state_object);
 
         // Index the balance creation
         test_applicator.create_balance(transition.clone()).await?;
