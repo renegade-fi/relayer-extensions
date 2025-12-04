@@ -69,8 +69,8 @@ COPY --from=anvil /deployments.json /deployments.json
 # Create a non-root user for running tests
 RUN useradd -m -u 1000 testuser
 
-# Change ownership of the build directory to the test user
-RUN chown -R testuser:testuser /build
+# Change ownership of the target directory to the test user
+RUN chown -R testuser:testuser /build/target
 
 # Switch to non-root user w/ sufficient permissions to run tests
 USER testuser
