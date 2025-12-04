@@ -1,14 +1,19 @@
 //! Utilities for managing balances in integration tests
 
 use alloy::{
-    primitives::Address, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner,
+    primitives::{Address, U256},
+    rpc::types::TransactionReceipt,
+    signers::local::PrivateKeySigner,
 };
 use darkpool_indexer::api::http::handlers::get_all_active_user_state_objects;
 use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
+use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
+    Amount,
     balance::{Balance, DarkpoolStateBalance},
     state_wrapper::StateWrapper,
+    withdrawal::Withdrawal as CircuitWithdrawal,
 };
 use renegade_circuits::{
     singleprover_prove,
@@ -19,15 +24,22 @@ use renegade_circuits::{
         valid_deposit::{
             SizedValidDeposit, SizedValidDepositWitness, ValidDepositStatement, ValidDepositWitness,
         },
+        valid_withdrawal::{
+            SizedValidWithdrawal, SizedValidWithdrawalWitness, ValidWithdrawalStatement,
+            ValidWithdrawalWitness,
+        },
     },
 };
 use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_u256, u256_to_scalar};
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{Deposit, DepositAuth, DepositProofBundle, NewBalanceDepositProofBundle},
+    IDarkpoolV2::{
+        Deposit, DepositAuth, DepositProofBundle, NewBalanceDepositProofBundle, Withdrawal,
+        WithdrawalProofBundle,
+    },
     relayer_types::u256_to_u128,
-    transfer_auth::deposit::create_deposit_permit,
+    transfer_auth::{deposit::create_deposit_permit, withdrawal::create_withdrawal_auth},
 };
 
 use crate::{
@@ -131,31 +143,6 @@ fn build_new_balance_deposit_witness_statement(
     Ok((witness, statement))
 }
 
-/// Build a Permit2 signature for the given deposit
-pub async fn build_deposit_permit(
-    args: &TestArgs,
-    new_balance_commitment: Scalar,
-    deposit: &Deposit,
-    signer: &PrivateKeySigner,
-) -> Result<DepositAuth> {
-    let commitment = scalar_to_u256(&new_balance_commitment);
-
-    let chain_id = args.chain_id().await?;
-    let darkpool = args.darkpool_address();
-    let permit2 = args.permit2_address()?;
-
-    // Call create_deposit_permit with all required parameters
-    let (witness, signature) =
-        create_deposit_permit(commitment, deposit.clone(), chain_id, darkpool, permit2, signer)?;
-
-    let sig_bytes = signature.as_bytes().to_vec();
-    Ok(DepositAuth {
-        permit2Nonce: witness.nonce,
-        permit2Deadline: witness.deadline,
-        permit2Signature: sig_bytes.into(),
-    })
-}
-
 // -----------
 // | Deposit |
 // -----------
@@ -235,9 +222,30 @@ fn build_deposit_witness_statement(
     Ok((witness, statement))
 }
 
-// ----------------
-// | Misc Helpers |
-// ----------------
+/// Build a Permit2 signature for the given deposit
+pub async fn build_deposit_permit(
+    args: &TestArgs,
+    new_balance_commitment: Scalar,
+    deposit: &Deposit,
+    signer: &PrivateKeySigner,
+) -> Result<DepositAuth> {
+    let commitment = scalar_to_u256(&new_balance_commitment);
+
+    let chain_id = args.chain_id().await?;
+    let darkpool = args.darkpool_address();
+    let permit2 = args.permit2_address()?;
+
+    // Call create_deposit_permit with all required parameters
+    let (witness, signature) =
+        create_deposit_permit(commitment, deposit.clone(), chain_id, darkpool, permit2, signer)?;
+
+    let sig_bytes = signature.as_bytes().to_vec();
+    Ok(DepositAuth {
+        permit2Nonce: witness.nonce,
+        permit2Deadline: witness.deadline,
+        permit2Signature: sig_bytes.into(),
+    })
+}
 
 /// Generate a deposit for the first test account w/ a random amount
 pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {
@@ -247,6 +255,109 @@ pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {
         amount: random_amount_u256(),
     })
 }
+
+// ------------
+// | Withdraw |
+// ------------
+
+/// Submit a transaction which withdraws from an existing balance.
+///
+/// Returns the transaction receipt, and the balance's spent nullifier.
+pub async fn submit_withdrawal(
+    args: &TestArgs,
+    initial_balance: &DarkpoolStateBalance,
+) -> Result<(TransactionReceipt, Scalar)> {
+    let initial_commitment = initial_balance.compute_commitment();
+    let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
+
+    let withdrawal = random_withdrawal(initial_balance.inner.amount, args)?;
+    let proof_bundle = gen_withdrawal_proof_bundle(&withdrawal, initial_balance, &merkle_path)?;
+    let withdrawal_auth =
+        create_withdrawal_auth(proof_bundle.statement.newBalanceCommitment, &args.party0_signer())?;
+
+    let nullifier = u256_to_scalar(&proof_bundle.statement.oldBalanceNullifier);
+
+    let darkpool = args.darkpool_instance();
+    let call = darkpool.withdraw(withdrawal_auth, proof_bundle);
+    let receipt = wait_for_tx_success(call).await?;
+
+    Ok((receipt, nullifier))
+}
+
+/// Generate a proof bundle for a withdrawal
+pub fn gen_withdrawal_proof_bundle(
+    withdrawal: &Withdrawal,
+    balance: &DarkpoolStateBalance,
+    opening: &MerkleAuthenticationPath,
+) -> Result<WithdrawalProofBundle> {
+    let (witness, statement) = build_withdrawal_witness_statement(withdrawal, balance, opening)?;
+
+    let proof = singleprover_prove::<SizedValidWithdrawal>(witness, statement.clone())?;
+
+    // Create the bundle using the helper
+    let bundle = WithdrawalProofBundle::new(statement, proof);
+    Ok(bundle)
+}
+
+/// Build a witness statement for the withdrawal
+fn build_withdrawal_witness_statement(
+    withdrawal: &Withdrawal,
+    balance: &DarkpoolStateBalance,
+    opening: &MerkleAuthenticationPath,
+) -> Result<(SizedValidWithdrawalWitness, ValidWithdrawalStatement)> {
+    let witness = ValidWithdrawalWitness {
+        old_balance: balance.clone(),
+        old_balance_opening: opening.clone().into(),
+    };
+
+    // Build the new balance and re-encrypt the amount field
+    let old_balance_nullifier = balance.compute_nullifier();
+    let mut new_balance = balance.clone();
+    new_balance.inner.amount -= u256_to_u128(withdrawal.amount);
+
+    let new_amount = new_balance.inner.amount;
+    let new_public_share = new_balance.stream_cipher_encrypt(&new_amount);
+    new_balance.public_share.amount = new_public_share;
+
+    // Compute a recovery ID and new balance commitment
+    let recovery_id = new_balance.compute_recovery_id();
+    let new_balance_commitment = new_balance.compute_commitment();
+
+    let merkle_root = opening.compute_root();
+
+    // Convert ABI Withdrawal to circuit Withdrawal
+    let circuit_withdrawal = CircuitWithdrawal {
+        to: withdrawal.to,
+        token: withdrawal.token,
+        amount: u256_to_u128(withdrawal.amount),
+    };
+
+    let statement = ValidWithdrawalStatement {
+        withdrawal: circuit_withdrawal,
+        merkle_root,
+        old_balance_nullifier,
+        new_balance_commitment,
+        recovery_id,
+        new_amount_share: new_public_share,
+    };
+
+    Ok((witness, statement))
+}
+
+/// Create a random withdrawal
+pub fn random_withdrawal(max_amount: Amount, args: &TestArgs) -> Result<Withdrawal> {
+    let mut rng = thread_rng();
+    let amount = rng.gen_range(0..max_amount);
+    Ok(Withdrawal {
+        to: args.party0_address(),
+        token: args.base_token_address()?,
+        amount: U256::from(amount),
+    })
+}
+
+// ----------------
+// | Misc Helpers |
+// ----------------
 
 /// Get the first balance state object for the first test account
 pub async fn get_party0_first_balance(args: &TestArgs) -> Result<DarkpoolStateBalance> {
