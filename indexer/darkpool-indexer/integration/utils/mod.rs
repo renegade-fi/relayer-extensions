@@ -24,10 +24,12 @@ macro_rules! indexer_integration_test {
     ($test_fn:ident) => {
         inventory::submit!(crate::TestWrapper(test_helpers::types::IntegrationTest {
             name: std::concat! {std::module_path!(), "::", stringify!($test_fn)},
-            test_fn: test_helpers::types::IntegrationTestFn::AsynchronousFn(move |args| {
+            test_fn: test_helpers::types::IntegrationTestFn::AsynchronousFn(move |mut args| {
                 std::boxed::Box::pin(async move {
                     args.revert_anvil_snapshot().await?;
-                    $test_fn(args).await
+                    args.inject_indexer_context().await?;
+                    $test_fn(args.clone()).await?;
+                    args.teardown_indexer_context().await
                 })
             }),
         }));
