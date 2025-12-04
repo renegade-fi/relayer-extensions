@@ -1,6 +1,6 @@
 //! Utilities for setting up the integration tests
 
-use std::{fs, path::Path, str::FromStr, sync::Arc};
+use std::{fs, path::Path, str::FromStr};
 
 use alloy::{
     primitives::{Address, U256},
@@ -8,17 +8,11 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use darkpool_indexer::{
-    chain_event_listener::ChainEventListener,
-    darkpool_client::DarkpoolClient,
-    db::test_utils::setup_test_db,
-    indexer::Indexer,
-    message_queue::{DynMessageQueue, mock_message_queue::MockMessageQueue},
-    state_transitions::{StateApplicator, StateTransition},
+    darkpool_client::DarkpoolClient, indexer::Indexer, state_transitions::StateTransition,
     types::MasterViewSeed,
 };
 use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use eyre::{Result, eyre};
-use postgresql_embedded::PostgreSQL;
 use rand::thread_rng;
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
@@ -45,45 +39,9 @@ pub(crate) const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
 // | Helpers |
 // -----------
 
-/// Construct a indexer instance for integration testing
-pub async fn build_test_indexer(
-    anvil_ws_url: &str,
-    wallet: PrivateKeySigner,
-    deployments_path: &Path,
-) -> Result<(Arc<Indexer>, Arc<PostgreSQL>)> {
-    // Set up a test DB client & state applicator
-    let (db_client, postgres) = setup_test_db().await?;
-    let state_applicator = StateApplicator::new(db_client.clone());
-
-    // Set up the mock message queue
-    let message_queue = DynMessageQueue::new(MockMessageQueue::default());
-
-    // Set up the darkpool client
-    let darkpool_client: DarkpoolClient =
-        build_test_darkpool_client(anvil_ws_url, wallet, deployments_path).await?;
-
-    let chain_event_listener = ChainEventListener::new(
-        darkpool_client.clone(),
-        0, // nullifier_start_block
-        0, // recovery_id_start_block
-        message_queue.clone(),
-    );
-
-    let indexer = Indexer {
-        db_client,
-        state_applicator,
-        message_queue,
-        darkpool_client,
-        chain_event_listener,
-        http_auth_key: None,
-    };
-
-    Ok((Arc::new(indexer), Arc::new(postgres)))
-}
-
 /// Construct a test darkpool client, targeting a local Anvil node w/ the
 /// darkpool contracts deployed
-async fn build_test_darkpool_client(
+pub async fn build_test_darkpool_client(
     anvil_ws_url: &str,
     wallet: PrivateKeySigner,
     deployments_path: &Path,
