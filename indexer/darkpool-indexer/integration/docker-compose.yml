@@ -1,6 +1,6 @@
 services:
   anvil:
-    image: anvil
+    image: anvil:latest
     build:
       context: anvil
       dockerfile: Dockerfile
@@ -8,6 +8,7 @@ services:
       - "8545:8545"
 
   indexer:
+    image: indexer_integration:latest
     build:
       context: ../../../
       dockerfile: indexer/darkpool-indexer/integration/Dockerfile

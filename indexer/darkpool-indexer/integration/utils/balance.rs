@@ -12,22 +12,32 @@ use renegade_circuit_types::{
 };
 use renegade_circuits::{
     singleprover_prove,
-    zk_circuits::valid_balance_create::{
-        ValidBalanceCreate, ValidBalanceCreateStatement, ValidBalanceCreateWitness,
+    zk_circuits::{
+        valid_balance_create::{
+            ValidBalanceCreate, ValidBalanceCreateStatement, ValidBalanceCreateWitness,
+        },
+        valid_deposit::{
+            SizedValidDeposit, SizedValidDepositWitness, ValidDepositStatement, ValidDepositWitness,
+        },
     },
 };
+use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_u256, u256_to_scalar};
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{Deposit, DepositAuth, NewBalanceDepositProofBundle},
+    IDarkpoolV2::{Deposit, DepositAuth, DepositProofBundle, NewBalanceDepositProofBundle},
     relayer_types::u256_to_u128,
     transfer_auth::deposit::create_deposit_permit,
 };
 
 use crate::{
     test_args::TestArgs,
-    utils::{random_amount_u256, transactions::wait_for_tx_success},
+    utils::{merkle::fetch_merkle_opening, random_amount_u256, transactions::wait_for_tx_success},
 };
+
+// -----------------------
+// | Deposit New Balance |
+// -----------------------
 
 /// Helper to create a new balance in the darkpool from the given deposit.
 ///
@@ -36,7 +46,7 @@ use crate::{
 ///
 /// Returns the transaction receipt, new balance state object, and its first
 /// recovery ID.
-pub async fn deposit_new_balance(
+pub async fn submit_deposit_new_balance(
     args: &mut TestArgs,
     deposit: &Deposit,
 ) -> Result<(TransactionReceipt, DarkpoolStateBalance, Scalar)> {
@@ -145,6 +155,89 @@ pub async fn build_deposit_permit(
         permit2Signature: sig_bytes.into(),
     })
 }
+
+// -----------
+// | Deposit |
+// -----------
+
+/// Submit a transaction which deposits into an existing balance.
+///
+/// Returns the transaction receipt, and the balance's spent nullifier.
+pub async fn submit_deposit(
+    args: &TestArgs,
+    initial_balance: &DarkpoolStateBalance,
+) -> Result<(TransactionReceipt, Scalar)> {
+    let initial_commitment = initial_balance.compute_commitment();
+    let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
+
+    let second_deposit = random_deposit(args)?;
+    let proof_bundle = gen_deposit_proof_bundle(&second_deposit, initial_balance, &merkle_path)?;
+    let commitment = u256_to_scalar(&proof_bundle.statement.newBalanceCommitment);
+    let deposit_auth =
+        build_deposit_permit(args, commitment, &second_deposit, &args.party0_signer()).await?;
+
+    let nullifier = u256_to_scalar(&proof_bundle.statement.oldBalanceNullifier);
+
+    let darkpool = args.darkpool_instance();
+    let call = darkpool.deposit(deposit_auth, proof_bundle);
+    let receipt = wait_for_tx_success(call).await?;
+
+    Ok((receipt, nullifier))
+}
+
+/// Create a proof of the deposit
+pub fn gen_deposit_proof_bundle(
+    deposit: &Deposit,
+    balance: &DarkpoolStateBalance,
+    opening: &MerkleAuthenticationPath,
+) -> Result<DepositProofBundle> {
+    let (witness, statement) = build_deposit_witness_statement(deposit, balance, opening)?;
+
+    let proof = singleprover_prove::<SizedValidDeposit>(witness, statement.clone())?;
+    let bundle = DepositProofBundle::new(statement, proof);
+    Ok(bundle)
+}
+
+/// Build a witness statement for the deposit
+fn build_deposit_witness_statement(
+    deposit: &Deposit,
+    balance: &DarkpoolStateBalance,
+    opening: &MerkleAuthenticationPath,
+) -> Result<(SizedValidDepositWitness, ValidDepositStatement)> {
+    let witness = ValidDepositWitness {
+        old_balance: balance.clone(),
+        old_balance_opening: opening.clone().into(),
+    };
+
+    // Build the new balance and re-encrypt the amount field
+    let old_balance_nullifier = balance.compute_nullifier();
+    let mut new_balance = balance.clone();
+    new_balance.inner.amount += u256_to_u128(deposit.amount);
+
+    let new_amount = new_balance.inner.amount;
+    let new_public_share = new_balance.stream_cipher_encrypt(&new_amount);
+    new_balance.public_share.amount = new_public_share;
+
+    // Compute a recovery ID and new balance commitment
+    let recovery_id = new_balance.compute_recovery_id();
+    let new_balance_commitment = new_balance.compute_commitment();
+
+    let merkle_root = opening.compute_root();
+    let statement = ValidDepositStatement {
+        deposit: deposit.clone().into(),
+        merkle_root,
+        old_balance_nullifier,
+        new_balance_commitment,
+        recovery_id,
+        new_amount_share: new_public_share,
+    };
+
+    Ok((witness, statement))
+}
+
+// ----------------
+// | Misc Helpers |
+// ----------------
 
 /// Generate a deposit for the first test account w/ a random amount
 pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {

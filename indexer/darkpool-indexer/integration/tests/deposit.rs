@@ -1,4 +1,5 @@
-//! Tests the indexing of a `depositNewBalance` contract call
+//! Tests the indexing of a `deposit` contract call (depositing into an existing
+//! balance)
 
 use std::time::Duration;
 
@@ -9,19 +10,29 @@ use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     utils::{
-        balance::{get_party0_first_balance, random_deposit, submit_deposit_new_balance},
+        balance::{
+            get_party0_first_balance, random_deposit, submit_deposit, submit_deposit_new_balance,
+        },
         merkle::find_commitment,
     },
 };
 
-/// Test the indexing of a `depositNewBalance` call
-async fn test_deposit_new_balance(mut args: TestArgs) -> Result<()> {
-    let deposit = random_deposit(&args)?;
-    let (receipt, _balance, recovery_id) = submit_deposit_new_balance(&mut args, &deposit).await?;
+/// Test the indexing of a `deposit` call
+async fn test_deposit(mut args: TestArgs) -> Result<()> {
+    // Deposit the initial balance
+    let initial_deposit = random_deposit(&args)?;
+    let (initial_receipt, initial_balance, recovery_id) =
+        submit_deposit_new_balance(&mut args, &initial_deposit).await?;
 
     // TEMP: Bypass the chain event listener & enqueue messages directly until event
     // emission is implemented in the contracts
-    args.send_recovery_id_registration_message(recovery_id, receipt.transaction_hash).await?;
+    args.send_recovery_id_registration_message(recovery_id, initial_receipt.transaction_hash)
+        .await?;
+
+    // Submit the subsequent deposit
+    let (receipt, nullifier) = submit_deposit(&args, &initial_balance).await?;
+
+    args.send_nullifier_spend_message(nullifier, receipt.transaction_hash).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -38,4 +49,4 @@ async fn test_deposit_new_balance(mut args: TestArgs) -> Result<()> {
 
     assert_eq_result!(commitment_found, true)
 }
-indexer_integration_test!(test_deposit_new_balance);
+indexer_integration_test!(test_deposit);
