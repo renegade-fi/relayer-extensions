@@ -63,7 +63,7 @@ impl StateApplicator {
                 // Check if the nullifier has already been processed, no-oping if so
                 let nullifier_processed =
                     self.db_client.check_nullifier_processed(nullifier, conn).await?;
-        
+
                 if nullifier_processed {
                     warn!(
                         "Nullifier {nullifier} has already been processed, skipping indexing of match settlement into intent"
@@ -101,7 +101,16 @@ fn get_updated_intent_amount_public_share(intent_settlement_data: IntentSettleme
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_intent_transition, gen_settle_match_into_intent_transition, setup_expected_state_object, setup_test_state_applicator, validate_intent_indexing}}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::{
+            error::StateTransitionError,
+            test_utils::{
+                gen_create_intent_transition, gen_settle_match_into_intent_transition,
+                setup_expected_state_object, setup_test_state_applicator, validate_intent_indexing,
+            },
+        },
+    };
 
     /// Test that a match settlement into an intent is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
@@ -121,13 +130,19 @@ mod tests {
             gen_settle_match_into_intent_transition(&initial_wrapped_intent);
 
         // Index the match settlement
-        test_applicator.settle_match_into_intent(settle_match_into_intent_transition.clone()).await?;
+        test_applicator
+            .settle_match_into_intent(settle_match_into_intent_transition.clone())
+            .await?;
 
         validate_intent_indexing(db_client, &updated_wrapped_intent).await?;
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_nullifier_processed(settle_match_into_intent_transition.nullifier, &mut conn).await?);
+        assert!(
+            db_client
+                .check_nullifier_processed(settle_match_into_intent_transition.nullifier, &mut conn)
+                .await?
+        );
 
         cleanup_test_db(&postgres).await?;
 

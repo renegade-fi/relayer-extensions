@@ -33,7 +33,7 @@ pub type DbPool = Pool<AsyncPgConnection>;
 #[derive(Clone)]
 pub struct DbClient {
     /// The database connection pool
-    db_pool: Arc<DbPool>,
+    pub db_pool: Arc<DbPool>,
 }
 
 impl DbClient {

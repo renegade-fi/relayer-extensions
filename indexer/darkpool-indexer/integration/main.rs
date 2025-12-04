@@ -10,8 +10,16 @@ use std::{path::PathBuf, sync::Arc};
 
 use alloy::providers::ext::AnvilApi;
 use clap::Parser;
+use darkpool_indexer::{
+    db::test_utils::cleanup_test_db,
+    indexer::{
+        run_message_queue_consumer, run_nullifier_spend_listener,
+        run_recovery_id_registration_listener,
+    },
+};
 use eyre::eyre;
 use test_helpers::{integration_test_main, types::TestVerbosity};
+use tokio::task::JoinSet;
 
 use crate::{
     test_args::{TestArgs, TestContext},
@@ -56,16 +64,20 @@ struct CliArgs {
 
 integration_test_main!(CliArgs, TestArgs, setup, teardown);
 
+// --------------------
+// | Setup / Teardown |
+// --------------------
+
 /// Set up the test harness, populating the test context
 fn setup(args: &TestArgs) {
+    setup_tracing_subscriber(args.verbosity);
+
     run_blocking_current(async {
         // Build the test indexer instance, including a handle to a local PostgreSQL
         // instance
         let (indexer, postgres) =
             build_test_indexer(&args.anvil_ws_url, args.party0_signer.clone(), &args.deployments)
                 .await?;
-
-        let postgres = Arc::new(postgres);
 
         // Snapshot the Anvil node's state to include all of the funding / other onchain
         // state setup downstream of `build_test_indexer`
@@ -74,8 +86,16 @@ fn setup(args: &TestArgs) {
         // Register the test account's master view seed into the indexer
         register_test_master_view_seed(&indexer, &args.party0_master_view_seed).await?;
 
+        // Spawn the indexer tasks
+        let mut indexer_tasks = JoinSet::new();
+        indexer_tasks.spawn(run_message_queue_consumer(indexer.clone()));
+        indexer_tasks.spawn(run_nullifier_spend_listener(indexer.clone()));
+        indexer_tasks.spawn(run_recovery_id_registration_listener(indexer.clone()));
+
+        let indexer_tasks = Arc::new(indexer_tasks);
+
         // Set the test context
-        let test_context = TestContext { indexer, postgres, anvil_snapshot_id };
+        let test_context = TestContext { indexer, indexer_tasks, postgres, anvil_snapshot_id };
 
         args.test_context.set(test_context).map_err(|_| eyre!("Test context already set"))?;
 
@@ -84,9 +104,29 @@ fn setup(args: &TestArgs) {
 }
 
 /// Tear down the test resources
-fn teardown(test_args: &TestArgs) {
+fn teardown(mut test_args: TestArgs) {
     run_blocking_current(async {
-        test_args.cleanup_test_db().await?;
+        let context = test_args.test_context.take().unwrap();
+
+        // Drain the DB client's pool before dropping the test database
+        context.indexer.db_client.db_pool.close();
+
+        // Clean up the test DB
+        cleanup_test_db(&context.postgres).await?;
+
         Ok::<_, eyre::Report>(())
     })
+}
+
+// ----------------
+// | Misc Helpers |
+// ----------------
+
+/// Set up the tracing subscriber for the integration tests
+fn setup_tracing_subscriber(verbosity: TestVerbosity) {
+    if matches!(verbosity, TestVerbosity::Quiet) {
+        return;
+    }
+
+    tracing_subscriber::fmt().pretty().with_env_filter("darkpool_indexer=info").init();
 }

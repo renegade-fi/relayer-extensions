@@ -2254,7 +2254,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2636,7 +2636,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2658,7 +2658,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-bn254",
@@ -2723,7 +2723,7 @@ dependencies = [
 [[package]]
 name = "circuits"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-crypto-primitives",
@@ -2954,7 +2954,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "alloy",
  "ark-mpc",
@@ -3144,7 +3144,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3540,6 +3540,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
+ "tracing-subscriber 0.3.20",
  "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch)",
  "uuid 1.17.0",
  "warp 0.4.2",
@@ -8067,7 +8068,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 [[package]]
 name = "renegade-crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "alloy-primitives 1.4.1",
  "ark-ec",
@@ -9829,7 +9830,7 @@ dependencies = [
 [[package]]
 name = "test-helpers"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "eyre",
  "futures",
@@ -10687,7 +10688,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#3e57dfb06660897eb6371a6be71e20fee76ef1c4"
+source = "git+https://github.com/renegade-fi/renegade.git?branch=andrew%2Frelayer-v2-patch#1e4989c3fff314d0bb4bb66b3d1bc8e8a5790d36"
 dependencies = [
  "alloy",
  "ark-ec",

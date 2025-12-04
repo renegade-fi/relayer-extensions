@@ -47,16 +47,22 @@ impl DarkpoolClient {
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
-        let recovery_id_topic = scalar_to_b256(recovery_id);
 
-        calls
-            .into_iter()
-            .find(|call| {
-                call.logs
-                    .iter()
-                    .any(|log| log.topics.clone().unwrap_or_default().contains(&recovery_id_topic))
-            })
-            .ok_or(DarkpoolClientError::RecoveryIdNotFound)
+        // TEMP: use first callframe until recovery ID registration events are
+        // implemented in the contracts
+        calls.first().ok_or(DarkpoolClientError::RecoveryIdNotFound).cloned()
+
+        // let recovery_id_topic = scalar_to_b256(recovery_id);
+
+        // calls
+        //     .into_iter()
+        //     .find(|call| {
+        //         call.logs
+        //             .iter()
+        //             .any(|log|
+        // log.topics.clone().unwrap_or_default().contains(&recovery_id_topic))
+        //     })
+        //     .ok_or(DarkpoolClientError::RecoveryIdNotFound)
     }
 
     /// Find the call that created the given public intent in the given
