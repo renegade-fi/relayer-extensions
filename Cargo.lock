@@ -3635,6 +3635,7 @@ dependencies = [
  "inventory",
  "itertools 0.10.5",
  "native-tls",
+ "num-bigint",
  "postgres-native-tls",
  "postgresql_embedded",
  "rand 0.8.5",
