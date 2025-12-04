@@ -6,7 +6,10 @@ use renegade_circuit_types::balance::PostMatchBalanceShare;
 use renegade_constants::Scalar;
 use tracing::warn;
 
-use crate::{state_transitions::{StateApplicator, error::StateTransitionError}, types::{ObligationAmounts}};
+use crate::{
+    state_transitions::{StateApplicator, error::StateTransitionError},
+    types::ObligationAmounts,
+};
 
 // ---------
 // | Types |
@@ -35,7 +38,8 @@ pub enum BalanceSettlementData {
         /// Whether the balance being settled into is the input balance
         is_input_balance: bool,
     },
-    /// A balance update resulting from a private fill being settled. Contains the updated balance shares resulting from the match settlement.
+    /// A balance update resulting from a private fill being settled. Contains
+    /// the updated balance shares resulting from the match settlement.
     PrivateFill(PostMatchBalanceShare),
 }
 
@@ -49,11 +53,8 @@ impl StateApplicator {
         &self,
         transition: SettleMatchIntoBalanceTransition,
     ) -> Result<(), StateTransitionError> {
-        let SettleMatchIntoBalanceTransition {
-            nullifier,
-            block_number,
-            balance_settlement_data,
-        } = transition;
+        let SettleMatchIntoBalanceTransition { nullifier, block_number, balance_settlement_data } =
+            transition;
 
         let updated_balance_shares = get_updated_balance_public_shares(balance_settlement_data);
 
@@ -67,7 +68,7 @@ impl StateApplicator {
                 // Check if the nullifier has already been processed, no-oping if so
                 let nullifier_processed =
                     self.db_client.check_nullifier_processed(nullifier, conn).await?;
-        
+
                 if nullifier_processed {
                     warn!(
                         "Nullifier {nullifier} has already been processed, skipping indexing of match settlement into balance"
@@ -93,10 +94,17 @@ impl StateApplicator {
 // ----------------------
 
 /// Get the updated balance shares resulting from a match settlement
-fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementData) -> PostMatchBalanceShare {
+fn get_updated_balance_public_shares(
+    balance_settlement_data: BalanceSettlementData,
+) -> PostMatchBalanceShare {
     match balance_settlement_data {
-        BalanceSettlementData::PublicFill { pre_update_balance_shares, obligation_amounts, is_input_balance } => {
-            let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, mut amount } = pre_update_balance_shares;
+        BalanceSettlementData::PublicFill {
+            pre_update_balance_shares,
+            obligation_amounts,
+            is_input_balance,
+        } => {
+            let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, mut amount } =
+                pre_update_balance_shares;
 
             let ObligationAmounts { amount_in, amount_out } = obligation_amounts;
 
@@ -110,13 +118,23 @@ fn get_updated_balance_public_shares(balance_settlement_data: BalanceSettlementD
 
             PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
         },
-        BalanceSettlementData::PrivateFill (updated_balance_shares) => updated_balance_shares,
+        BalanceSettlementData::PrivateFill(updated_balance_shares) => updated_balance_shares,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_settle_match_into_balance_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::{
+            error::StateTransitionError,
+            test_utils::{
+                gen_create_balance_transition, gen_settle_match_into_balance_transition,
+                setup_expected_state_object, setup_test_state_applicator,
+                validate_balance_indexing,
+            },
+        },
+    };
 
     /// Test that a match settlement into a balance is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
@@ -136,13 +154,22 @@ mod tests {
             gen_settle_match_into_balance_transition(&initial_wrapped_balance);
 
         // Index the match settlement
-        test_applicator.settle_match_into_balance(settle_match_into_balance_transition.clone()).await?;
+        test_applicator
+            .settle_match_into_balance(settle_match_into_balance_transition.clone())
+            .await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_nullifier_processed(settle_match_into_balance_transition.nullifier, &mut conn).await?);
+        assert!(
+            db_client
+                .check_nullifier_processed(
+                    settle_match_into_balance_transition.nullifier,
+                    &mut conn
+                )
+                .await?
+        );
 
         cleanup_test_db(&postgres).await?;
 

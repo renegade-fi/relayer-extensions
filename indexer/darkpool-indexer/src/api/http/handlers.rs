@@ -53,7 +53,7 @@ pub async fn handle_get_user_state_request(
 }
 
 /// Get all of a user's active state objects
-async fn get_all_active_user_state_objects(
+pub async fn get_all_active_user_state_objects(
     account_id: Uuid,
     db_client: &DbClient,
 ) -> Result<Vec<ApiStateObject>, IndexerError> {

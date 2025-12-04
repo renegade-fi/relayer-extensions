@@ -41,7 +41,7 @@ impl StateApplicator {
                 // Check if the nullifier has already been processed, no-oping if so
                 let nullifier_processed =
                     self.db_client.check_nullifier_processed(nullifier, conn).await?;
-        
+
                 if nullifier_processed {
                     warn!(
                         "Nullifier {nullifier} has already been processed, skipping order cancellation indexing"
@@ -64,7 +64,16 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_cancel_order_transition, gen_create_intent_transition, setup_expected_state_object, setup_test_state_applicator}}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::{
+            error::StateTransitionError,
+            test_utils::{
+                gen_cancel_order_transition, gen_create_intent_transition,
+                setup_expected_state_object, setup_test_state_applicator,
+            },
+        },
+    };
 
     /// Test that an order cancellation is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
@@ -80,8 +89,7 @@ mod tests {
         test_applicator.create_intent(create_intent_transition.clone()).await?;
 
         // Generate the subsequent order cancellation transition
-        let cancel_order_transition =
-            gen_cancel_order_transition(&initial_wrapped_intent);
+        let cancel_order_transition = gen_cancel_order_transition(&initial_wrapped_intent);
 
         // Index the order cancellation
         test_applicator.cancel_order(cancel_order_transition.clone()).await?;

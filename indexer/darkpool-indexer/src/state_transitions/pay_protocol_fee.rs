@@ -1,5 +1,5 @@
-//! Defines the application-specific logic for paying the protocol fee accrued on a balance
-//! object.
+//! Defines the application-specific logic for paying the protocol fee accrued
+//! on a balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
@@ -11,10 +11,12 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 // | Types |
 // ---------
 
-/// A transition representing the payment of the protocol fee accrued on a balance object
+/// A transition representing the payment of the protocol fee accrued on a
+/// balance object
 #[derive(Clone)]
 pub struct PayProtocolFeeTransition {
-    /// The now-spent nullifier of the balance on which the protocol fee was paid
+    /// The now-spent nullifier of the balance on which the protocol fee was
+    /// paid
     pub nullifier: Scalar,
     /// The block number in which the protocol fee was paid
     pub block_number: u64,
@@ -32,7 +34,8 @@ impl StateApplicator {
         &self,
         transition: PayProtocolFeeTransition,
     ) -> Result<(), StateTransitionError> {
-        let PayProtocolFeeTransition { nullifier, block_number, new_protocol_fee_public_share } = transition;
+        let PayProtocolFeeTransition { nullifier, block_number, new_protocol_fee_public_share } =
+            transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
@@ -44,7 +47,7 @@ impl StateApplicator {
                 // Check if the nullifier has already been processed, no-oping if so
                 let nullifier_processed =
                     self.db_client.check_nullifier_processed(nullifier, conn).await?;
-        
+
                 if nullifier_processed {
                     warn!(
                         "Nullifier {nullifier} has already been processed, skipping fee payment indexing"
@@ -60,7 +63,6 @@ impl StateApplicator {
                 self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
 
                 Ok(())
-                
             }.scope_boxed()
         }).await
     }
@@ -68,7 +70,17 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::test_utils::cleanup_test_db, state_transitions::{error::StateTransitionError, test_utils::{gen_create_balance_transition, gen_pay_protocol_fee_transition, setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing}}};
+    use crate::{
+        db::test_utils::cleanup_test_db,
+        state_transitions::{
+            error::StateTransitionError,
+            test_utils::{
+                gen_create_balance_transition, gen_pay_protocol_fee_transition,
+                setup_expected_state_object, setup_test_state_applicator,
+                validate_balance_indexing,
+            },
+        },
+    };
 
     /// Test that a protocol fee payment is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
@@ -94,7 +106,9 @@ mod tests {
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_nullifier_processed(pay_fees_transition.nullifier, &mut conn).await?);
+        assert!(
+            db_client.check_nullifier_processed(pay_fees_transition.nullifier, &mut conn).await?
+        );
 
         cleanup_test_db(&postgres).await?;
 

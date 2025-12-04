@@ -1,6 +1,6 @@
 //! Utilities for setting up the integration tests
 
-use std::{fs, path::Path, str::FromStr};
+use std::{fs, path::Path, str::FromStr, sync::Arc};
 
 use alloy::{
     primitives::{Address, U256},
@@ -50,7 +50,7 @@ pub async fn build_test_indexer(
     anvil_ws_url: &str,
     wallet: PrivateKeySigner,
     deployments_path: &Path,
-) -> Result<(Indexer, PostgreSQL)> {
+) -> Result<(Arc<Indexer>, Arc<PostgreSQL>)> {
     // Set up a test DB client & state applicator
     let (db_client, postgres) = setup_test_db().await?;
     let state_applicator = StateApplicator::new(db_client.clone());
@@ -78,7 +78,7 @@ pub async fn build_test_indexer(
         http_auth_key: None,
     };
 
-    Ok((indexer, postgres))
+    Ok((Arc::new(indexer), Arc::new(postgres)))
 }
 
 /// Construct a test darkpool client, targeting a local Anvil node w/ the
