@@ -10,7 +10,7 @@ use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
 use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
-    Amount,
+    Amount, Nullifier,
     balance::{Balance, DarkpoolStateBalance},
     state_wrapper::StateWrapper,
     withdrawal::Withdrawal as CircuitWithdrawal,
@@ -56,7 +56,7 @@ use crate::{
 /// Assumes that the signer has already been funded with the deposit amount
 /// and that the Permit2 contract has been approved to spend the tokens.
 ///
-/// Returns the transaction receipt, new balance state object, and its first
+/// Returns the transaction receipt, the new balance state object, and its first
 /// recovery ID.
 pub async fn submit_deposit_new_balance(
     args: &mut TestArgs,
@@ -153,7 +153,7 @@ fn build_new_balance_deposit_witness_statement(
 pub async fn submit_deposit(
     args: &TestArgs,
     initial_balance: &DarkpoolStateBalance,
-) -> Result<(TransactionReceipt, Scalar)> {
+) -> Result<(TransactionReceipt, Nullifier)> {
     let initial_commitment = initial_balance.compute_commitment();
     let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
 
@@ -266,7 +266,7 @@ pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {
 pub async fn submit_withdrawal(
     args: &TestArgs,
     initial_balance: &DarkpoolStateBalance,
-) -> Result<(TransactionReceipt, Scalar)> {
+) -> Result<(TransactionReceipt, Nullifier)> {
     let initial_commitment = initial_balance.compute_commitment();
     let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
 

@@ -211,7 +211,8 @@ pub fn gen_create_intent_transition(
 
     // For now, we simply use the `NewIntentShare` variant of the intent creation
     // data
-    let intent_creation_data = IntentCreationData::NewIntentShare(wrapped_intent.public_share());
+    let intent_creation_data =
+        IntentCreationData::RenegadeSettledPrivateFill(wrapped_intent.public_share());
 
     let transition = CreateIntentTransition {
         recovery_id: expected_state_object.recovery_id,
