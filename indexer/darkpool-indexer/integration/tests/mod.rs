@@ -3,4 +3,5 @@
 mod deposit;
 mod deposit_new_balance;
 mod ring1_first_fill;
+mod ring1_subsequent_fill;
 mod withdraw;
