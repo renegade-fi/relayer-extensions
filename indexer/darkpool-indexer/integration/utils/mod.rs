@@ -1,20 +1,40 @@
 //! Common utilities for integration tests
 
 use alloy::primitives::U256;
-use renegade_circuits::test_helpers::random_amount;
+use rand::{Rng, thread_rng};
+use renegade_circuit_types::{AMOUNT_BITS, Amount};
 
-pub(crate) mod balance;
+pub(crate) mod abis;
+pub(crate) mod balances;
+pub(crate) mod intents;
 pub(crate) mod merkle;
 pub(crate) mod setup;
 pub(crate) mod transactions;
+
+// -------------
+// | Constants |
+// -------------
+
+/// The bounded maximum amount to prevent `Amount` overflow in tests
+// TODO: Remove once exported from relayer repo
+pub const BOUNDED_MAX_AMT: Amount = 2u128.pow((AMOUNT_BITS / 2) as u32);
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Generate a random circuit-compatible amount as a U256.
 ///
 /// The amount will be of size at most 2 ** AMOUNT_BITS
 pub fn random_amount_u256() -> U256 {
-    let amount_u128 = random_amount();
+    let mut rng = thread_rng();
+    let amount_u128 = rng.gen_range(0..=BOUNDED_MAX_AMT);
     U256::from(amount_u128)
 }
+
+// ----------
+// | Macros |
+// ----------
 
 /// Macro to create an async integration test which reverts the Anvil state
 /// before invoking the test function
@@ -28,8 +48,12 @@ macro_rules! indexer_integration_test {
                 std::boxed::Box::pin(async move {
                     args.revert_anvil_snapshot().await?;
                     args.inject_indexer_context().await?;
-                    $test_fn(args.clone()).await?;
-                    args.teardown_indexer_context().await
+
+                    let res = $test_fn(args.clone()).await;
+
+                    args.teardown_indexer_context().await?;
+
+                    res
                 })
             }),
         }));

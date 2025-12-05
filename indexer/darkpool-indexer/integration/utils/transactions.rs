@@ -3,12 +3,14 @@
 use std::time::Duration;
 
 use alloy::{
-    contract::{CallBuilder, CallDecoder},
+    contract::{CallBuilder, CallDecoder, Error as ContractError},
     network::Ethereum,
     providers::{DynProvider, Provider},
     rpc::types::TransactionReceipt,
+    transports::TransportError,
 };
 use eyre::Result;
+use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Errors;
 use test_helpers::assert_eq_result;
 
 // ---------
@@ -33,7 +35,23 @@ pub async fn wait_for_tx_success<C: CallDecoder>(
 
 /// Send a transaction and wait for it to succeed or fail
 pub async fn send_tx<C: CallDecoder>(tx: TestCallBuilder<'_, C>) -> Result<TransactionReceipt> {
-    let pending_tx = tx.send().await?;
+    let pending_tx_res = tx.send().await;
+    let pending_tx = match pending_tx_res {
+        Ok(pending_tx) => pending_tx,
+        Err(ContractError::TransportError(TransportError::ErrorResp(err_payload))) => {
+            let decoded = err_payload.as_decoded_interface_error::<IDarkpoolV2Errors>();
+
+            let err_str = decoded
+                .map(|e| format!("{e:?}"))
+                .unwrap_or_else(|| format!("unknown error: {}", err_payload.message));
+
+            eyre::bail!("pending tx error: {err_str}");
+        },
+        Err(err) => {
+            println!("pending tx error: {err:?}");
+            return Err(eyre::eyre!("pending tx error: {err:?}"));
+        },
+    };
 
     let tx_hash = *pending_tx.tx_hash();
 

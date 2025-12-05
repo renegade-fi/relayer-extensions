@@ -10,7 +10,7 @@ use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     utils::{
-        balance::{
+        balances::{
             get_party0_first_balance, random_deposit, submit_deposit, submit_deposit_new_balance,
         },
         merkle::find_commitment,

@@ -3,8 +3,8 @@
 use std::{fs, path::Path, str::FromStr};
 
 use alloy::{
-    primitives::{Address, U256},
-    providers::{DynProvider, Provider, ProviderBuilder, WsConnect, ext::AnvilApi},
+    primitives::{Address, U160, U256, aliases::U48},
+    providers::{Provider, ProviderBuilder, WsConnect, ext::AnvilApi},
     signers::local::PrivateKeySigner,
 };
 use darkpool_indexer::{
@@ -20,6 +20,11 @@ use serde_json::Value;
 use tokio::runtime::Handle;
 use uuid::Uuid;
 
+use crate::{
+    test_args::TestArgs,
+    utils::{abis::IPermit2::IPermit2Instance, transactions::send_tx},
+};
+
 // -------------
 // | Constants |
 // -------------
@@ -29,7 +34,7 @@ const DARKPOOL_PROXY_DEPLOYMENT_KEY: &str = "DarkpoolProxy";
 /// The deployments file key for the base token contract
 pub(crate) const BASE_TOKEN_DEPLOYMENT_KEY: &str = "BaseToken";
 /// The deployments file key for the quote token contract
-const QUOTE_TOKEN_DEPLOYMENT_KEY: &str = "QuoteToken";
+pub(crate) const QUOTE_TOKEN_DEPLOYMENT_KEY: &str = "QuoteToken";
 /// The deployments file key for the WETH contract
 const WETH_DEPLOYMENT_KEY: &str = "Weth";
 /// The deployments file key for the Permit2 contract
@@ -41,19 +46,19 @@ pub(crate) const PERMIT2_DEPLOYMENT_KEY: &str = "Permit2";
 
 /// Construct a test darkpool client, targeting a local Anvil node w/ the
 /// darkpool contracts deployed
-pub async fn build_test_darkpool_client(
-    anvil_ws_url: &str,
-    wallet: PrivateKeySigner,
-    deployments_path: &Path,
-) -> Result<DarkpoolClient> {
-    let wallet_address = wallet.address();
+pub async fn build_test_darkpool_client(args: &TestArgs) -> Result<DarkpoolClient> {
+    let party0_signer = args.party0_signer();
 
-    let ws = WsConnect::new(anvil_ws_url);
-    let ws_provider = ProviderBuilder::new().wallet(wallet).connect_ws(ws).await?.erased();
+    let ws = WsConnect::new(&args.anvil_ws_url);
+    let ws_provider = ProviderBuilder::new().wallet(party0_signer).connect_ws(ws).await?.erased();
 
-    fund_test_wallet(&ws_provider, wallet_address, deployments_path).await?;
+    let party0_signer = args.party0_signer();
+    let party1_signer = args.party1_signer();
 
-    let darkpool_address = read_deployment(DARKPOOL_PROXY_DEPLOYMENT_KEY, deployments_path)?;
+    fund_test_wallet(&args.anvil_ws_url, party0_signer, &args.deployments).await?;
+    fund_test_wallet(&args.anvil_ws_url, party1_signer, &args.deployments).await?;
+
+    let darkpool_address = read_deployment(DARKPOOL_PROXY_DEPLOYMENT_KEY, &args.deployments)?;
 
     let darkpool = IDarkpoolV2Instance::new(darkpool_address, ws_provider);
     Ok(DarkpoolClient::new(darkpool))
@@ -62,10 +67,15 @@ pub async fn build_test_darkpool_client(
 /// Fund the test wallet with the deployed mock ERC20s, and approve the Permit2
 /// contract as a spender
 async fn fund_test_wallet(
-    provider: &DynProvider,
-    wallet_address: Address,
+    anvil_ws_url: &str,
+    wallet: PrivateKeySigner,
     deployments_path: &Path,
 ) -> Result<()> {
+    let wallet_address = wallet.address();
+
+    let ws = WsConnect::new(anvil_ws_url);
+    let provider = ProviderBuilder::new().wallet(wallet).connect_ws(ws).await?.erased();
+
     let base_token_addr = read_deployment(BASE_TOKEN_DEPLOYMENT_KEY, deployments_path)?;
     let quote_token_addr = read_deployment(QUOTE_TOKEN_DEPLOYMENT_KEY, deployments_path)?;
     let weth_addr = read_deployment(WETH_DEPLOYMENT_KEY, deployments_path)?;
@@ -76,6 +86,7 @@ async fn fund_test_wallet(
 
     let permit2_addr = read_deployment(PERMIT2_DEPLOYMENT_KEY, deployments_path)?;
 
+    // Approve the Permit2 contract as a spender for the test wallet
     provider
         .anvil_set_erc20_allowance(wallet_address, permit2_addr, base_token_addr, U256::MAX)
         .await?;
@@ -85,6 +96,14 @@ async fn fund_test_wallet(
         .await?;
 
     provider.anvil_set_erc20_allowance(wallet_address, permit2_addr, weth_addr, U256::MAX).await?;
+
+    // Approve the darkpool contract as a spender for the test wallet
+    let darkpool_addr = read_deployment(DARKPOOL_PROXY_DEPLOYMENT_KEY, deployments_path)?;
+    let permit2 = IPermit2Instance::new(permit2_addr, provider);
+
+    send_tx(permit2.approve(base_token_addr, darkpool_addr, U160::MAX, U48::MAX)).await?;
+    send_tx(permit2.approve(quote_token_addr, darkpool_addr, U160::MAX, U48::MAX)).await?;
+    send_tx(permit2.approve(weth_addr, darkpool_addr, U160::MAX, U48::MAX)).await?;
 
     Ok(())
 }
