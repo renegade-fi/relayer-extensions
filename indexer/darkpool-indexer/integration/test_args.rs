@@ -37,8 +37,8 @@ use uuid::Uuid;
 use crate::{
     CliArgs,
     utils::setup::{
-        BASE_TOKEN_DEPLOYMENT_KEY, PERMIT2_DEPLOYMENT_KEY, gen_test_master_view_seed,
-        read_deployment, register_test_master_view_seed,
+        BASE_TOKEN_DEPLOYMENT_KEY, PERMIT2_DEPLOYMENT_KEY, QUOTE_TOKEN_DEPLOYMENT_KEY,
+        gen_test_master_view_seed, read_deployment, register_test_master_view_seed,
     },
 };
 
@@ -60,6 +60,8 @@ pub struct TestArgs {
     pub party0_master_view_seed: MasterViewSeed,
     /// The first test account's private key
     pub party0_signer: PrivateKeySigner,
+    /// The second test account's private key
+    pub party1_signer: PrivateKeySigner,
 }
 
 /// A container for indexer-specific contextual resources, constructed before
@@ -246,7 +248,7 @@ impl TestArgs {
 
     /// Get the first test account's address
     pub fn party0_address(&self) -> Address {
-        self.party0_master_view_seed.owner_address
+        self.party0_signer.address()
     }
 
     /// Get the first test account's private key
@@ -273,6 +275,16 @@ impl TestArgs {
         PoseidonCSPRNG::new(recovery_stream_seed)
     }
 
+    /// Get the second test account's private key
+    pub fn party1_signer(&self) -> PrivateKeySigner {
+        self.party1_signer.clone()
+    }
+
+    /// Get the second test account's address
+    pub fn party1_address(&self) -> Address {
+        self.party1_signer.address()
+    }
+
     // --- Contract Addresses --- //
 
     /// Get the darkpool contract address
@@ -289,13 +301,19 @@ impl TestArgs {
     pub fn base_token_address(&self) -> Result<Address> {
         read_deployment(BASE_TOKEN_DEPLOYMENT_KEY, &self.deployments)
     }
+
+    /// Get the address of the quote token
+    pub fn quote_token_address(&self) -> Result<Address> {
+        read_deployment(QUOTE_TOKEN_DEPLOYMENT_KEY, &self.deployments)
+    }
 }
 
 impl From<CliArgs> for TestArgs {
     fn from(value: CliArgs) -> Self {
-        let party0_signer = PrivateKeySigner::from_str(&value.pkey).unwrap();
-
+        let party0_signer = PrivateKeySigner::from_str(&value.party0_pkey).unwrap();
         let party0_master_view_seed = gen_test_master_view_seed(&party0_signer);
+
+        let party1_signer = PrivateKeySigner::from_str(&value.party1_pkey).unwrap();
 
         Self {
             deployments: value.deployments,
@@ -307,6 +325,7 @@ impl From<CliArgs> for TestArgs {
             anvil_context: OnceCell::new(),
             party0_master_view_seed,
             party0_signer,
+            party1_signer,
         }
     }
 }
