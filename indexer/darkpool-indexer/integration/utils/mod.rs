@@ -2,7 +2,7 @@
 
 use alloy::primitives::U256;
 use rand::{Rng, thread_rng};
-use renegade_circuit_types::{AMOUNT_BITS, Amount};
+use renegade_circuits::test_helpers::BOUNDED_MAX_AMT;
 
 pub(crate) mod abis;
 pub(crate) mod balances;
@@ -10,14 +10,6 @@ pub(crate) mod intents;
 pub(crate) mod merkle;
 pub(crate) mod setup;
 pub(crate) mod transactions;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The bounded maximum amount to prevent `Amount` overflow in tests
-// TODO: Remove once exported from relayer repo
-pub const BOUNDED_MAX_AMT: Amount = 2u128.pow((AMOUNT_BITS / 2) as u32);
 
 // -----------
 // | Helpers |

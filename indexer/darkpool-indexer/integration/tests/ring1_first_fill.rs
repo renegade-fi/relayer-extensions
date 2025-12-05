@@ -10,14 +10,14 @@ use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     utils::{
-        intents::{get_party0_first_intent, submit_ring1_settlement_first_fill},
+        intents::{get_party0_first_intent, submit_ring1_first_fill},
         merkle::find_commitment,
     },
 };
 
 /// Test the indexing of the settlement of the first fill of a ring 1 intent
 async fn test_ring1_first_fill(mut args: TestArgs) -> Result<()> {
-    submit_ring1_settlement_first_fill(&mut args).await?;
+    submit_ring1_first_fill(&mut args).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
