@@ -26,9 +26,12 @@ pub(crate) mod utils;
 // | Constants |
 // -------------
 
-/// The default anvil private key
-const DEFAULT_ANVIL_PKEY: &str =
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+/// The first pre-allocated anvil private key
+const FIRST_ANVIL_PKEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+/// The second pre-allocated anvil private key
+const SECOND_ANVIL_PKEY: &str =
+    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 
 // ---------------------
 // | Test Harness Args |
@@ -40,9 +43,12 @@ struct CliArgs {
     /// The WS RPC URL of a local Anvil node w/ the darkpool contracts deployed
     #[clap(long, default_value = "ws://localhost:8545")]
     anvil_ws_url: String,
-    /// The private key of the test wallet, assumed to be funded w/ ETH
-    #[clap(long, default_value = DEFAULT_ANVIL_PKEY)]
-    pkey: String,
+    /// The private key of the first test wallet, assumed to be funded w/ ETH
+    #[clap(long, default_value = FIRST_ANVIL_PKEY)]
+    party0_pkey: String,
+    /// The private key of the second test wallet, assumed to be funded w/ ETH
+    #[clap(long, default_value = SECOND_ANVIL_PKEY)]
+    party1_pkey: String,
     /// The path to the contract deployments file
     #[clap(long)]
     deployments: PathBuf,
@@ -66,12 +72,7 @@ fn setup(args: &TestArgs) {
 
     run_blocking_current(async {
         // Set up the darkpool client
-        let darkpool_client = build_test_darkpool_client(
-            &args.anvil_ws_url,
-            args.party0_signer.clone(),
-            &args.deployments,
-        )
-        .await?;
+        let darkpool_client = build_test_darkpool_client(args).await?;
 
         // Snapshot the Anvil node's state to include all of the funding / other onchain
         // state setup downstream of `build_test_indexer`
