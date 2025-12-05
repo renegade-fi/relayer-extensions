@@ -162,10 +162,18 @@ fn get_intent_creation_data(
 ) -> Result<Option<IntentCreationData>, IndexerError> {
     match settlement_bundle_data {
         SettlementBundleData::PrivateIntentPublicBalanceFirstFill(bundle) => {
-            let updated_intent_share: IntentShare =
+            let pre_match_full_intent_share: IntentShare =
                 bundle.auth.statement.intentPublicShare.clone().into();
 
-            Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
+            let ObligationAmounts { amount_in, .. } =
+                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
+                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
+                )?;
+
+            Ok(Some(IntentCreationData::NativelySettledPrivateIntent {
+                pre_match_full_intent_share,
+                amount_in,
+            }))
         },
         SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
@@ -182,7 +190,7 @@ fn get_intent_creation_data(
                 )?;
 
             Ok(Some(IntentCreationData::RenegadeSettledPublicFill {
-                pre_match_intent_shares,
+                pre_match_partial_intent_share: pre_match_intent_shares,
                 pre_match_amount_share,
                 amount_in,
             }))
@@ -201,7 +209,7 @@ fn get_intent_creation_data(
             let updated_intent_share =
                 from_pre_match_intent_and_amount(pre_match_intent_share, amount_public_share);
 
-            Ok(Some(IntentCreationData::NewIntentShare(updated_intent_share)))
+            Ok(Some(IntentCreationData::RenegadeSettledPrivateFill(updated_intent_share)))
         },
         // Non-first-fill bundles don't create a new intent
         _ => Ok(None),

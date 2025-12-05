@@ -9,6 +9,7 @@ integration = [
     "postgresql_embedded",
     "diesel-async/migrations",
     "renegade-solidity-abi/transfer-auth",
+    "renegade-solidity-abi/v2-auth-helpers",
 ]
 
 [[test]]
