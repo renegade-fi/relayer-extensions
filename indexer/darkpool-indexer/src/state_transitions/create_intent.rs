@@ -28,17 +28,25 @@ pub struct CreateIntentTransition {
 /// The data required to create a new intent object
 #[derive(Clone)]
 pub enum IntentCreationData {
+    /// The data needed to construct the intent shares for a natively-settled
+    /// private intent
+    NativelySettledPrivateIntent {
+        /// The full sharing of the intent before the settlement was applied to
+        /// it
+        pre_match_full_intent_share: IntentShare,
+        /// The input amount on the obligation bundle
+        amount_in: Scalar,
+    },
     /// A complete set of updated intent public shares, available in
-    /// natively-settled private-intent matches, and Renegade-settled
-    /// private-fill matches
-    NewIntentShare(IntentShare),
+    /// Renegade-settled private-fill matches
+    RenegadeSettledPrivateFill(IntentShare),
     /// The data needed to construct the intent shares for a Renegade-settled
     /// public-fill match, where only the pre-match amount public share is
     /// leaked
     RenegadeSettledPublicFill {
         /// The pre-match intent public shares, *excluding* the updated amount
         /// public share
-        pre_match_intent_shares: PreMatchIntentShare,
+        pre_match_partial_intent_share: PreMatchIntentShare,
         /// The pre-match amount public share
         pre_match_amount_share: Scalar,
         /// The input amount on the obligation bundle
@@ -162,9 +170,18 @@ impl StateApplicator {
 /// Get the new intent shares from the intent creation data
 fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShare {
     match intent_creation_data {
-        IntentCreationData::NewIntentShare(updated_intent_share) => updated_intent_share,
+        IntentCreationData::NativelySettledPrivateIntent {
+            mut pre_match_full_intent_share,
+            amount_in,
+        } => {
+            pre_match_full_intent_share.amount_in -= amount_in;
+            pre_match_full_intent_share
+        },
+        IntentCreationData::RenegadeSettledPrivateFill(updated_intent_share) => {
+            updated_intent_share
+        },
         IntentCreationData::RenegadeSettledPublicFill {
-            pre_match_intent_shares,
+            pre_match_partial_intent_share: pre_match_intent_shares,
             pre_match_amount_share,
             amount_in: obligation_amount_in,
         } => {
