@@ -20,39 +20,37 @@ use renegade_circuit_types::{
 use renegade_circuits::{
     singleprover_prove_with_hint,
     test_helpers::{
-        compute_implied_price, compute_min_amount_out, random_address, random_price, random_scalar,
+        BOUNDED_MAX_AMT, compute_implied_price, compute_min_amount_out, random_price, random_scalar,
     },
     zk_circuits::{
         proof_linking::intent_only::link_sized_intent_only_settlement,
         settlement::intent_only_public_settlement::{
-            IntentOnlyPublicSettlementCircuit, IntentOnlyPublicSettlementStatement,
-            IntentOnlyPublicSettlementWitness, SizedIntentOnlyPublicSettlementWitness,
+            self, IntentOnlyPublicSettlementStatement, SizedIntentOnlyPublicSettlementCircuit,
         },
-        validity_proofs::intent_only_first_fill::{
-            IntentOnlyFirstFillValidityCircuit, IntentOnlyFirstFillValidityStatement,
-            IntentOnlyFirstFillValidityWitness,
+        validity_proofs::{
+            intent_only::{self, IntentOnlyValidityCircuit, IntentOnlyValidityStatement},
+            intent_only_first_fill::{
+                IntentOnlyFirstFillValidityCircuit, IntentOnlyFirstFillValidityStatement,
+                IntentOnlyFirstFillValidityWitness,
+            },
         },
     },
 };
-use renegade_constants::{MERKLE_HEIGHT, Scalar};
+use renegade_common::types::merkle::MerkleAuthenticationPath;
+use renegade_constants::MERKLE_HEIGHT;
 use renegade_crypto::fields::scalar_to_u256;
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{ObligationBundle, PrivateIntentAuthBundleFirstFill, SettlementBundle},
+    IDarkpoolV2::{
+        ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill,
+        SettlementBundle,
+    },
     auth_helpers::sign_with_nonce,
 };
 
 use crate::{
     test_args::TestArgs,
-    utils::{BOUNDED_MAX_AMT, transactions::wait_for_tx_success},
+    utils::{merkle::parse_merkle_opening_from_receipt, transactions::wait_for_tx_success},
 };
-
-// ---------
-// | Types |
-// ---------
-
-/// An `IntentOnlyValidityCircuit` sized w/ the system Merkle height parameter
-// TODO: Remove once exported from relayer repo
-type SizedIntentOnlyPublicSettlementCircuit = IntentOnlyPublicSettlementCircuit<MERKLE_HEIGHT>;
 
 // -------------------------------
 // | Ring 1 Intents / Settlement |
@@ -61,30 +59,73 @@ type SizedIntentOnlyPublicSettlementCircuit = IntentOnlyPublicSettlementCircuit<
 /// Submit a settlement between two ring 1 intents which both receive their
 /// first fill.
 ///
-/// Returns the transaction receipt, both intent state objects, and the first
-/// recovery ID of the first test account's intent.
-pub async fn submit_ring1_settlement_first_fill(
+/// Returns the transaction receipt, both intent state objects (after the first
+/// fill has been applied to them), and both subsequent fill obligations
+pub async fn submit_ring1_first_fill(
     args: &mut TestArgs,
-) -> Result<(TransactionReceipt, DarkpoolStateIntent, DarkpoolStateIntent, Scalar)> {
+) -> Result<(
+    TransactionReceipt,
+    DarkpoolStateIntent,
+    DarkpoolStateIntent,
+    SettlementObligation,
+    SettlementObligation,
+)> {
     // Build the crossing intents & obligations
     let (intent0, intent1, obligation0, obligation1) = create_intents_and_obligations(args).await?;
 
+    // Split the obligations in 2 to allow for 2 fills
+    let (first_obligation0, second_obligation0) = split_obligation(&obligation0);
+    let (first_obligation1, second_obligation1) = split_obligation(&obligation1);
+
     let (mut state_intent0, settlement_bundle0) =
-        build_ring1_settlement_bundle_first_fill(args, true, &intent0, &obligation0)?;
+        build_ring1_settlement_bundle_first_fill(args, true, &intent0, &first_obligation0)?;
 
-    let (state_intent1, settlement_bundle1) =
-        build_ring1_settlement_bundle_first_fill(args, false, &intent1, &obligation1)?;
+    let (mut state_intent1, settlement_bundle1) =
+        build_ring1_settlement_bundle_first_fill(args, false, &intent1, &first_obligation1)?;
 
-    let obligation_bundle = build_public_obligation_bundle(&obligation0, &obligation1);
+    let obligation_bundle = build_public_obligation_bundle(&first_obligation0, &first_obligation1);
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
 
     let receipt = wait_for_tx_success(call).await?;
 
-    let recovery_id = state_intent0.compute_recovery_id();
+    state_intent0.apply_settlement_obligation(&first_obligation0);
+    state_intent1.apply_settlement_obligation(&first_obligation1);
 
-    Ok((receipt, state_intent0, state_intent1, recovery_id))
+    Ok((receipt, state_intent0, state_intent1, second_obligation0, second_obligation1))
+}
+
+/// Submit the settlement of a subsequent fill on the 2 given intents,
+/// represented by the given 2 settlement obligations.
+pub async fn submit_ring1_subsequent_fill(
+    args: &TestArgs,
+    state_intent0: &DarkpoolStateIntent,
+    state_intent1: &DarkpoolStateIntent,
+    obligation0: &SettlementObligation,
+    obligation1: &SettlementObligation,
+    receipt: &TransactionReceipt,
+) -> Result<()> {
+    let darkpool = args.darkpool_instance();
+
+    let commitment0 = state_intent0.compute_commitment();
+    let commitment1 = state_intent1.compute_commitment();
+
+    let opening0 = parse_merkle_opening_from_receipt(commitment0, receipt)?;
+    let opening1 = parse_merkle_opening_from_receipt(commitment1, receipt)?;
+
+    let settlement_bundle0 =
+        build_ring1_settlement_bundle_subsequent_fill(state_intent0, &opening0, obligation0)?;
+
+    let settlement_bundle1 =
+        build_ring1_settlement_bundle_subsequent_fill(state_intent1, &opening1, obligation1)?;
+
+    let obligation_bundle = build_public_obligation_bundle(obligation0, obligation1);
+
+    let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
+    wait_for_tx_success(call).await?;
+
+    Ok(())
 }
 
 /// Create two matching intents and obligations
@@ -173,6 +214,30 @@ fn build_ring1_settlement_bundle_first_fill(
     Ok((state_intent, settlement_bundle))
 }
 
+/// Build a settlement bundle for a subsequent fill of a ring 1 intent
+fn build_ring1_settlement_bundle_subsequent_fill(
+    intent: &DarkpoolStateIntent,
+    opening: &MerkleAuthenticationPath,
+    obligation: &SettlementObligation,
+) -> Result<SettlementBundle> {
+    let (validity_statement, validity_proof, validity_link_hint) =
+        generate_ring1_subsequent_fill_validity_proof(intent, opening)?;
+
+    let (settlement_statement, settlement_proof, settlement_link_hint) =
+        generate_ring1_settlement_proof(&intent.inner, obligation)?;
+
+    let linking_proof = generate_ring1_linking_proof(&validity_link_hint, &settlement_link_hint)?;
+
+    let auth_bundle = build_auth_bundle_subsequent_fill(&validity_statement, &validity_proof)?;
+
+    Ok(SettlementBundle::private_intent_public_balance(
+        auth_bundle.clone(),
+        settlement_statement.clone().into(),
+        settlement_proof.clone().into(),
+        linking_proof.into(),
+    ))
+}
+
 /// Generate a validity proof for the first fill of a ring 1 intent
 fn generate_ring1_first_fill_validity_proof(
     args: &mut TestArgs,
@@ -208,13 +273,34 @@ fn generate_ring1_first_fill_validity_proof(
     Ok((comm, state_intent, statement, proof, link_hint))
 }
 
+/// Generate a validity proof for the first fill of a ring 1 intent
+fn generate_ring1_subsequent_fill_validity_proof(
+    intent: &DarkpoolStateIntent,
+    merkle_opening: &MerkleAuthenticationPath,
+) -> Result<(IntentOnlyValidityStatement, PlonkProof, ProofLinkingHint)> {
+    // Generate the witness and statement
+    let (mut witness, mut statement) =
+        intent_only::test_helpers::create_witness_statement_with_state_intent(intent.clone());
+
+    // Replace the dummy Merkle opening with the real one
+    statement.merkle_root = merkle_opening.compute_root();
+    witness.old_intent_opening = merkle_opening.clone().into();
+
+    // Prove the circuit
+    let (proof, link_hint) = singleprover_prove_with_hint::<
+        IntentOnlyValidityCircuit<MERKLE_HEIGHT>,
+    >(witness, statement.clone())?;
+
+    Ok((statement, proof, link_hint))
+}
+
 /// Generate a settlement proof for a ring 1 intent
 fn generate_ring1_settlement_proof(
     intent: &Intent,
     obligation: &SettlementObligation,
 ) -> Result<(IntentOnlyPublicSettlementStatement, PlonkProof, ProofLinkingHint)> {
-    let (witness, statement) =
-        create_intent_only_public_settlement_witness_statement(intent, obligation);
+    let (witness, mut statement) = intent_only_public_settlement::test_helpers::create_witness_statement_with_intent_and_obligation(intent, obligation);
+    statement.relayer_fee = settlement_relayer_fee();
 
     let (proof, link_hint) = singleprover_prove_with_hint::<SizedIntentOnlyPublicSettlementCircuit>(
         witness,
@@ -243,6 +329,18 @@ fn build_auth_bundle_first_fill(
     })
 }
 
+/// Build an auth bundle for a subsequent fill
+fn build_auth_bundle_subsequent_fill(
+    validity_statement: &IntentOnlyValidityStatement,
+    validity_proof: &PlonkProof,
+) -> Result<PrivateIntentAuthBundle> {
+    Ok(PrivateIntentAuthBundle {
+        merkleDepth: U256::from(MERKLE_HEIGHT),
+        statement: validity_statement.clone().into(),
+        validityProof: validity_proof.clone().into(),
+    })
+}
+
 /// Build an obligation bundle for two public obligations
 pub fn build_public_obligation_bundle(
     obligation0: &SettlementObligation,
@@ -254,6 +352,22 @@ pub fn build_public_obligation_bundle(
 // ----------------
 // | Misc Helpers |
 // ----------------
+
+/// Split an obligation in two
+///
+/// Returns the two splits of the obligation
+fn split_obligation(
+    obligation: &SettlementObligation,
+) -> (SettlementObligation, SettlementObligation) {
+    let mut obligation0 = obligation.clone();
+    let mut obligation1 = obligation.clone();
+    obligation0.amount_in /= 2;
+    obligation0.amount_out /= 2;
+    obligation1.amount_in /= 2;
+    obligation1.amount_out /= 2;
+
+    (obligation0, obligation1)
+}
 
 /// The settlement relayer fee to use for testing
 fn settlement_relayer_fee() -> FixedPoint {
@@ -307,23 +421,6 @@ fn create_intent_only_first_fill_validity_witness_statement(
         intent_private_commitment,
         recovery_id,
         intent_public_share,
-    };
-
-    (witness, statement)
-}
-
-/// Create a witness and statement for the `IntentOnlyPublicSettlementCircuit`
-/// using the given intent and obligation
-// TODO: Remove once exported from relayer repo
-fn create_intent_only_public_settlement_witness_statement(
-    intent: &Intent,
-    settlement_obligation: &SettlementObligation,
-) -> (SizedIntentOnlyPublicSettlementWitness, IntentOnlyPublicSettlementStatement) {
-    let witness = IntentOnlyPublicSettlementWitness { intent: intent.clone() };
-    let statement = IntentOnlyPublicSettlementStatement {
-        settlement_obligation: settlement_obligation.clone(),
-        relayer_fee: settlement_relayer_fee(),
-        relayer_fee_recipient: random_address(),
     };
 
     (witness, statement)
