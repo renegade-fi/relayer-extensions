@@ -1,4 +1,4 @@
-//! Utilities for managing intents in integration tests
+//! Integration testing utilities for managing intents
 
 use alloy::{
     primitives::{U256, keccak256},
@@ -71,17 +71,25 @@ pub async fn submit_ring1_first_fill(
     SettlementObligation,
 )> {
     // Build the crossing intents & obligations
-    let (intent0, intent1, obligation0, obligation1) = create_intents_and_obligations(args).await?;
+    let (intent0, intent1, obligation0, obligation1) = create_intents_and_obligations(args)?;
 
     // Split the obligations in 2 to allow for 2 fills
     let (first_obligation0, second_obligation0) = split_obligation(&obligation0);
     let (first_obligation1, second_obligation1) = split_obligation(&obligation1);
 
-    let (mut state_intent0, settlement_bundle0) =
-        build_ring1_settlement_bundle_first_fill(args, true, &intent0, &first_obligation0)?;
+    let (mut state_intent0, settlement_bundle0) = build_ring1_settlement_bundle_first_fill(
+        args,
+        true, // is_party0
+        &intent0,
+        &first_obligation0,
+    )?;
 
-    let (mut state_intent1, settlement_bundle1) =
-        build_ring1_settlement_bundle_first_fill(args, false, &intent1, &first_obligation1)?;
+    let (mut state_intent1, settlement_bundle1) = build_ring1_settlement_bundle_first_fill(
+        args,
+        false, // is_party0
+        &intent1,
+        &first_obligation1,
+    )?;
 
     let obligation_bundle = build_public_obligation_bundle(&first_obligation0, &first_obligation1);
 
@@ -131,7 +139,7 @@ pub async fn submit_ring1_subsequent_fill(
 /// Create two matching intents and obligations
 ///
 /// Party 0 sells the base; party 1 sells the quote
-async fn create_intents_and_obligations(
+pub fn create_intents_and_obligations(
     args: &TestArgs,
 ) -> Result<(Intent, Intent, SettlementObligation, SettlementObligation)> {
     // Construct a random intent for the first party
@@ -356,7 +364,7 @@ pub fn build_public_obligation_bundle(
 /// Split an obligation in two
 ///
 /// Returns the two splits of the obligation
-fn split_obligation(
+pub fn split_obligation(
     obligation: &SettlementObligation,
 ) -> (SettlementObligation, SettlementObligation) {
     let mut obligation0 = obligation.clone();
@@ -370,7 +378,7 @@ fn split_obligation(
 }
 
 /// The settlement relayer fee to use for testing
-fn settlement_relayer_fee() -> FixedPoint {
+pub fn settlement_relayer_fee() -> FixedPoint {
     FixedPoint::from_f64_round_down(0.0001) // 1bp
 }
 
