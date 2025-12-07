@@ -38,7 +38,7 @@ pub struct DbClient {
 
 impl DbClient {
     /// Create a new database client using the provided database URL
-    pub async fn new(db_url: &str) -> Result<Self, DbError> {
+    pub fn new(db_url: &str) -> Result<Self, DbError> {
         let mut conf = ManagerConfig::default();
         conf.custom_setup = Box::new(move |url| Box::pin(Self::establish_connection(url)));
 

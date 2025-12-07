@@ -3,7 +3,7 @@
 use std::{cell::OnceCell, path::PathBuf, str::FromStr, sync::Arc};
 
 use alloy::{
-    primitives::{Address, TxHash, U256},
+    primitives::{Address, B256, TxHash, U256},
     providers::{DynProvider, Provider, ext::AnvilApi},
     signers::local::PrivateKeySigner,
 };
@@ -23,7 +23,7 @@ use darkpool_indexer::{
     types::MasterViewSeed,
 };
 use darkpool_indexer_api::types::message_queue::{
-    Message, NullifierSpendMessage, RecoveryIdMessage,
+    CreatePublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
@@ -200,6 +200,18 @@ impl TestArgs {
         let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
         let nullifier_str = nullifier.to_string();
         self.send_message(message, nullifier_str.clone(), nullifier_str).await
+    }
+
+    /// Send a public intent creation message to the indexer's message queue
+    pub async fn send_public_intent_creation_message(
+        &self,
+        intent_hash: B256,
+        tx_hash: TxHash,
+    ) -> Result<()> {
+        let message =
+            Message::CreatePublicIntent(CreatePublicIntentMessage { intent_hash, tx_hash });
+        let intent_hash_str = intent_hash.to_string();
+        self.send_message(message, intent_hash_str.clone(), intent_hash_str).await
     }
 
     /// Get a reference to the DB client

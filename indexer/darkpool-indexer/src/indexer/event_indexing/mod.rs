@@ -38,7 +38,7 @@ use crate::{
     },
 };
 
-mod types;
+pub mod types;
 mod utils;
 
 // --------------------------
