@@ -28,7 +28,7 @@ use crate::{
 
 /// The value for the `NATIVELY_SETTLED_PUBLIC_INTENT` variant of the Solidity
 /// `SettlementBundleType` enum
-const NATIVELY_SETTLED_PUBLIC_INTENT: u8 = 0;
+pub const NATIVELY_SETTLED_PUBLIC_INTENT: u8 = 0;
 /// The value for the `NATIVELY_SETTLED_PRIVATE_INTENT` variant of the Solidity
 /// `SettlementBundleType` enum
 const NATIVELY_SETTLED_PRIVATE_INTENT: u8 = 1;

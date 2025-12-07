@@ -1,4 +1,4 @@
-//! Utilities for managing balances in integration tests
+//! Integration testing utilities for managing balances
 
 use alloy::{
     primitives::{Address, U256},

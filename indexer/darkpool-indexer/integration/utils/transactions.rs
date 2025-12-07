@@ -1,4 +1,4 @@
-//! Utilities for sending blockchain transactions
+//! Integration testsing utilities for sending blockchain transactions
 
 use std::time::Duration;
 
