@@ -30,7 +30,7 @@ pub async fn setup_test_db() -> Result<(DbClient, PostgreSQL), DbError> {
     postgres.database_exists(TEST_DB_NAME).await.map_err(DbError::client_setup)?;
 
     let db_url = postgres.settings().url(TEST_DB_NAME);
-    let client = DbClient::new(&db_url).await.map_err(DbError::client_setup)?;
+    let client = DbClient::new(&db_url).map_err(DbError::client_setup)?;
 
     // Apply migrations
     let conn = client.get_db_conn().await?;

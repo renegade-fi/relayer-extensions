@@ -8,6 +8,7 @@ pub(crate) mod abis;
 pub(crate) mod balances;
 pub(crate) mod intents;
 pub(crate) mod merkle;
+pub(crate) mod public_intents;
 pub(crate) mod setup;
 pub(crate) mod transactions;
 
