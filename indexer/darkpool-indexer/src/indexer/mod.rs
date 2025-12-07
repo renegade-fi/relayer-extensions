@@ -25,7 +25,7 @@ use crate::{
 
 mod backfill;
 pub mod error;
-mod event_indexing;
+pub mod event_indexing;
 
 // -------------
 // | Constants |
@@ -102,7 +102,7 @@ impl Indexer {
         cli.configure_telemetry()?;
 
         // Set up the database client & state applicator
-        let db_client = DbClient::new(&cli.database_url).await?;
+        let db_client = DbClient::new(&cli.database_url)?;
         let state_applicator = StateApplicator::new(db_client.clone());
 
         // Set up the message queue client

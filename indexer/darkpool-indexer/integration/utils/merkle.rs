@@ -1,4 +1,4 @@
-//! Utils for fetching Merkle openings
+//! Integration testing utilities for fetching Merkle openings
 
 use alloy::{
     primitives::{TxHash, U256},
