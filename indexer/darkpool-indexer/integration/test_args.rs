@@ -24,6 +24,7 @@ use darkpool_indexer::{
 };
 use darkpool_indexer_api::types::message_queue::{
     CreatePublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
+    UpdatePublicIntentMessage,
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
@@ -210,8 +211,26 @@ impl TestArgs {
     ) -> Result<()> {
         let message =
             Message::CreatePublicIntent(CreatePublicIntentMessage { intent_hash, tx_hash });
+
         let intent_hash_str = intent_hash.to_string();
         self.send_message(message, intent_hash_str.clone(), intent_hash_str).await
+    }
+
+    /// Send a public intent update message to the indexer's message queue
+    pub async fn send_public_intent_update_message(
+        &self,
+        intent_hash: B256,
+        version: u64,
+        tx_hash: TxHash,
+    ) -> Result<()> {
+        let message = Message::UpdatePublicIntent(UpdatePublicIntentMessage {
+            intent_hash,
+            version,
+            tx_hash,
+        });
+
+        let message_id = format!("{intent_hash}-{version}");
+        self.send_message(message, message_id.clone(), message_id).await
     }
 
     /// Get a reference to the DB client
