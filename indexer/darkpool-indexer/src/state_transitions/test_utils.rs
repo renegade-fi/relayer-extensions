@@ -516,18 +516,14 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
 pub fn gen_settle_match_into_public_intent_transition(
     initial_public_intent: &PublicIntentStateObject,
 ) -> SettleMatchIntoPublicIntentTransition {
-    let mut updated_intent = initial_public_intent.clone();
-
-    // Apply a random match amount to the public intent
-    let match_amount = random_amount().min(initial_public_intent.intent.amount_in);
-    updated_intent.intent.amount_in -= match_amount;
-
-    updated_intent.version += 1;
+    // Generate a random match amount
+    let amount_in_u128 = random_amount().min(initial_public_intent.intent.amount_in);
+    let amount_in = Scalar::from(amount_in_u128);
 
     SettleMatchIntoPublicIntentTransition {
-        intent_hash: updated_intent.intent_hash,
-        intent: updated_intent.intent,
-        version: updated_intent.version,
+        amount_in,
+        intent_hash: initial_public_intent.intent_hash,
+        version: initial_public_intent.version + 1,
         block_number: 0,
     }
 }

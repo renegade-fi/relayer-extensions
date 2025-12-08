@@ -19,12 +19,10 @@ use crate::{
         Indexer,
         error::IndexerError,
         event_indexing::{
-            types::{
-                obligation_bundle::ObligationBundleData, settlement_bundle::SettlementBundleData,
-            },
+            types::obligation_bundle::ObligationBundleData,
             utils::{
                 try_decode_balance_settlement_data, try_decode_intent_creation_data,
-                try_decode_intent_settlement_data, try_decode_public_intent_creation_data,
+                try_decode_intent_settlement_data, try_decode_public_intent_data,
             },
         },
     },
@@ -515,22 +513,22 @@ impl Indexer {
         let obligation_bundle_data: ObligationBundleData =
             (&settle_match_call.obligationBundle).try_into()?;
 
-        let maybe_party0_public_intent_creation_data = try_decode_public_intent_creation_data(
+        let maybe_party0_public_intent_data = try_decode_public_intent_data(
             intent_hash,
             &settle_match_call.party0SettlementBundle,
             &obligation_bundle_data,
             true, // is_party0
         )?;
 
-        let maybe_party1_public_intent_creation_data = try_decode_public_intent_creation_data(
+        let maybe_party1_public_intent_data = try_decode_public_intent_data(
             intent_hash,
             &settle_match_call.party1SettlementBundle,
             &obligation_bundle_data,
             false, // is_party0
         )?;
 
-        let (intent, amount_in) = maybe_party0_public_intent_creation_data
-            .or(maybe_party1_public_intent_creation_data)
+        let (intent, amount_in) = maybe_party0_public_intent_data
+            .or(maybe_party1_public_intent_data)
             .ok_or(IndexerError::invalid_settlement_bundle(
                 "no public intent found in settle match call",
             ))?;
@@ -558,24 +556,31 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let party0_settlement_bundle_data: SettlementBundleData =
-            (&settle_match_call.party0SettlementBundle).try_into()?;
+        let obligation_bundle_data: ObligationBundleData =
+            (&settle_match_call.obligationBundle).try_into()?;
 
-        let party1_settlement_bundle_data: SettlementBundleData =
-            (&settle_match_call.party1SettlementBundle).try_into()?;
-
-        let maybe_party0_intent =
-            party0_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
-
-        let maybe_party1_intent =
-            party1_settlement_bundle_data.try_decode_public_intent(intent_hash)?;
-
-        let intent = maybe_party0_intent.or(maybe_party1_intent).ok_or(
-            IndexerError::invalid_settlement_bundle("no public intent found in settle match call"),
+        let maybe_party0_public_intent_data = try_decode_public_intent_data(
+            intent_hash,
+            &settle_match_call.party0SettlementBundle,
+            &obligation_bundle_data,
+            true, // is_party0
         )?;
 
+        let maybe_party1_public_intent_data = try_decode_public_intent_data(
+            intent_hash,
+            &settle_match_call.party1SettlementBundle,
+            &obligation_bundle_data,
+            false, // is_party0
+        )?;
+
+        let (_, amount_in) = maybe_party0_public_intent_data
+            .or(maybe_party1_public_intent_data)
+            .ok_or(IndexerError::invalid_settlement_bundle(
+                "no public intent found in settle match call",
+            ))?;
+
         Ok(StateTransition::SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition {
-            intent,
+            amount_in,
             intent_hash,
             version,
             block_number,

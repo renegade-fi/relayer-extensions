@@ -217,10 +217,10 @@ fn get_intent_creation_data(
     }
 }
 
-/// Try to decode the public intent creation data (the intent, and the
+/// Try to decode the public intent data (the intent, and the
 /// obligation input amount) from the given party's settlement & obligation
 /// bundles.
-pub fn try_decode_public_intent_creation_data(
+pub fn try_decode_public_intent_data(
     intent_hash: B256,
     settlement_bundle: &SettlementBundle,
     obligation_bundle_data: &ObligationBundleData,

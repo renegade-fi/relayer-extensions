@@ -38,11 +38,12 @@ use crate::{
 /// Submit a settlement between two ring 0 intents which both receive their
 /// first fill.
 ///
-/// Returns the transaction receipt, party 0's new intent hash, and both
-/// subsequent fill obligations
+/// Returns the transaction receipt, party 0's new intent hash, both intents,
+/// and both subsequent fill obligations
 pub async fn submit_ring0_first_fill(
     args: &TestArgs,
-) -> Result<(TransactionReceipt, B256, SettlementObligation, SettlementObligation)> {
+) -> Result<(TransactionReceipt, B256, Intent, Intent, SettlementObligation, SettlementObligation)>
+{
     // Build the crossing intents & obligations
     let (intent0, intent1, obligation0, obligation1) = create_intents_and_obligations(args)?;
 
@@ -50,14 +51,14 @@ pub async fn submit_ring0_first_fill(
     let (first_obligation0, second_obligation0) = split_obligation(&obligation0);
     let (first_obligation1, second_obligation1) = split_obligation(&obligation1);
 
-    let (settlement_bundle0, intent_hash) = build_ring0_settlement_bundle_first_fill(
+    let (settlement_bundle0, intent_hash) = build_ring0_settlement_bundle(
         args,
         true, // is_party0
         &intent0,
         &first_obligation0,
     )?;
 
-    let (settlement_bundle1, _) = build_ring0_settlement_bundle_first_fill(
+    let (settlement_bundle1, _) = build_ring0_settlement_bundle(
         args,
         false, // is_party0
         &intent1,
@@ -71,13 +72,48 @@ pub async fn submit_ring0_first_fill(
 
     let receipt = wait_for_tx_success(call).await?;
 
-    Ok((receipt, intent_hash, second_obligation0, second_obligation1))
+    Ok((receipt, intent_hash, intent0, intent1, second_obligation0, second_obligation1))
 }
 
-/// Build a settlement bundle for the first fill of a ring 0 intent.
+/// Submit the settlement of a subsequent fill on the 2 given intents,
+/// represented by the given 2 settlement obligations.
+///
+/// Returns the transaction receipt.
+pub async fn submit_ring0_subsequent_fill(
+    args: &TestArgs,
+    original_intent0: &Intent,
+    original_intent1: &Intent,
+    second_obligation0: &SettlementObligation,
+    second_obligation1: &SettlementObligation,
+) -> Result<TransactionReceipt> {
+    let (settlement_bundle0, _) = build_ring0_settlement_bundle(
+        args,
+        true, // is_party0
+        original_intent0,
+        second_obligation0,
+    )?;
+
+    let (settlement_bundle1, _) = build_ring0_settlement_bundle(
+        args,
+        false, // is_party0
+        original_intent1,
+        second_obligation1,
+    )?;
+
+    let obligation_bundle = build_public_obligation_bundle(second_obligation0, second_obligation1);
+
+    let darkpool = args.darkpool_instance();
+    let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
+
+    let receipt = wait_for_tx_success(call).await?;
+
+    Ok(receipt)
+}
+
+/// Build a settlement bundle a ring 0 intent.
 ///
 /// Returns the settlement bundle alongside the intent hash.
-fn build_ring0_settlement_bundle_first_fill(
+fn build_ring0_settlement_bundle(
     args: &TestArgs,
     is_party0: bool,
     circuit_intent: &Intent,
@@ -114,7 +150,7 @@ fn build_ring0_settlement_bundle_first_fill(
     let bundle_data = PublicIntentPublicBalanceBundle { auth, relayerFeeRate: relayer_fee_rate };
 
     let bundle = SettlementBundle {
-        // Even though this is the first fill, the contracts don't expect this field to be set
+        // The contracts never expect this field to be set
         isFirstFill: false,
         bundleType: NATIVELY_SETTLED_PUBLIC_INTENT,
         data: bundle_data.abi_encode().into(),
