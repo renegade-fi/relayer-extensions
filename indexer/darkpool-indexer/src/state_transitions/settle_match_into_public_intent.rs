@@ -3,7 +3,8 @@
 
 use alloy::primitives::B256;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::intent::Intent;
+use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use tracing::warn;
 
 use crate::state_transitions::{StateApplicator, error::StateTransitionError};
@@ -15,8 +16,8 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 /// A transition representing the settlement of a match into a public intent
 #[derive(Clone)]
 pub struct SettleMatchIntoPublicIntentTransition {
-    /// The post-match public intent
-    pub intent: Intent,
+    /// The input amount on the obligation bundle
+    pub amount_in: Scalar,
     /// The intent hash
     pub intent_hash: B256,
     /// The post-match version of the public intent
@@ -35,14 +36,14 @@ impl StateApplicator {
         &self,
         transition: SettleMatchIntoPublicIntentTransition,
     ) -> Result<(), StateTransitionError> {
-        let SettleMatchIntoPublicIntentTransition { intent, intent_hash, version, block_number } =
+        let SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, version, block_number } =
             transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
         let mut public_intent =
             self.db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
 
-        public_intent.intent = intent;
+        public_intent.intent.amount_in -= scalar_to_u128(&amount_in);
         public_intent.version = version;
 
         conn.transaction(move |conn| {
@@ -72,6 +73,8 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
+    use renegade_crypto::fields::scalar_to_u128;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::{
@@ -97,7 +100,7 @@ mod tests {
         let intent_hash = create_public_intent_transition.intent_hash;
 
         // Index the initial public intent creation
-        test_applicator.create_public_intent(create_public_intent_transition).await?;
+        test_applicator.create_public_intent(create_public_intent_transition.clone()).await?;
 
         // Generate the subsequent match settlement transition
         let mut conn = db_client.get_db_conn().await?;
@@ -107,7 +110,9 @@ mod tests {
         let settle_match_into_public_intent_transition =
             gen_settle_match_into_public_intent_transition(&initial_public_intent);
 
-        let intent = settle_match_into_public_intent_transition.intent.clone();
+        let mut intent = create_public_intent_transition.intent.clone();
+        intent.amount_in -= scalar_to_u128(&create_public_intent_transition.amount_in);
+        intent.amount_in -= scalar_to_u128(&settle_match_into_public_intent_transition.amount_in);
 
         // Index the match settlement
         test_applicator
