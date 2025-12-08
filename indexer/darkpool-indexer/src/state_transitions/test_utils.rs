@@ -499,11 +499,14 @@ pub fn gen_settle_match_into_balance_transition(
 pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
     let intent = gen_random_intent(owner);
 
+    let amount_in_u128 = thread_rng().gen_range(1..=intent.amount_in);
+    let amount_in = Scalar::from(amount_in_u128);
+
     // Create a dummy intent hash, we don't need to actually hash the intent for
     // testing
     let intent_hash = B256::random();
 
-    CreatePublicIntentTransition { intent, intent_hash, block_number: 0 }
+    CreatePublicIntentTransition { intent, amount_in, intent_hash, block_number: 0 }
 }
 
 /// Generate the state transition which should result in the given
