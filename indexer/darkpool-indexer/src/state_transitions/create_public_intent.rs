@@ -3,6 +3,8 @@
 use alloy::primitives::B256;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::intent::Intent;
+use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use tracing::warn;
 
 use crate::{
@@ -19,6 +21,8 @@ use crate::{
 pub struct CreatePublicIntentTransition {
     /// The public intent to create
     pub intent: Intent,
+    /// The input amount on the obligation bundle
+    pub amount_in: Scalar,
     /// The intent hash
     pub intent_hash: B256,
     /// The block number in which the public intent was created
@@ -35,7 +39,10 @@ impl StateApplicator {
         &self,
         transition: CreatePublicIntentTransition,
     ) -> Result<(), StateTransitionError> {
-        let CreatePublicIntentTransition { intent, intent_hash, block_number } = transition;
+        let CreatePublicIntentTransition { mut intent, amount_in, intent_hash, block_number } =
+            transition;
+
+        intent.amount_in -= scalar_to_u128(&amount_in);
 
         let mut conn = self.db_client.get_db_conn().await?;
         let master_view_seed =
@@ -82,6 +89,8 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
+    use renegade_crypto::fields::scalar_to_u128;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::{
@@ -103,7 +112,8 @@ mod tests {
         let transition = gen_create_public_intent_transition(master_view_seed.owner_address);
 
         let intent_hash = transition.intent_hash;
-        let intent = transition.intent.clone();
+        let mut intent = transition.intent.clone();
+        intent.amount_in -= scalar_to_u128(&transition.amount_in);
 
         // Index the public intent creation
         test_applicator.create_public_intent(transition).await?;
