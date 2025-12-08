@@ -106,16 +106,21 @@ impl DarkpoolClient {
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
 
-        calls
-            .into_iter()
-            .find(|call| {
-                call.logs.iter().any(|log| {
-                    // TODO: Also check for inclusion of public intent update event signature in
-                    // topic 0, once the ABI is finalized.
-                    log.topics.clone().unwrap_or_default().contains(&intent_hash)
-                })
-            })
-            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
+        // TEMP: use first callframe until public update creation events are implemented
+        // in the contracts
+        calls.first().ok_or(DarkpoolClientError::PublicIntentHashNotFound).cloned()
+
+        // calls
+        //     .into_iter()
+        //     .find(|call| {
+        //         call.logs.iter().any(|log| {
+        //             // TODO: Also check for inclusion of public intent update
+        // event signature in             // topic 0, once the ABI is
+        // finalized.
+        // log.topics.clone().unwrap_or_default().contains(&intent_hash)
+        //         })
+        //     })
+        //     .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
     }
 
     /// Fetch all darkpool calls made in the given transaction
