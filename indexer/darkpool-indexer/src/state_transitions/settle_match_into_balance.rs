@@ -2,13 +2,17 @@
 //! object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::balance::PostMatchBalanceShare;
+use renegade_circuit_types::{
+    balance::PostMatchBalanceShare, fee::FeeTake, fixed_point::FixedPoint,
+    settlement_obligation::SettlementObligation,
+};
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use tracing::warn;
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
-    types::ObligationAmounts,
+    types::BalanceStateObject,
 };
 
 // ---------
@@ -29,14 +33,19 @@ pub struct SettleMatchIntoBalanceTransition {
 /// The data required to update a balance resulting from a match settlement
 #[derive(Clone)]
 pub enum BalanceSettlementData {
-    /// A balance update resulting from a public fill being settled
-    PublicFill {
-        /// The pre-update balance shares affected by the match
-        pre_update_balance_shares: PostMatchBalanceShare,
-        /// The input/output amounts parsed from the public obligation bundle
-        obligation_amounts: ObligationAmounts,
-        /// Whether the balance being settled into is the input balance
-        is_input_balance: bool,
+    /// An input balance update resulting from a public fill being settled
+    PublicFillInputBalance {
+        /// The settlement obligation for the fill
+        settlement_obligation: SettlementObligation,
+    },
+    /// An output balance update resulting from a public fill being settled
+    PublicFillOutputBalance {
+        /// The settlement obligation for the fill
+        settlement_obligation: SettlementObligation,
+        /// The relayer fee rate used in the fill
+        relayer_fee_rate: FixedPoint,
+        /// The protocol fee rate used in the fill
+        protocol_fee_rate: FixedPoint,
     },
     /// A balance update resulting from a private fill being settled. Contains
     /// the updated balance shares resulting from the match settlement.
@@ -56,12 +65,10 @@ impl StateApplicator {
         let SettleMatchIntoBalanceTransition { nullifier, block_number, balance_settlement_data } =
             transition;
 
-        let updated_balance_shares = get_updated_balance_public_shares(balance_settlement_data);
-
         let mut conn = self.db_client.get_db_conn().await?;
         let mut balance = self.db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
 
-        balance.update_from_match(&updated_balance_shares);
+        apply_settlement_into_balance(balance_settlement_data, &mut balance);
 
         conn.transaction(move |conn| {
             async move {
@@ -94,31 +101,49 @@ impl StateApplicator {
 // ----------------------
 
 /// Get the updated balance shares resulting from a match settlement
-fn get_updated_balance_public_shares(
+fn apply_settlement_into_balance(
     balance_settlement_data: BalanceSettlementData,
-) -> PostMatchBalanceShare {
+    balance: &mut BalanceStateObject,
+) {
     match balance_settlement_data {
-        BalanceSettlementData::PublicFill {
-            pre_update_balance_shares,
-            obligation_amounts,
-            is_input_balance,
-        } => {
-            let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, mut amount } =
-                pre_update_balance_shares;
+        BalanceSettlementData::PublicFillInputBalance { settlement_obligation } => {
+            // Apply the settlement obligation to the balance
+            balance.balance.apply_obligation_in_balance(&settlement_obligation);
 
-            let ObligationAmounts { amount_in, amount_out } = obligation_amounts;
+            // Re-encrypt the updated balance shares
+            balance.balance.reencrypt_post_match_share();
 
-            if is_input_balance {
-                amount -= amount_in;
-            } else {
-                amount += amount_out;
-            }
-
-            // TODO: One-time authority rotation once ABI is finalized
-
-            PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
+            // Advance the recovery stream to indicate the next object version
+            balance.balance.recovery_stream.advance_by(1);
         },
-        BalanceSettlementData::PrivateFill(updated_balance_shares) => updated_balance_shares,
+        BalanceSettlementData::PublicFillOutputBalance {
+            settlement_obligation,
+            relayer_fee_rate,
+            protocol_fee_rate,
+        } => {
+            // Compute the fee take
+            let receive_amount = settlement_obligation.amount_out;
+
+            let relayer_fee = scalar_to_u128(&relayer_fee_rate.floor_mul_int(receive_amount));
+            let protocol_fee = scalar_to_u128(&protocol_fee_rate.floor_mul_int(receive_amount));
+
+            let fee_take = FeeTake { relayer_fee, protocol_fee };
+
+            // Apply the settlement obligation to the balance
+            balance.balance.apply_obligation_out_balance(&settlement_obligation, &fee_take);
+
+            // Note, we don't need to accrue fees into the balance, since fees are
+            // transferred immediately in public-fill settlement.
+
+            // Re-encrypt the updated balance shares
+            balance.balance.reencrypt_post_match_share();
+
+            // Advance the recovery stream to indicate the next object version
+            balance.balance.recovery_stream.advance_by(1);
+        },
+        BalanceSettlementData::PrivateFill(updated_balance_shares) => {
+            balance.update_from_private_fill(&updated_balance_shares);
+        },
     }
 }
 
