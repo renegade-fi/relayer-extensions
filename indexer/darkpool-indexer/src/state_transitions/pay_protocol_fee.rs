@@ -75,7 +75,7 @@ mod tests {
         state_transitions::{
             error::StateTransitionError,
             test_utils::{
-                gen_create_balance_transition, gen_pay_protocol_fee_transition,
+                gen_deposit_new_balance_transition, gen_pay_protocol_fee_transition,
                 setup_expected_state_object, setup_test_state_applicator,
                 validate_balance_indexing,
             },
@@ -91,7 +91,7 @@ mod tests {
         // Index the initial balance creation
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
         let (create_balance_transition, initial_wrapped_balance) =
-            gen_create_balance_transition(&expected_state_object);
+            gen_deposit_new_balance_transition(&expected_state_object);
 
         test_applicator.create_balance(create_balance_transition.clone()).await?;
 
