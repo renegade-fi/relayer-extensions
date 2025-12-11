@@ -425,18 +425,24 @@ impl Indexer {
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let maybe_party0_balance_settlement_data = try_decode_balance_settlement_data(
+            &self.darkpool_client,
+            block_number,
             nullifier,
             &settle_match_call.party0SettlementBundle,
             &settle_match_call.obligationBundle,
             true, // is_party0
-        )?;
+        )
+        .await?;
 
         let maybe_party1_balance_settlement_data = try_decode_balance_settlement_data(
+            &self.darkpool_client,
+            block_number,
             nullifier,
             &settle_match_call.party1SettlementBundle,
             &settle_match_call.obligationBundle,
             false, // is_party0
-        )?;
+        )
+        .await?;
 
         let maybe_balance_settlement_data =
             maybe_party0_balance_settlement_data.or(maybe_party1_balance_settlement_data);
