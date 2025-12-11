@@ -5,7 +5,6 @@ use std::iter;
 use alloy::primitives::B256;
 use renegade_circuit_types::{
     Nullifier,
-    balance::PostMatchBalanceShare,
     fixed_point::FixedPointShare,
     intent::{Intent, IntentShare, PreMatchIntentShare},
     traits::BaseType,
@@ -13,8 +12,7 @@ use renegade_circuit_types::{
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    IntentPreMatchShare, ObligationBundle, PostMatchBalanceShare as ContractPostMatchBalanceShare,
-    SettlementBundle,
+    IntentPreMatchShare, ObligationBundle, SettlementBundle,
 };
 
 use crate::{
@@ -25,12 +23,50 @@ use crate::{
         },
     },
     state_transitions::{
+        create_balance::BalanceCreationData,
         create_intent::{IntentCreationData, from_pre_match_intent_and_amount},
         settle_match_into_balance::BalanceSettlementData,
         settle_match_into_intent::IntentSettlementData,
     },
     types::ObligationAmounts,
 };
+
+pub fn try_decode_new_output_balance_creation_data(
+    recovery_id: Scalar,
+    settlement_bundle: &SettlementBundle,
+) -> Result<Option<BalanceCreationData>, IndexerError> {
+    let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
+    let maybe_output_balance_bundle_data =
+        settlement_bundle_data.get_output_balance_bundle_data()?;
+
+    if maybe_output_balance_bundle_data.is_none() {
+        return Ok(None);
+    }
+
+    let output_balance_bundle_data = maybe_output_balance_bundle_data.unwrap();
+    let balance_recovery_id = output_balance_bundle_data.get_balance_recovery_id();
+
+    if balance_recovery_id != recovery_id {
+        return Ok(None);
+    }
+
+    let maybe_pre_match_balance_share = output_balance_bundle_data.get_pre_match_balance_shares();
+
+    let maybe_post_match_balance_share =
+        settlement_bundle_data.get_pre_update_balance_shares(false /* is_input_balance */);
+
+    if maybe_pre_match_balance_share.is_none() || maybe_post_match_balance_share.is_none() {
+        return Ok(None);
+    }
+
+    let pre_match_balance_share = maybe_pre_match_balance_share.unwrap();
+    let post_match_balance_share = maybe_post_match_balance_share.unwrap();
+
+    let balance_creation_data =
+        BalanceCreationData::NewOutputBalance { pre_match_balance_share, post_match_balance_share };
+
+    Ok(Some(balance_creation_data))
+}
 
 /// Try to decode the balance settlement data from the match party's
 /// settlement bundle & obligation bundle.
@@ -113,21 +149,6 @@ fn get_balance_settlement_data(
         // Natively-settled bundles don't update any balance state objects
         _ => Ok(None),
     }
-}
-
-/// Convert a contract `PostMatchBalanceShare` to a circuit
-/// `PostMatchBalanceShare`
-pub fn to_circuit_post_match_balance_share(
-    post_match_balance_share: &ContractPostMatchBalanceShare,
-) -> PostMatchBalanceShare {
-    let ContractPostMatchBalanceShare { relayerFeeBalance, protocolFeeBalance, amount } =
-        post_match_balance_share.clone();
-
-    let relayer_fee_balance = u256_to_scalar(&relayerFeeBalance);
-    let protocol_fee_balance = u256_to_scalar(&protocolFeeBalance);
-    let amount = u256_to_scalar(&amount);
-
-    PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount }
 }
 
 /// Try to decode the intent creation data for the given party's newly-created
