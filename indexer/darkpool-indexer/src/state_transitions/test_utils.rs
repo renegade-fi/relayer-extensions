@@ -105,6 +105,27 @@ pub fn gen_random_master_view_seed() -> MasterViewSeed {
     MasterViewSeed::new(account_id, owner_address, seed)
 }
 
+/// Generate a random balance
+pub fn gen_random_balance() -> Balance {
+    let mint = Address::random();
+    let owner = Address::random();
+    let relayer_fee_recipient = Address::random();
+    let one_time_authority = Address::random();
+    let relayer_fee_balance = random_amount();
+    let protocol_fee_balance = random_amount();
+    let amount = random_amount();
+
+    Balance {
+        mint,
+        owner,
+        one_time_authority,
+        relayer_fee_recipient,
+        relayer_fee_balance,
+        protocol_fee_balance,
+        amount,
+    }
+}
+
 /// Generate a random intent for the given owner
 pub fn gen_random_intent(owner: Address) -> Intent {
     let in_token = Address::random();
@@ -160,30 +181,12 @@ pub async fn setup_expected_state_object(
 /// Generate the state transition which should result in the given
 /// expected state object being indexed as a newly-deposited balance.
 ///
-/// We create the balance with random fees & amounts for convenience in tests.
-///
 /// Returns the create balance transition, along with the expected balance
 /// object.
 pub fn gen_deposit_new_balance_transition(
     expected_state_object: &ExpectedStateObject,
 ) -> (CreateBalanceTransition, DarkpoolStateBalance) {
-    let mint = Address::random();
-    let owner = Address::random();
-    let relayer_fee_recipient = Address::random();
-    let one_time_authority = Address::random();
-    let relayer_fee_balance = random_amount();
-    let protocol_fee_balance = random_amount();
-    let amount = random_amount();
-
-    let balance = Balance {
-        mint,
-        owner,
-        one_time_authority,
-        relayer_fee_recipient,
-        relayer_fee_balance,
-        protocol_fee_balance,
-        amount,
-    };
+    let balance = gen_random_balance();
 
     let mut wrapped_balance = StateWrapper::new(
         balance,
@@ -197,6 +200,42 @@ pub fn gen_deposit_new_balance_transition(
 
     let balance_creation_data =
         BalanceCreationData::DepositNewBalance { public_share: wrapped_balance.public_share() };
+
+    let transition = CreateBalanceTransition {
+        recovery_id: expected_state_object.recovery_id,
+        block_number: 0,
+        balance_creation_data,
+    };
+
+    (transition, wrapped_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// expected state object being indexed as a new output balance.
+///
+/// Returns the create balance transition, along with the expected balance
+/// object.
+pub fn gen_new_output_balance_transition(
+    expected_state_object: &ExpectedStateObject,
+) -> (CreateBalanceTransition, DarkpoolStateBalance) {
+    let balance = gen_random_balance();
+
+    let mut wrapped_balance = StateWrapper::new(
+        balance,
+        expected_state_object.share_stream_seed,
+        expected_state_object.recovery_stream_seed,
+    );
+
+    // We progress the balance's recovery stream to represent the computation of the
+    // 0th recovery ID
+    wrapped_balance.recovery_stream.advance_by(1);
+
+    let balance_share = wrapped_balance.public_share();
+    let pre_match_balance_share = balance_share.clone().into();
+    let post_match_balance_share = balance_share.into();
+
+    let balance_creation_data =
+        BalanceCreationData::NewOutputBalance { pre_match_balance_share, post_match_balance_share };
 
     let transition = CreateBalanceTransition {
         recovery_id: expected_state_object.recovery_id,
