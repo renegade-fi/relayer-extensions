@@ -2,7 +2,8 @@
 //! balance bundles
 
 use alloy::sol_types::SolValue;
-use renegade_circuit_types::Nullifier;
+use renegade_circuit_types::{Nullifier, balance::PreMatchBalanceShare};
+use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
     ExistingBalanceBundle, NewBalanceBundle, OutputBalanceBundle,
@@ -26,6 +27,7 @@ const NEW_BALANCE: u8 = 1;
 // -----------------------------------
 
 /// A wrapper around the different types of output balance bundle data
+#[derive(Clone)]
 pub enum OutputBalanceBundleData {
     /// An output balance bundle for an existing balance
     ExistingBalanceBundle(ExistingBalanceBundle),
@@ -62,6 +64,25 @@ impl OutputBalanceBundleData {
                 Some(u256_to_scalar(&bundle.statement.oldBalanceNullifier))
             },
             Self::NewBalanceBundle(_) => None,
+        }
+    }
+
+    /// Get the recovery ID of the balance from the output balance bundle data
+    pub fn get_balance_recovery_id(&self) -> Scalar {
+        match self {
+            Self::ExistingBalanceBundle(bundle) => u256_to_scalar(&bundle.statement.recoveryId),
+            Self::NewBalanceBundle(bundle) => u256_to_scalar(&bundle.statement.recoveryId),
+        }
+    }
+
+    /// Get the pre-match balance shares from the output balance bundle data, if
+    /// it was a new balance bundle
+    pub fn get_pre_match_balance_shares(&self) -> Option<PreMatchBalanceShare> {
+        match self {
+            Self::NewBalanceBundle(bundle) => {
+                Some(bundle.statement.preMatchBalanceShares.clone().into())
+            },
+            Self::ExistingBalanceBundle(_) => None,
         }
     }
 }

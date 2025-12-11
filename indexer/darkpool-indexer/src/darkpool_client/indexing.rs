@@ -10,6 +10,7 @@ use alloy::{
         GethTrace,
     },
 };
+use renegade_circuit_types::Nullifier;
 use renegade_constants::Scalar;
 
 use crate::darkpool_client::{DarkpoolClient, error::DarkpoolClientError, utils::scalar_to_b256};
@@ -23,26 +24,21 @@ impl DarkpoolClient {
     /// transaction
     pub async fn find_nullifying_call(
         &self,
-        nullifier: Scalar,
+        nullifier: Nullifier,
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
 
-        // TEMP: use first callframe until nullifier spend events are implemented in the
-        // contracts
-        calls.first().ok_or(DarkpoolClientError::NullifierNotFound).cloned()
+        let nullifier_topic = scalar_to_b256(nullifier);
 
-        // let nullifier_topic = scalar_to_b256(nullifier);
-
-        // calls
-        //     .into_iter()
-        //     .find(|call| {
-        //         call.logs
-        //             .iter()
-        //             .any(|log|
-        // log.topics.clone().unwrap_or_default().contains(&nullifier_topic))
-        //     })
-        //     .ok_or(DarkpoolClientError::NullifierNotFound)
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs
+                    .iter()
+                    .any(|log| log.topics.clone().unwrap_or_default().contains(&nullifier_topic))
+            })
+            .ok_or(DarkpoolClientError::NullifierNotFound)
     }
 
     /// Find the call that registered the given recovery ID in the given
