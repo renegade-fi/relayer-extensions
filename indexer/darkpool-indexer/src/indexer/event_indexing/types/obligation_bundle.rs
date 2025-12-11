@@ -9,10 +9,7 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
     ObligationBundle, PrivateObligationBundle, SettlementObligation,
 };
 
-use crate::{
-    indexer::{error::IndexerError, event_indexing::utils::to_circuit_post_match_balance_share},
-    types::ObligationAmounts,
-};
+use crate::{indexer::error::IndexerError, types::ObligationAmounts};
 
 // -------------
 // | Constants |
@@ -79,15 +76,23 @@ impl ObligationBundleData {
     ) -> Option<PostMatchBalanceShare> {
         let shares = match self {
             Self::Private(private_obligation_bundle) => match (is_party0, is_input_balance) {
-                (true, true) => &private_obligation_bundle.statement.newInBalancePublicShares0,
-                (true, false) => &private_obligation_bundle.statement.newOutBalancePublicShares0,
-                (false, true) => &private_obligation_bundle.statement.newInBalancePublicShares1,
-                (false, false) => &private_obligation_bundle.statement.newOutBalancePublicShares1,
+                (true, true) => {
+                    private_obligation_bundle.statement.newInBalancePublicShares0.clone()
+                },
+                (true, false) => {
+                    private_obligation_bundle.statement.newOutBalancePublicShares0.clone()
+                },
+                (false, true) => {
+                    private_obligation_bundle.statement.newInBalancePublicShares1.clone()
+                },
+                (false, false) => {
+                    private_obligation_bundle.statement.newOutBalancePublicShares1.clone()
+                },
             },
             _ => return None,
         };
 
-        Some(to_circuit_post_match_balance_share(shares))
+        Some(shares.into())
     }
 
     /// Get the updated public share of the intent amount for the given party,

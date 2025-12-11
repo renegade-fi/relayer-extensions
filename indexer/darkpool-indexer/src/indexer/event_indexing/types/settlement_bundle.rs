@@ -20,11 +20,7 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 use crate::{
     darkpool_client::utils::u256_to_amount,
     indexer::{
-        error::IndexerError,
-        event_indexing::{
-            types::output_balance_bundle::OutputBalanceBundleData,
-            utils::to_circuit_post_match_balance_share,
-        },
+        error::IndexerError, event_indexing::types::output_balance_bundle::OutputBalanceBundleData,
     },
 };
 
@@ -141,21 +137,32 @@ impl SettlementBundleData {
         Some(u256_to_scalar(&nullifier_u256))
     }
 
-    /// Get the output balance nullifier from the settlement bundle data, if one
-    /// was spent
-    pub fn get_output_balance_nullifier(&self) -> Result<Option<Nullifier>, IndexerError> {
-        let output_balance_bundle_data: OutputBalanceBundleData = match self {
-            Self::RenegadeSettledIntentFirstFill(bundle) => {
-                (&bundle.outputBalanceBundle).try_into()?
-            },
-            Self::RenegadeSettledIntent(bundle) => (&bundle.outputBalanceBundle).try_into()?,
+    /// Get the output balance bundle data from the settlement bundle data, if
+    /// it was a renegade-settled bundle
+    pub fn get_output_balance_bundle_data(
+        &self,
+    ) -> Result<Option<OutputBalanceBundleData>, IndexerError> {
+        let output_balance_bundle = match self {
+            Self::RenegadeSettledIntentFirstFill(bundle) => &bundle.outputBalanceBundle,
+            Self::RenegadeSettledIntent(bundle) => &bundle.outputBalanceBundle,
             Self::RenegadeSettledPrivateFirstFill(_) => todo!(),
             Self::RenegadeSettledPrivateFill(_) => todo!(),
-            // Natively-settled bundles don't spend a balance state object's nullifier
+            // Natively-settled bundles don't update a private output balance
             _ => return Ok(None),
         };
 
-        Ok(output_balance_bundle_data.get_balance_nullifier())
+        let output_balance_bundle_data = output_balance_bundle.try_into()?;
+
+        Ok(Some(output_balance_bundle_data))
+    }
+    /// Get the output balance nullifier from the settlement bundle data, if one
+    /// was spent
+    pub fn get_output_balance_nullifier(&self) -> Result<Option<Nullifier>, IndexerError> {
+        let output_balance_bundle_data = self.get_output_balance_bundle_data()?;
+        let maybe_output_balance_nullifier =
+            output_balance_bundle_data.and_then(|bundle| bundle.get_balance_nullifier());
+
+        Ok(maybe_output_balance_nullifier)
     }
 
     /// Get the intent nullifier from the settlement bundle data, if one was
@@ -210,23 +217,23 @@ impl SettlementBundleData {
         let shares = match self {
             Self::RenegadeSettledIntentFirstFill(bundle) => {
                 if is_input_balance {
-                    &bundle.settlementStatement.inBalancePublicShares
+                    bundle.settlementStatement.inBalancePublicShares.clone()
                 } else {
-                    &bundle.settlementStatement.outBalancePublicShares
+                    bundle.settlementStatement.outBalancePublicShares.clone()
                 }
             },
             Self::RenegadeSettledIntent(bundle) => {
                 if is_input_balance {
-                    &bundle.settlementStatement.inBalancePublicShares
+                    bundle.settlementStatement.inBalancePublicShares.clone()
                 } else {
-                    &bundle.settlementStatement.outBalancePublicShares
+                    bundle.settlementStatement.outBalancePublicShares.clone()
                 }
             },
             // Natively-settled / private-fill bundles don't leak pre-update balance public shares
             _ => return None,
         };
 
-        Some(to_circuit_post_match_balance_share(shares))
+        Some(shares.into())
     }
 
     /// Try to decode the public intent with the given hash from the given

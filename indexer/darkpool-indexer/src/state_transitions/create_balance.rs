@@ -1,7 +1,7 @@
 //! Defines the application-specific logic for creating a new balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::balance::BalanceShare;
+use renegade_circuit_types::balance::{BalanceShare, PostMatchBalanceShare, PreMatchBalanceShare};
 use renegade_constants::Scalar;
 use tracing::warn;
 
@@ -21,8 +21,26 @@ pub struct CreateBalanceTransition {
     pub recovery_id: Scalar,
     /// The block number in which the recovery ID was registered
     pub block_number: u64,
-    /// The public shares of the balance
-    pub public_share: BalanceShare,
+    /// The data required to create a new balance object
+    pub balance_creation_data: BalanceCreationData,
+}
+
+/// The data required to create a new balance object
+#[derive(Clone)]
+pub enum BalanceCreationData {
+    /// The balance creation data obtained from deposit of a new balance
+    DepositNewBalance {
+        /// The full public shares of the new balance
+        public_share: BalanceShare,
+    },
+    /// The balance creation data obtained from the settlement of a match into a
+    /// new output balance
+    NewOutputBalance {
+        /// The public shares of the balance fields unaffected by settlement
+        pre_match_balance_share: PreMatchBalanceShare,
+        /// The public shares of the balance fields updated by settlement
+        post_match_balance_share: PostMatchBalanceShare,
+    },
 }
 
 /// The pre-state required for the creation of a new balance object
@@ -43,7 +61,10 @@ impl StateApplicator {
         &self,
         transition: CreateBalanceTransition,
     ) -> Result<(), StateTransitionError> {
-        let CreateBalanceTransition { recovery_id, block_number, public_share } = transition;
+        let CreateBalanceTransition { recovery_id, block_number, balance_creation_data } =
+            transition;
+
+        let public_share = get_new_balance_shares(balance_creation_data);
 
         let BalanceCreationPrestate { expected_state_object, mut master_view_seed } =
             self.get_balance_creation_prestate(recovery_id).await?;
@@ -129,6 +150,29 @@ impl StateApplicator {
             .scope_boxed()
         })
         .await
+    }
+}
+
+// ----------------------
+// | Non-Member Helpers |
+// ----------------------
+
+/// Get the new balance shares from the balance creation data
+fn get_new_balance_shares(balance_creation_data: BalanceCreationData) -> BalanceShare {
+    match balance_creation_data {
+        BalanceCreationData::DepositNewBalance { public_share } => public_share,
+        BalanceCreationData::NewOutputBalance {
+            pre_match_balance_share,
+            post_match_balance_share,
+        } => BalanceShare {
+            mint: pre_match_balance_share.mint,
+            owner: pre_match_balance_share.owner,
+            relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
+            one_time_authority: pre_match_balance_share.one_time_authority,
+            relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
+            protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
+            amount: post_match_balance_share.amount,
+        },
     }
 }
 
