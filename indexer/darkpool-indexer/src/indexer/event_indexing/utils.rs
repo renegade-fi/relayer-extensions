@@ -4,6 +4,7 @@ use std::iter;
 
 use alloy::primitives::B256;
 use renegade_circuit_types::{
+    Nullifier,
     balance::PostMatchBalanceShare,
     fixed_point::FixedPointShare,
     intent::{Intent, IntentShare, PreMatchIntentShare},
@@ -37,7 +38,7 @@ use crate::{
 /// Returns `None` if the spent nullifier does not match the party's input or
 /// output balance nullifier.
 pub fn try_decode_balance_settlement_data(
-    nullifier: Scalar,
+    nullifier: Nullifier,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,
@@ -45,11 +46,9 @@ pub fn try_decode_balance_settlement_data(
     let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
-    let in_balance_nullifier =
-        settlement_bundle_data.get_balance_nullifier(true /* is_input_balance */);
+    let in_balance_nullifier = settlement_bundle_data.get_input_balance_nullifier();
 
-    let out_balance_nullifier =
-        settlement_bundle_data.get_balance_nullifier(false /* is_input_balance */);
+    let out_balance_nullifier = settlement_bundle_data.get_output_balance_nullifier()?;
 
     if in_balance_nullifier == Some(nullifier) {
         get_balance_settlement_data(
@@ -257,7 +256,7 @@ fn to_circuit_pre_match_intent_share(
 /// Returns `None` if the settlement bundle does not contain an updated intent
 /// with a matching nullifier.
 pub fn try_decode_intent_settlement_data(
-    nullifier: Scalar,
+    nullifier: Nullifier,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
     is_party0: bool,

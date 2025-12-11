@@ -28,7 +28,7 @@ forge script \
     --disable-code-size-limit
 
 # Copy deployments file to the expected location
-cp deployments.json /deployments.json
+cp deployments.devnet.json /deployments.json
 
 # Send a termination signal to the Anvil node to snapshot its state
 kill -TERM $ANVIL_PID

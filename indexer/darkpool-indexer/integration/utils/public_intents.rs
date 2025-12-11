@@ -12,12 +12,9 @@ use darkpool_indexer::{
 use darkpool_indexer_api::types::http::{ApiPublicIntent, ApiStateObject};
 use eyre::Result;
 use renegade_circuit_types::{intent::Intent, settlement_obligation::SettlementObligation};
-use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{
-        self, FeeRate, PublicIntentAuthBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
-        SettlementBundle,
-    },
-    auth_helpers::sign_with_nonce,
+use renegade_solidity_abi::v2::IDarkpoolV2::{
+    self, FeeRate, PublicIntentAuthBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
+    SettlementBundle,
 };
 
 use crate::{
@@ -130,16 +127,14 @@ fn build_ring0_settlement_bundle(
     let intent_hash = keccak256(permit.abi_encode());
     let owner = if is_party0 { args.party0_signer() } else { args.party1_signer() };
 
-    let intent_signature = sign_with_nonce(intent_hash.as_slice(), &owner)?;
+    let intent_signature = permit.sign(&owner)?;
 
     // Generate executor signature
     let relayer_fee_rate =
         FeeRate { rate: settlement_relayer_fee().into(), recipient: Address::random() };
 
     let obligation: IDarkpoolV2::SettlementObligation = circuit_obligation.clone().into();
-    let executor_digest = keccak256((relayer_fee_rate.clone(), obligation).abi_encode());
-
-    let executor_signature = sign_with_nonce(executor_digest.as_slice(), &executor)?;
+    let executor_signature = obligation.create_executor_signature(&relayer_fee_rate, &executor)?;
 
     let auth = PublicIntentAuthBundle {
         permit,

@@ -1,10 +1,6 @@
 //! Integration testing utilities for managing intents
 
-use alloy::{
-    primitives::{U256, keccak256},
-    rpc::types::TransactionReceipt,
-    signers::local::PrivateKeySigner,
-};
+use alloy::{primitives::U256, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner};
 use darkpool_indexer::api::http::handlers::get_all_active_user_state_objects;
 use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
@@ -38,7 +34,6 @@ use renegade_circuits::{
 };
 use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::MERKLE_HEIGHT;
-use renegade_crypto::fields::scalar_to_u256;
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{
         ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill,
@@ -325,9 +320,7 @@ fn build_auth_bundle_first_fill(
     validity_statement: &IntentOnlyFirstFillValidityStatement,
     validity_proof: &PlonkProof,
 ) -> Result<PrivateIntentAuthBundleFirstFill> {
-    let comm_u256 = scalar_to_u256(&commitment);
-    let comm_hash = keccak256(comm_u256.to_be_bytes_vec());
-    let signature = sign_with_nonce(comm_hash.as_slice(), owner)?;
+    let signature = sign_with_nonce(&commitment.to_bytes_be(), owner)?;
 
     Ok(PrivateIntentAuthBundleFirstFill {
         intentSignature: signature,
