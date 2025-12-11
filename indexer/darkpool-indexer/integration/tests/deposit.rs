@@ -30,9 +30,7 @@ async fn test_deposit(mut args: TestArgs) -> Result<()> {
         .await?;
 
     // Submit the subsequent deposit
-    let (receipt, nullifier) = submit_deposit(&args, &initial_balance).await?;
-
-    args.send_nullifier_spend_message(nullifier, receipt.transaction_hash).await?;
+    submit_deposit(&args, &initial_balance).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
