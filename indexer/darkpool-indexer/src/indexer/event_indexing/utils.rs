@@ -16,6 +16,7 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 };
 
 use crate::{
+    darkpool_client::DarkpoolClient,
     indexer::{
         error::IndexerError,
         event_indexing::types::{
@@ -31,6 +32,11 @@ use crate::{
     types::ObligationAmounts,
 };
 
+/// Try to decode the balance creation data for the given party's newly-created
+/// output balance from the given settlement bundle.
+///
+/// Returns `None` if the settlement bundle does not contain a newly-created
+/// output balance with a matching recovery ID.
 pub fn try_decode_new_output_balance_creation_data(
     recovery_id: Scalar,
     settlement_bundle: &SettlementBundle,
@@ -73,7 +79,9 @@ pub fn try_decode_new_output_balance_creation_data(
 ///
 /// Returns `None` if the spent nullifier does not match the party's input or
 /// output balance nullifier.
-pub fn try_decode_balance_settlement_data(
+pub async fn try_decode_balance_settlement_data(
+    darkpool_client: &DarkpoolClient,
+    block_number: u64,
     nullifier: Nullifier,
     settlement_bundle: &SettlementBundle,
     obligation_bundle: &ObligationBundle,
@@ -83,23 +91,23 @@ pub fn try_decode_balance_settlement_data(
     let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
 
     let in_balance_nullifier = settlement_bundle_data.get_input_balance_nullifier();
-
     let out_balance_nullifier = settlement_bundle_data.get_output_balance_nullifier()?;
 
     if in_balance_nullifier == Some(nullifier) {
-        get_balance_settlement_data(
+        try_get_input_balance_settlement_data(
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
-            true, // is_input_balance
         )
     } else if out_balance_nullifier == Some(nullifier) {
-        get_balance_settlement_data(
+        try_get_output_balance_settlement_data(
+            darkpool_client,
+            block_number,
             &settlement_bundle_data,
             &obligation_bundle_data,
             is_party0,
-            false, // is_input_balance
         )
+        .await
     } else {
         // The spent nullifier corresponds neither to the input nor output balance
         // nullifier
@@ -107,39 +115,93 @@ pub fn try_decode_balance_settlement_data(
     }
 }
 
-/// Get the balance settlement data associated with this settlement & obligation
-/// bundle (if any)
-fn get_balance_settlement_data(
+/// Get the balance settlement data associated with the given party's settlement
+/// bundle and the obligation bundle, assuming the balance is the party's input
+/// balance.
+fn try_get_input_balance_settlement_data(
     settlement_bundle_data: &SettlementBundleData,
     obligation_bundle_data: &ObligationBundleData,
     is_party0: bool,
-    is_input_balance: bool,
 ) -> Result<Option<BalanceSettlementData>, IndexerError> {
     match settlement_bundle_data {
-        // For public-fill bundles, we parse the pre-update balance public shares & replicate the
-        // contract logic for updating them
         SettlementBundleData::RenegadeSettledIntentFirstFill(_)
         | SettlementBundleData::RenegadeSettledIntent(_) => {
-            let pre_update_balance_shares =
-                settlement_bundle_data.get_pre_update_balance_shares(is_input_balance).unwrap(); // It's safe to unwrap in this match arm
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
 
-            let obligation_amounts =
-                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
-                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-                )?;
-
-            Ok(Some(BalanceSettlementData::PublicFill {
-                pre_update_balance_shares,
-                obligation_amounts,
-                is_input_balance,
-            }))
+            Ok(Some(BalanceSettlementData::PublicFillInputBalance { settlement_obligation }))
         },
-        // For private-fill bundles, we parse the updated balance public shares directly from the
-        // obligation bundle data
         SettlementBundleData::RenegadeSettledPrivateFirstFill(_)
         | SettlementBundleData::RenegadeSettledPrivateFill(_) => {
             let updated_balance_shares = obligation_bundle_data
-                .get_balance_shares_in_private_match(is_party0, is_input_balance)
+                .get_balance_shares_in_private_match(is_party0, true /* is_input_balance */)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected private obligation bundle",
+                ))?;
+
+            Ok(Some(BalanceSettlementData::PrivateFill(updated_balance_shares)))
+        },
+        // Natively-settled bundles don't update any balance state objects
+        _ => Ok(None),
+    }
+}
+
+/// Get the balance settlement data associated with the given party's settlement
+/// bundle and the obligation bundle, assuming the balance is the party's output
+/// balance.
+async fn try_get_output_balance_settlement_data(
+    darkpool_client: &DarkpoolClient,
+    block_number: u64,
+    settlement_bundle_data: &SettlementBundleData,
+    obligation_bundle_data: &ObligationBundleData,
+    is_party0: bool,
+) -> Result<Option<BalanceSettlementData>, IndexerError> {
+    let relayer_fee_rate = match settlement_bundle_data {
+        SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
+            Some(bundle.settlementStatement.relayerFee.clone().into())
+        },
+        SettlementBundleData::RenegadeSettledIntent(bundle) => {
+            Some(bundle.settlementStatement.relayerFee.clone().into())
+        },
+        _ => None,
+    };
+
+    match settlement_bundle_data {
+        SettlementBundleData::RenegadeSettledIntentFirstFill(_)
+        | SettlementBundleData::RenegadeSettledIntent(_) => {
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
+
+            let relayer_fee_rate = relayer_fee_rate.unwrap();
+
+            let (asset0, asset1) =
+                obligation_bundle_data.get_public_obligation_trading_pair().ok_or(
+                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
+                )?;
+
+            let protocol_fee_rate = darkpool_client
+                .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
+                .await
+                .map_err(IndexerError::rpc)?;
+
+            Ok(Some(BalanceSettlementData::PublicFillOutputBalance {
+                settlement_obligation,
+                relayer_fee_rate,
+                protocol_fee_rate,
+            }))
+        },
+        SettlementBundleData::RenegadeSettledPrivateFirstFill(_)
+        | SettlementBundleData::RenegadeSettledPrivateFill(_) => {
+            let updated_balance_shares = obligation_bundle_data
+                .get_balance_shares_in_private_match(is_party0, false /* is_input_balance */)
                 .ok_or(IndexerError::invalid_obligation_bundle(
                     "expected private obligation bundle",
                 ))?;

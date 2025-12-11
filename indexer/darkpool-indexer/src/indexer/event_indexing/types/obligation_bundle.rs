@@ -1,7 +1,7 @@
 //! Defines a wrapper type & parsing utilities for the various kinds of
 //! obligation bundles
 
-use alloy::sol_types::SolValue;
+use alloy::{primitives::Address, sol_types::SolValue};
 use renegade_circuit_types::balance::PostMatchBalanceShare;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
@@ -112,22 +112,41 @@ impl ObligationBundleData {
         Some(u256_to_scalar(&updated_amount_share))
     }
 
+    /// Get the settlement obligation for the given party, if this is a public
+    /// obligation bundle
+    pub fn get_public_settlement_obligation(
+        &self,
+        is_party0: bool,
+    ) -> Option<SettlementObligation> {
+        match self {
+            Self::Public { party0_obligation, party1_obligation } => {
+                if is_party0 {
+                    Some(party0_obligation.clone())
+                } else {
+                    Some(party1_obligation.clone())
+                }
+            },
+            _ => None,
+        }
+    }
+
     /// Get the input & output amounts on the given party's obligation bundle,
     /// if this is a public obligation bundle
     pub fn get_public_obligation_amounts(&self, is_party0: bool) -> Option<ObligationAmounts> {
-        let [amount_in, amount_out] = match self {
-            Self::Public { party0_obligation, party1_obligation } => {
-                if is_party0 {
-                    [party0_obligation.amountIn, party1_obligation.amountOut]
-                } else {
-                    [party1_obligation.amountIn, party0_obligation.amountOut]
-                }
-            },
-            _ => return None,
-        }
-        .each_ref()
-        .map(u256_to_scalar);
+        self.get_public_settlement_obligation(is_party0).map(|settlement_obligation| {
+            let amount_in = u256_to_scalar(&settlement_obligation.amountIn);
+            let amount_out = u256_to_scalar(&settlement_obligation.amountOut);
+            ObligationAmounts { amount_in, amount_out }
+        })
+    }
 
-        Some(ObligationAmounts { amount_in, amount_out })
+    /// Get the pair traded, if this is a public obligation bundle
+    pub fn get_public_obligation_trading_pair(&self) -> Option<(Address, Address)> {
+        match self {
+            Self::Public { party0_obligation, .. } => {
+                Some((party0_obligation.inputToken, party0_obligation.outputToken))
+            },
+            _ => None,
+        }
     }
 }
