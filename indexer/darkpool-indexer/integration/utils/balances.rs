@@ -94,7 +94,7 @@ pub fn gen_new_balance_deposit_proof_bundle(
 ) -> Result<(ValidBalanceCreateWitness, NewBalanceDepositProofBundle)> {
     let (witness, statement) = build_new_balance_deposit_witness_statement(args, deposit)?;
 
-    let proof = singleprover_prove::<ValidBalanceCreate>(witness.clone(), statement.clone())?;
+    let proof = singleprover_prove::<ValidBalanceCreate>(&witness, &statement)?;
     let bundle = NewBalanceDepositProofBundle::new(statement, proof);
 
     Ok((witness, bundle))
@@ -175,7 +175,7 @@ pub fn gen_deposit_proof_bundle(
 ) -> Result<DepositProofBundle> {
     let (witness, statement) = build_deposit_witness_statement(deposit, balance, opening)?;
 
-    let proof = singleprover_prove::<SizedValidDeposit>(witness, statement.clone())?;
+    let proof = singleprover_prove::<SizedValidDeposit>(&witness, &statement)?;
     let bundle = DepositProofBundle::new(statement, proof);
     Ok(bundle)
 }
@@ -285,7 +285,7 @@ pub fn gen_withdrawal_proof_bundle(
 ) -> Result<WithdrawalProofBundle> {
     let (witness, statement) = build_withdrawal_witness_statement(withdrawal, balance, opening)?;
 
-    let proof = singleprover_prove::<SizedValidWithdrawal>(witness, statement.clone())?;
+    let proof = singleprover_prove::<SizedValidWithdrawal>(&witness, &statement)?;
 
     // Create the bundle using the helper
     let bundle = WithdrawalProofBundle::new(statement, proof);
