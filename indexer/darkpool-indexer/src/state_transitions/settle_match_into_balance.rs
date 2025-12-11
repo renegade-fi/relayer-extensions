@@ -149,52 +149,125 @@ fn apply_settlement_into_balance(
 
 #[cfg(test)]
 mod tests {
+    use renegade_circuit_types::balance::DarkpoolStateBalance;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::{
+            StateApplicator,
             error::StateTransitionError,
+            settle_match_into_balance::SettleMatchIntoBalanceTransition,
             test_utils::{
-                gen_create_balance_transition, gen_settle_match_into_balance_transition,
-                setup_expected_state_object, setup_test_state_applicator,
-                validate_balance_indexing,
+                gen_deposit_new_balance_transition,
+                gen_settle_private_fill_into_balance_transition,
+                gen_settle_public_fill_into_input_balance_transition,
+                gen_settle_public_fill_into_output_balance_transition, setup_expected_state_object,
+                setup_test_state_applicator, validate_balance_indexing,
             },
         },
     };
 
-    /// Test that a match settlement into a balance is indexed correctly.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_settle_match_into_balance() -> Result<(), StateTransitionError> {
-        let (test_applicator, postgres) = setup_test_state_applicator().await?;
-        let db_client = &test_applicator.db_client;
-
+    /// Set up an initial balance for testing
+    async fn setup_initial_balance(
+        test_applicator: &StateApplicator,
+    ) -> Result<DarkpoolStateBalance, StateTransitionError> {
         // Index the initial balance creation
-        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (create_balance_transition, initial_wrapped_balance) =
-            gen_create_balance_transition(&expected_state_object);
+        let expected_state_object = setup_expected_state_object(test_applicator).await?;
+        let (create_balance_transition, wrapped_balance) =
+            gen_deposit_new_balance_transition(&expected_state_object);
 
-        test_applicator.create_balance(create_balance_transition.clone()).await?;
+        test_applicator.create_balance(create_balance_transition).await?;
 
-        // Generate the subsequent match settlement transition
-        let (settle_match_into_balance_transition, updated_wrapped_balance) =
-            gen_settle_match_into_balance_transition(&initial_wrapped_balance);
+        Ok(wrapped_balance)
+    }
+
+    /// Index a match settlement into a balance and validate the indexing
+    async fn validate_settle_match_into_balance_indexing(
+        test_applicator: &StateApplicator,
+        transition: SettleMatchIntoBalanceTransition,
+        updated_wrapped_balance: &DarkpoolStateBalance,
+    ) -> Result<(), StateTransitionError> {
+        let db_client = &test_applicator.db_client;
+        let nullifier = transition.nullifier;
 
         // Index the match settlement
-        test_applicator
-            .settle_match_into_balance(settle_match_into_balance_transition.clone())
-            .await?;
+        test_applicator.settle_match_into_balance(transition).await?;
 
-        validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
+        validate_balance_indexing(db_client, updated_wrapped_balance).await?;
 
         // Assert that the nullifier is marked as processed
         let mut conn = db_client.get_db_conn().await?;
-        assert!(
-            db_client
-                .check_nullifier_processed(
-                    settle_match_into_balance_transition.nullifier,
-                    &mut conn
-                )
-                .await?
-        );
+        assert!(db_client.check_nullifier_processed(nullifier, &mut conn).await?);
+
+        Ok(())
+    }
+
+    /// Test that a private-fill match settlement into a balance is
+    /// indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_private_fill_into_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_balance = setup_initial_balance(&test_applicator).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_balance_transition, updated_wrapped_balance) =
+            gen_settle_private_fill_into_balance_transition(&initial_wrapped_balance);
+
+        validate_settle_match_into_balance_indexing(
+            &test_applicator,
+            settle_match_into_balance_transition,
+            &updated_wrapped_balance,
+        )
+        .await?;
+
+        cleanup_test_db(&postgres).await?;
+
+        Ok(())
+    }
+
+    /// Test that a public-fill match settlement into an input balance is
+    /// indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_public_fill_into_input_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_balance = setup_initial_balance(&test_applicator).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_balance_transition, updated_wrapped_balance) =
+            gen_settle_public_fill_into_input_balance_transition(&initial_wrapped_balance);
+
+        validate_settle_match_into_balance_indexing(
+            &test_applicator,
+            settle_match_into_balance_transition,
+            &updated_wrapped_balance,
+        )
+        .await?;
+
+        cleanup_test_db(&postgres).await?;
+
+        Ok(())
+    }
+
+    /// Test that a public-fill match settlement into an output balance is
+    /// indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_public_fill_into_output_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_balance = setup_initial_balance(&test_applicator).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_balance_transition, updated_wrapped_balance) =
+            gen_settle_public_fill_into_output_balance_transition(&initial_wrapped_balance);
+
+        validate_settle_match_into_balance_indexing(
+            &test_applicator,
+            settle_match_into_balance_transition,
+            &updated_wrapped_balance,
+        )
+        .await?;
 
         cleanup_test_db(&postgres).await?;
 
