@@ -10,7 +10,7 @@ use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
 use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
-    Amount, Nullifier,
+    Amount,
     balance::{Balance, DarkpoolStateBalance},
     state_wrapper::StateWrapper,
     withdrawal::Withdrawal as CircuitWithdrawal,
@@ -150,10 +150,7 @@ fn build_new_balance_deposit_witness_statement(
 /// Submit a transaction which deposits into an existing balance.
 ///
 /// Returns the transaction receipt, and the balance's spent nullifier.
-pub async fn submit_deposit(
-    args: &TestArgs,
-    initial_balance: &DarkpoolStateBalance,
-) -> Result<(TransactionReceipt, Nullifier)> {
+pub async fn submit_deposit(args: &TestArgs, initial_balance: &DarkpoolStateBalance) -> Result<()> {
     let initial_commitment = initial_balance.compute_commitment();
     let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
 
@@ -163,13 +160,11 @@ pub async fn submit_deposit(
     let deposit_auth =
         build_deposit_permit(args, commitment, &second_deposit, &args.party0_signer()).await?;
 
-    let nullifier = u256_to_scalar(&proof_bundle.statement.oldBalanceNullifier);
-
     let darkpool = args.darkpool_instance();
     let call = darkpool.deposit(deposit_auth, proof_bundle);
-    let receipt = wait_for_tx_success(call).await?;
+    wait_for_tx_success(call).await?;
 
-    Ok((receipt, nullifier))
+    Ok(())
 }
 
 /// Create a proof of the deposit
@@ -266,7 +261,7 @@ pub fn random_deposit(args: &TestArgs) -> Result<Deposit> {
 pub async fn submit_withdrawal(
     args: &TestArgs,
     initial_balance: &DarkpoolStateBalance,
-) -> Result<(TransactionReceipt, Nullifier)> {
+) -> Result<()> {
     let initial_commitment = initial_balance.compute_commitment();
     let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
 
@@ -275,13 +270,11 @@ pub async fn submit_withdrawal(
     let withdrawal_auth =
         create_withdrawal_auth(proof_bundle.statement.newBalanceCommitment, &args.party0_signer())?;
 
-    let nullifier = u256_to_scalar(&proof_bundle.statement.oldBalanceNullifier);
-
     let darkpool = args.darkpool_instance();
     let call = darkpool.withdraw(withdrawal_auth, proof_bundle);
-    let receipt = wait_for_tx_success(call).await?;
+    wait_for_tx_success(call).await?;
 
-    Ok((receipt, nullifier))
+    Ok(())
 }
 
 /// Generate a proof bundle for a withdrawal

@@ -35,6 +35,9 @@ pub enum IndexerError {
     /// An invalid obligation bundle was encountered
     #[error("invalid obligation bundle: {0}")]
     InvalidObligationBundle(String),
+    /// An invalid output balance bundle was encountered
+    #[error("invalid output balance bundle: {0}")]
+    InvalidOutputBalanceBundle(String),
     /// An error in the database client
     #[error("database error: {0}")]
     Db(#[from] DbError),
@@ -80,6 +83,11 @@ impl IndexerError {
     /// Create a new invalid obligation bundle error
     pub fn invalid_obligation_bundle<T: ToString>(msg: T) -> Self {
         Self::InvalidObligationBundle(msg.to_string())
+    }
+
+    /// Create a new invalid output balance bundle error
+    pub fn invalid_output_balance_bundle<T: ToString>(msg: T) -> Self {
+        Self::InvalidOutputBalanceBundle(msg.to_string())
     }
 
     /// Create a new invalid selector error
