@@ -3,14 +3,15 @@
 use std::collections::VecDeque;
 
 use alloy::{
-    primitives::{B256, TxHash},
+    eips::BlockId,
+    primitives::{Address, B256, TxHash},
     providers::{Provider, ext::DebugApi},
     rpc::types::trace::geth::{
         CallFrame, GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingOptions,
         GethTrace,
     },
 };
-use renegade_circuit_types::Nullifier;
+use renegade_circuit_types::{Nullifier, fixed_point::FixedPoint};
 use renegade_constants::Scalar;
 
 use crate::darkpool_client::{DarkpoolClient, error::DarkpoolClientError, utils::scalar_to_b256};
@@ -144,6 +145,24 @@ impl DarkpoolClient {
             .ok_or(DarkpoolClientError::rpc("Block number not found in tx {tx_hash:#x} receipt"))?;
 
         Ok(block_number)
+    }
+
+    /// Get the protocol fee rate for the given pair at the given block number
+    pub async fn get_protocol_fee_rate_at_block(
+        &self,
+        asset0: Address,
+        asset1: Address,
+        block_number: u64,
+    ) -> Result<FixedPoint, DarkpoolClientError> {
+        let protocol_fee_rate = self
+            .darkpool
+            .getProtocolFee(asset0, asset1)
+            .block(BlockId::number(block_number))
+            .call()
+            .await
+            .map_err(DarkpoolClientError::rpc)?;
+
+        Ok(protocol_fee_rate.into())
     }
 }
 

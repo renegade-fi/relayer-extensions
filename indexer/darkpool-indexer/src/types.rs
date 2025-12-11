@@ -140,8 +140,8 @@ impl BalanceStateObject {
         self.balance.inner.amount = new_amount;
     }
 
-    /// Apply the balance updates resulting from a match settlement
-    pub fn update_from_match(&mut self, post_match_balance_share: &PostMatchBalanceShare) {
+    /// Apply the balance updates resulting from a private-fill match settlement
+    pub fn update_from_private_fill(&mut self, post_match_balance_share: &PostMatchBalanceShare) {
         let PostMatchBalanceShare { relayer_fee_balance, protocol_fee_balance, amount } =
             post_match_balance_share;
 

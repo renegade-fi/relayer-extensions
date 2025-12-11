@@ -24,7 +24,7 @@ use renegade_circuits::{
             self, IntentOnlyPublicSettlementStatement, SizedIntentOnlyPublicSettlementCircuit,
         },
         validity_proofs::{
-            intent_only::{self, IntentOnlyValidityCircuit, IntentOnlyValidityStatement},
+            intent_only::{self, IntentOnlyValidityStatement, SizedIntentOnlyValidityCircuit},
             intent_only_first_fill::{
                 IntentOnlyFirstFillValidityCircuit, IntentOnlyFirstFillValidityStatement,
                 IntentOnlyFirstFillValidityWitness,
@@ -268,10 +268,8 @@ fn generate_ring1_first_fill_validity_proof(
     let comm = state_intent.compute_commitment();
 
     // Generate the validity proof
-    let (proof, link_hint) = singleprover_prove_with_hint::<IntentOnlyFirstFillValidityCircuit>(
-        witness,
-        statement.clone(),
-    )?;
+    let (proof, link_hint) =
+        singleprover_prove_with_hint::<IntentOnlyFirstFillValidityCircuit>(&witness, &statement)?;
 
     Ok((comm, state_intent, statement, proof, link_hint))
 }
@@ -290,9 +288,8 @@ fn generate_ring1_subsequent_fill_validity_proof(
     witness.old_intent_opening = merkle_opening.clone().into();
 
     // Prove the circuit
-    let (proof, link_hint) = singleprover_prove_with_hint::<
-        IntentOnlyValidityCircuit<MERKLE_HEIGHT>,
-    >(witness, statement.clone())?;
+    let (proof, link_hint) =
+        singleprover_prove_with_hint::<SizedIntentOnlyValidityCircuit>(&witness, &statement)?;
 
     Ok((statement, proof, link_hint))
 }
@@ -306,8 +303,7 @@ fn generate_ring1_settlement_proof(
     statement.relayer_fee = settlement_relayer_fee();
 
     let (proof, link_hint) = singleprover_prove_with_hint::<SizedIntentOnlyPublicSettlementCircuit>(
-        witness,
-        statement.clone(),
+        &witness, &statement,
     )?;
 
     Ok((statement, proof, link_hint))
