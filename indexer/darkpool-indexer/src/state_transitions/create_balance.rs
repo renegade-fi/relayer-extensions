@@ -181,7 +181,7 @@ mod tests {
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::test_utils::{
-            gen_create_balance_transition, setup_expected_state_object,
+            gen_deposit_new_balance_transition, setup_expected_state_object,
             setup_test_state_applicator, validate_balance_indexing,
             validate_expected_state_object_rotation,
         },
@@ -196,7 +196,8 @@ mod tests {
         let db_client = &test_applicator.db_client;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (transition, wrapped_balance) = gen_create_balance_transition(&expected_state_object);
+        let (transition, wrapped_balance) =
+            gen_deposit_new_balance_transition(&expected_state_object);
 
         // Index the balance creation
         test_applicator.create_balance(transition.clone()).await?;
