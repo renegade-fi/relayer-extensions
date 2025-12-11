@@ -23,8 +23,7 @@ use darkpool_indexer::{
     types::MasterViewSeed,
 };
 use darkpool_indexer_api::types::message_queue::{
-    CreatePublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
-    UpdatePublicIntentMessage,
+    CreatePublicIntentMessage, Message, RecoveryIdMessage, UpdatePublicIntentMessage,
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
@@ -190,17 +189,6 @@ impl TestArgs {
 
         let recovery_id_str = recovery_id.to_string();
         self.send_message(message, recovery_id_str.clone(), recovery_id_str).await
-    }
-
-    /// Send a nullifier spend message to the indexer's message queue
-    pub async fn send_nullifier_spend_message(
-        &self,
-        nullifier: Scalar,
-        tx_hash: TxHash,
-    ) -> Result<()> {
-        let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
-        let nullifier_str = nullifier.to_string();
-        self.send_message(message, nullifier_str.clone(), nullifier_str).await
     }
 
     /// Send a public intent creation message to the indexer's message queue
