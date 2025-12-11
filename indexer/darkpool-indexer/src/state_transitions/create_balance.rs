@@ -178,37 +178,81 @@ fn get_new_balance_shares(balance_creation_data: BalanceCreationData) -> Balance
 
 #[cfg(test)]
 mod tests {
+    use renegade_circuit_types::balance::DarkpoolStateBalance;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::test_utils::{
-            gen_deposit_new_balance_transition, setup_expected_state_object,
-            setup_test_state_applicator, validate_balance_indexing,
+            gen_deposit_new_balance_transition, gen_new_output_balance_transition,
+            setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing,
             validate_expected_state_object_rotation,
         },
     };
 
     use super::*;
 
-    /// Test that a balance creation is indexed correctly.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_create_balance() -> Result<(), StateTransitionError> {
-        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+    /// Index a balance creation and validate the indexing
+    async fn validate_balance_creation_indexing(
+        test_applicator: &StateApplicator,
+        transition: CreateBalanceTransition,
+        wrapped_balance: &DarkpoolStateBalance,
+        expected_state_object: &ExpectedStateObject,
+    ) -> Result<(), StateTransitionError> {
         let db_client = &test_applicator.db_client;
+        let recovery_id = transition.recovery_id;
+
+        // Index the balance creation
+        test_applicator.create_balance(transition).await?;
+
+        validate_balance_indexing(db_client, wrapped_balance).await?;
+
+        validate_expected_state_object_rotation(db_client, expected_state_object).await?;
+
+        // Assert that the recovery ID is marked as processed
+        let mut conn = db_client.get_db_conn().await?;
+        assert!(db_client.check_recovery_id_processed(recovery_id, &mut conn).await?);
+
+        Ok(())
+    }
+
+    /// Test that a new balance deposit is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_deposit_new_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
         let (transition, wrapped_balance) =
             gen_deposit_new_balance_transition(&expected_state_object);
 
-        // Index the balance creation
-        test_applicator.create_balance(transition.clone()).await?;
+        validate_balance_creation_indexing(
+            &test_applicator,
+            transition,
+            &wrapped_balance,
+            &expected_state_object,
+        )
+        .await?;
 
-        validate_balance_indexing(db_client, &wrapped_balance).await?;
+        cleanup_test_db(&postgres).await?;
 
-        validate_expected_state_object_rotation(db_client, &expected_state_object).await?;
+        Ok(())
+    }
 
-        // Assert that the recovery ID is marked as processed
-        let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_recovery_id_processed(transition.recovery_id, &mut conn).await?);
+    /// Test that a new output balance creation is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_new_output_balance() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
+        let (transition, wrapped_balance) =
+            gen_new_output_balance_transition(&expected_state_object);
+
+        validate_balance_creation_indexing(
+            &test_applicator,
+            transition,
+            &wrapped_balance,
+            &expected_state_object,
+        )
+        .await?;
 
         cleanup_test_db(&postgres).await?;
 
