@@ -22,15 +22,20 @@ use crate::{
             types::obligation_bundle::ObligationBundleData,
             utils::{
                 try_decode_balance_settlement_data, try_decode_intent_creation_data,
-                try_decode_intent_settlement_data, try_decode_public_intent_data,
+                try_decode_intent_settlement_data, try_decode_new_output_balance_creation_data,
+                try_decode_public_intent_data,
             },
         },
     },
     state_transitions::{
-        StateTransition, cancel_order::CancelOrderTransition,
-        create_balance::CreateBalanceTransition, create_intent::CreateIntentTransition,
-        create_public_intent::CreatePublicIntentTransition, deposit::DepositTransition,
-        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
+        StateTransition,
+        cancel_order::CancelOrderTransition,
+        create_balance::{BalanceCreationData, CreateBalanceTransition},
+        create_intent::CreateIntentTransition,
+        create_public_intent::CreatePublicIntentTransition,
+        deposit::DepositTransition,
+        pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_intent::SettleMatchIntoIntentTransition,
         settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
@@ -114,11 +119,28 @@ impl Indexer {
         let selector = get_selector(&calldata);
 
         let maybe_state_transition = match selector {
-            depositNewBalanceCall::SELECTOR => {
-                Some(self.compute_create_balance_transition(recovery_id, tx_hash, &calldata).await?)
-            },
+            depositNewBalanceCall::SELECTOR => Some(
+                self.compute_create_balance_transition_from_deposit(
+                    recovery_id,
+                    tx_hash,
+                    &calldata,
+                )
+                .await?,
+            ),
             settleMatchCall::SELECTOR => {
-                self.try_compute_create_intent_transition(recovery_id, tx_hash, &calldata).await?
+                let maybe_create_intent_transition = self
+                    .try_compute_create_intent_transition(recovery_id, tx_hash, &calldata)
+                    .await?;
+
+                let maybe_create_balance_transition = self
+                    .try_compute_create_balance_transition_from_settlement(
+                        recovery_id,
+                        tx_hash,
+                        &calldata,
+                    )
+                    .await?;
+
+                maybe_create_intent_transition.or(maybe_create_balance_transition)
             },
             _ => None,
         };
@@ -182,7 +204,7 @@ impl Indexer {
 impl Indexer {
     /// Compute a `CreateBalance` state transition associated with the
     /// newly-registered recovery ID in a `depositNewBalance` call
-    async fn compute_create_balance_transition(
+    async fn compute_create_balance_transition_from_deposit(
         &self,
         recovery_id: Scalar,
         tx_hash: TxHash,
@@ -202,10 +224,47 @@ impl Indexer {
 
         let public_share = BalanceShare::from_scalars(&mut public_shares_iter);
 
+        let balance_creation_data = BalanceCreationData::DepositNewBalance { public_share };
+
         Ok(StateTransition::CreateBalance(CreateBalanceTransition {
             recovery_id,
             block_number,
-            public_share,
+            balance_creation_data,
+        }))
+    }
+
+    /// Compute a `CreateBalance` state transition associated with the
+    /// newly-registered recovery ID in a `settleMatch` call
+    async fn try_compute_create_balance_transition_from_settlement(
+        &self,
+        recovery_id: Scalar,
+        tx_hash: TxHash,
+        calldata: &[u8],
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        let settle_match_call =
+            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
+
+        let maybe_party0_balance_creation_data = try_decode_new_output_balance_creation_data(
+            recovery_id,
+            &settle_match_call.party0SettlementBundle,
+        )?;
+
+        let maybe_party1_balance_creation_data = try_decode_new_output_balance_creation_data(
+            recovery_id,
+            &settle_match_call.party1SettlementBundle,
+        )?;
+
+        let maybe_balance_creation_data =
+            maybe_party0_balance_creation_data.or(maybe_party1_balance_creation_data);
+
+        Ok(maybe_balance_creation_data.map(|balance_creation_data| {
+            StateTransition::CreateBalance(CreateBalanceTransition {
+                recovery_id,
+                block_number,
+                balance_creation_data,
+            })
         }))
     }
 
