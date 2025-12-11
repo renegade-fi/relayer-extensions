@@ -23,7 +23,7 @@ use crate::{
     state_transitions::{
         StateApplicator,
         cancel_order::CancelOrderTransition,
-        create_balance::CreateBalanceTransition,
+        create_balance::{BalanceCreationData, CreateBalanceTransition},
         create_intent::{CreateIntentTransition, IntentCreationData},
         create_public_intent::CreatePublicIntentTransition,
         deposit::DepositTransition,
@@ -178,10 +178,13 @@ pub fn gen_create_balance_transition(
     // 0th recovery ID
     wrapped_balance.recovery_stream.advance_by(1);
 
+    let balance_creation_data =
+        BalanceCreationData::DepositNewBalance { public_share: wrapped_balance.public_share() };
+
     let transition = CreateBalanceTransition {
         recovery_id: expected_state_object.recovery_id,
         block_number: 0,
-        public_share: wrapped_balance.public_share(),
+        balance_creation_data,
     };
 
     (transition, wrapped_balance)
