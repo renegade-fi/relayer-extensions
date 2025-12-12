@@ -9,10 +9,9 @@ use diesel::{
     prelude::{AsChangeset, Insertable, Queryable},
 };
 use renegade_circuit_types::{
-    balance::{Balance, BalanceShare},
+    balance::{Balance, BalanceShare, DarkpoolStateBalance},
     csprng::PoseidonCSPRNG,
-    intent::{Intent, IntentShare},
-    state_wrapper::StateWrapper,
+    intent::{DarkpoolStateIntent, Intent, IntentShare},
     traits::BaseType,
 };
 use uuid::Uuid;
@@ -267,7 +266,7 @@ impl From<IntentStateObject> for IntentModel {
 
         let IntentStateObject {
             intent:
-                StateWrapper {
+                DarkpoolStateIntent {
                     inner: Intent { in_token, out_token, owner, min_price, amount_in },
                     recovery_stream,
                     share_stream,
@@ -362,10 +361,13 @@ impl From<IntentModel> for IntentStateObject {
 
         let input_mint_address =
             Address::from_str(&input_mint).expect("Input mint must be a valid address");
+
         let output_mint_address =
             Address::from_str(&output_mint).expect("Output mint must be a valid address");
+
         let owner_address_address =
             Address::from_str(&owner_address).expect("Owner address must be a valid address");
+
         let min_price_fixed_point = bigdecimal_to_fixed_point(min_price);
         let input_amount_u128 =
             input_amount.to_u128().expect("Input amount cannot be converted to u128");
@@ -374,7 +376,7 @@ impl From<IntentModel> for IntentStateObject {
             min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
 
         IntentStateObject {
-            intent: StateWrapper {
+            intent: DarkpoolStateIntent {
                 inner: Intent {
                     in_token: input_mint_address,
                     out_token: output_mint_address,
@@ -576,7 +578,7 @@ impl From<BalanceStateObject> for BalanceModel {
 
         let BalanceStateObject {
             balance:
-                StateWrapper {
+                DarkpoolStateBalance {
                     inner:
                         Balance {
                             mint,
@@ -689,7 +691,7 @@ impl From<BalanceModel> for BalanceStateObject {
         let amount_u128 = amount.to_u128().expect("Amount cannot be converted to u128");
 
         BalanceStateObject {
-            balance: StateWrapper {
+            balance: DarkpoolStateBalance {
                 inner: Balance {
                     mint: mint_address,
                     owner: owner_address_address,

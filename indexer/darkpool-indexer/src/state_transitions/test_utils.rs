@@ -13,7 +13,6 @@ use renegade_circuit_types::{
     intent::{DarkpoolStateIntent, Intent},
     max_amount,
     settlement_obligation::SettlementObligation,
-    state_wrapper::StateWrapper,
 };
 use renegade_circuits::test_helpers::random_amount;
 use renegade_constants::Scalar;
@@ -189,7 +188,7 @@ pub fn gen_deposit_new_balance_transition(
 ) -> (CreateBalanceTransition, DarkpoolStateBalance) {
     let balance = gen_random_balance();
 
-    let mut wrapped_balance = StateWrapper::new(
+    let mut wrapped_balance = DarkpoolStateBalance::new(
         balance,
         expected_state_object.share_stream_seed,
         expected_state_object.recovery_stream_seed,
@@ -221,7 +220,7 @@ pub fn gen_new_output_balance_transition(
 ) -> (CreateBalanceTransition, DarkpoolStateBalance) {
     let balance = gen_random_balance();
 
-    let mut wrapped_balance = StateWrapper::new(
+    let mut wrapped_balance = DarkpoolStateBalance::new(
         balance,
         expected_state_object.share_stream_seed,
         expected_state_object.recovery_stream_seed,
@@ -255,12 +254,12 @@ pub fn gen_new_output_balance_transition(
 /// object.
 pub fn gen_create_intent_from_private_fill_transition(
     expected_state_object: &ExpectedStateObject,
-) -> (CreateIntentTransition, StateWrapper<Intent>) {
+) -> (CreateIntentTransition, DarkpoolStateIntent) {
     let owner = Address::random();
 
     let intent = gen_random_intent(owner);
 
-    let mut wrapped_intent = StateWrapper::new(
+    let mut wrapped_intent = DarkpoolStateIntent::new(
         intent,
         expected_state_object.share_stream_seed,
         expected_state_object.recovery_stream_seed,
@@ -270,10 +269,52 @@ pub fn gen_create_intent_from_private_fill_transition(
     // 0th recovery ID
     wrapped_intent.recovery_stream.advance_by(1);
 
-    // For now, we simply use the `NewIntentShare` variant of the intent creation
-    // data
     let intent_creation_data =
         IntentCreationData::RenegadeSettledPrivateFill(wrapped_intent.public_share());
+
+    let transition = CreateIntentTransition {
+        recovery_id: expected_state_object.recovery_id,
+        block_number: 0,
+        intent_creation_data,
+    };
+
+    (transition, wrapped_intent)
+}
+
+/// Generate the state transition which should result in the given
+/// expected state object being indexed as a new intent resulting from a
+/// public-fill match settlement.
+///
+/// Returns the create intent transition, along with the expected intent
+/// object.
+pub fn gen_create_intent_from_public_fill_transition(
+    expected_state_object: &ExpectedStateObject,
+) -> (CreateIntentTransition, DarkpoolStateIntent) {
+    let owner = Address::random();
+
+    let intent = gen_random_intent(owner);
+
+    let mut initial_wrapped_intent = DarkpoolStateIntent::new(
+        intent,
+        expected_state_object.share_stream_seed,
+        expected_state_object.recovery_stream_seed,
+    );
+
+    // We progress the balance's recovery stream to represent the computation of the
+    // 0th recovery ID
+    initial_wrapped_intent.recovery_stream.advance_by(1);
+
+    // Create a dummy settlement obligation with a random match amount
+    let settlement_obligation =
+        gen_random_settlement_obligation(initial_wrapped_intent.inner.amount_in);
+
+    let mut wrapped_intent = initial_wrapped_intent.clone();
+    wrapped_intent.apply_settlement_obligation(&settlement_obligation);
+
+    let intent_creation_data = IntentCreationData::PublicFill {
+        pre_match_full_intent_share: initial_wrapped_intent.public_share(),
+        settlement_obligation,
+    };
 
     let transition = CreateIntentTransition {
         recovery_id: expected_state_object.recovery_id,
@@ -669,7 +710,7 @@ pub fn gen_settle_public_fill_into_intent_transition(
 
 /// Generate the state transition which should result in the given
 /// order (intent) being cancelled
-pub fn gen_cancel_order_transition(initial_intent: &StateWrapper<Intent>) -> CancelOrderTransition {
+pub fn gen_cancel_order_transition(initial_intent: &DarkpoolStateIntent) -> CancelOrderTransition {
     let spent_nullifier = initial_intent.compute_nullifier();
 
     CancelOrderTransition { nullifier: spent_nullifier, block_number: 0 }
@@ -753,7 +794,7 @@ pub async fn validate_balance_indexing(
 /// circuit type
 pub async fn validate_intent_indexing(
     db_client: &DbClient,
-    expected_intent: &StateWrapper<Intent>,
+    expected_intent: &DarkpoolStateIntent,
 ) -> Result<(), DbError> {
     let mut conn = db_client.get_db_conn().await?;
 

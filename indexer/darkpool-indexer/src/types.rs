@@ -10,7 +10,6 @@ use renegade_circuit_types::{
     fee::FeeTake,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
     settlement_obligation::SettlementObligation,
-    state_wrapper::StateWrapper,
     traits::{BaseType, SecretShareType},
 };
 use renegade_constants::Scalar;
@@ -120,8 +119,12 @@ impl BalanceStateObject {
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
         recovery_stream.index = 1;
 
-        let balance =
-            StateWrapper { inner: balance_inner, recovery_stream, share_stream, public_share };
+        let balance = DarkpoolStateBalance {
+            inner: balance_inner,
+            recovery_stream,
+            share_stream,
+            public_share,
+        };
 
         Self { balance, account_id, active: true }
     }
@@ -302,8 +305,12 @@ impl IntentStateObject {
         let mut recovery_stream = PoseidonCSPRNG::new(recovery_stream_seed);
         recovery_stream.index = 1;
 
-        let intent =
-            StateWrapper { inner: intent_inner, recovery_stream, share_stream, public_share };
+        let intent = DarkpoolStateIntent {
+            inner: intent_inner,
+            recovery_stream,
+            share_stream,
+            public_share,
+        };
 
         // Select safe default values for the intent metadata
         let matching_pool = GLOBAL_MATCHING_POOL.to_string();
