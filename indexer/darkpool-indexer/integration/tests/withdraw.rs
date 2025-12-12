@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use alloy::primitives::U256;
+use alloy::{primitives::U256, rpc::types::TransactionReceipt};
 use eyre::Result;
 use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
@@ -28,7 +28,6 @@ use crate::{
     test_args::TestArgs,
     tests::deposit::submit_deposit_new_balance,
     utils::{
-        indexer_state::get_party0_first_balance,
         merkle::{fetch_merkle_opening, find_commitment},
         test_data::random_deposit,
         transactions::wait_for_tx_success,
@@ -43,7 +42,7 @@ use crate::{
 async fn test_withdraw(mut args: TestArgs) -> Result<()> {
     // Deposit the initial balance
     let initial_deposit = random_deposit(&args)?;
-    let (initial_receipt, initial_balance, recovery_id) =
+    let (initial_receipt, mut initial_balance, recovery_id) =
         submit_deposit_new_balance(&mut args, &initial_deposit).await?;
 
     // TEMP: Bypass the chain event listener & enqueue messages directly until event
@@ -52,18 +51,24 @@ async fn test_withdraw(mut args: TestArgs) -> Result<()> {
         .await?;
 
     // Submit the subsequent withdrawal
-    submit_withdrawal(&args, &initial_balance).await?;
+    let receipt = submit_withdrawal(&args, &initial_balance).await?;
+
+    let spent_nullifier = initial_balance.compute_nullifier();
+    args.send_nullifier_spend_message(spent_nullifier, receipt.transaction_hash).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the new balance from the indexer. We simply use the first balance state
-    // object found for the account, as there should only be one.
-    let balance = get_party0_first_balance(&args).await?;
+    // Fetch the balance from the indexer.
+    // We advance the balance's recovery stream to compute the correct nullifier for
+    // the lookup.
+    initial_balance.recovery_stream.advance_by(1);
+    let indexed_balance =
+        args.get_balance_by_nullifier(initial_balance.compute_nullifier()).await?;
 
     // Assert that the indexed balance's commitment is included onchain in the
     // Merkle tree
-    let indexed_commitment = balance.compute_commitment();
+    let indexed_commitment = indexed_balance.balance.compute_commitment();
     let commitment_found =
         find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
 
@@ -77,8 +82,11 @@ indexer_integration_test!(test_withdraw);
 
 /// Submit a transaction which withdraws from an existing balance.
 ///
-/// Returns the transaction receipt, and the balance's spent nullifier.
-async fn submit_withdrawal(args: &TestArgs, initial_balance: &DarkpoolStateBalance) -> Result<()> {
+/// Returns the transaction receipt.
+async fn submit_withdrawal(
+    args: &TestArgs,
+    initial_balance: &DarkpoolStateBalance,
+) -> Result<TransactionReceipt> {
     let initial_commitment = initial_balance.compute_commitment();
     let merkle_path = fetch_merkle_opening(initial_commitment, &args.darkpool_instance()).await?;
 
@@ -89,9 +97,9 @@ async fn submit_withdrawal(args: &TestArgs, initial_balance: &DarkpoolStateBalan
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.withdraw(withdrawal_auth, proof_bundle);
-    wait_for_tx_success(call).await?;
+    let receipt = wait_for_tx_success(call).await?;
 
-    Ok(())
+    Ok(receipt)
 }
 
 /// Generate a proof bundle for a withdrawal
