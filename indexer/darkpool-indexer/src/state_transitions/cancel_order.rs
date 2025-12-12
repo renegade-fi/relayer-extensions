@@ -69,7 +69,7 @@ mod tests {
         state_transitions::{
             error::StateTransitionError,
             test_utils::{
-                gen_cancel_order_transition, gen_create_intent_transition,
+                gen_cancel_order_transition, gen_create_intent_from_private_fill_transition,
                 setup_expected_state_object, setup_test_state_applicator,
             },
         },
@@ -84,7 +84,7 @@ mod tests {
         // Index the initial intent creation
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
         let (create_intent_transition, initial_wrapped_intent) =
-            gen_create_intent_transition(&expected_state_object);
+            gen_create_intent_from_private_fill_transition(&expected_state_object);
 
         test_applicator.create_intent(create_intent_transition.clone()).await?;
 
