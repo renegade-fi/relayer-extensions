@@ -24,8 +24,7 @@ use crate::{
         },
     },
     state_transitions::{
-        create_balance::BalanceCreationData,
-        create_intent::{IntentCreationData, from_pre_match_intent_and_amount},
+        create_balance::BalanceCreationData, create_intent::IntentCreationData,
         settle_match_into_balance::BalanceSettlementData,
         settle_match_into_intent::IntentSettlementData,
     },
@@ -248,34 +247,38 @@ fn get_intent_creation_data(
             let pre_match_full_intent_share: IntentShare =
                 bundle.auth.statement.intentPublicShare.clone().into();
 
-            let ObligationAmounts { amount_in, .. } =
-                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
-                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-                )?;
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
 
-            Ok(Some(IntentCreationData::NativelySettledPrivateIntent {
+            Ok(Some(IntentCreationData::PublicFill {
                 pre_match_full_intent_share,
-                amount_in,
+                settlement_obligation,
             }))
         },
         SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
             // The `intentPublicShare` field in the auth statement excludes the public share
             // of the intent amount
-            let pre_match_intent_shares =
-                to_circuit_pre_match_intent_share(&bundle.auth.statement.intentPublicShare);
+            let pre_match_intent_share = bundle.auth.statement.intentPublicShare.clone().into();
 
-            let pre_match_amount_share =
-                u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
+            let amount_in = u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
 
-            let ObligationAmounts { amount_in, .. } =
-                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
-                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-                )?;
+            let pre_match_full_intent_share =
+                from_pre_match_intent_and_amount(pre_match_intent_share, amount_in);
 
-            Ok(Some(IntentCreationData::RenegadeSettledPublicFill {
-                pre_match_partial_intent_share: pre_match_intent_shares,
-                pre_match_amount_share,
-                amount_in,
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
+
+            Ok(Some(IntentCreationData::PublicFill {
+                pre_match_full_intent_share,
+                settlement_obligation,
             }))
         },
         SettlementBundleData::RenegadeSettledPrivateFirstFill(bundle) => {
@@ -297,6 +300,16 @@ fn get_intent_creation_data(
         // Non-first-fill bundles don't create a new intent
         _ => Ok(None),
     }
+}
+
+/// Construct a circuit `IntentShare` from a `PreMatchIntentShare` and an amount
+fn from_pre_match_intent_and_amount(
+    pre_match_intent_share: PreMatchIntentShare,
+    amount_in: Scalar,
+) -> IntentShare {
+    let PreMatchIntentShare { in_token, out_token, owner, min_price } = pre_match_intent_share;
+
+    IntentShare { in_token, out_token, owner, min_price, amount_in }
 }
 
 /// Try to decode the public intent data (the intent, and the
