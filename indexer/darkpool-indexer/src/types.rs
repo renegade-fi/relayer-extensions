@@ -350,11 +350,11 @@ impl IntentStateObject {
         &mut self,
         settlement_obligation: &SettlementObligation,
     ) {
-        // Apply the settlement obligation to the intent
-        self.intent.apply_settlement_obligation(settlement_obligation);
-
         // Re-encrypt the updated intent shares
         self.intent.reencrypt_amount_in();
+
+        // Apply the settlement obligation to the intent
+        self.intent.apply_settlement_obligation(settlement_obligation);
 
         // Advance the recovery stream to indicate the next object version
         self.intent.recovery_stream.advance_by(1);
