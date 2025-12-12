@@ -206,8 +206,9 @@ mod tests {
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::test_utils::{
-            gen_create_intent_transition, setup_expected_state_object, setup_test_state_applicator,
-            validate_expected_state_object_rotation, validate_intent_indexing,
+            gen_create_intent_from_private_fill_transition, setup_expected_state_object,
+            setup_test_state_applicator, validate_expected_state_object_rotation,
+            validate_intent_indexing,
         },
     };
 
@@ -220,7 +221,8 @@ mod tests {
         let db_client = &test_applicator.db_client;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (transition, wrapped_intent) = gen_create_intent_transition(&expected_state_object);
+        let (transition, wrapped_intent) =
+            gen_create_intent_from_private_fill_transition(&expected_state_object);
 
         // Index the intent creation
         test_applicator.create_intent(transition.clone()).await?;
