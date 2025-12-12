@@ -20,19 +20,19 @@ use darkpool_indexer::{
     },
     message_queue::{DynMessageQueue, MessageQueue, mock_message_queue::MockMessageQueue},
     state_transitions::StateApplicator,
-    types::MasterViewSeed,
+    types::{BalanceStateObject, IntentStateObject, MasterViewSeed, PublicIntentStateObject},
 };
 use darkpool_indexer_api::types::message_queue::{
-    CreatePublicIntentMessage, Message, RecoveryIdMessage, UpdatePublicIntentMessage,
+    CreatePublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
+    UpdatePublicIntentMessage,
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
+use renegade_circuit_types::{Nullifier, csprng::PoseidonCSPRNG};
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use test_helpers::types::TestVerbosity;
 use tokio::task::JoinSet;
-use uuid::Uuid;
 
 use crate::{
     CliArgs,
@@ -191,6 +191,18 @@ impl TestArgs {
         self.send_message(message, recovery_id_str.clone(), recovery_id_str).await
     }
 
+    /// Send a nullifier spend message to the indexer's message queue
+    pub async fn send_nullifier_spend_message(
+        &self,
+        nullifier: Nullifier,
+        tx_hash: TxHash,
+    ) -> Result<()> {
+        let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
+
+        let nullifier_str = nullifier.to_string();
+        self.send_message(message, nullifier_str.clone(), nullifier_str).await
+    }
+
     /// Send a public intent creation message to the indexer's message queue
     pub async fn send_public_intent_creation_message(
         &self,
@@ -221,10 +233,45 @@ impl TestArgs {
         self.send_message(message, message_id.clone(), message_id).await
     }
 
+    // --- DB Helpers --- //
+
     /// Get a reference to the DB client
     pub fn db_client(&self) -> &DbClient {
         let indexer_context = self.expect_indexer_context();
         &indexer_context.indexer.db_client
+    }
+
+    /// Look up a balance by the given nullifier
+    pub async fn get_balance_by_nullifier(
+        &self,
+        nullifier: Nullifier,
+    ) -> Result<BalanceStateObject> {
+        let db_client = self.db_client();
+        let mut conn = db_client.get_db_conn().await?;
+        let balance = db_client.get_balance_by_nullifier(nullifier, &mut conn).await?;
+
+        Ok(balance)
+    }
+
+    /// Look up an intent by the given nullifier
+    pub async fn get_intent_by_nullifier(&self, nullifier: Nullifier) -> Result<IntentStateObject> {
+        let db_client = self.db_client();
+        let mut conn = db_client.get_db_conn().await?;
+        let intent = db_client.get_intent_by_nullifier(nullifier, &mut conn).await?;
+
+        Ok(intent)
+    }
+
+    /// Look up a public intent by the given hash
+    pub async fn get_public_intent_by_hash(
+        &self,
+        intent_hash: B256,
+    ) -> Result<PublicIntentStateObject> {
+        let db_client = self.db_client();
+        let mut conn = db_client.get_db_conn().await?;
+        let public_intent = db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
+
+        Ok(public_intent)
     }
 
     // --- Anvil Context Helpers --- //
@@ -273,11 +320,6 @@ impl TestArgs {
     /// Get the first test account's private key
     pub fn party0_signer(&self) -> PrivateKeySigner {
         self.party0_signer.clone()
-    }
-
-    /// Get the first test account's ID
-    pub fn party0_account_id(&self) -> Uuid {
-        self.party0_master_view_seed.account_id
     }
 
     /// Generate the next share stream for the first test account
