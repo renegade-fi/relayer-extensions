@@ -7,7 +7,9 @@ use renegade_circuit_types::{
     Amount,
     balance::{BalanceShare, DarkpoolStateBalance, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
+    fee::FeeTake,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
+    settlement_obligation::SettlementObligation,
     state_wrapper::StateWrapper,
     traits::{BaseType, SecretShareType},
 };
@@ -138,6 +140,42 @@ impl BalanceStateObject {
         let share_stream = &mut self.balance.share_stream;
         let new_amount = decrypt_amount(new_amount_public_share, share_stream);
         self.balance.inner.amount = new_amount;
+    }
+
+    /// Update the balance as the input balance of a public-fill match
+    /// settlement
+    pub fn update_from_public_fill_as_input_balance(
+        &mut self,
+        settlement_obligation: &SettlementObligation,
+    ) {
+        // Apply the settlement obligation to the balance
+        self.balance.apply_obligation_in_balance(settlement_obligation);
+
+        // Re-encrypt the updated balance shares
+        self.balance.reencrypt_post_match_share();
+
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
+    }
+
+    /// Update the balance as the output balance of a public-fill match
+    /// settlement
+    pub fn update_from_public_fill_as_output_balance(
+        &mut self,
+        settlement_obligation: &SettlementObligation,
+        fee_take: &FeeTake,
+    ) {
+        // Apply the settlement obligation to the balance
+        self.balance.apply_obligation_out_balance(settlement_obligation, fee_take);
+
+        // Note, we don't need to accrue fees into the balance, since fees are
+        // transferred immediately in public-fill settlement.
+
+        // Re-encrypt the updated balance shares
+        self.balance.reencrypt_post_match_share();
+
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
     }
 
     /// Apply the balance updates resulting from a private-fill match settlement
@@ -298,6 +336,21 @@ impl IntentStateObject {
         let share_stream = &mut self.intent.share_stream;
         let new_amount = decrypt_amount(new_amount_public_share, share_stream);
         self.intent.inner.amount_in = new_amount;
+    }
+
+    /// Update the intent from a settlement obligation
+    pub fn update_from_settlement_obligation(
+        &mut self,
+        settlement_obligation: &SettlementObligation,
+    ) {
+        // Apply the settlement obligation to the intent
+        self.intent.apply_settlement_obligation(settlement_obligation);
+
+        // Re-encrypt the updated intent shares
+        self.intent.reencrypt_amount_in();
+
+        // Advance the recovery stream to indicate the next object version
+        self.intent.recovery_stream.advance_by(1);
     }
 
     /// Cancel the intent

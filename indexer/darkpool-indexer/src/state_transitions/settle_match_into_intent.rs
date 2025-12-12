@@ -2,10 +2,14 @@
 //! object
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use renegade_circuit_types::settlement_obligation::SettlementObligation;
 use renegade_constants::Scalar;
 use tracing::warn;
 
-use crate::state_transitions::{StateApplicator, error::StateTransitionError};
+use crate::{
+    state_transitions::{StateApplicator, error::StateTransitionError},
+    types::IntentStateObject,
+};
 
 // ---------
 // | Types |
@@ -23,17 +27,15 @@ pub struct SettleMatchIntoIntentTransition {
 }
 
 /// The data required to update an intent resulting from a match settlement
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum IntentSettlementData {
     /// The post-match public share of the intent amount
     UpdatedAmountShare(Scalar),
-    /// The data needed to compute the post-match public share of the intent
-    /// amount for a Renegade-settled public-fill match
+    /// The data needed to update the intent for a Renegade-settled public-fill
+    /// match
     RenegadeSettledPublicFill {
-        /// The pre-match amount public share
-        pre_match_amount_share: Scalar,
-        /// The input amount on the obligation bundle
-        amount_in: Scalar,
+        /// The settlement obligation for the fill
+        settlement_obligation: SettlementObligation,
     },
 }
 
@@ -50,13 +52,10 @@ impl StateApplicator {
         let SettleMatchIntoIntentTransition { nullifier, block_number, intent_settlement_data } =
             transition;
 
-        let updated_intent_amount_public_share =
-            get_updated_intent_amount_public_share(intent_settlement_data);
-
         let mut conn = self.db_client.get_db_conn().await?;
         let mut intent = self.db_client.get_intent_by_nullifier(nullifier, &mut conn).await?;
 
-        intent.update_amount(updated_intent_amount_public_share);
+        apply_settlement_into_intent(intent_settlement_data, &mut intent);
 
         conn.transaction(move |conn| {
             async move {
@@ -88,61 +87,117 @@ impl StateApplicator {
 // | Non-Member Helpers |
 // ----------------------
 
-/// Get the post-match public share of the intent amount resulting from a match
-/// settlement
-fn get_updated_intent_amount_public_share(intent_settlement_data: IntentSettlementData) -> Scalar {
+/// Apply a match settlement into the intent
+fn apply_settlement_into_intent(
+    intent_settlement_data: IntentSettlementData,
+    intent: &mut IntentStateObject,
+) {
     match intent_settlement_data {
-        IntentSettlementData::UpdatedAmountShare(updated_amount_share) => updated_amount_share,
-        IntentSettlementData::RenegadeSettledPublicFill { pre_match_amount_share, amount_in } => {
-            pre_match_amount_share - amount_in
+        IntentSettlementData::UpdatedAmountShare(updated_amount_share) => {
+            intent.update_amount(updated_amount_share)
+        },
+        IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation } => {
+            intent.update_from_settlement_obligation(&settlement_obligation)
         },
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use renegade_circuit_types::intent::DarkpoolStateIntent;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::{
+            StateApplicator,
             error::StateTransitionError,
+            settle_match_into_intent::SettleMatchIntoIntentTransition,
             test_utils::{
-                gen_create_intent_transition, gen_settle_match_into_intent_transition,
-                setup_expected_state_object, setup_test_state_applicator, validate_intent_indexing,
+                gen_create_intent_from_private_fill_transition,
+                gen_settle_match_into_intent_transition,
+                gen_settle_public_fill_into_intent_transition, setup_expected_state_object,
+                setup_test_state_applicator, validate_intent_indexing,
             },
         },
     };
 
-    /// Test that a match settlement into an intent is indexed correctly.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_settle_match_into_intent() -> Result<(), StateTransitionError> {
-        let (test_applicator, postgres) = setup_test_state_applicator().await?;
-        let db_client = &test_applicator.db_client;
-
+    /// Set up an initial intent for testing
+    async fn setup_initial_intent(
+        test_applicator: &StateApplicator,
+    ) -> Result<DarkpoolStateIntent, StateTransitionError> {
         // Index the initial intent creation
-        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
-        let (create_intent_transition, initial_wrapped_intent) =
-            gen_create_intent_transition(&expected_state_object);
+        let expected_state_object = setup_expected_state_object(test_applicator).await?;
+        let (create_intent_transition, wrapped_intent) =
+            gen_create_intent_from_private_fill_transition(&expected_state_object);
 
-        test_applicator.create_intent(create_intent_transition.clone()).await?;
+        test_applicator.create_intent(create_intent_transition).await?;
+
+        Ok(wrapped_intent)
+    }
+
+    /// Index a match settlement into an intent and validate the indexing
+    async fn validate_settle_match_into_intent_indexing(
+        test_applicator: &StateApplicator,
+        transition: SettleMatchIntoIntentTransition,
+        updated_wrapped_intent: &DarkpoolStateIntent,
+    ) -> Result<(), StateTransitionError> {
+        let db_client = &test_applicator.db_client;
+        let nullifier = transition.nullifier;
+
+        // Index the match settlement
+        test_applicator.settle_match_into_intent(transition).await?;
+
+        validate_intent_indexing(db_client, updated_wrapped_intent).await?;
+
+        // Assert that the nullifier is marked as processed
+        let mut conn = db_client.get_db_conn().await?;
+        assert!(db_client.check_nullifier_processed(nullifier, &mut conn).await?);
+
+        Ok(())
+    }
+
+    /// Test that indexing a match settlement (specifically, *not* a
+    /// Renegade-settled public-fill match) into an intent is done correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_basic_match_into_intent() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_intent = setup_initial_intent(&test_applicator).await?;
 
         // Generate the subsequent match settlement transition
         let (settle_match_into_intent_transition, updated_wrapped_intent) =
             gen_settle_match_into_intent_transition(&initial_wrapped_intent);
 
-        // Index the match settlement
-        test_applicator
-            .settle_match_into_intent(settle_match_into_intent_transition.clone())
-            .await?;
+        validate_settle_match_into_intent_indexing(
+            &test_applicator,
+            settle_match_into_intent_transition,
+            &updated_wrapped_intent,
+        )
+        .await?;
 
-        validate_intent_indexing(db_client, &updated_wrapped_intent).await?;
+        cleanup_test_db(&postgres).await?;
 
-        // Assert that the nullifier is marked as processed
-        let mut conn = db_client.get_db_conn().await?;
-        assert!(
-            db_client
-                .check_nullifier_processed(settle_match_into_intent_transition.nullifier, &mut conn)
-                .await?
-        );
+        Ok(())
+    }
+
+    /// Test that indexing a Renegade-settled public-fill match settlement into
+    /// an intent is done correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_public_fill_into_intent() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_intent = setup_initial_intent(&test_applicator).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_intent_transition, updated_wrapped_intent) =
+            gen_settle_public_fill_into_intent_transition(&initial_wrapped_intent);
+
+        validate_settle_match_into_intent_indexing(
+            &test_applicator,
+            settle_match_into_intent_transition,
+            &updated_wrapped_intent,
+        )
+        .await?;
 
         cleanup_test_db(&postgres).await?;
 

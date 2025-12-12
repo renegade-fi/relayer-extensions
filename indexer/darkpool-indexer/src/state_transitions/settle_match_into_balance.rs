@@ -100,21 +100,14 @@ impl StateApplicator {
 // | Non-Member Helpers |
 // ----------------------
 
-/// Get the updated balance shares resulting from a match settlement
+/// Apply a match settlement into the balance
 fn apply_settlement_into_balance(
     balance_settlement_data: BalanceSettlementData,
     balance: &mut BalanceStateObject,
 ) {
     match balance_settlement_data {
         BalanceSettlementData::PublicFillInputBalance { settlement_obligation } => {
-            // Apply the settlement obligation to the balance
-            balance.balance.apply_obligation_in_balance(&settlement_obligation);
-
-            // Re-encrypt the updated balance shares
-            balance.balance.reencrypt_post_match_share();
-
-            // Advance the recovery stream to indicate the next object version
-            balance.balance.recovery_stream.advance_by(1);
+            balance.update_from_public_fill_as_input_balance(&settlement_obligation)
         },
         BalanceSettlementData::PublicFillOutputBalance {
             settlement_obligation,
@@ -129,17 +122,7 @@ fn apply_settlement_into_balance(
 
             let fee_take = FeeTake { relayer_fee, protocol_fee };
 
-            // Apply the settlement obligation to the balance
-            balance.balance.apply_obligation_out_balance(&settlement_obligation, &fee_take);
-
-            // Note, we don't need to accrue fees into the balance, since fees are
-            // transferred immediately in public-fill settlement.
-
-            // Re-encrypt the updated balance shares
-            balance.balance.reencrypt_post_match_share();
-
-            // Advance the recovery stream to indicate the next object version
-            balance.balance.recovery_stream.advance_by(1);
+            balance.update_from_public_fill_as_output_balance(&settlement_obligation, &fee_take);
         },
         BalanceSettlementData::PrivateFill(updated_balance_shares) => {
             balance.update_from_private_fill(&updated_balance_shares);
