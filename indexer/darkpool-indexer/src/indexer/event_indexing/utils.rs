@@ -368,22 +368,15 @@ fn get_intent_settlement_data(
             let updated_amount_share = u256_to_scalar(&bundle.auth.statement.newAmountShare);
             Ok(Some(IntentSettlementData::UpdatedAmountShare(updated_amount_share)))
         },
-        SettlementBundleData::RenegadeSettledIntent(bundle) => {
-            // The `amountPublicShare` field in the settlement statement is the pre-update
-            // public share of the intent amount
-            let pre_match_amount_share =
-                u256_to_scalar(&bundle.settlementStatement.amountPublicShare);
+        SettlementBundleData::RenegadeSettledIntent(_) => {
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
 
-            // We replicate the contract logic for updating the intent amount public share
-            let ObligationAmounts { amount_in, .. } =
-                obligation_bundle_data.get_public_obligation_amounts(is_party0).ok_or(
-                    IndexerError::invalid_obligation_bundle("expected public obligation bundle"),
-                )?;
-
-            Ok(Some(IntentSettlementData::RenegadeSettledPublicFill {
-                pre_match_amount_share,
-                amount_in,
-            }))
+            Ok(Some(IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation }))
         },
         SettlementBundleData::RenegadeSettledPrivateFill(_) => {
             let amount_public_share =
