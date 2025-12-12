@@ -377,11 +377,8 @@ fn get_intent_settlement_data(
     is_party0: bool,
 ) -> Result<Option<IntentSettlementData>, IndexerError> {
     match settlement_bundle_data {
-        SettlementBundleData::PrivateIntentPublicBalance(bundle) => {
-            let updated_amount_share = u256_to_scalar(&bundle.auth.statement.newAmountShare);
-            Ok(Some(IntentSettlementData::UpdatedAmountShare(updated_amount_share)))
-        },
-        SettlementBundleData::RenegadeSettledIntent(_) => {
+        SettlementBundleData::PrivateIntentPublicBalance(_)
+        | SettlementBundleData::RenegadeSettledIntent(_) => {
             let settlement_obligation = obligation_bundle_data
                 .get_public_settlement_obligation(is_party0)
                 .ok_or(IndexerError::invalid_obligation_bundle(
@@ -389,7 +386,7 @@ fn get_intent_settlement_data(
                 ))?
                 .into();
 
-            Ok(Some(IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation }))
+            Ok(Some(IntentSettlementData::PublicFill { settlement_obligation }))
         },
         SettlementBundleData::RenegadeSettledPrivateFill(_) => {
             let amount_public_share =

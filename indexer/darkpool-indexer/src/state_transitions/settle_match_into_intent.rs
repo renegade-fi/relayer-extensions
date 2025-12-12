@@ -31,9 +31,9 @@ pub struct SettleMatchIntoIntentTransition {
 pub enum IntentSettlementData {
     /// The post-match public share of the intent amount
     UpdatedAmountShare(Scalar),
-    /// The data needed to update the intent for a Renegade-settled public-fill
-    /// match
-    RenegadeSettledPublicFill {
+    /// The data needed to update the intent for a public-fill match
+    /// (either natively-settled or Renegade-settled)
+    PublicFill {
         /// The settlement obligation for the fill
         settlement_obligation: SettlementObligation,
     },
@@ -96,7 +96,7 @@ fn apply_settlement_into_intent(
         IntentSettlementData::UpdatedAmountShare(updated_amount_share) => {
             intent.update_amount(updated_amount_share)
         },
-        IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation } => {
+        IntentSettlementData::PublicFill { settlement_obligation } => {
             intent.update_from_settlement_obligation(&settlement_obligation)
         },
     }
