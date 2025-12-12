@@ -12,7 +12,6 @@ use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
     Amount,
     balance::{Balance, DarkpoolStateBalance},
-    state_wrapper::StateWrapper,
     withdrawal::Withdrawal as CircuitWithdrawal,
 };
 use renegade_circuits::{
@@ -122,7 +121,7 @@ fn build_new_balance_deposit_witness_statement(
 
     // Encrypt the balance
     let mut initial_state =
-        StateWrapper::new(balance.clone(), share_stream.seed, recovery_stream.seed);
+        DarkpoolStateBalance::new(balance.clone(), share_stream.seed, recovery_stream.seed);
 
     let balance_public_share = initial_state.public_share();
     let recovery_id = initial_state.compute_recovery_id();

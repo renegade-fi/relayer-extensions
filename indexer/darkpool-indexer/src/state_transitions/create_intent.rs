@@ -1,7 +1,7 @@
 //! Defines the application-specific logic for creating a new intent object
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::intent::{IntentShare, PreMatchIntentShare};
+use renegade_circuit_types::{intent::IntentShare, settlement_obligation::SettlementObligation};
 use renegade_constants::Scalar;
 use tracing::warn;
 
@@ -28,29 +28,17 @@ pub struct CreateIntentTransition {
 /// The data required to create a new intent object
 #[derive(Clone)]
 pub enum IntentCreationData {
-    /// The data needed to construct the intent shares for a natively-settled
-    /// private intent
-    NativelySettledPrivateIntent {
-        /// The full sharing of the intent before the settlement was applied to
-        /// it
-        pre_match_full_intent_share: IntentShare,
-        /// The input amount on the obligation bundle
-        amount_in: Scalar,
-    },
     /// A complete set of updated intent public shares, available in
     /// Renegade-settled private-fill matches
     RenegadeSettledPrivateFill(IntentShare),
-    /// The data needed to construct the intent shares for a Renegade-settled
-    /// public-fill match, where only the pre-match amount public share is
-    /// leaked
-    RenegadeSettledPublicFill {
-        /// The pre-match intent public shares, *excluding* the updated amount
-        /// public share
-        pre_match_partial_intent_share: PreMatchIntentShare,
-        /// The pre-match amount public share
-        pre_match_amount_share: Scalar,
-        /// The input amount on the obligation bundle
-        amount_in: Scalar,
+    /// The data needed to create a new intent object for a public-fill match
+    /// (either natively-settled or Renegade-settled)
+    PublicFill {
+        /// The full sharing of the intent before the settlement was applied to
+        /// it
+        pre_match_full_intent_share: IntentShare,
+        /// The settlement obligation
+        settlement_obligation: SettlementObligation,
     },
 }
 
@@ -74,24 +62,13 @@ impl StateApplicator {
     ) -> Result<(), StateTransitionError> {
         let CreateIntentTransition { recovery_id, block_number, intent_creation_data } = transition;
 
-        let public_share = get_new_intent_shares(intent_creation_data);
-
         let IntentCreationPrestate { expected_state_object, mut master_view_seed } =
             self.get_intent_creation_prestate(recovery_id).await?;
 
-        let ExpectedStateObject {
-            recovery_id,
-            recovery_stream_seed,
-            share_stream_seed,
-            account_id,
-        } = expected_state_object;
+        let recovery_id = expected_state_object.recovery_id;
+        let recovery_stream_seed = expected_state_object.recovery_stream_seed;
 
-        let intent = IntentStateObject::new(
-            public_share,
-            recovery_stream_seed,
-            share_stream_seed,
-            account_id,
-        );
+        let intent = construct_new_intent(intent_creation_data, &expected_state_object);
 
         let next_expected_state_object = master_view_seed.next_expected_state_object();
 
@@ -168,45 +145,48 @@ impl StateApplicator {
 // ----------------------
 
 /// Get the new intent shares from the intent creation data
-fn get_new_intent_shares(intent_creation_data: IntentCreationData) -> IntentShare {
+fn construct_new_intent(
+    intent_creation_data: IntentCreationData,
+    expected_state_object: &ExpectedStateObject,
+) -> IntentStateObject {
+    let ExpectedStateObject { recovery_stream_seed, share_stream_seed, account_id, .. } =
+        expected_state_object;
+
     match intent_creation_data {
-        IntentCreationData::NativelySettledPrivateIntent {
-            mut pre_match_full_intent_share,
-            amount_in,
-        } => {
-            pre_match_full_intent_share.amount_in -= amount_in;
-            pre_match_full_intent_share
+        IntentCreationData::RenegadeSettledPrivateFill(full_intent_share) => {
+            IntentStateObject::new(
+                full_intent_share,
+                *recovery_stream_seed,
+                *share_stream_seed,
+                *account_id,
+            )
         },
-        IntentCreationData::RenegadeSettledPrivateFill(updated_intent_share) => {
-            updated_intent_share
-        },
-        IntentCreationData::RenegadeSettledPublicFill {
-            pre_match_partial_intent_share: pre_match_intent_shares,
-            pre_match_amount_share,
-            amount_in: obligation_amount_in,
-        } => {
-            let updated_amount_share = pre_match_amount_share - obligation_amount_in;
-            from_pre_match_intent_and_amount(pre_match_intent_shares, updated_amount_share)
+        IntentCreationData::PublicFill { pre_match_full_intent_share, settlement_obligation } => {
+            let mut intent = IntentStateObject::new(
+                pre_match_full_intent_share,
+                *recovery_stream_seed,
+                *share_stream_seed,
+                *account_id,
+            );
+
+            intent.intent.apply_settlement_obligation(&settlement_obligation);
+
+            // Note: We don't re-encrypt the updated intent amount share
+
+            intent
         },
     }
 }
 
-/// Construct a circuit `IntentShare` from a `PreMatchIntentShare` and an amount
-pub fn from_pre_match_intent_and_amount(
-    pre_match_intent_share: PreMatchIntentShare,
-    amount_in: Scalar,
-) -> IntentShare {
-    let PreMatchIntentShare { in_token, out_token, owner, min_price } = pre_match_intent_share;
-
-    IntentShare { in_token, out_token, owner, min_price, amount_in }
-}
-
 #[cfg(test)]
 mod tests {
+    use renegade_circuit_types::intent::DarkpoolStateIntent;
+
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::test_utils::{
-            gen_create_intent_from_private_fill_transition, setup_expected_state_object,
+            gen_create_intent_from_private_fill_transition,
+            gen_create_intent_from_public_fill_transition, setup_expected_state_object,
             setup_test_state_applicator, validate_expected_state_object_rotation,
             validate_intent_indexing,
         },
@@ -214,26 +194,68 @@ mod tests {
 
     use super::*;
 
-    /// Test that an intent creation is indexed correctly.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_create_intent() -> Result<(), StateTransitionError> {
-        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+    /// Index an intent creation and validate the indexing
+    async fn validate_intent_creation_indexing(
+        test_applicator: &StateApplicator,
+        transition: CreateIntentTransition,
+        wrapped_intent: &DarkpoolStateIntent,
+        expected_state_object: &ExpectedStateObject,
+    ) -> Result<(), StateTransitionError> {
         let db_client = &test_applicator.db_client;
+        let recovery_id = transition.recovery_id;
+
+        // Index the intent creation
+        test_applicator.create_intent(transition).await?;
+
+        validate_intent_indexing(db_client, wrapped_intent).await?;
+
+        validate_expected_state_object_rotation(db_client, expected_state_object).await?;
+
+        // Assert that the recovery ID is marked as processed
+        let mut conn = db_client.get_db_conn().await?;
+        assert!(db_client.check_recovery_id_processed(recovery_id, &mut conn).await?);
+
+        Ok(())
+    }
+
+    /// Test that an intent creation from a private fill is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_intent_from_private_fill() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
         let (transition, wrapped_intent) =
             gen_create_intent_from_private_fill_transition(&expected_state_object);
 
-        // Index the intent creation
-        test_applicator.create_intent(transition.clone()).await?;
+        validate_intent_creation_indexing(
+            &test_applicator,
+            transition,
+            &wrapped_intent,
+            &expected_state_object,
+        )
+        .await?;
 
-        validate_intent_indexing(db_client, &wrapped_intent).await?;
+        cleanup_test_db(&postgres).await?;
 
-        validate_expected_state_object_rotation(db_client, &expected_state_object).await?;
+        Ok(())
+    }
 
-        // Assert that the recovery ID is marked as processed
-        let mut conn = db_client.get_db_conn().await?;
-        assert!(db_client.check_recovery_id_processed(transition.recovery_id, &mut conn).await?);
+    /// Test that an intent creation from a public fill is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_intent_from_public_fill() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
+        let (transition, wrapped_intent) =
+            gen_create_intent_from_public_fill_transition(&expected_state_object);
+
+        validate_intent_creation_indexing(
+            &test_applicator,
+            transition,
+            &wrapped_intent,
+            &expected_state_object,
+        )
+        .await?;
 
         cleanup_test_db(&postgres).await?;
 
