@@ -30,7 +30,10 @@ use renegade_circuits::{
 use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::MERKLE_HEIGHT;
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill, SettlementBundle},
+    IDarkpoolV2::{
+        ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill,
+        SettlementBundle,
+    },
     auth_helpers::sign_with_nonce,
 };
 use test_helpers::assert_eq_result;
@@ -38,13 +41,10 @@ use test_helpers::assert_eq_result;
 use crate::{
     indexer_integration_test,
     test_args::TestArgs,
+    tests::ring0::build_ring0_settlement_bundle,
     utils::{
-        indexer_state::get_party0_first_intent,
         merkle::{find_commitment, parse_merkle_opening_from_receipt},
-        test_data::{
-            build_public_obligation_bundle, create_intents_and_obligations, settlement_relayer_fee,
-            split_obligation,
-        },
+        test_data::{create_intents_and_obligations, settlement_relayer_fee, split_obligation},
         transactions::wait_for_tx_success,
     },
 };
@@ -55,18 +55,17 @@ use crate::{
 
 /// Test the indexing of the settlement of the first fill of a ring 1 intent
 async fn test_ring1_first_fill(mut args: TestArgs) -> Result<()> {
-    submit_ring1_first_fill(&mut args).await?;
+    let (_, state_intent0, _, _, _) = submit_ring1_first_fill(&mut args).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the new intent from the indexer. We simply use the first intent state
-    // object found for the account, as there should only be one.
-    let intent = get_party0_first_intent(&args).await?;
+    // Fetch the indexed intent from the indexer
+    let indexed_intent = args.get_intent_by_nullifier(state_intent0.compute_nullifier()).await?;
 
     // Assert that the indexed balance's commitment is included onchain in the
     // Merkle tree
-    let indexed_commitment = intent.compute_commitment();
+    let indexed_commitment = indexed_intent.intent.compute_commitment();
     let commitment_found =
         find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
 
@@ -77,30 +76,37 @@ indexer_integration_test!(test_ring1_first_fill);
 /// Test the indexing of the settlement of a subsequent fill of a ring 1 intent
 async fn test_ring1_subsequent_fill(mut args: TestArgs) -> Result<()> {
     // Submit the first fill of the intent, so that it is created in the indexer
-    let (receipt, state_intent0, state_intent1, second_obligation0, second_obligation1) =
+    let (receipt, mut state_intent0, intent1, second_obligation0, second_obligation1) =
         submit_ring1_first_fill(&mut args).await?;
 
     // Submit the subsequent fill of the intent
-    submit_ring1_subsequent_fill(
+    let receipt = submit_ring1_subsequent_fill(
         &args,
         &state_intent0,
-        &state_intent1,
+        &intent1,
         &second_obligation0,
         &second_obligation1,
         &receipt,
     )
     .await?;
 
+    // TEMP: Bypass the chain event listener & enqueue messages directly until event
+    // emission is implemented in the contracts
+    let spent_nullifier = state_intent0.compute_nullifier();
+    args.send_nullifier_spend_message(spent_nullifier, receipt.transaction_hash).await?;
+
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the intent from the indexer. We simply use the first intent state
-    // object found for the account, as there should only be one.
-    let intent = get_party0_first_intent(&args).await?;
+    // Fetch the indexed intent from the indexer.
+    // We advance the intent's recovery stream to compute the correct nullifier for
+    // the lookup.
+    state_intent0.recovery_stream.advance_by(1);
+    let indexed_intent = args.get_intent_by_nullifier(state_intent0.compute_nullifier()).await?;
 
     // Assert that the indexed balance's commitment is included onchain in the
     // Merkle tree
-    let indexed_commitment = intent.compute_commitment();
+    let indexed_commitment = indexed_intent.intent.compute_commitment();
     let commitment_found =
         find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
 
@@ -115,14 +121,15 @@ indexer_integration_test!(test_ring1_subsequent_fill);
 /// Submit a settlement between two ring 1 intents which both receive their
 /// first fill.
 ///
-/// Returns the transaction receipt, both intent state objects (after the first
-/// fill has been applied to them), and both subsequent fill obligations
+/// Returns the transaction receipt, party 0's intent state object (after the
+/// first fill has been applied), party 1's intent, and both subsequent fill
+/// obligations
 async fn submit_ring1_first_fill(
     args: &mut TestArgs,
 ) -> Result<(
     TransactionReceipt,
     DarkpoolStateIntent,
-    DarkpoolStateIntent,
+    Intent,
     SettlementObligation,
     SettlementObligation,
 )> {
@@ -140,14 +147,19 @@ async fn submit_ring1_first_fill(
         &first_obligation0,
     )?;
 
-    let (mut state_intent1, settlement_bundle1) = build_ring1_settlement_bundle_first_fill(
+    // We build a ring 0 settlement bundle for party 1 for simplicity - this way, we
+    // don't need to find a Merkle opening for party 1's intent on subsequent fills
+    let (settlement_bundle1, _) = build_ring0_settlement_bundle(
         args,
-        false, // is_party0
+        false, // is_party
         &intent1,
         &first_obligation1,
     )?;
 
-    let obligation_bundle = build_public_obligation_bundle(&first_obligation0, &first_obligation1);
+    let obligation_bundle = ObligationBundle::new_public(
+        first_obligation0.clone().into(),
+        first_obligation1.clone().into(),
+    );
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
@@ -155,41 +167,41 @@ async fn submit_ring1_first_fill(
     let receipt = wait_for_tx_success(call).await?;
 
     state_intent0.apply_settlement_obligation(&first_obligation0);
-    state_intent1.apply_settlement_obligation(&first_obligation1);
 
-    Ok((receipt, state_intent0, state_intent1, second_obligation0, second_obligation1))
+    Ok((receipt, state_intent0, intent1, second_obligation0, second_obligation1))
 }
 
 /// Submit the settlement of a subsequent fill on the 2 given intents,
 /// represented by the given 2 settlement obligations.
+///
+/// Returns the transaction receipt
 async fn submit_ring1_subsequent_fill(
     args: &TestArgs,
     state_intent0: &DarkpoolStateIntent,
-    state_intent1: &DarkpoolStateIntent,
+    intent1: &Intent,
     obligation0: &SettlementObligation,
     obligation1: &SettlementObligation,
     receipt: &TransactionReceipt,
-) -> Result<()> {
+) -> Result<TransactionReceipt> {
     let darkpool = args.darkpool_instance();
 
     let commitment0 = state_intent0.compute_commitment();
-    let commitment1 = state_intent1.compute_commitment();
 
     let opening0 = parse_merkle_opening_from_receipt(commitment0, receipt)?;
-    let opening1 = parse_merkle_opening_from_receipt(commitment1, receipt)?;
 
     let settlement_bundle0 =
         build_ring1_settlement_bundle_subsequent_fill(state_intent0, &opening0, obligation0)?;
 
-    let settlement_bundle1 =
-        build_ring1_settlement_bundle_subsequent_fill(state_intent1, &opening1, obligation1)?;
+    let (settlement_bundle1, _) =
+        build_ring0_settlement_bundle(args, false /* is_party0 */, intent1, obligation1)?;
 
-    let obligation_bundle = build_public_obligation_bundle(obligation0, obligation1);
+    let obligation_bundle =
+        ObligationBundle::new_public(obligation0.clone().into(), obligation1.clone().into());
 
     let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
-    wait_for_tx_success(call).await?;
+    let receipt = wait_for_tx_success(call).await?;
 
-    Ok(())
+    Ok(receipt)
 }
 
 /// Build a settlement bundle for the first fill of a ring 1 intent
@@ -200,7 +212,7 @@ fn build_ring1_settlement_bundle_first_fill(
     obligation: &SettlementObligation,
 ) -> Result<(DarkpoolStateIntent, SettlementBundle)> {
     // Generate proofs
-    let (commitment, state_intent, validity_statement, validity_proof, validity_link_hint) =
+    let (state_intent, validity_statement, validity_proof, validity_link_hint) =
         generate_ring1_first_fill_validity_proof(args, is_party0, intent)?;
 
     let (settlement_statement, settlement_proof, settlement_link_hint) =
@@ -209,6 +221,7 @@ fn build_ring1_settlement_bundle_first_fill(
     let linking_proof = generate_ring1_linking_proof(&validity_link_hint, &settlement_link_hint)?;
 
     // Build bundles
+    let commitment = state_intent.compute_commitment();
     let owner = if is_party0 { args.party0_signer() } else { args.party1_signer() };
     let auth_bundle =
         build_auth_bundle_first_fill(&owner, commitment, &validity_statement, &validity_proof)?;
@@ -263,32 +276,17 @@ fn generate_ring1_first_fill_validity_proof(
     args: &mut TestArgs,
     is_party0: bool,
     intent: &Intent,
-) -> Result<(
-    Commitment,
-    DarkpoolStateIntent,
-    IntentOnlyFirstFillValidityStatement,
-    PlonkProof,
-    ProofLinkingHint,
-)> {
+) -> Result<(DarkpoolStateIntent, IntentOnlyFirstFillValidityStatement, PlonkProof, ProofLinkingHint)>
+{
     // Build the witness and statement
-    let (witness, statement) =
+    let (witness, statement, state_intent) =
         create_intent_only_first_fill_validity_witness_statement(args, is_party0, intent);
-
-    // Compute a commitment to the initial intent
-    let intent = witness.intent.clone();
-    let share_stream_seed = witness.initial_intent_share_stream.seed;
-    let recovery_stream_seed = witness.initial_intent_recovery_stream.seed;
-    let mut state_intent =
-        DarkpoolStateIntent::new(intent, share_stream_seed, recovery_stream_seed);
-
-    state_intent.compute_recovery_id();
-    let comm = state_intent.compute_commitment();
 
     // Generate the validity proof
     let (proof, link_hint) =
         singleprover_prove_with_hint::<IntentOnlyFirstFillValidityCircuit>(&witness, &statement)?;
 
-    Ok((comm, state_intent, statement, proof, link_hint))
+    Ok((state_intent, statement, proof, link_hint))
 }
 
 /// Create a witness and statement for the `IntentOnlyFirstFillValidityCircuit`
@@ -297,7 +295,8 @@ fn create_intent_only_first_fill_validity_witness_statement(
     args: &mut TestArgs,
     is_party0: bool,
     intent: &Intent,
-) -> (IntentOnlyFirstFillValidityWitness, IntentOnlyFirstFillValidityStatement) {
+) -> (IntentOnlyFirstFillValidityWitness, IntentOnlyFirstFillValidityStatement, DarkpoolStateIntent)
+{
     // Create the witness intent with initial stream states
     let (share_stream_seed, recovery_stream_seed) = if is_party0 {
         (args.next_party0_share_stream().seed, args.next_party0_recovery_stream().seed)
@@ -308,9 +307,9 @@ fn create_intent_only_first_fill_validity_witness_statement(
     let initial_intent =
         DarkpoolStateIntent::new(intent.clone(), share_stream_seed, recovery_stream_seed);
 
-    let mut intent_clone = initial_intent.clone();
-    let recovery_id = intent_clone.compute_recovery_id();
-    let intent_private_commitment = intent_clone.compute_private_commitment();
+    let mut state_intent = initial_intent.clone();
+    let recovery_id = state_intent.compute_recovery_id();
+    let intent_private_commitment = state_intent.compute_private_commitment();
 
     // Get shares from the initial (pre-mutation) state
     let private_shares = initial_intent.private_shares();
@@ -330,7 +329,7 @@ fn create_intent_only_first_fill_validity_witness_statement(
         intent_public_share,
     };
 
-    (witness, statement)
+    (witness, statement, state_intent)
 }
 
 /// Generate a validity proof for the first fill of a ring 1 intent
