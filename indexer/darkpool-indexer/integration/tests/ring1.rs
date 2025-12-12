@@ -1,22 +1,18 @@
-//! Integration testing utilities for managing intents
+//! Tests the indexing of ring 1 (natively-settled, private-intent) match
+//! settlements
+
+use std::time::Duration;
 
 use alloy::{primitives::U256, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner};
-use darkpool_indexer::api::http::handlers::get_all_active_user_state_objects;
-use darkpool_indexer_api::types::http::ApiStateObject;
 use eyre::Result;
-use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
     Commitment, PlonkLinkProof, PlonkProof, ProofLinkingHint,
-    fixed_point::FixedPoint,
     intent::{DarkpoolStateIntent, Intent},
-    max_amount,
     settlement_obligation::SettlementObligation,
 };
 use renegade_circuits::{
     singleprover_prove_with_hint,
-    test_helpers::{
-        BOUNDED_MAX_AMT, compute_implied_price, compute_min_amount_out, random_price, random_scalar,
-    },
+    test_helpers::random_scalar,
     zk_circuits::{
         proof_linking::intent_only::link_sized_intent_only_settlement,
         settlement::intent_only_public_settlement::{
@@ -34,28 +30,94 @@ use renegade_circuits::{
 use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::MERKLE_HEIGHT;
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{
-        ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill,
-        SettlementBundle,
-    },
+    IDarkpoolV2::{PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill, SettlementBundle},
     auth_helpers::sign_with_nonce,
 };
+use test_helpers::assert_eq_result;
 
 use crate::{
+    indexer_integration_test,
     test_args::TestArgs,
-    utils::{merkle::parse_merkle_opening_from_receipt, transactions::wait_for_tx_success},
+    utils::{
+        indexer_state::get_party0_first_intent,
+        merkle::{find_commitment, parse_merkle_opening_from_receipt},
+        test_data::{
+            build_public_obligation_bundle, create_intents_and_obligations, settlement_relayer_fee,
+            split_obligation,
+        },
+        transactions::wait_for_tx_success,
+    },
 };
 
-// -------------------------------
-// | Ring 1 Intents / Settlement |
-// -------------------------------
+// ---------
+// | Tests |
+// ---------
+
+/// Test the indexing of the settlement of the first fill of a ring 1 intent
+async fn test_ring1_first_fill(mut args: TestArgs) -> Result<()> {
+    submit_ring1_first_fill(&mut args).await?;
+
+    // Give some time for the message to be processed
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Fetch the new intent from the indexer. We simply use the first intent state
+    // object found for the account, as there should only be one.
+    let intent = get_party0_first_intent(&args).await?;
+
+    // Assert that the indexed balance's commitment is included onchain in the
+    // Merkle tree
+    let indexed_commitment = intent.compute_commitment();
+    let commitment_found =
+        find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
+
+    assert_eq_result!(commitment_found, true)
+}
+indexer_integration_test!(test_ring1_first_fill);
+
+/// Test the indexing of the settlement of a subsequent fill of a ring 1 intent
+async fn test_ring1_subsequent_fill(mut args: TestArgs) -> Result<()> {
+    // Submit the first fill of the intent, so that it is created in the indexer
+    let (receipt, state_intent0, state_intent1, second_obligation0, second_obligation1) =
+        submit_ring1_first_fill(&mut args).await?;
+
+    // Submit the subsequent fill of the intent
+    submit_ring1_subsequent_fill(
+        &args,
+        &state_intent0,
+        &state_intent1,
+        &second_obligation0,
+        &second_obligation1,
+        &receipt,
+    )
+    .await?;
+
+    // Give some time for the message to be processed
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Fetch the intent from the indexer. We simply use the first intent state
+    // object found for the account, as there should only be one.
+    let intent = get_party0_first_intent(&args).await?;
+
+    // Assert that the indexed balance's commitment is included onchain in the
+    // Merkle tree
+    let indexed_commitment = intent.compute_commitment();
+    let commitment_found =
+        find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
+
+    assert_eq_result!(commitment_found, true)
+}
+indexer_integration_test!(test_ring1_subsequent_fill);
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Submit a settlement between two ring 1 intents which both receive their
 /// first fill.
 ///
 /// Returns the transaction receipt, both intent state objects (after the first
 /// fill has been applied to them), and both subsequent fill obligations
-pub async fn submit_ring1_first_fill(
+async fn submit_ring1_first_fill(
     args: &mut TestArgs,
 ) -> Result<(
     TransactionReceipt,
@@ -100,7 +162,7 @@ pub async fn submit_ring1_first_fill(
 
 /// Submit the settlement of a subsequent fill on the 2 given intents,
 /// represented by the given 2 settlement obligations.
-pub async fn submit_ring1_subsequent_fill(
+async fn submit_ring1_subsequent_fill(
     args: &TestArgs,
     state_intent0: &DarkpoolStateIntent,
     state_intent1: &DarkpoolStateIntent,
@@ -128,61 +190,6 @@ pub async fn submit_ring1_subsequent_fill(
     wait_for_tx_success(call).await?;
 
     Ok(())
-}
-
-/// Create two matching intents and obligations
-///
-/// Party 0 sells the base; party 1 sells the quote
-pub fn create_intents_and_obligations(
-    args: &TestArgs,
-) -> Result<(Intent, Intent, SettlementObligation, SettlementObligation)> {
-    // Construct a random intent for the first party
-    let mut rng = thread_rng();
-    let amount_in = rng.gen_range(0..=BOUNDED_MAX_AMT);
-    let min_price = random_price();
-    let intent0 = Intent {
-        in_token: args.base_token_address()?,
-        out_token: args.quote_token_address()?,
-        owner: args.party0_address(),
-        min_price,
-        amount_in,
-    };
-
-    let counterparty = args.party1_address();
-
-    // Determine the trade parameters
-    let party0_amt_in = rng.gen_range(0..intent0.amount_in);
-    let min_amt_out = compute_min_amount_out(&intent0, party0_amt_in);
-    let party0_amt_out = rng.gen_range(min_amt_out..=max_amount());
-
-    // Build two compatible obligations
-    let obligation0 = SettlementObligation {
-        input_token: intent0.in_token,
-        output_token: intent0.out_token,
-        amount_in: party0_amt_in,
-        amount_out: party0_amt_out,
-    };
-    let obligation1 = SettlementObligation {
-        input_token: intent0.out_token,
-        output_token: intent0.in_token,
-        amount_in: party0_amt_out,
-        amount_out: party0_amt_in,
-    };
-
-    // Create a compatible intent for the counterparty
-    let trade_price = compute_implied_price(obligation1.amount_out, obligation1.amount_in);
-
-    let min_price = trade_price.floor_div(&FixedPoint::from(2_u128));
-    let amount_in = rng.gen_range(party0_amt_out..=max_amount());
-    let intent1 = Intent {
-        in_token: intent0.out_token,
-        out_token: intent0.in_token,
-        owner: counterparty,
-        min_price,
-        amount_in,
-    };
-
-    Ok((intent0, intent1, obligation0, obligation1))
 }
 
 /// Build a settlement bundle for the first fill of a ring 1 intent
@@ -214,6 +221,17 @@ fn build_ring1_settlement_bundle_first_fill(
     );
 
     Ok((state_intent, settlement_bundle))
+}
+
+/// Generate a linking proof between a ring 1 validity proof and settlement
+/// proof
+fn generate_ring1_linking_proof(
+    validity_link_hint: &ProofLinkingHint,
+    settlement_link_hint: &ProofLinkingHint,
+) -> Result<PlonkLinkProof> {
+    let proof = link_sized_intent_only_settlement(validity_link_hint, settlement_link_hint)?;
+
+    Ok(proof)
 }
 
 /// Build a settlement bundle for a subsequent fill of a ring 1 intent
@@ -271,6 +289,48 @@ fn generate_ring1_first_fill_validity_proof(
         singleprover_prove_with_hint::<IntentOnlyFirstFillValidityCircuit>(&witness, &statement)?;
 
     Ok((comm, state_intent, statement, proof, link_hint))
+}
+
+/// Create a witness and statement for the `IntentOnlyFirstFillValidityCircuit`
+/// using the given intent
+fn create_intent_only_first_fill_validity_witness_statement(
+    args: &mut TestArgs,
+    is_party0: bool,
+    intent: &Intent,
+) -> (IntentOnlyFirstFillValidityWitness, IntentOnlyFirstFillValidityStatement) {
+    // Create the witness intent with initial stream states
+    let (share_stream_seed, recovery_stream_seed) = if is_party0 {
+        (args.next_party0_share_stream().seed, args.next_party0_recovery_stream().seed)
+    } else {
+        (random_scalar(), random_scalar())
+    };
+
+    let initial_intent =
+        DarkpoolStateIntent::new(intent.clone(), share_stream_seed, recovery_stream_seed);
+
+    let mut intent_clone = initial_intent.clone();
+    let recovery_id = intent_clone.compute_recovery_id();
+    let intent_private_commitment = intent_clone.compute_private_commitment();
+
+    // Get shares from the initial (pre-mutation) state
+    let private_shares = initial_intent.private_shares();
+    let intent_public_share = initial_intent.public_share();
+
+    // Build the witness with the pre-mutation state
+    let witness = IntentOnlyFirstFillValidityWitness {
+        intent: initial_intent.inner,
+        initial_intent_share_stream: initial_intent.share_stream,
+        initial_intent_recovery_stream: initial_intent.recovery_stream,
+        private_shares,
+    };
+    let statement = IntentOnlyFirstFillValidityStatement {
+        owner: intent.owner,
+        intent_private_commitment,
+        recovery_id,
+        intent_public_share,
+    };
+
+    (witness, statement)
 }
 
 /// Generate a validity proof for the first fill of a ring 1 intent
@@ -335,104 +395,4 @@ fn build_auth_bundle_subsequent_fill(
         statement: validity_statement.clone().into(),
         validityProof: validity_proof.clone().into(),
     })
-}
-
-/// Build an obligation bundle for two public obligations
-pub fn build_public_obligation_bundle(
-    obligation0: &SettlementObligation,
-    obligation1: &SettlementObligation,
-) -> ObligationBundle {
-    ObligationBundle::new_public(obligation0.clone().into(), obligation1.clone().into())
-}
-
-// ----------------
-// | Misc Helpers |
-// ----------------
-
-/// Split an obligation in two
-///
-/// Returns the two splits of the obligation
-pub fn split_obligation(
-    obligation: &SettlementObligation,
-) -> (SettlementObligation, SettlementObligation) {
-    let mut obligation0 = obligation.clone();
-    let mut obligation1 = obligation.clone();
-    obligation0.amount_in /= 2;
-    obligation0.amount_out /= 2;
-    obligation1.amount_in /= 2;
-    obligation1.amount_out /= 2;
-
-    (obligation0, obligation1)
-}
-
-/// The settlement relayer fee to use for testing
-pub fn settlement_relayer_fee() -> FixedPoint {
-    FixedPoint::from_f64_round_down(0.0001) // 1bp
-}
-
-/// Generate a linking proof between a ring 1 validity proof and settlement
-/// proof
-fn generate_ring1_linking_proof(
-    validity_link_hint: &ProofLinkingHint,
-    settlement_link_hint: &ProofLinkingHint,
-) -> Result<PlonkLinkProof> {
-    let proof = link_sized_intent_only_settlement(validity_link_hint, settlement_link_hint)?;
-
-    Ok(proof)
-}
-
-/// Create a witness and statement for the `IntentOnlyFirstFillValidityCircuit`
-/// using the given intent
-fn create_intent_only_first_fill_validity_witness_statement(
-    args: &mut TestArgs,
-    is_party0: bool,
-    intent: &Intent,
-) -> (IntentOnlyFirstFillValidityWitness, IntentOnlyFirstFillValidityStatement) {
-    // Create the witness intent with initial stream states
-    let (share_stream_seed, recovery_stream_seed) = if is_party0 {
-        (args.next_party0_share_stream().seed, args.next_party0_recovery_stream().seed)
-    } else {
-        (random_scalar(), random_scalar())
-    };
-
-    let initial_intent =
-        DarkpoolStateIntent::new(intent.clone(), share_stream_seed, recovery_stream_seed);
-
-    let mut intent_clone = initial_intent.clone();
-    let recovery_id = intent_clone.compute_recovery_id();
-    let intent_private_commitment = intent_clone.compute_private_commitment();
-
-    // Get shares from the initial (pre-mutation) state
-    let private_shares = initial_intent.private_shares();
-    let intent_public_share = initial_intent.public_share();
-
-    // Build the witness with the pre-mutation state
-    let witness = IntentOnlyFirstFillValidityWitness {
-        intent: initial_intent.inner,
-        initial_intent_share_stream: initial_intent.share_stream,
-        initial_intent_recovery_stream: initial_intent.recovery_stream,
-        private_shares,
-    };
-    let statement = IntentOnlyFirstFillValidityStatement {
-        owner: intent.owner,
-        intent_private_commitment,
-        recovery_id,
-        intent_public_share,
-    };
-
-    (witness, statement)
-}
-
-/// Get the first intent state object for the first test account
-pub async fn get_party0_first_intent(args: &TestArgs) -> Result<DarkpoolStateIntent> {
-    let state_objects =
-        get_all_active_user_state_objects(args.party0_account_id(), args.db_client()).await?;
-
-    state_objects
-        .into_iter()
-        .find_map(|state_object| match state_object {
-            ApiStateObject::Intent(intent) => Some(intent.intent),
-            _ => None,
-        })
-        .ok_or(eyre::eyre!("Intent not found"))
 }

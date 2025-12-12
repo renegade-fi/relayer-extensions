@@ -1,26 +1,31 @@
-//! Integration testing utilities for managing public intents
+//! Tests the indexing of ring 0 (natively-settled, public-intent) match
+//! settlements
+
+use std::time::Duration;
 
 use alloy::{
     primitives::{Address, B256, keccak256},
     rpc::types::TransactionReceipt,
     sol_types::SolValue,
 };
-use darkpool_indexer::{
-    api::http::handlers::get_all_active_user_state_objects,
-    indexer::event_indexing::types::settlement_bundle::NATIVELY_SETTLED_PUBLIC_INTENT,
-};
-use darkpool_indexer_api::types::http::{ApiPublicIntent, ApiStateObject};
+use darkpool_indexer::indexer::event_indexing::types::settlement_bundle::NATIVELY_SETTLED_PUBLIC_INTENT;
 use eyre::Result;
 use renegade_circuit_types::{intent::Intent, settlement_obligation::SettlementObligation};
-use renegade_solidity_abi::v2::IDarkpoolV2::{
-    self, FeeRate, PublicIntentAuthBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
-    SettlementBundle,
+use renegade_solidity_abi::v2::{
+    IDarkpoolV2::{
+        self, FeeRate, PublicIntentAuthBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
+        SettlementBundle,
+    },
+    relayer_types::u128_to_u256,
 };
+use test_helpers::assert_eq_result;
 
 use crate::{
+    indexer_integration_test,
     test_args::TestArgs,
     utils::{
-        intents::{
+        indexer_state::get_party0_first_public_intent,
+        test_data::{
             build_public_obligation_bundle, create_intents_and_obligations, settlement_relayer_fee,
             split_obligation,
         },
@@ -28,16 +33,83 @@ use crate::{
     },
 };
 
-// -------------------------------
-// | Ring 0 Intents / Settlement |
-// -------------------------------
+// ---------
+// | Tests |
+// ---------
+
+/// Test the indexing of the settlement of the first fill of a ring 0 intent
+async fn test_ring0_first_fill(args: TestArgs) -> Result<()> {
+    let (receipt, intent_hash, _, _, _, _) = submit_ring0_first_fill(&args).await?;
+
+    // TEMP: Bypass the chain event listener & enqueue messages directly until event
+    // emission is implemented in the contracts
+    args.send_public_intent_creation_message(intent_hash, receipt.transaction_hash).await?;
+
+    // Give some time for the message to be processed
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Fetch the new public intent from the indexer. We simply use the first public
+    // intent found for the account, as there should only be one.
+    let public_intent = get_party0_first_public_intent(&args).await?;
+
+    let indexed_remaining_amount = u128_to_u256(public_intent.intent.amount_in);
+    let onchain_remaining_amount =
+        args.darkpool_instance().openPublicIntents(public_intent.intent_hash).call().await?;
+
+    assert_eq_result!(indexed_remaining_amount, onchain_remaining_amount)
+}
+indexer_integration_test!(test_ring0_first_fill);
+
+/// Test the indexing of the settlement of a subsequent fill of a ring 0 intent
+async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
+    let (initial_receipt, intent_hash, intent0, intent1, second_obligation0, second_obligation1) =
+        submit_ring0_first_fill(&args).await?;
+
+    // TEMP: Bypass the chain event listener & enqueue messages directly until event
+    // emission is implemented in the contracts
+    args.send_public_intent_creation_message(intent_hash, initial_receipt.transaction_hash).await?;
+
+    let receipt = submit_ring0_subsequent_fill(
+        &args,
+        &intent0,
+        &intent1,
+        &second_obligation0,
+        &second_obligation1,
+    )
+    .await?;
+
+    args.send_public_intent_update_message(
+        intent_hash,
+        1, // version
+        receipt.transaction_hash,
+    )
+    .await?;
+
+    // Give some time for the message to be processed
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Fetch the new public intent from the indexer. We simply use the first public
+    // intent found for the account, as there should only be one.
+    let public_intent = get_party0_first_public_intent(&args).await?;
+
+    let indexed_remaining_amount = u128_to_u256(public_intent.intent.amount_in);
+    let onchain_remaining_amount =
+        args.darkpool_instance().openPublicIntents(public_intent.intent_hash).call().await?;
+
+    assert_eq_result!(indexed_remaining_amount, onchain_remaining_amount)
+}
+indexer_integration_test!(test_ring0_subsequent_fill);
+
+// -----------
+// | Helpers |
+// -----------
 
 /// Submit a settlement between two ring 0 intents which both receive their
 /// first fill.
 ///
 /// Returns the transaction receipt, party 0's new intent hash, both intents,
 /// and both subsequent fill obligations
-pub async fn submit_ring0_first_fill(
+async fn submit_ring0_first_fill(
     args: &TestArgs,
 ) -> Result<(TransactionReceipt, B256, Intent, Intent, SettlementObligation, SettlementObligation)>
 {
@@ -76,7 +148,7 @@ pub async fn submit_ring0_first_fill(
 /// represented by the given 2 settlement obligations.
 ///
 /// Returns the transaction receipt.
-pub async fn submit_ring0_subsequent_fill(
+async fn submit_ring0_subsequent_fill(
     args: &TestArgs,
     original_intent0: &Intent,
     original_intent1: &Intent,
@@ -152,22 +224,4 @@ fn build_ring0_settlement_bundle(
     };
 
     Ok((bundle, intent_hash))
-}
-
-// ----------------
-// | Misc Helpers |
-// ----------------
-
-/// Get the first public intent state object for the first test account
-pub async fn get_party0_first_public_intent(args: &TestArgs) -> Result<ApiPublicIntent> {
-    let state_objects =
-        get_all_active_user_state_objects(args.party0_account_id(), args.db_client()).await?;
-
-    state_objects
-        .into_iter()
-        .find_map(|state_object| match state_object {
-            ApiStateObject::PublicIntent(public_intent) => Some(public_intent),
-            _ => None,
-        })
-        .ok_or(eyre::eyre!("Public intent not found"))
 }
