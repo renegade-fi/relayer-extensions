@@ -11,7 +11,6 @@ use renegade_circuit_types::{
     intent::{DarkpoolStateIntent, Intent},
     max_amount,
     settlement_obligation::SettlementObligation,
-    state_wrapper::StateWrapper,
 };
 use renegade_circuits::{
     singleprover_prove_with_hint,
@@ -396,7 +395,8 @@ fn create_intent_only_first_fill_validity_witness_statement(
         (random_scalar(), random_scalar())
     };
 
-    let initial_intent = StateWrapper::new(intent.clone(), share_stream_seed, recovery_stream_seed);
+    let initial_intent =
+        DarkpoolStateIntent::new(intent.clone(), share_stream_seed, recovery_stream_seed);
 
     let mut intent_clone = initial_intent.clone();
     let recovery_id = intent_clone.compute_recovery_id();

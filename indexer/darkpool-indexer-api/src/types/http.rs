@@ -2,7 +2,9 @@
 
 use alloy_primitives::B256;
 use renegade_circuit_types::{
-    Amount, balance::Balance, intent::Intent, state_wrapper::StateWrapper,
+    Amount,
+    balance::DarkpoolStateBalance,
+    intent::{DarkpoolStateIntent, Intent},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -37,7 +39,7 @@ pub enum ApiStateObject {
 #[derive(Serialize, Deserialize)]
 pub struct ApiBalance {
     /// The underlying balance circuit type
-    pub balance: StateWrapper<Balance>,
+    pub balance: DarkpoolStateBalance,
 }
 
 impl From<ApiBalance> for ApiStateObject {
@@ -50,7 +52,7 @@ impl From<ApiBalance> for ApiStateObject {
 #[derive(Serialize, Deserialize)]
 pub struct ApiIntent {
     /// The underlying intent circuit type
-    pub intent: StateWrapper<Intent>,
+    pub intent: DarkpoolStateIntent,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
     /// Whether the intent allows external matches
