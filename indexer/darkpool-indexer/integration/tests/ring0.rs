@@ -13,8 +13,8 @@ use eyre::Result;
 use renegade_circuit_types::{intent::Intent, settlement_obligation::SettlementObligation};
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{
-        self, FeeRate, PublicIntentAuthBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
-        SettlementBundle,
+        self, FeeRate, ObligationBundle, PublicIntentAuthBundle, PublicIntentPermit,
+        PublicIntentPublicBalanceBundle, SettlementBundle,
     },
     relayer_types::u128_to_u256,
 };
@@ -24,11 +24,7 @@ use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     utils::{
-        indexer_state::get_party0_first_public_intent,
-        test_data::{
-            build_public_obligation_bundle, create_intents_and_obligations, settlement_relayer_fee,
-            split_obligation,
-        },
+        test_data::{create_intents_and_obligations, settlement_relayer_fee, split_obligation},
         transactions::wait_for_tx_success,
     },
 };
@@ -48,13 +44,15 @@ async fn test_ring0_first_fill(args: TestArgs) -> Result<()> {
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the new public intent from the indexer. We simply use the first public
-    // intent found for the account, as there should only be one.
-    let public_intent = get_party0_first_public_intent(&args).await?;
+    // Fetch the new public intent from the indexer
+    let indexed_public_intent = args.get_public_intent_by_hash(intent_hash).await?;
 
-    let indexed_remaining_amount = u128_to_u256(public_intent.intent.amount_in);
-    let onchain_remaining_amount =
-        args.darkpool_instance().openPublicIntents(public_intent.intent_hash).call().await?;
+    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.intent.amount_in);
+    let onchain_remaining_amount = args
+        .darkpool_instance()
+        .openPublicIntents(indexed_public_intent.intent_hash)
+        .call()
+        .await?;
 
     assert_eq_result!(indexed_remaining_amount, onchain_remaining_amount)
 }
@@ -88,13 +86,15 @@ async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the new public intent from the indexer. We simply use the first public
-    // intent found for the account, as there should only be one.
-    let public_intent = get_party0_first_public_intent(&args).await?;
+    // Fetch the public intent from the indexer
+    let indexed_public_intent = args.get_public_intent_by_hash(intent_hash).await?;
 
-    let indexed_remaining_amount = u128_to_u256(public_intent.intent.amount_in);
-    let onchain_remaining_amount =
-        args.darkpool_instance().openPublicIntents(public_intent.intent_hash).call().await?;
+    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.intent.amount_in);
+    let onchain_remaining_amount = args
+        .darkpool_instance()
+        .openPublicIntents(indexed_public_intent.intent_hash)
+        .call()
+        .await?;
 
     assert_eq_result!(indexed_remaining_amount, onchain_remaining_amount)
 }
@@ -134,7 +134,10 @@ async fn submit_ring0_first_fill(
         &first_obligation1,
     )?;
 
-    let obligation_bundle = build_public_obligation_bundle(&first_obligation0, &first_obligation1);
+    let obligation_bundle = ObligationBundle::new_public(
+        first_obligation0.clone().into(),
+        first_obligation1.clone().into(),
+    );
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
@@ -169,7 +172,10 @@ async fn submit_ring0_subsequent_fill(
         second_obligation1,
     )?;
 
-    let obligation_bundle = build_public_obligation_bundle(second_obligation0, second_obligation1);
+    let obligation_bundle = ObligationBundle::new_public(
+        second_obligation0.clone().into(),
+        second_obligation1.clone().into(),
+    );
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.settleMatch(obligation_bundle, settlement_bundle0, settlement_bundle1);
@@ -182,7 +188,7 @@ async fn submit_ring0_subsequent_fill(
 /// Build a settlement bundle a ring 0 intent.
 ///
 /// Returns the settlement bundle alongside the intent hash.
-fn build_ring0_settlement_bundle(
+pub fn build_ring0_settlement_bundle(
     args: &TestArgs,
     is_party0: bool,
     circuit_intent: &Intent,

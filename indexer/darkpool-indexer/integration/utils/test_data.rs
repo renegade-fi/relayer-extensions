@@ -10,7 +10,7 @@ use renegade_circuit_types::{
 use renegade_circuits::test_helpers::{
     BOUNDED_MAX_AMT, compute_implied_price, compute_min_amount_out, random_price,
 };
-use renegade_solidity_abi::v2::IDarkpoolV2::{Deposit, ObligationBundle};
+use renegade_solidity_abi::v2::IDarkpoolV2::Deposit;
 
 use crate::test_args::TestArgs;
 
@@ -89,14 +89,6 @@ pub fn create_intents_and_obligations(
     };
 
     Ok((intent0, intent1, obligation0, obligation1))
-}
-
-/// Build an obligation bundle for two public obligations
-pub fn build_public_obligation_bundle(
-    obligation0: &SettlementObligation,
-    obligation1: &SettlementObligation,
-) -> ObligationBundle {
-    ObligationBundle::new_public(obligation0.clone().into(), obligation1.clone().into())
 }
 
 /// Split an obligation in two
