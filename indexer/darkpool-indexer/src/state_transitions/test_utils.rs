@@ -695,8 +695,7 @@ pub fn gen_settle_public_fill_into_intent_transition(
     updated_intent.reencrypt_amount_in();
     updated_intent.recovery_stream.advance_by(1);
 
-    let intent_settlement_data =
-        IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation };
+    let intent_settlement_data = IntentSettlementData::PublicFill { settlement_obligation };
 
     // Construct the associated match settlement transition
     let transition = SettleMatchIntoIntentTransition {
