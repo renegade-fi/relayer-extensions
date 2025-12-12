@@ -10,7 +10,7 @@ use renegade_circuit_types::{
     csprng::PoseidonCSPRNG,
     fee::FeeTake,
     fixed_point::FixedPoint,
-    intent::Intent,
+    intent::{DarkpoolStateIntent, Intent},
     max_amount,
     settlement_obligation::SettlementObligation,
     state_wrapper::StateWrapper,
@@ -81,12 +81,13 @@ fn add_up_to_max(amount_a: Amount, amount_b: Amount) -> Amount {
     amount_a.saturating_add(amount_b).min(max_amount())
 }
 
-/// Generate a random settlement obligation
-fn gen_random_settlement_obligation(balance: &DarkpoolStateBalance) -> SettlementObligation {
-    // We upper-bound both the input and output amounts to the balance's amount, so
-    // that we don't need to accept both an input and output balance in the
-    // arguments for bounds.
-    let amount = thread_rng().gen_range(1..=balance.inner.amount);
+/// Generate a random settlement obligation, representing a trade of up to
+/// `max_amount`.
+///
+/// We bound both the input and output amounts to the given `max_amount` for
+/// simplicity.
+fn gen_random_settlement_obligation(max_amount: Amount) -> SettlementObligation {
+    let amount = thread_rng().gen_range(1..=max_amount);
     SettlementObligation {
         // We use random addresses as this is not yet relevent in testing code
         input_token: Address::random(),
@@ -247,11 +248,12 @@ pub fn gen_new_output_balance_transition(
 }
 
 /// Generate the state transition which should result in the given
-/// expected state object being indexed as a new intent.
+/// expected state object being indexed as a new intent resulting from a
+/// private-fill match settlement.
 ///
 /// Returns the create intent transition, along with the expected intent
 /// object.
-pub fn gen_create_intent_transition(
+pub fn gen_create_intent_from_private_fill_transition(
     expected_state_object: &ExpectedStateObject,
 ) -> (CreateIntentTransition, StateWrapper<Intent>) {
     let owner = Address::random();
@@ -350,27 +352,6 @@ fn update_balance_relayer_fee(
     balance.public_share = public_share;
 
     new_relayer_fee_public_share
-}
-
-/// Update the amount in an intent.
-///
-/// Returns the public share of the new amount.
-fn update_intent_amount(intent: &mut StateWrapper<Intent>, new_amount: Amount) -> Scalar {
-    // Advance the recovery stream to indicate the next object version
-    intent.recovery_stream.advance_by(1);
-
-    // Update the intent amount
-    intent.inner.amount_in = new_amount;
-
-    // Re-encrypt the updated amount share
-    let new_amount_public_share = intent.stream_cipher_encrypt(&new_amount);
-
-    // Update the public share of the intent
-    let mut public_share = intent.public_share();
-    public_share.amount_in = new_amount_public_share;
-    intent.public_share = public_share;
-
-    new_amount_public_share
 }
 
 /// Generate the state transition which should result in the given
@@ -485,7 +466,7 @@ pub fn gen_settle_private_fill_into_balance_transition(
     let mut updated_balance = initial_balance.clone();
 
     // Create a dummy settlement obligation with a random match amount
-    let settlement_obligation = gen_random_settlement_obligation(initial_balance);
+    let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
 
     // For simplicity, we model the balance as an input balance. There is no
     // difference in the state applicator logic between private-fill settlement
@@ -519,7 +500,7 @@ pub fn gen_settle_public_fill_into_input_balance_transition(
     let mut updated_balance = initial_balance.clone();
 
     // Create a dummy settlement obligation with a random match amount
-    let settlement_obligation = gen_random_settlement_obligation(initial_balance);
+    let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
 
     updated_balance.apply_obligation_in_balance(&settlement_obligation);
     updated_balance.reencrypt_post_match_share();
@@ -551,7 +532,7 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
     let mut updated_balance = initial_balance.clone();
 
     // Create a dummy settlement obligation with a random match amount
-    let settlement_obligation = gen_random_settlement_obligation(initial_balance);
+    let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
 
     let relayer_fee_rate = relayer_fee();
     let protocol_fee_rate = protocol_fee();
@@ -622,24 +603,59 @@ pub fn gen_settle_match_into_public_intent_transition(
 /// Generate the state transition which should result in the given
 /// intent being updated with a match settlement.
 ///
+/// To generate a transition for
+/// an intent being updated from a Renegade-settled public-fill match, use
+/// `gen_settle_public_fill_into_intent_transition`.
+///
 /// Returns the match settlement transition, along with the updated intent.
 pub fn gen_settle_match_into_intent_transition(
-    initial_intent: &StateWrapper<Intent>,
-) -> (SettleMatchIntoIntentTransition, StateWrapper<Intent>) {
+    initial_intent: &DarkpoolStateIntent,
+) -> (SettleMatchIntoIntentTransition, DarkpoolStateIntent) {
     let spent_nullifier = initial_intent.compute_nullifier();
 
     let mut updated_intent = initial_intent.clone();
 
-    // Apply a random match amount to the intent
-    let match_amount = random_amount();
+    // Create a dummy settlement obligation with a random match amount
+    let settlement_obligation = gen_random_settlement_obligation(initial_intent.inner.amount_in);
 
-    let new_amount = initial_intent.inner.amount_in.saturating_sub(match_amount);
+    updated_intent.apply_settlement_obligation(&settlement_obligation);
+    updated_intent.reencrypt_amount_in();
+    updated_intent.recovery_stream.advance_by(1);
 
-    let amount_public_share = update_intent_amount(&mut updated_intent, new_amount);
+    let amount_public_share = updated_intent.public_share().amount_in;
 
-    // For now, we simply use the `UpdatedAmountShare` variant of the intent
-    // settlement data
     let intent_settlement_data = IntentSettlementData::UpdatedAmountShare(amount_public_share);
+
+    // Construct the associated match settlement transition
+    let transition = SettleMatchIntoIntentTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        intent_settlement_data,
+    };
+
+    (transition, updated_intent)
+}
+
+/// Generate the state transition which should result in the given
+/// intent being updated with a Renegade-settled public-fill match settlement.
+///
+/// Returns the match settlement transition, along with the updated intent.
+pub fn gen_settle_public_fill_into_intent_transition(
+    initial_intent: &DarkpoolStateIntent,
+) -> (SettleMatchIntoIntentTransition, DarkpoolStateIntent) {
+    let spent_nullifier = initial_intent.compute_nullifier();
+
+    let mut updated_intent = initial_intent.clone();
+
+    // Create a dummy settlement obligation with a random match amount
+    let settlement_obligation = gen_random_settlement_obligation(initial_intent.inner.amount_in);
+
+    updated_intent.apply_settlement_obligation(&settlement_obligation);
+    updated_intent.reencrypt_amount_in();
+    updated_intent.recovery_stream.advance_by(1);
+
+    let intent_settlement_data =
+        IntentSettlementData::RenegadeSettledPublicFill { settlement_obligation };
 
     // Construct the associated match settlement transition
     let transition = SettleMatchIntoIntentTransition {
