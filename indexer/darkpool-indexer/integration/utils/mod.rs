@@ -1,29 +1,15 @@
 //! Common utilities for integration tests
 
-use alloy::primitives::U256;
-use rand::{Rng, thread_rng};
-use renegade_circuits::test_helpers::BOUNDED_MAX_AMT;
-
 pub(crate) mod abis;
-pub(crate) mod balances;
-pub(crate) mod intents;
+pub(crate) mod indexer_state;
 pub(crate) mod merkle;
-pub(crate) mod public_intents;
 pub(crate) mod setup;
+pub(crate) mod test_data;
 pub(crate) mod transactions;
 
 // -----------
 // | Helpers |
 // -----------
-
-/// Generate a random circuit-compatible amount as a U256.
-///
-/// The amount will be of size at most 2 ** AMOUNT_BITS
-pub fn random_amount_u256() -> U256 {
-    let mut rng = thread_rng();
-    let amount_u128 = rng.gen_range(0..=BOUNDED_MAX_AMT);
-    U256::from(amount_u128)
-}
 
 // ----------
 // | Macros |
