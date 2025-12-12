@@ -94,9 +94,9 @@ impl Indexer {
 
                 maybe_settle_match_into_balance_transition
                     .or(maybe_settle_match_into_intent_transition)
-                    .ok_or(IndexerError::invalid_settlement_bundle(
-                        "no balance or intent nullified in match tx 0x{tx_hash:#x}",
-                    ))
+                    .ok_or(IndexerError::invalid_settlement_bundle(format!(
+                        "no balance or intent nullified in match tx 0x{tx_hash:#x}"
+                    )))
             },
             cancelOrderCall::SELECTOR => {
                 self.compute_cancel_order_transition(nullifier, tx_hash).await
