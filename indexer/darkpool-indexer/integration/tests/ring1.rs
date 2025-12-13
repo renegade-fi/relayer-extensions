@@ -36,14 +36,14 @@ use renegade_solidity_abi::v2::{
     },
     auth_helpers::sign_with_nonce,
 };
-use test_helpers::assert_eq_result;
 
 use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     tests::ring0::build_ring0_settlement_bundle,
     utils::{
-        merkle::{find_commitment, parse_merkle_opening_from_receipt},
+        assertions::assert_state_object_committed,
+        merkle::parse_merkle_opening_from_receipt,
         test_data::{create_intents_and_obligations, settlement_relayer_fee, split_obligation},
         transactions::wait_for_tx_success,
     },
@@ -60,16 +60,10 @@ async fn test_ring1_first_fill(mut args: TestArgs) -> Result<()> {
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the indexed intent from the indexer
-    let indexed_intent = args.get_intent_by_nullifier(state_intent0.compute_nullifier()).await?;
-
     // Assert that the indexed balance's commitment is included onchain in the
-    // Merkle tree
-    let indexed_commitment = indexed_intent.intent.compute_commitment();
-    let commitment_found =
-        find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
-
-    assert_eq_result!(commitment_found, true)
+    // Merkle tree.
+    let indexed_intent = args.get_intent_by_nullifier(state_intent0.compute_nullifier()).await?;
+    assert_state_object_committed(&indexed_intent.intent, &args.darkpool_instance()).await
 }
 indexer_integration_test!(test_ring1_first_fill);
 
@@ -98,19 +92,14 @@ async fn test_ring1_subsequent_fill(mut args: TestArgs) -> Result<()> {
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the indexed intent from the indexer.
+    // Assert that the indexed balance's commitment is included onchain in the
+    // Merkle tree.
     // We advance the intent's recovery stream to compute the correct nullifier for
     // the lookup.
     state_intent0.recovery_stream.advance_by(1);
     let indexed_intent = args.get_intent_by_nullifier(state_intent0.compute_nullifier()).await?;
 
-    // Assert that the indexed balance's commitment is included onchain in the
-    // Merkle tree
-    let indexed_commitment = indexed_intent.intent.compute_commitment();
-    let commitment_found =
-        find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
-
-    assert_eq_result!(commitment_found, true)
+    assert_state_object_committed(&indexed_intent.intent, &args.darkpool_instance()).await
 }
 indexer_integration_test!(test_ring1_subsequent_fill);
 

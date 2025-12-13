@@ -16,8 +16,9 @@ use renegade_constants::Scalar;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
-    recovery_stream::create_recovery_seed_csprng, share_stream::create_share_seed_csprng,
-    utils::decrypt_amount,
+    recovery_stream::create_recovery_seed_csprng,
+    share_stream::create_share_seed_csprng,
+    utils::{decrypt_address, decrypt_amount},
 };
 
 // -------------
@@ -145,17 +146,42 @@ impl BalanceStateObject {
         self.balance.inner.amount = new_amount;
     }
 
+    /// Update the balance as the input balance in the first fill of a
+    /// public-fill match settlement
+    pub fn update_from_public_first_fill_as_input_balance(
+        &mut self,
+        settlement_obligation: &SettlementObligation,
+        new_one_time_authority_share: Scalar,
+    ) {
+        // Decrypt the one-time authority share
+        let new_one_time_authority =
+            decrypt_address(new_one_time_authority_share, &mut self.balance.share_stream);
+
+        // Re-encrypt the updated balance shares
+        self.balance.reencrypt_post_match_share();
+
+        // Update the one-time authority of the balance
+        self.balance.inner.one_time_authority = new_one_time_authority;
+        self.balance.public_share.one_time_authority = new_one_time_authority_share;
+
+        // Apply the settlement obligation to the balance
+        self.balance.apply_obligation_in_balance(settlement_obligation);
+
+        // Advance the recovery stream to indicate the next object version
+        self.balance.recovery_stream.advance_by(1);
+    }
+
     /// Update the balance as the input balance of a public-fill match
     /// settlement
     pub fn update_from_public_fill_as_input_balance(
         &mut self,
         settlement_obligation: &SettlementObligation,
     ) {
-        // Apply the settlement obligation to the balance
-        self.balance.apply_obligation_in_balance(settlement_obligation);
-
         // Re-encrypt the updated balance shares
         self.balance.reencrypt_post_match_share();
+
+        // Apply the settlement obligation to the balance
+        self.balance.apply_obligation_in_balance(settlement_obligation);
 
         // Advance the recovery stream to indicate the next object version
         self.balance.recovery_stream.advance_by(1);
@@ -168,14 +194,14 @@ impl BalanceStateObject {
         settlement_obligation: &SettlementObligation,
         fee_take: &FeeTake,
     ) {
+        // Re-encrypt the updated balance shares
+        self.balance.reencrypt_post_match_share();
+
         // Apply the settlement obligation to the balance
         self.balance.apply_obligation_out_balance(settlement_obligation, fee_take);
 
         // Note, we don't need to accrue fees into the balance, since fees are
         // transferred immediately in public-fill settlement.
-
-        // Re-encrypt the updated balance shares
-        self.balance.reencrypt_post_match_share();
 
         // Advance the recovery stream to indicate the next object version
         self.balance.recovery_stream.advance_by(1);
