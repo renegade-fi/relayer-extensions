@@ -33,6 +33,14 @@ pub struct SettleMatchIntoBalanceTransition {
 /// The data required to update a balance resulting from a match settlement
 #[derive(Clone)]
 pub enum BalanceSettlementData {
+    /// An input balance update resulting from the first public fill on an
+    /// intent being settled
+    PublicFirstFillInputBalance {
+        /// The settlement obligation for the fill
+        settlement_obligation: SettlementObligation,
+        /// The new one-time authority share resulting from the fill
+        new_one_time_authority_share: Scalar,
+    },
     /// An input balance update resulting from a public fill being settled
     PublicFillInputBalance {
         /// The settlement obligation for the fill
@@ -106,6 +114,13 @@ fn apply_settlement_into_balance(
     balance: &mut BalanceStateObject,
 ) {
     match balance_settlement_data {
+        BalanceSettlementData::PublicFirstFillInputBalance {
+            settlement_obligation,
+            new_one_time_authority_share,
+        } => balance.update_from_public_first_fill_as_input_balance(
+            &settlement_obligation,
+            new_one_time_authority_share,
+        ),
         BalanceSettlementData::PublicFillInputBalance { settlement_obligation } => {
             balance.update_from_public_fill_as_input_balance(&settlement_obligation)
         },
@@ -208,6 +223,8 @@ mod tests {
 
         Ok(())
     }
+
+    // TODO: Add test for public first fill into input balance
 
     /// Test that a public-fill match settlement into an input balance is
     /// indexed correctly.
