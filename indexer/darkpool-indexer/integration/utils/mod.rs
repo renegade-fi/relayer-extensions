@@ -1,6 +1,7 @@
 //! Common utilities for integration tests
 
 pub(crate) mod abis;
+pub(crate) mod assertions;
 pub(crate) mod merkle;
 pub(crate) mod setup;
 pub(crate) mod test_data;

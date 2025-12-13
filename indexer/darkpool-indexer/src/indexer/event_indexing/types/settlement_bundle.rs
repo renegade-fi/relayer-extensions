@@ -6,7 +6,10 @@ use alloy::{
     sol_types::SolValue,
 };
 use renegade_circuit_types::{
-    Nullifier, balance::PostMatchBalanceShare, fixed_point::FixedPoint, intent::Intent,
+    Nullifier,
+    balance::{PostMatchBalanceShare, PreMatchBalanceShare},
+    fixed_point::FixedPoint,
+    intent::Intent,
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
@@ -135,6 +138,55 @@ impl SettlementBundleData {
         };
 
         Some(u256_to_scalar(&nullifier_u256))
+    }
+
+    /// Get the data required to create a new output balance from a public fill
+    /// using this settlement bundle data, if it is a renegade-settled,
+    /// public-fill intent first fill bundle
+    pub fn get_new_output_balance_from_public_fill_data(
+        &self,
+    ) -> Result<
+        Option<(PreMatchBalanceShare, PostMatchBalanceShare, FixedPoint, Scalar)>,
+        IndexerError,
+    > {
+        if !matches!(self, Self::RenegadeSettledIntentFirstFill(_)) {
+            return Ok(None);
+        }
+
+        let output_balance_bundle_data = self.get_output_balance_bundle_data()?.unwrap();
+
+        if !matches!(output_balance_bundle_data, OutputBalanceBundleData::NewBalanceBundle(_)) {
+            return Ok(None);
+        }
+
+        let pre_match_balance_share =
+            output_balance_bundle_data.get_pre_match_balance_shares().unwrap();
+
+        let post_match_balance_share =
+            self.get_pre_update_balance_shares(false /* is_input_balance */).unwrap();
+
+        let relayer_fee_rate = self.get_relayer_fee_rate().unwrap();
+
+        let recovery_id = output_balance_bundle_data.get_balance_recovery_id();
+
+        Ok(Some((pre_match_balance_share, post_match_balance_share, relayer_fee_rate, recovery_id)))
+    }
+
+    /// Get the relayer fee rate from the settlement bundle data, if it was a
+    /// publicly-settled bundle
+    pub fn get_relayer_fee_rate(&self) -> Option<FixedPoint> {
+        match self {
+            Self::PublicIntentPublicBalance(bundle) => {
+                Some(bundle.relayerFeeRate.rate.clone().into())
+            },
+            Self::RenegadeSettledIntentFirstFill(bundle) => {
+                Some(bundle.settlementStatement.relayerFee.clone().into())
+            },
+            Self::RenegadeSettledIntent(bundle) => {
+                Some(bundle.settlementStatement.relayerFee.clone().into())
+            },
+            _ => None,
+        }
     }
 
     /// Get the output balance bundle data from the settlement bundle data, if
