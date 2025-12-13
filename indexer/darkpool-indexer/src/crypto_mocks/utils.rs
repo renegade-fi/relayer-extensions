@@ -1,9 +1,9 @@
 //! Common, low-level cryptographic utilities
 
-use alloy::primitives::{B256, keccak256};
+use alloy::primitives::{Address, B256, keccak256};
 use renegade_circuit_types::{Amount, csprng::PoseidonCSPRNG};
 use renegade_constants::Scalar;
-use renegade_crypto::fields::scalar_to_u128;
+use renegade_crypto::fields::{scalar_to_address, scalar_to_u128};
 
 /// Hash a message to a scalar. We do this by hashing the message, extending the
 /// hash to 64 bytes, then performing modular reduction of the result into a
@@ -32,4 +32,15 @@ pub fn decrypt_amount(amount_public_share: Scalar, stream_cipher: &mut PoseidonC
     let private_share = stream_cipher.next().unwrap();
     let amount_scalar = amount_public_share + private_share;
     scalar_to_u128(&amount_scalar)
+}
+
+/// Decrypt an address ciphertext using a stream cipher, advancing its internal
+/// state
+pub fn decrypt_address(
+    address_public_share: Scalar,
+    stream_cipher: &mut PoseidonCSPRNG,
+) -> Address {
+    let private_share = stream_cipher.next().unwrap();
+    let address_scalar = address_public_share + private_share;
+    scalar_to_address(&address_scalar)
 }

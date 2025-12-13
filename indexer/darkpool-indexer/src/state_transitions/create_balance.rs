@@ -1,8 +1,14 @@
 //! Defines the application-specific logic for creating a new balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::balance::{BalanceShare, PostMatchBalanceShare, PreMatchBalanceShare};
+use renegade_circuit_types::{
+    balance::{BalanceShare, PostMatchBalanceShare, PreMatchBalanceShare},
+    fee::FeeTake,
+    fixed_point::FixedPoint,
+    settlement_obligation::SettlementObligation,
+};
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use tracing::warn;
 
 use crate::{
@@ -35,12 +41,19 @@ pub enum BalanceCreationData {
     },
     /// The balance creation data obtained from the settlement of a match into a
     /// new output balance
-    NewOutputBalance {
+    NewOutputBalanceFromPublicFill {
         /// The public shares of the balance fields unaffected by settlement
         pre_match_balance_share: PreMatchBalanceShare,
         /// The public shares of the balance fields updated by settlement
         post_match_balance_share: PostMatchBalanceShare,
+        /// The settlement obligation for the fill
+        settlement_obligation: SettlementObligation,
+        /// The relayer fee rate used in the fill
+        relayer_fee_rate: FixedPoint,
+        /// The protocol fee rate used in the fill
+        protocol_fee_rate: FixedPoint,
     },
+    // TODO: Add variant for a new output balance from a private fill
 }
 
 /// The pre-state required for the creation of a new balance object
@@ -64,24 +77,12 @@ impl StateApplicator {
         let CreateBalanceTransition { recovery_id, block_number, balance_creation_data } =
             transition;
 
-        let public_share = get_new_balance_shares(balance_creation_data);
-
         let BalanceCreationPrestate { expected_state_object, mut master_view_seed } =
             self.get_balance_creation_prestate(recovery_id).await?;
 
-        let ExpectedStateObject {
-            recovery_id,
-            recovery_stream_seed,
-            share_stream_seed,
-            account_id,
-        } = expected_state_object;
+        let recovery_stream_seed = expected_state_object.recovery_stream_seed;
 
-        let balance = BalanceStateObject::new(
-            public_share,
-            recovery_stream_seed,
-            share_stream_seed,
-            account_id,
-        );
+        let balance = construct_new_balance(balance_creation_data, &expected_state_object);
 
         let next_expected_state_object = master_view_seed.next_expected_state_object();
 
@@ -157,21 +158,57 @@ impl StateApplicator {
 // | Non-Member Helpers |
 // ----------------------
 
-/// Get the new balance shares from the balance creation data
-fn get_new_balance_shares(balance_creation_data: BalanceCreationData) -> BalanceShare {
+/// Construct a new balance object from the balance creation data
+fn construct_new_balance(
+    balance_creation_data: BalanceCreationData,
+    expected_state_object: &ExpectedStateObject,
+) -> BalanceStateObject {
+    let ExpectedStateObject { recovery_stream_seed, share_stream_seed, account_id, .. } =
+        expected_state_object;
+
     match balance_creation_data {
-        BalanceCreationData::DepositNewBalance { public_share } => public_share,
-        BalanceCreationData::NewOutputBalance {
+        BalanceCreationData::DepositNewBalance { public_share } => BalanceStateObject::new(
+            public_share,
+            *recovery_stream_seed,
+            *share_stream_seed,
+            *account_id,
+        ),
+        BalanceCreationData::NewOutputBalanceFromPublicFill {
             pre_match_balance_share,
             post_match_balance_share,
-        } => BalanceShare {
-            mint: pre_match_balance_share.mint,
-            owner: pre_match_balance_share.owner,
-            relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
-            one_time_authority: pre_match_balance_share.one_time_authority,
-            relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
-            protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
-            amount: post_match_balance_share.amount,
+            settlement_obligation,
+            relayer_fee_rate,
+            protocol_fee_rate,
+        } => {
+            // Construct the initial balance from the pre-update public shares
+            let public_share = BalanceShare {
+                mint: pre_match_balance_share.mint,
+                owner: pre_match_balance_share.owner,
+                relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
+                one_time_authority: pre_match_balance_share.one_time_authority,
+                relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
+                protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
+                amount: post_match_balance_share.amount,
+            };
+
+            let mut balance = BalanceStateObject::new(
+                public_share,
+                *recovery_stream_seed,
+                *share_stream_seed,
+                *account_id,
+            );
+
+            // Compute the fee take
+            let receive_amount = settlement_obligation.amount_out;
+
+            let relayer_fee = scalar_to_u128(&relayer_fee_rate.floor_mul_int(receive_amount));
+            let protocol_fee = scalar_to_u128(&protocol_fee_rate.floor_mul_int(receive_amount));
+
+            let fee_take = FeeTake { relayer_fee, protocol_fee };
+
+            balance.balance.apply_obligation_out_balance(&settlement_obligation, &fee_take);
+
+            balance
         },
     }
 }

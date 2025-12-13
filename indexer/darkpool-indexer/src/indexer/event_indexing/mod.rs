@@ -22,7 +22,7 @@ use crate::{
             types::obligation_bundle::ObligationBundleData,
             utils::{
                 try_decode_balance_settlement_data, try_decode_intent_creation_data,
-                try_decode_intent_settlement_data, try_decode_new_output_balance_creation_data,
+                try_decode_intent_settlement_data, try_decode_new_output_balance_from_public_fill,
                 try_decode_public_intent_data,
             },
         },
@@ -95,7 +95,7 @@ impl Indexer {
                 maybe_settle_match_into_balance_transition
                     .or(maybe_settle_match_into_intent_transition)
                     .ok_or(IndexerError::invalid_settlement_bundle(format!(
-                        "no balance or intent nullified in match tx 0x{tx_hash:#x}"
+                        "no balance or intent nullified in match tx {tx_hash:#x}"
                     )))
             },
             cancelOrderCall::SELECTOR => {
@@ -246,15 +246,25 @@ impl Indexer {
         let settle_match_call =
             settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let maybe_party0_balance_creation_data = try_decode_new_output_balance_creation_data(
+        let maybe_party0_balance_creation_data = try_decode_new_output_balance_from_public_fill(
+            &self.darkpool_client,
+            block_number,
             recovery_id,
             &settle_match_call.party0SettlementBundle,
-        )?;
+            &settle_match_call.obligationBundle,
+            true, // is_party0
+        )
+        .await?;
 
-        let maybe_party1_balance_creation_data = try_decode_new_output_balance_creation_data(
+        let maybe_party1_balance_creation_data = try_decode_new_output_balance_from_public_fill(
+            &self.darkpool_client,
+            block_number,
             recovery_id,
             &settle_match_call.party1SettlementBundle,
-        )?;
+            &settle_match_call.obligationBundle,
+            false, // is_party0
+        )
+        .await?;
 
         let maybe_balance_creation_data =
             maybe_party0_balance_creation_data.or(maybe_party1_balance_creation_data);

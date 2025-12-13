@@ -21,16 +21,14 @@ use renegade_solidity_abi::v2::{
     relayer_types::u256_to_u128,
     transfer_auth::withdrawal::create_withdrawal_auth,
 };
-use test_helpers::assert_eq_result;
 
 use crate::{
     indexer_integration_test,
     test_args::TestArgs,
     tests::deposit::submit_deposit_new_balance,
     utils::{
-        merkle::{fetch_merkle_opening, find_commitment},
-        test_data::random_deposit,
-        transactions::wait_for_tx_success,
+        assertions::assert_state_object_committed, merkle::fetch_merkle_opening,
+        test_data::random_deposit, transactions::wait_for_tx_success,
     },
 };
 
@@ -59,20 +57,15 @@ async fn test_withdraw(mut args: TestArgs) -> Result<()> {
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Fetch the balance from the indexer.
+    // Assert that the indexed balance's commitment is included onchain in the
+    // Merkle tree.
     // We advance the balance's recovery stream to compute the correct nullifier for
     // the lookup.
     initial_balance.recovery_stream.advance_by(1);
     let indexed_balance =
         args.get_balance_by_nullifier(initial_balance.compute_nullifier()).await?;
 
-    // Assert that the indexed balance's commitment is included onchain in the
-    // Merkle tree
-    let indexed_commitment = indexed_balance.balance.compute_commitment();
-    let commitment_found =
-        find_commitment(indexed_commitment, &args.darkpool_instance()).await.is_ok();
-
-    assert_eq_result!(commitment_found, true)
+    assert_state_object_committed(&indexed_balance.balance, &args.darkpool_instance()).await
 }
 indexer_integration_test!(test_withdraw);
 
