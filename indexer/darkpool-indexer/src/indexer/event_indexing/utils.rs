@@ -7,6 +7,7 @@ use renegade_circuit_types::{
     Nullifier,
     fixed_point::FixedPointShare,
     intent::{Intent, IntentShare, PreMatchIntentShare},
+    settlement_obligation::SettlementObligation,
     traits::BaseType,
 };
 use renegade_constants::Scalar;
@@ -32,43 +33,61 @@ use crate::{
 };
 
 /// Try to decode the balance creation data for the given party's newly-created
-/// output balance from the given settlement bundle.
+/// output balance from the given settlement bundle, assuming it's for a public
+/// fill.
 ///
 /// Returns `None` if the settlement bundle does not contain a newly-created
 /// output balance with a matching recovery ID.
-pub fn try_decode_new_output_balance_creation_data(
+pub async fn try_decode_new_output_balance_from_public_fill(
+    darkpool_client: &DarkpoolClient,
+    block_number: u64,
     recovery_id: Scalar,
     settlement_bundle: &SettlementBundle,
+    obligation_bundle: &ObligationBundle,
+    is_party0: bool,
 ) -> Result<Option<BalanceCreationData>, IndexerError> {
-    let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
-    let maybe_output_balance_bundle_data =
-        settlement_bundle_data.get_output_balance_bundle_data()?;
+    let obligation_bundle_data: ObligationBundleData = obligation_bundle.try_into()?;
+    let maybe_settlement_obligation =
+        obligation_bundle_data.get_public_settlement_obligation(is_party0);
 
-    if maybe_output_balance_bundle_data.is_none() {
+    if maybe_settlement_obligation.is_none() {
         return Ok(None);
     }
 
-    let output_balance_bundle_data = maybe_output_balance_bundle_data.unwrap();
-    let balance_recovery_id = output_balance_bundle_data.get_balance_recovery_id();
+    let settlement_obligation: SettlementObligation = maybe_settlement_obligation.unwrap().into();
+
+    let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
+
+    let maybe_new_output_balance_from_public_fill_data =
+        settlement_bundle_data.get_new_output_balance_from_public_fill_data()?;
+
+    if maybe_new_output_balance_from_public_fill_data.is_none() {
+        return Ok(None);
+    }
+
+    let (pre_match_balance_share, post_match_balance_share, relayer_fee_rate, balance_recovery_id) =
+        maybe_new_output_balance_from_public_fill_data.unwrap();
 
     if balance_recovery_id != recovery_id {
         return Ok(None);
     }
 
-    let maybe_pre_match_balance_share = output_balance_bundle_data.get_pre_match_balance_shares();
+    let (asset0, asset1) = obligation_bundle_data
+        .get_public_obligation_trading_pair()
+        .ok_or(IndexerError::invalid_obligation_bundle("expected public obligation bundle"))?;
 
-    let maybe_post_match_balance_share =
-        settlement_bundle_data.get_pre_update_balance_shares(false /* is_input_balance */);
+    let protocol_fee_rate = darkpool_client
+        .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
+        .await
+        .map_err(IndexerError::rpc)?;
 
-    if maybe_pre_match_balance_share.is_none() || maybe_post_match_balance_share.is_none() {
-        return Ok(None);
-    }
-
-    let pre_match_balance_share = maybe_pre_match_balance_share.unwrap();
-    let post_match_balance_share = maybe_post_match_balance_share.unwrap();
-
-    let balance_creation_data =
-        BalanceCreationData::NewOutputBalance { pre_match_balance_share, post_match_balance_share };
+    let balance_creation_data = BalanceCreationData::NewOutputBalanceFromPublicFill {
+        pre_match_balance_share,
+        post_match_balance_share,
+        settlement_obligation,
+        relayer_fee_rate,
+        protocol_fee_rate,
+    };
 
     Ok(Some(balance_creation_data))
 }
@@ -123,8 +142,23 @@ fn try_get_input_balance_settlement_data(
     is_party0: bool,
 ) -> Result<Option<BalanceSettlementData>, IndexerError> {
     match settlement_bundle_data {
-        SettlementBundleData::RenegadeSettledIntentFirstFill(_)
-        | SettlementBundleData::RenegadeSettledIntent(_) => {
+        SettlementBundleData::RenegadeSettledIntentFirstFill(bundle) => {
+            let settlement_obligation = obligation_bundle_data
+                .get_public_settlement_obligation(is_party0)
+                .ok_or(IndexerError::invalid_obligation_bundle(
+                    "expected public obligation bundle",
+                ))?
+                .into();
+
+            let new_one_time_authority_share =
+                u256_to_scalar(&bundle.auth.statement.newOneTimeAddressPublicShare);
+
+            Ok(Some(BalanceSettlementData::PublicFirstFillInputBalance {
+                settlement_obligation,
+                new_one_time_authority_share,
+            }))
+        },
+        SettlementBundleData::RenegadeSettledIntent(_) => {
             let settlement_obligation = obligation_bundle_data
                 .get_public_settlement_obligation(is_party0)
                 .ok_or(IndexerError::invalid_obligation_bundle(

@@ -234,8 +234,17 @@ pub fn gen_new_output_balance_transition(
     let pre_match_balance_share = balance_share.clone().into();
     let post_match_balance_share = balance_share.into();
 
-    let balance_creation_data =
-        BalanceCreationData::NewOutputBalance { pre_match_balance_share, post_match_balance_share };
+    let settlement_obligation = gen_random_settlement_obligation(wrapped_balance.inner.amount);
+    let relayer_fee_rate = relayer_fee();
+    let protocol_fee_rate = protocol_fee();
+
+    let balance_creation_data = BalanceCreationData::NewOutputBalanceFromPublicFill {
+        pre_match_balance_share,
+        post_match_balance_share,
+        settlement_obligation,
+        relayer_fee_rate,
+        protocol_fee_rate,
+    };
 
     let transition = CreateBalanceTransition {
         recovery_id: expected_state_object.recovery_id,
