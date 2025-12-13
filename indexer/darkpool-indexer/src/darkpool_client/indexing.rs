@@ -145,9 +145,9 @@ impl DarkpoolClient {
                 "Transaction receipt not found for tx {tx_hash:#x}"
             )))?;
 
-        let block_number = receipt
-            .block_number
-            .ok_or(DarkpoolClientError::rpc("Block number not found in tx {tx_hash:#x} receipt"))?;
+        let block_number = receipt.block_number.ok_or(DarkpoolClientError::rpc(format!(
+            "Block number not found in tx {tx_hash:#x} receipt"
+        )))?;
 
         Ok(block_number)
     }
