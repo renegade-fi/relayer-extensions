@@ -211,11 +211,12 @@ pub fn gen_deposit_new_balance_transition(
 }
 
 /// Generate the state transition which should result in the given
-/// expected state object being indexed as a new output balance.
+/// expected state object being indexed as a new output balance resulting from a
+/// public-fill match settlement.
 ///
 /// Returns the create balance transition, along with the expected balance
 /// object.
-pub fn gen_new_output_balance_transition(
+pub fn gen_new_output_balance_from_public_fill_transition(
     expected_state_object: &ExpectedStateObject,
 ) -> (CreateBalanceTransition, DarkpoolStateBalance) {
     let balance = gen_random_balance();
@@ -230,6 +231,8 @@ pub fn gen_new_output_balance_transition(
     // 0th recovery ID
     wrapped_balance.recovery_stream.advance_by(1);
 
+    // Compute the pre- and post-match balance shares *before* applying the
+    // settlement obligation into the balance
     let balance_share = wrapped_balance.public_share();
     let pre_match_balance_share = balance_share.clone().into();
     let post_match_balance_share = balance_share.into();
@@ -238,12 +241,75 @@ pub fn gen_new_output_balance_transition(
     let relayer_fee_rate = relayer_fee();
     let protocol_fee_rate = protocol_fee();
 
+    let relayer_fee =
+        scalar_to_u128(&relayer_fee_rate.floor_mul_int(settlement_obligation.amount_out));
+
+    let protocol_fee =
+        scalar_to_u128(&protocol_fee_rate.floor_mul_int(settlement_obligation.amount_out));
+
+    let fees = FeeTake { relayer_fee, protocol_fee };
+
+    wrapped_balance.apply_obligation_out_balance(&settlement_obligation, &fees);
+
     let balance_creation_data = BalanceCreationData::NewOutputBalanceFromPublicFill {
         pre_match_balance_share,
         post_match_balance_share,
         settlement_obligation,
         relayer_fee_rate,
         protocol_fee_rate,
+    };
+
+    let transition = CreateBalanceTransition {
+        recovery_id: expected_state_object.recovery_id,
+        block_number: 0,
+        balance_creation_data,
+    };
+
+    (transition, wrapped_balance)
+}
+
+/// Generate the state transition which should result in the given
+/// expected state object being indexed as a new output balance resulting from a
+/// private-fill match settlement.
+///
+/// Returns the create balance transition, along with the expected balance
+/// object.
+pub fn gen_new_output_balance_from_private_fill_transition(
+    expected_state_object: &ExpectedStateObject,
+) -> (CreateBalanceTransition, DarkpoolStateBalance) {
+    let balance = gen_random_balance();
+
+    let mut wrapped_balance = DarkpoolStateBalance::new(
+        balance,
+        expected_state_object.share_stream_seed,
+        expected_state_object.recovery_stream_seed,
+    );
+
+    let settlement_obligation = gen_random_settlement_obligation(wrapped_balance.inner.amount);
+    let relayer_fee_rate = relayer_fee();
+    let protocol_fee_rate = protocol_fee();
+
+    let relayer_fee =
+        scalar_to_u128(&relayer_fee_rate.floor_mul_int(settlement_obligation.amount_out));
+
+    let protocol_fee =
+        scalar_to_u128(&protocol_fee_rate.floor_mul_int(settlement_obligation.amount_out));
+
+    let fees = FeeTake { relayer_fee, protocol_fee };
+
+    wrapped_balance.apply_obligation_out_balance(&settlement_obligation, &fees);
+
+    // We progress the balance's recovery stream to represent the computation of the
+    // 0th recovery ID
+    wrapped_balance.recovery_stream.advance_by(1);
+
+    let balance_share = wrapped_balance.public_share();
+    let pre_match_balance_share = balance_share.clone().into();
+    let post_match_balance_share = balance_share.into();
+
+    let balance_creation_data = BalanceCreationData::NewOutputBalanceFromPrivateFill {
+        pre_match_balance_share,
+        post_match_balance_share,
     };
 
     let transition = CreateBalanceTransition {
@@ -539,6 +605,47 @@ pub fn gen_settle_private_fill_into_balance_transition(
 }
 
 /// Generate the state transition which should result in the given
+/// input balance being updated with a the first fill of a public-fill match
+/// settlement.
+///
+/// Returns the match settlement transition, along with the updated balance.
+pub fn gen_settle_public_first_fill_into_input_balance_transition(
+    initial_balance: &DarkpoolStateBalance,
+) -> (SettleMatchIntoBalanceTransition, DarkpoolStateBalance) {
+    let spent_nullifier = initial_balance.compute_nullifier();
+
+    let mut updated_balance = initial_balance.clone();
+
+    // Create a dummy settlement obligation with a random match amount
+    let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
+
+    // Re-encrypt the one-time authority share
+    let one_time_authority = updated_balance.inner.one_time_authority;
+    let new_one_time_authority_share = updated_balance.stream_cipher_encrypt(&one_time_authority);
+
+    updated_balance.public_share.one_time_authority = new_one_time_authority_share;
+
+    updated_balance.reencrypt_post_match_share();
+    updated_balance.apply_obligation_in_balance(&settlement_obligation);
+
+    updated_balance.recovery_stream.advance_by(1);
+
+    let balance_settlement_data = BalanceSettlementData::PublicFirstFillInputBalance {
+        settlement_obligation,
+        new_one_time_authority_share,
+    };
+
+    // Construct the associated match settlement transition
+    let transition = SettleMatchIntoBalanceTransition {
+        nullifier: spent_nullifier,
+        block_number: 0,
+        balance_settlement_data,
+    };
+
+    (transition, updated_balance)
+}
+
+/// Generate the state transition which should result in the given
 /// input balance being updated with a public-fill match settlement.
 ///
 /// Returns the match settlement transition, along with the updated balance.
@@ -552,8 +659,8 @@ pub fn gen_settle_public_fill_into_input_balance_transition(
     // Create a dummy settlement obligation with a random match amount
     let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
 
-    updated_balance.apply_obligation_in_balance(&settlement_obligation);
     updated_balance.reencrypt_post_match_share();
+    updated_balance.apply_obligation_in_balance(&settlement_obligation);
 
     updated_balance.recovery_stream.advance_by(1);
 
@@ -595,8 +702,8 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
 
     let fee_take = FeeTake { relayer_fee, protocol_fee };
 
-    updated_balance.apply_obligation_out_balance(&settlement_obligation, &fee_take);
     updated_balance.reencrypt_post_match_share();
+    updated_balance.apply_obligation_out_balance(&settlement_obligation, &fee_take);
 
     updated_balance.recovery_stream.advance_by(1);
 
