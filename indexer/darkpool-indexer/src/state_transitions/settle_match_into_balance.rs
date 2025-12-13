@@ -159,8 +159,10 @@ mod tests {
                 gen_deposit_new_balance_transition,
                 gen_settle_private_fill_into_balance_transition,
                 gen_settle_public_fill_into_input_balance_transition,
-                gen_settle_public_fill_into_output_balance_transition, setup_expected_state_object,
-                setup_test_state_applicator, validate_balance_indexing,
+                gen_settle_public_fill_into_output_balance_transition,
+                gen_settle_public_first_fill_into_input_balance_transition,
+                setup_expected_state_object, setup_test_state_applicator,
+                validate_balance_indexing,
             },
         },
     };
@@ -224,7 +226,30 @@ mod tests {
         Ok(())
     }
 
-    // TODO: Add test for public first fill into input balance
+    /// Test that the first fill of a public-fill match settlement into an input
+    /// balance is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_settle_public_first_fill_into_input_balance() -> Result<(), StateTransitionError>
+    {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let initial_wrapped_balance = setup_initial_balance(&test_applicator).await?;
+
+        // Generate the subsequent match settlement transition
+        let (settle_match_into_balance_transition, updated_wrapped_balance) =
+            gen_settle_public_first_fill_into_input_balance_transition(&initial_wrapped_balance);
+
+        validate_settle_match_into_balance_indexing(
+            &test_applicator,
+            settle_match_into_balance_transition,
+            &updated_wrapped_balance,
+        )
+        .await?;
+
+        cleanup_test_db(&postgres).await?;
+
+        Ok(())
+    }
 
     /// Test that a public-fill match settlement into an input balance is
     /// indexed correctly.

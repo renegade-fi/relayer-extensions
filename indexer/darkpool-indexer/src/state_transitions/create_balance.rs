@@ -39,8 +39,8 @@ pub enum BalanceCreationData {
         /// The full public shares of the new balance
         public_share: BalanceShare,
     },
-    /// The balance creation data obtained from the settlement of a match into a
-    /// new output balance
+    /// The balance creation data obtained from the settlement of a public-fill
+    /// match into a new output balance
     NewOutputBalanceFromPublicFill {
         /// The public shares of the balance fields unaffected by settlement
         pre_match_balance_share: PreMatchBalanceShare,
@@ -53,7 +53,15 @@ pub enum BalanceCreationData {
         /// The protocol fee rate used in the fill
         protocol_fee_rate: FixedPoint,
     },
-    // TODO: Add variant for a new output balance from a private fill
+    /// The balance creation data obtained from the settlement of a private-fill
+    /// match into a new output balance
+    NewOutputBalanceFromPrivateFill {
+        /// The public shares of the balance fields unaffected by settlement
+        pre_match_balance_share: PreMatchBalanceShare,
+        /// The already-updated public shares of the balance fields updated by
+        /// settlement
+        post_match_balance_share: PostMatchBalanceShare,
+    },
 }
 
 /// The pre-state required for the creation of a new balance object
@@ -210,6 +218,28 @@ fn construct_new_balance(
 
             balance
         },
+        BalanceCreationData::NewOutputBalanceFromPrivateFill {
+            pre_match_balance_share,
+            post_match_balance_share,
+        } => {
+            // Construct the balance from the updated public shares
+            let public_share = BalanceShare {
+                mint: pre_match_balance_share.mint,
+                owner: pre_match_balance_share.owner,
+                relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
+                one_time_authority: pre_match_balance_share.one_time_authority,
+                relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
+                protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
+                amount: post_match_balance_share.amount,
+            };
+
+            BalanceStateObject::new(
+                public_share,
+                *recovery_stream_seed,
+                *share_stream_seed,
+                *account_id,
+            )
+        },
     }
 }
 
@@ -220,8 +250,10 @@ mod tests {
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::test_utils::{
-            gen_deposit_new_balance_transition, gen_new_output_balance_transition,
-            setup_expected_state_object, setup_test_state_applicator, validate_balance_indexing,
+            gen_deposit_new_balance_transition,
+            gen_new_output_balance_from_private_fill_transition,
+            gen_new_output_balance_from_public_fill_transition, setup_expected_state_object,
+            setup_test_state_applicator, validate_balance_indexing,
             validate_expected_state_object_rotation,
         },
     };
@@ -274,14 +306,38 @@ mod tests {
         Ok(())
     }
 
-    /// Test that a new output balance creation is indexed correctly.
+    /// Test that a new output balance creation from a public-fill match
+    /// settlement is indexed correctly.
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_new_output_balance() -> Result<(), StateTransitionError> {
+    async fn test_new_output_balance_from_public_fill() -> Result<(), StateTransitionError> {
         let (test_applicator, postgres) = setup_test_state_applicator().await?;
 
         let expected_state_object = setup_expected_state_object(&test_applicator).await?;
         let (transition, wrapped_balance) =
-            gen_new_output_balance_transition(&expected_state_object);
+            gen_new_output_balance_from_public_fill_transition(&expected_state_object);
+
+        validate_balance_creation_indexing(
+            &test_applicator,
+            transition,
+            &wrapped_balance,
+            &expected_state_object,
+        )
+        .await?;
+
+        cleanup_test_db(&postgres).await?;
+
+        Ok(())
+    }
+
+    /// Test that a new output balance creation from a private-fill match
+    /// settlement is indexed correctly.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_new_output_balance_from_private_fill() -> Result<(), StateTransitionError> {
+        let (test_applicator, postgres) = setup_test_state_applicator().await?;
+
+        let expected_state_object = setup_expected_state_object(&test_applicator).await?;
+        let (transition, wrapped_balance) =
+            gen_new_output_balance_from_private_fill_transition(&expected_state_object);
 
         validate_balance_creation_indexing(
             &test_applicator,
