@@ -15,7 +15,7 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade-contracts.git?branch=andrew%2Fcontracts-v2-patch#2e4e652c4b08445688e956aa296874a91284d7bb"
+source = "git+https://github.com/renegade-fi/renegade-contracts.git?branch=andrew%2Fcontracts-v2-patch#ff3d1c8b020074fee363a4974ca88b23ad0ed4fe"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -2254,7 +2254,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
