@@ -30,8 +30,6 @@ use crate::{
 };
 
 pub mod party_settlement_data;
-pub mod types;
-mod utils;
 
 // --------------------------
 // | Indexer Implementation |

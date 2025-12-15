@@ -589,8 +589,7 @@ pub fn parse_ring2_settlement_data(
         )
         .map(PartySettlementData::Ring2FirstFillNewOutBalance),
         _ => Err(IndexerError::invalid_output_balance_bundle(format!(
-            "invalid output balance bundle type: {}",
-            output_bundle_type
+            "invalid output balance bundle type: {output_bundle_type}",
         ))),
     }
 }

@@ -159,8 +159,10 @@ impl PartySettlementData {
                     .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
                     .await
             },
-            Self::Ring3(_) => {
-                todo!()
+            Self::Ring3(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
             },
             // The remaining settlement types don't produce a state transition for any nullifier
             // spend events
