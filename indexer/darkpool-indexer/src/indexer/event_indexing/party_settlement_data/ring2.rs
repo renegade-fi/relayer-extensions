@@ -1,6 +1,9 @@
 //! Utilities for constructing & interacting with ring 2 settlement data
 
-use alloy::{primitives::TxHash, sol_types::SolValue};
+use alloy::{
+    primitives::{Address, TxHash},
+    sol_types::SolValue,
+};
 use renegade_circuit_types::{
     Nullifier,
     balance::{PostMatchBalanceShare, PreMatchBalanceShare},
@@ -183,23 +186,23 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
 
     /// Get the public sharing of the new output balance fields which are not
     /// affected by the match
-    pub fn get_pre_match_output_balance_share(&self) -> PreMatchBalanceShare {
+    fn get_pre_match_output_balance_share(&self) -> PreMatchBalanceShare {
         self.new_balance_bundle.statement.preMatchBalanceShares.clone().into()
     }
 
     /// Get the public sharing of the pre-update new output balance fields which
     /// are affected by the match
-    pub fn get_post_match_output_balance_share(&self) -> PostMatchBalanceShare {
+    fn get_post_match_output_balance_share(&self) -> PostMatchBalanceShare {
         self.settlement_bundle.settlementStatement.outBalancePublicShares.clone().into()
     }
 
     /// Get the relayer fee rate from the settlement bundle data
-    pub fn get_relayer_fee_rate(&self) -> FixedPoint {
+    fn get_relayer_fee_rate(&self) -> FixedPoint {
         self.settlement_bundle.settlementStatement.relayerFee.clone().into()
     }
 
     /// Get the protocol fee rate for the traded pair at the given block number
-    pub async fn get_protocol_fee_rate(
+    async fn get_protocol_fee_rate(
         &self,
         darkpool_client: &DarkpoolClient,
         block_number: u64,
@@ -214,12 +217,12 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
     }
 
     /// Get the settlement obligation
-    pub fn get_settlement_obligation(&self) -> CircuitSettlementObligation {
+    fn get_settlement_obligation(&self) -> CircuitSettlementObligation {
         self.settlement_obligation.clone().into()
     }
 
     /// Get the pre-update intent share from the settlement bundle data
-    pub fn get_intent_share(&self) -> IntentShare {
+    fn get_intent_share(&self) -> IntentShare {
         let PreMatchIntentShare { in_token, out_token, owner, min_price } =
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
 
@@ -230,12 +233,12 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
     }
 
     /// Get the spent input balance nullifier from the settlement bundle data
-    pub fn get_input_balance_nullifier(&self) -> Nullifier {
+    fn get_input_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the new one-time authority share from the settlement bundle data
-    pub fn get_new_one_time_authority_share(&self) -> Scalar {
+    fn get_new_one_time_authority_share(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
     }
 }
@@ -274,6 +277,141 @@ impl Ring2FirstFillSettlementData {
             existing_balance_bundle,
             settlement_obligation,
         })
+    }
+
+    /// Get the state transition associated with the recovery ID event.
+    ///
+    /// Returns `None` if this party's newly-created intent doesn't have the
+    /// given recovery ID.
+    pub async fn get_state_transition_for_recovery_id(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        recovery_id: Scalar,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        // If the given recovery ID doesn't match that of the newly-created intent
+        // in this bundle, we don't produce a state transition for this event.
+        if self.get_new_intent_recovery_id() != recovery_id {
+            return Ok(None);
+        }
+
+        let pre_match_full_intent_share = self.get_intent_share();
+        let settlement_obligation = self.get_settlement_obligation();
+
+        let intent_creation_data =
+            IntentCreationData::PublicFill { pre_match_full_intent_share, settlement_obligation };
+
+        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        Ok(Some(StateTransition::CreateIntent(CreateIntentTransition {
+            recovery_id,
+            block_number,
+            intent_creation_data,
+        })))
+    }
+
+    /// Get the state transition associated with the nullifier spend event.
+    ///
+    /// Returns `None` if the nullifier doesn't match either of this party's
+    /// spent balance nullifiers.
+    pub async fn get_state_transition_for_nullifier(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        nullifier: Nullifier,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        if self.get_input_balance_nullifier() == nullifier {
+            let settlement_obligation = self.get_settlement_obligation();
+            let new_one_time_authority_share = self.get_new_one_time_authority_share();
+
+            let balance_settlement_data = BalanceSettlementData::PublicFirstFillInputBalance {
+                settlement_obligation,
+                new_one_time_authority_share,
+            };
+
+            let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+
+            Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
+                nullifier,
+                block_number,
+                balance_settlement_data,
+            })))
+        } else if self.get_output_balance_nullifier() == nullifier {
+            let settlement_obligation = self.get_settlement_obligation();
+            let relayer_fee_rate = self.get_relayer_fee_rate();
+
+            let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+
+            let (asset0, asset1) = self.get_trading_pair();
+            let protocol_fee_rate = darkpool_client
+                .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
+                .await
+                .map_err(IndexerError::rpc)?;
+
+            let balance_settlement_data = BalanceSettlementData::PublicFillOutputBalance {
+                settlement_obligation,
+                relayer_fee_rate,
+                protocol_fee_rate,
+            };
+
+            Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
+                nullifier,
+                block_number,
+                balance_settlement_data,
+            })))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+// -- Private Helpers ---
+impl Ring2FirstFillSettlementData {
+    /// Get the newly-created intent's recovery ID from the settlement bundle
+    /// data
+    fn get_new_intent_recovery_id(&self) -> Scalar {
+        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+    }
+
+    /// Get the pre-update intent share from the settlement bundle data
+    fn get_intent_share(&self) -> IntentShare {
+        let PreMatchIntentShare { in_token, out_token, owner, min_price } =
+            self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
+
+        let amount_in =
+            u256_to_scalar(&self.settlement_bundle.settlementStatement.amountPublicShare);
+
+        IntentShare { in_token, out_token, owner, min_price, amount_in }
+    }
+
+    /// Get the settlement obligation
+    fn get_settlement_obligation(&self) -> CircuitSettlementObligation {
+        self.settlement_obligation.clone().into()
+    }
+
+    /// Get the spent input balance nullifier from the settlement bundle data
+    fn get_input_balance_nullifier(&self) -> Nullifier {
+        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+    }
+
+    /// Get the spent output balance nullifier from the settlement bundle data
+    fn get_output_balance_nullifier(&self) -> Nullifier {
+        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+    }
+
+    /// Get the new one-time authority share from the settlement bundle data
+    fn get_new_one_time_authority_share(&self) -> Scalar {
+        u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
+    }
+
+    /// Get the relayer fee rate from the settlement bundle data
+    fn get_relayer_fee_rate(&self) -> FixedPoint {
+        self.settlement_bundle.settlementStatement.relayerFee.clone().into()
+    }
+
+    /// Get the asset pair traded in this match
+    fn get_trading_pair(&self) -> (Address, Address) {
+        (self.settlement_obligation.inputToken, self.settlement_obligation.outputToken)
     }
 }
 
