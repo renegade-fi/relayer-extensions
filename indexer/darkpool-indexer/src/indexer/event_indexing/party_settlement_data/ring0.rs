@@ -18,7 +18,7 @@ use crate::{
             PartySettlementData, parse_party_settlement_obligation,
         },
     },
-    state_transitions::{StateTransition, create_public_intent::CreatePublicIntentTransition},
+    state_transitions::{StateTransition, create_public_intent::CreatePublicIntentTransition, settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition},
 };
 
 // ---------
@@ -39,7 +39,7 @@ pub struct Ring0SettlementData {
 
 impl Ring0SettlementData {
     /// Get the state transition associated with the public intent creation
-    /// message.
+    /// event.
     ///
     /// Returns `None` if this party did not create the public intent.
     pub async fn get_state_transition_for_public_intent_creation(
@@ -62,6 +62,34 @@ impl Ring0SettlementData {
             intent,
             amount_in,
             intent_hash,
+            block_number,
+        })))
+    }
+
+    /// Get the state transition associated with the public intent update
+    /// event.
+    ///
+    /// Returns `None` if this party did not update the public intent.
+    pub async fn get_state_transition_for_public_intent_update(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        intent_hash: B256,
+        version: u64,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        // If the intent hash doesn't match, this party did not update the public intent
+        if self.get_intent_hash() != intent_hash {
+            return Ok(None);
+        }
+
+        let amount_in = self.get_amount_in();
+
+        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        Ok(Some(StateTransition::SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition {
+            amount_in,
+            intent_hash,
+            version,
             block_number,
         })))
     }
