@@ -19,6 +19,7 @@ use crate::{
         Indexer,
         error::IndexerError,
         event_indexing::{
+            party_settlement_data::PartySettlementData,
             types::obligation_bundle::ObligationBundleData,
             utils::{
                 try_decode_balance_settlement_data, try_decode_intent_creation_data,
@@ -32,7 +33,6 @@ use crate::{
         cancel_order::CancelOrderTransition,
         create_balance::{BalanceCreationData, CreateBalanceTransition},
         create_intent::CreateIntentTransition,
-        create_public_intent::CreatePublicIntentTransition,
         deposit::DepositTransition,
         pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
@@ -166,7 +166,39 @@ impl Indexer {
             return Err(IndexerError::invalid_selector(selector));
         }
 
-        self.compute_create_public_intent_transition(intent_hash, tx_hash, &calldata).await
+        let settle_match_call =
+            settleMatchCall::abi_decode(&calldata).map_err(IndexerError::parse)?;
+
+        let party0_settlement_data = PartySettlementData::from_settle_match_call(
+            &settle_match_call,
+            true, // is_party0
+        )?;
+        let party1_settlement_data = PartySettlementData::from_settle_match_call(
+            &settle_match_call,
+            false, // is_party0
+        )?;
+
+        let maybe_party0_state_transition = party0_settlement_data
+            .get_state_transition_for_public_intent_creation(
+                &self.darkpool_client,
+                intent_hash,
+                tx_hash,
+            )
+            .await?;
+
+        let maybe_party1_state_transition = party1_settlement_data
+            .get_state_transition_for_public_intent_creation(
+                &self.darkpool_client,
+                intent_hash,
+                tx_hash,
+            )
+            .await?;
+
+        maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
+            IndexerError::invalid_party_settlement_data(
+                "no public intent creation found in settle match call",
+            ),
+        )
     }
 
     /// Get the state transition associated with the update of a public intent
@@ -570,51 +602,6 @@ impl Indexer {
             block_number,
             intent_settlement_data,
         })))
-    }
-
-    /// Compute a `CreatePublicIntent` state transition associated with
-    /// the newly-created public intent (of the given hash) in a `settleMatch`
-    /// call
-    async fn compute_create_public_intent_transition(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<StateTransition, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let obligation_bundle_data: ObligationBundleData =
-            (&settle_match_call.obligationBundle).try_into()?;
-
-        let maybe_party0_public_intent_data = try_decode_public_intent_data(
-            intent_hash,
-            &settle_match_call.party0SettlementBundle,
-            &obligation_bundle_data,
-            true, // is_party0
-        )?;
-
-        let maybe_party1_public_intent_data = try_decode_public_intent_data(
-            intent_hash,
-            &settle_match_call.party1SettlementBundle,
-            &obligation_bundle_data,
-            false, // is_party0
-        )?;
-
-        let (intent, amount_in) = maybe_party0_public_intent_data
-            .or(maybe_party1_public_intent_data)
-            .ok_or(IndexerError::invalid_settlement_bundle(
-                "no public intent found in settle match call",
-            ))?;
-
-        Ok(StateTransition::CreatePublicIntent(CreatePublicIntentTransition {
-            intent,
-            amount_in,
-            intent_hash,
-            block_number,
-        }))
     }
 
     /// Compute a `SettleMatchIntoPublicIntent` state transition associated with
