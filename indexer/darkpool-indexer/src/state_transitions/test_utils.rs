@@ -728,8 +728,7 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
 pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
     let intent = gen_random_intent(owner);
 
-    let amount_in_u128 = thread_rng().gen_range(1..=intent.amount_in);
-    let amount_in = Scalar::from(amount_in_u128);
+    let amount_in = thread_rng().gen_range(1..=intent.amount_in);
 
     // Create a dummy intent hash, we don't need to actually hash the intent for
     // testing
@@ -746,8 +745,7 @@ pub fn gen_settle_match_into_public_intent_transition(
     initial_public_intent: &PublicIntentStateObject,
 ) -> SettleMatchIntoPublicIntentTransition {
     // Generate a random match amount
-    let amount_in_u128 = random_amount().min(initial_public_intent.intent.amount_in);
-    let amount_in = Scalar::from(amount_in_u128);
+    let amount_in = random_amount().min(initial_public_intent.intent.amount_in);
 
     SettleMatchIntoPublicIntentTransition {
         amount_in,

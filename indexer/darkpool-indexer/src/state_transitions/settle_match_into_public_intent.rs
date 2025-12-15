@@ -3,8 +3,7 @@
 
 use alloy::primitives::B256;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_constants::Scalar;
-use renegade_crypto::fields::scalar_to_u128;
+use renegade_circuit_types::Amount;
 use tracing::warn;
 
 use crate::state_transitions::{StateApplicator, error::StateTransitionError};
@@ -17,7 +16,7 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 #[derive(Clone)]
 pub struct SettleMatchIntoPublicIntentTransition {
     /// The input amount on the obligation bundle
-    pub amount_in: Scalar,
+    pub amount_in: Amount,
     /// The intent hash
     pub intent_hash: B256,
     /// The post-match version of the public intent
@@ -43,7 +42,7 @@ impl StateApplicator {
         let mut public_intent =
             self.db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
 
-        public_intent.intent.amount_in -= scalar_to_u128(&amount_in);
+        public_intent.intent.amount_in -= amount_in;
         public_intent.version = version;
 
         conn.transaction(move |conn| {
@@ -73,8 +72,6 @@ impl StateApplicator {
 
 #[cfg(test)]
 mod tests {
-    use renegade_crypto::fields::scalar_to_u128;
-
     use crate::{
         db::test_utils::cleanup_test_db,
         state_transitions::{
@@ -111,8 +108,8 @@ mod tests {
             gen_settle_match_into_public_intent_transition(&initial_public_intent);
 
         let mut intent = create_public_intent_transition.intent.clone();
-        intent.amount_in -= scalar_to_u128(&create_public_intent_transition.amount_in);
-        intent.amount_in -= scalar_to_u128(&settle_match_into_public_intent_transition.amount_in);
+        intent.amount_in -= create_public_intent_transition.amount_in;
+        intent.amount_in -= settle_match_into_public_intent_transition.amount_in;
 
         // Index the match settlement
         test_applicator

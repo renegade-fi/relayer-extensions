@@ -20,11 +20,9 @@ use crate::{
         error::IndexerError,
         event_indexing::{
             party_settlement_data::PartySettlementData,
-            types::obligation_bundle::ObligationBundleData,
             utils::{
                 try_decode_balance_settlement_data, try_decode_intent_creation_data,
                 try_decode_intent_settlement_data, try_decode_new_output_balance_from_public_fill,
-                try_decode_public_intent_data,
             },
         },
     },
@@ -38,7 +36,6 @@ use crate::{
         pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_intent::SettleMatchIntoIntentTransition,
-        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
         withdraw::WithdrawTransition,
     },
 };
@@ -214,15 +211,43 @@ impl Indexer {
         let calldata = update_call.input;
         let selector = get_selector(&calldata);
 
+        let settle_match_call =
+            settleMatchCall::abi_decode(&calldata).map_err(IndexerError::parse)?;
+
         match selector {
             settleMatchCall::SELECTOR => {
-                self.compute_settle_match_into_public_intent_transition(
-                    intent_hash,
-                    version,
-                    tx_hash,
-                    &calldata,
+                let party0_settlement_data = PartySettlementData::from_settle_match_call(
+                    &settle_match_call,
+                    true, // is_party0
+                )?;
+                let party1_settlement_data = PartySettlementData::from_settle_match_call(
+                    &settle_match_call,
+                    false, // is_party0
+                )?;
+
+                let maybe_party0_state_transition = party0_settlement_data
+                    .get_state_transition_for_public_intent_update(
+                        &self.darkpool_client,
+                        intent_hash,
+                        version,
+                        tx_hash,
+                    )
+                    .await?;
+
+                let maybe_party1_state_transition = party1_settlement_data
+                    .get_state_transition_for_public_intent_update(
+                        &self.darkpool_client,
+                        intent_hash,
+                        version,
+                        tx_hash,
+                    )
+                    .await?;
+
+                maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
+                    IndexerError::invalid_party_settlement_data(
+                        "no public intent creation found in settle match call",
+                    ),
                 )
-                .await
             },
             // TODO: Handle intent cancellation once ABI is finalized
             _ => Err(IndexerError::invalid_selector(selector)),
@@ -602,52 +627,6 @@ impl Indexer {
             block_number,
             intent_settlement_data,
         })))
-    }
-
-    /// Compute a `SettleMatchIntoPublicIntent` state transition associated with
-    /// the settlement of a match into the given public intent in a
-    /// `settleMatch` call
-    async fn compute_settle_match_into_public_intent_transition(
-        &self,
-        intent_hash: B256,
-        version: u64,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<StateTransition, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let obligation_bundle_data: ObligationBundleData =
-            (&settle_match_call.obligationBundle).try_into()?;
-
-        let maybe_party0_public_intent_data = try_decode_public_intent_data(
-            intent_hash,
-            &settle_match_call.party0SettlementBundle,
-            &obligation_bundle_data,
-            true, // is_party0
-        )?;
-
-        let maybe_party1_public_intent_data = try_decode_public_intent_data(
-            intent_hash,
-            &settle_match_call.party1SettlementBundle,
-            &obligation_bundle_data,
-            false, // is_party0
-        )?;
-
-        let (_, amount_in) = maybe_party0_public_intent_data
-            .or(maybe_party1_public_intent_data)
-            .ok_or(IndexerError::invalid_settlement_bundle(
-                "no public intent found in settle match call",
-            ))?;
-
-        Ok(StateTransition::SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition {
-            amount_in,
-            intent_hash,
-            version,
-            block_number,
-        }))
     }
 
     /// Compute a `CancelOrder` state transition associated with the now-spent
