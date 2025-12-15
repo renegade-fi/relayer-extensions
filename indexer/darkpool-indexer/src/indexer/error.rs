@@ -29,6 +29,9 @@ pub enum IndexerError {
     /// An invalid selector was encountered
     #[error("invalid selector: {0}")]
     InvalidSelector(String),
+    /// An invalid party settlement data was encountered
+    #[error("invalid party settlement data: {0}")]
+    InvalidPartySettlementData(String),
     /// An invalid settlement bundle was encountered
     #[error("invalid settlement bundle: {0}")]
     InvalidSettlementBundle(String),
@@ -73,6 +76,11 @@ impl IndexerError {
     /// Create a new parse error
     pub fn parse<T: ToString>(msg: T) -> Self {
         Self::Parse(msg.to_string())
+    }
+
+    /// Create a new invalid party settlement data error
+    pub fn invalid_party_settlement_data<T: ToString>(msg: T) -> Self {
+        Self::InvalidPartySettlementData(msg.to_string())
     }
 
     /// Create a new invalid settlement bundle error
