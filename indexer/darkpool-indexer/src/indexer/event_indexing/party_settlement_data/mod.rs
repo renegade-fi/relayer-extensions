@@ -92,8 +92,12 @@ impl PartySettlementData {
                     .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
                     .await
             },
+            Self::Ring2FirstFillNewOutBalance(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
+                    .await
+            },
             Self::Ring2FirstFill(_)
-            | Self::Ring2FirstFillNewOutBalance(_)
             | Self::Ring3FirstFill(_)
             | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
             // The remaining settlement types don't produce a state transition for any recovery ID
@@ -113,14 +117,18 @@ impl PartySettlementData {
         tx_hash: TxHash,
     ) -> Result<Option<StateTransition>, IndexerError> {
         match self {
-            Self::Ring1(ring1_settlement_data) => {
-                ring1_settlement_data
+            Self::Ring1(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring2FirstFillNewOutBalance(settlement_data) => {
+                settlement_data
                     .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
                     .await
             },
             Self::Ring2(_)
             | Self::Ring2FirstFill(_)
-            | Self::Ring2FirstFillNewOutBalance(_)
             | Self::Ring3(_)
             | Self::Ring3FirstFill(_)
             | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
