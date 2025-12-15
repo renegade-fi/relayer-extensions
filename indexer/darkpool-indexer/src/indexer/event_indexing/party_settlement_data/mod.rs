@@ -74,6 +74,10 @@ pub enum PartySettlementData {
 // --------------------------
 
 impl PartySettlementData {
+    /// Get the state transition associated with the public intent creation
+    /// event.
+    ///
+    /// Returns `None` if this party did not create the public intent.
     pub async fn get_state_transition_for_public_intent_creation(
         &self,
         darkpool_client: &DarkpoolClient,
@@ -86,6 +90,34 @@ impl PartySettlementData {
                     .get_state_transition_for_public_intent_creation(
                         darkpool_client,
                         intent_hash,
+                        tx_hash,
+                    )
+                    .await
+            },
+            _ => {
+                Err(IndexerError::invalid_party_settlement_data("expected ring 0 settlement data"))
+            },
+        }
+    }
+
+    /// Get the state transition associated with the public intent update
+    /// event.
+    ///
+    /// Returns `None` if this party did not update the public intent.
+    pub async fn get_state_transition_for_public_intent_update(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        intent_hash: B256,
+        version: u64,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        match self {
+            Self::Ring0(ring0_settlement_data) => {
+                ring0_settlement_data
+                    .get_state_transition_for_public_intent_update(
+                        darkpool_client,
+                        intent_hash,
+                        version,
                         tx_hash,
                     )
                     .await
