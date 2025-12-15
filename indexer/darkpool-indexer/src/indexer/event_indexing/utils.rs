@@ -2,11 +2,10 @@
 
 use std::iter;
 
-use alloy::primitives::B256;
 use renegade_circuit_types::{
     Nullifier,
     fixed_point::FixedPointShare,
-    intent::{Intent, IntentShare, PreMatchIntentShare},
+    intent::{IntentShare, PreMatchIntentShare},
     settlement_obligation::SettlementObligation,
     traits::BaseType,
 };
@@ -29,7 +28,6 @@ use crate::{
         settle_match_into_balance::BalanceSettlementData,
         settle_match_into_intent::IntentSettlementData,
     },
-    types::ObligationAmounts,
 };
 
 /// Try to decode the balance creation data for the given party's newly-created
@@ -344,24 +342,6 @@ fn from_pre_match_intent_and_amount(
     let PreMatchIntentShare { in_token, out_token, owner, min_price } = pre_match_intent_share;
 
     IntentShare { in_token, out_token, owner, min_price, amount_in }
-}
-
-/// Try to decode the public intent data (the intent, and the
-/// obligation input amount) from the given party's settlement & obligation
-/// bundles.
-pub fn try_decode_public_intent_data(
-    intent_hash: B256,
-    settlement_bundle: &SettlementBundle,
-    obligation_bundle_data: &ObligationBundleData,
-    is_party0: bool,
-) -> Result<Option<(Intent, Scalar)>, IndexerError> {
-    let settlement_bundle_data: SettlementBundleData = settlement_bundle.try_into()?;
-    let maybe_intent = settlement_bundle_data.try_decode_public_intent(intent_hash)?;
-    let ObligationAmounts { amount_in, .. } = obligation_bundle_data
-        .get_public_obligation_amounts(is_party0)
-        .ok_or(IndexerError::invalid_obligation_bundle("expected public obligation bundle"))?;
-
-    Ok(maybe_intent.map(|intent| (intent, amount_in)))
 }
 
 /// Convert a contract `IntentPreMatchShare` to a circuit
