@@ -107,7 +107,11 @@ impl PartySettlementData {
                     .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
                     .await
             },
-            Self::Ring3FirstFill(_) => todo!(),
+            Self::Ring3FirstFill(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
+                    .await
+            },
             // The remaining settlement types don't produce a state transition for any recovery ID
             // events
             _ => Ok(None),
@@ -150,7 +154,12 @@ impl PartySettlementData {
                     .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
                     .await
             },
-            Self::Ring3(_) | Self::Ring3FirstFill(_) => {
+            Self::Ring3FirstFill(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring3(_) => {
                 todo!()
             },
             // The remaining settlement types don't produce a state transition for any nullifier
