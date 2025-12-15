@@ -2,15 +2,12 @@
 //! different kinds of settlement types pertaining to one of the parties in a
 //! match
 
-use alloy::sol_types::SolValue;
+use alloy::{
+    primitives::{B256, TxHash},
+    sol_types::SolValue,
+};
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{
-        ExistingBalanceBundle, NewBalanceBundle, ObligationBundle,
-        PrivateIntentPublicBalanceBundle, PrivateIntentPublicBalanceFirstFillBundle,
-        PrivateObligationBundle, PublicIntentPublicBalanceBundle, RenegadeSettledIntentBundle,
-        RenegadeSettledIntentFirstFillBundle, RenegadeSettledPrivateFillBundle,
-        RenegadeSettledPrivateFirstFillBundle, SettlementObligation, settleMatchCall,
-    },
+    IDarkpoolV2::{ObligationBundle, SettlementObligation, settleMatchCall},
     calldata_bundles::{
         NATIVE_SETTLED_PRIVATE_INTENT_BUNDLE_TYPE, NATIVE_SETTLED_PUBLIC_INTENT_BUNDLE_TYPE,
         NATIVE_SETTLED_RENEGADE_PRIVATE_INTENT_BUNDLE_TYPE,
@@ -18,12 +15,26 @@ use renegade_solidity_abi::v2::{
     },
 };
 
-use crate::indexer::{
-    error::IndexerError,
-    event_indexing::party_settlement_data::{
-        ring0::parse_ring0_settlement_data, ring1::parse_ring1_settlement_data,
-        ring2::parse_ring2_settlement_data, ring3::parse_ring3_settlement_data,
+use crate::{
+    darkpool_client::DarkpoolClient,
+    indexer::{
+        error::IndexerError,
+        event_indexing::party_settlement_data::{
+            ring0::{Ring0SettlementData, parse_ring0_settlement_data},
+            ring1::{
+                Ring1FirstFillSettlementData, Ring1SettlementData, parse_ring1_settlement_data,
+            },
+            ring2::{
+                Ring2FirstFillNewOutBalanceSettlementData, Ring2FirstFillSettlementData,
+                Ring2SettlementData, parse_ring2_settlement_data,
+            },
+            ring3::{
+                Ring3FirstFillNewOutBalanceSettlementData, Ring3FirstFillSettlementData,
+                Ring3SettlementData, parse_ring3_settlement_data,
+            },
+        },
     },
+    state_transitions::StateTransition,
 };
 
 pub mod ring0;
@@ -35,57 +46,66 @@ pub mod ring3;
 /// fields & relevant fields from the obligation bundle
 pub enum PartySettlementData {
     /// A natively-settled, public-intent bundle
-    Ring0(PublicIntentPublicBalanceBundle, SettlementObligation),
+    Ring0(Ring0SettlementData),
     /// A natively-settled, private-intent first fill bundle
-    Ring1FirstFill(PrivateIntentPublicBalanceFirstFillBundle, SettlementObligation),
+    Ring1FirstFill(Ring1FirstFillSettlementData),
     /// A natively-settled, private-intent bundle
-    Ring1(PrivateIntentPublicBalanceBundle, SettlementObligation),
+    Ring1(Ring1SettlementData),
     /// A renegade-settled, public-fill intent first fill bundle into a new
     /// output balance
-    Ring2FirstFillNewOutBalance(
-        RenegadeSettledIntentFirstFillBundle,
-        NewBalanceBundle,
-        SettlementObligation,
-    ),
+    Ring2FirstFillNewOutBalance(Ring2FirstFillNewOutBalanceSettlementData),
     /// A renegade-settled, public-fill intent first fill bundle into an
     /// existing output balance
-    Ring2FirstFill(
-        RenegadeSettledIntentFirstFillBundle,
-        ExistingBalanceBundle,
-        SettlementObligation,
-    ),
+    Ring2FirstFill(Ring2FirstFillSettlementData),
     /// A renegade-settled, public-fill intent bundle
-    Ring2(RenegadeSettledIntentBundle, ExistingBalanceBundle, SettlementObligation),
+    Ring2(Ring2SettlementData),
     /// A renegade-settled, private-fill intent first fill bundle into a new
     /// output balance
-    Ring3FirstFillNewOutBalance(
-        RenegadeSettledPrivateFirstFillBundle,
-        NewBalanceBundle,
-        PrivateObligationBundle,
-        bool, // is_party0
-    ),
+    Ring3FirstFillNewOutBalance(Ring3FirstFillNewOutBalanceSettlementData),
     /// A renegade-settled, private-fill intent first fill bundle into an
     /// existing output balance
-    Ring3FirstFill(
-        RenegadeSettledPrivateFirstFillBundle,
-        ExistingBalanceBundle,
-        PrivateObligationBundle,
-        bool, // is_party0
-    ),
+    Ring3FirstFill(Ring3FirstFillSettlementData),
     /// A renegade-settled, private-fill intent bundle
-    Ring3(
-        RenegadeSettledPrivateFillBundle,
-        ExistingBalanceBundle,
-        PrivateObligationBundle,
-        bool, // is_party0
-    ),
+    Ring3(Ring3SettlementData),
 }
+
+// --------------------------
+// | Event Indexing Helpers |
+// --------------------------
+
+impl PartySettlementData {
+    pub async fn get_state_transition_for_public_intent_creation(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        intent_hash: B256,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        match self {
+            Self::Ring0(ring0_settlement_data) => {
+                ring0_settlement_data
+                    .get_state_transition_for_public_intent_creation(
+                        darkpool_client,
+                        intent_hash,
+                        tx_hash,
+                    )
+                    .await
+            },
+            _ => {
+                Err(IndexerError::invalid_party_settlement_data("expected ring 0 settlement data"))
+            },
+        }
+    }
+}
+
+// ------------------
+// | Member Helpers |
+// ------------------
 
 impl PartySettlementData {
     /// Parse the party settlement data from the given settle match call
     pub fn from_settle_match_call(
-        is_party0: bool,
         settle_match_call: &settleMatchCall,
+        is_party0: bool,
     ) -> Result<Self, IndexerError> {
         let settlement_bundle = if is_party0 {
             &settle_match_call.party0SettlementBundle
