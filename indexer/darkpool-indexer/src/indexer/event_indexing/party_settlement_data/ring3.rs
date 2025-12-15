@@ -218,6 +218,7 @@ pub struct Ring3FirstFillSettlementData {
     pub is_party0: bool,
 }
 
+// --- Public API ---
 impl Ring3FirstFillSettlementData {
     /// Parse ring 3 first fill bundle data from the given
     /// settlement & obligation bundles. Expects the settlement bundle data
@@ -240,6 +241,118 @@ impl Ring3FirstFillSettlementData {
             obligation_bundle,
             is_party0,
         })
+    }
+
+    /// Get the state transition associated with the recovery ID event.
+    ///
+    /// Returns `None` if this party's newly-created intent doesn't have the
+    /// given recovery ID.
+    pub async fn get_state_transition_for_recovery_id(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        recovery_id: Scalar,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        // If the given recovery ID doesn't match that of the newly-created intent
+        // in this bundle, we don't produce a state transition for this event.
+        if self.get_new_intent_recovery_id() != recovery_id {
+            return Ok(None);
+        }
+
+        let intent_share = self.get_intent_share();
+        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+        let intent_creation_data = IntentCreationData::RenegadeSettledPrivateFill(intent_share);
+
+        Ok(Some(StateTransition::CreateIntent(CreateIntentTransition {
+            recovery_id,
+            block_number,
+            intent_creation_data,
+        })))
+    }
+
+    /// Get the state transition associated with the nullifier spend event.
+    ///
+    /// Returns `None` if the nullifier doesn't match either of this party's
+    /// spent balance nullifiers.
+    pub async fn get_state_transition_for_nullifier(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        nullifier: Nullifier,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        let post_match_balance_share = if self.get_input_balance_nullifier() == nullifier {
+            self.get_post_match_input_balance_share()
+        } else if self.get_output_balance_nullifier() == nullifier {
+            self.get_post_match_output_balance_share()
+        } else {
+            // If neither the input nor output balance nullifiers match the given nullifier,
+            // we don't produce a state transition for this event.
+            return Ok(None);
+        };
+
+        let balance_settlement_data = BalanceSettlementData::PrivateFill(post_match_balance_share);
+
+        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
+
+        Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
+            nullifier,
+            block_number,
+            balance_settlement_data,
+        })))
+    }
+}
+
+// --- Private Helpers ---
+impl Ring3FirstFillSettlementData {
+    /// Get the newly-created intent's recovery ID
+    fn get_new_intent_recovery_id(&self) -> Scalar {
+        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+    }
+
+    /// Get the post-update intent share
+    fn get_intent_share(&self) -> IntentShare {
+        let PreMatchIntentShare { in_token, out_token, owner, min_price } =
+            self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
+
+        let amount_in_u256 = if self.is_party0 {
+            &self.obligation_bundle.statement.newAmountPublicShare0
+        } else {
+            &self.obligation_bundle.statement.newAmountPublicShare1
+        };
+
+        let amount_in = u256_to_scalar(amount_in_u256);
+
+        IntentShare { in_token, out_token, owner, min_price, amount_in }
+    }
+
+    /// Get the spent input balance nullifier
+    fn get_input_balance_nullifier(&self) -> Nullifier {
+        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+    }
+
+    /// Get the spent output balance nullifier
+    fn get_output_balance_nullifier(&self) -> Nullifier {
+        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+    }
+
+    /// Get the public sharing of the post-update input balance fields which are
+    /// affected by the match
+    fn get_post_match_input_balance_share(&self) -> PostMatchBalanceShare {
+        if self.is_party0 {
+            self.obligation_bundle.statement.newInBalancePublicShares0.clone().into()
+        } else {
+            self.obligation_bundle.statement.newInBalancePublicShares1.clone().into()
+        }
+    }
+
+    /// Get the public sharing of the post-update output balance fields which
+    /// are affected by the match
+    fn get_post_match_output_balance_share(&self) -> PostMatchBalanceShare {
+        if self.is_party0 {
+            self.obligation_bundle.statement.newOutBalancePublicShares0.clone().into()
+        } else {
+            self.obligation_bundle.statement.newOutBalancePublicShares1.clone().into()
+        }
     }
 }
 
