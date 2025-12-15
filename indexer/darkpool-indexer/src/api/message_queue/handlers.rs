@@ -79,13 +79,16 @@ impl Indexer {
         &self,
         message: RecoveryIdMessage,
     ) -> Result<(), IndexerError> {
-        info!("Handling recovery ID message");
-
         let RecoveryIdMessage { recovery_id, tx_hash } = message;
         let state_transition =
             self.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;
 
         if let Some(state_transition) = state_transition {
+            info!(
+                "Applying {} state transition for recovery ID {recovery_id}",
+                state_transition.name()
+            );
+
             self.state_applicator.apply_state_transition(state_transition).await?;
         }
 
