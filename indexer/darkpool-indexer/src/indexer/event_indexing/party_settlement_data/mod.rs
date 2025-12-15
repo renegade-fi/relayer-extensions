@@ -97,9 +97,17 @@ impl PartySettlementData {
                     .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
                     .await
             },
-            Self::Ring2FirstFill(_)
-            | Self::Ring3FirstFill(_)
-            | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
+            Self::Ring2FirstFill(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
+                    .await
+            },
+            Self::Ring3FirstFillNewOutBalance(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
+                    .await
+            },
+            Self::Ring3FirstFill(_) => todo!(),
             // The remaining settlement types don't produce a state transition for any recovery ID
             // events
             _ => Ok(None),
@@ -127,11 +135,24 @@ impl PartySettlementData {
                     .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
                     .await
             },
-            Self::Ring2(_)
-            | Self::Ring2FirstFill(_)
-            | Self::Ring3(_)
-            | Self::Ring3FirstFill(_)
-            | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
+            Self::Ring2FirstFill(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring2(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring3FirstFillNewOutBalance(settlement_data) => {
+                settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring3(_) | Self::Ring3FirstFill(_) => {
+                todo!()
+            },
             // The remaining settlement types don't produce a state transition for any nullifier
             // spend events
             _ => Ok(None),
@@ -158,9 +179,7 @@ impl PartySettlementData {
                     )
                     .await
             },
-            _ => {
-                Err(IndexerError::invalid_party_settlement_data("expected ring 0 settlement data"))
-            },
+            _ => Ok(None),
         }
     }
 
@@ -186,9 +205,7 @@ impl PartySettlementData {
                     )
                     .await
             },
-            _ => {
-                Err(IndexerError::invalid_party_settlement_data("expected ring 0 settlement data"))
-            },
+            _ => Ok(None),
         }
     }
 }

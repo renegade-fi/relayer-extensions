@@ -1,9 +1,6 @@
 //! Utilities for constructing & interacting with ring 2 settlement data
 
-use alloy::{
-    primitives::{Address, TxHash},
-    sol_types::SolValue,
-};
+use alloy::{primitives::TxHash, sol_types::SolValue};
 use renegade_circuit_types::{
     Nullifier,
     balance::{PostMatchBalanceShare, PreMatchBalanceShare},
@@ -174,13 +171,12 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
 
 // -- Private Helpers ---
 impl Ring2FirstFillNewOutBalanceSettlementData {
-    /// Get the new output balance recovery ID from the settlement bundle data
+    /// Get the new output balance recovery ID
     fn get_new_output_balance_recovery_id(&self) -> Scalar {
         u256_to_scalar(&self.new_balance_bundle.statement.recoveryId)
     }
 
-    /// Get the newly-created intent's recovery ID from the settlement bundle
-    /// data
+    /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
     }
@@ -197,7 +193,7 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
         self.settlement_bundle.settlementStatement.outBalancePublicShares.clone().into()
     }
 
-    /// Get the relayer fee rate from the settlement bundle data
+    /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
         self.settlement_bundle.settlementStatement.relayerFee.clone().into()
     }
@@ -222,7 +218,7 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
         self.settlement_obligation.clone().into()
     }
 
-    /// Get the pre-update intent share from the settlement bundle data
+    /// Get the pre-update intent share
     fn get_intent_share(&self) -> IntentShare {
         let PreMatchIntentShare { in_token, out_token, owner, min_price } =
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
@@ -233,12 +229,12 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
         IntentShare { in_token, out_token, owner, min_price, amount_in }
     }
 
-    /// Get the spent input balance nullifier from the settlement bundle data
+    /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
-    /// Get the new one-time authority share from the settlement bundle data
+    /// Get the new one-time authority share
     fn get_new_one_time_authority_share(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
     }
@@ -343,11 +339,8 @@ impl Ring2FirstFillSettlementData {
 
             let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
-            let (asset0, asset1) = self.get_trading_pair();
-            let protocol_fee_rate = darkpool_client
-                .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
-                .await
-                .map_err(IndexerError::rpc)?;
+            let protocol_fee_rate =
+                self.get_protocol_fee_rate(darkpool_client, block_number).await?;
 
             let balance_settlement_data = BalanceSettlementData::PublicFillOutputBalance {
                 settlement_obligation,
@@ -368,13 +361,12 @@ impl Ring2FirstFillSettlementData {
 
 // -- Private Helpers ---
 impl Ring2FirstFillSettlementData {
-    /// Get the newly-created intent's recovery ID from the settlement bundle
-    /// data
+    /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
     }
 
-    /// Get the pre-update intent share from the settlement bundle data
+    /// Get the pre-update intent share
     fn get_intent_share(&self) -> IntentShare {
         let PreMatchIntentShare { in_token, out_token, owner, min_price } =
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
@@ -390,29 +382,39 @@ impl Ring2FirstFillSettlementData {
         self.settlement_obligation.clone().into()
     }
 
-    /// Get the spent input balance nullifier from the settlement bundle data
+    /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
-    /// Get the spent output balance nullifier from the settlement bundle data
+    /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
-    /// Get the new one-time authority share from the settlement bundle data
+    /// Get the new one-time authority share
     fn get_new_one_time_authority_share(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
     }
 
-    /// Get the relayer fee rate from the settlement bundle data
+    /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
         self.settlement_bundle.settlementStatement.relayerFee.clone().into()
     }
 
-    /// Get the asset pair traded in this match
-    fn get_trading_pair(&self) -> (Address, Address) {
-        (self.settlement_obligation.inputToken, self.settlement_obligation.outputToken)
+    /// Get the protocol fee rate for the traded pair at the given block number
+    async fn get_protocol_fee_rate(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        block_number: u64,
+    ) -> Result<FixedPoint, IndexerError> {
+        let asset0 = self.settlement_obligation.inputToken;
+        let asset1 = self.settlement_obligation.outputToken;
+
+        darkpool_client
+            .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
+            .await
+            .map_err(IndexerError::rpc)
     }
 }
 
@@ -480,11 +482,8 @@ impl Ring2SettlementData {
 
             let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
-            let (asset0, asset1) = self.get_trading_pair();
-            let protocol_fee_rate = darkpool_client
-                .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
-                .await
-                .map_err(IndexerError::rpc)?;
+            let protocol_fee_rate =
+                self.get_protocol_fee_rate(darkpool_client, block_number).await?;
 
             let balance_settlement_data = BalanceSettlementData::PublicFillOutputBalance {
                 settlement_obligation,
@@ -515,17 +514,17 @@ impl Ring2SettlementData {
 
 // --- Private Helpers
 impl Ring2SettlementData {
-    /// Get the spent input balance nullifier from the settlement bundle data
+    /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
-    /// Get the spent output balance nullifier from the settlement bundle data
+    /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
-    /// Get the spent intent nullifier from the settlement bundle data
+    /// Get the spent intent nullifier
     fn get_intent_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldIntentNullifier)
     }
@@ -535,14 +534,24 @@ impl Ring2SettlementData {
         self.settlement_obligation.clone().into()
     }
 
-    /// Get the relayer fee rate from the settlement bundle data
+    /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
         self.settlement_bundle.settlementStatement.relayerFee.clone().into()
     }
 
-    /// Get the asset pair traded in this match
-    fn get_trading_pair(&self) -> (Address, Address) {
-        (self.settlement_obligation.inputToken, self.settlement_obligation.outputToken)
+    /// Get the protocol fee rate for the traded pair at the given block number
+    async fn get_protocol_fee_rate(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        block_number: u64,
+    ) -> Result<FixedPoint, IndexerError> {
+        let asset0 = self.settlement_obligation.inputToken;
+        let asset1 = self.settlement_obligation.outputToken;
+
+        darkpool_client
+            .get_protocol_fee_rate_at_block(asset0, asset1, block_number)
+            .await
+            .map_err(IndexerError::rpc)
     }
 }
 
