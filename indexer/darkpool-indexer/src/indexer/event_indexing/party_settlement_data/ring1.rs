@@ -67,7 +67,7 @@ impl Ring1FirstFillSettlementData {
     ) -> Result<Option<StateTransition>, IndexerError> {
         // If the given recovery ID doesn't match that of the newly-created intent
         // in this bundle, we don't produce a state transition for this event.
-        if self.get_intent_recovery_id() != recovery_id {
+        if self.get_new_intent_recovery_id() != recovery_id {
             return Ok(None);
         }
 
@@ -89,8 +89,9 @@ impl Ring1FirstFillSettlementData {
 
 // -- Private Helpers ---
 impl Ring1FirstFillSettlementData {
-    /// Get the intent recovery ID from the settlement bundle data
-    fn get_intent_recovery_id(&self) -> Scalar {
+    /// Get the newly-created intent's recovery ID from the settlement bundle
+    /// data
+    fn get_new_intent_recovery_id(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.recoveryId)
     }
 
@@ -134,7 +135,8 @@ impl Ring1SettlementData {
 
     /// Get the state transition associated with the nullifier event.
     ///
-    /// Returns `None` if this party did not settle a match into their intent.
+    /// Returns `None` if the nullifier doesn't match this party's spent intent
+    /// nullifier.
     pub async fn get_state_transition_for_nullifier(
         &self,
         darkpool_client: &DarkpoolClient,
