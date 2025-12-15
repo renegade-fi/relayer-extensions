@@ -70,6 +70,28 @@ pub enum StateTransition {
     CancelOrder(CancelOrderTransition),
 }
 
+impl StateTransition {
+    /// Get a human-readable name for the state transition
+    pub fn name(&self) -> String {
+        match self {
+            StateTransition::RegisterMasterViewSeed(_) => "RegisterMasterViewSeed".to_string(),
+            StateTransition::CreateBalance(_) => "CreateBalance".to_string(),
+            StateTransition::Deposit(_) => "Deposit".to_string(),
+            StateTransition::Withdraw(_) => "Withdraw".to_string(),
+            StateTransition::PayProtocolFee(_) => "PayProtocolFee".to_string(),
+            StateTransition::PayRelayerFee(_) => "PayRelayerFee".to_string(),
+            StateTransition::SettleMatchIntoBalance(_) => "SettleMatchIntoBalance".to_string(),
+            StateTransition::CreateIntent(_) => "CreateIntent".to_string(),
+            StateTransition::SettleMatchIntoIntent(_) => "SettleMatchIntoIntent".to_string(),
+            StateTransition::CreatePublicIntent(_) => "CreatePublicIntent".to_string(),
+            StateTransition::SettleMatchIntoPublicIntent(_) => {
+                "SettleMatchIntoPublicIntent".to_string()
+            },
+            StateTransition::CancelOrder(_) => "CancelOrder".to_string(),
+        }
+    }
+}
+
 /// The state applicator, responsible for applying high-level state transitions
 /// to the database
 #[derive(Clone)]
