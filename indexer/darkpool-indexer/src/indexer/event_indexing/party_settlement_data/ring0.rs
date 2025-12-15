@@ -18,12 +18,11 @@ use crate::{
             PartySettlementData, parse_party_settlement_obligation,
         },
     },
-    state_transitions::{StateTransition, create_public_intent::CreatePublicIntentTransition, settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition},
+    state_transitions::{
+        StateTransition, create_public_intent::CreatePublicIntentTransition,
+        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
+    },
 };
-
-// ---------
-// | Types |
-// ---------
 
 /// Settlement data for a ring 0 (natively-settled, public-intent) settlement
 pub struct Ring0SettlementData {
@@ -33,11 +32,24 @@ pub struct Ring0SettlementData {
     pub settlement_obligation: SettlementObligation,
 }
 
-// --------------------------
-// | Event Indexing Helpers |
-// --------------------------
-
+// --- Public API ---
 impl Ring0SettlementData {
+    /// Parse ring 0 bundle data from the given settlement & obligation bundles
+    pub fn new(
+        settlement_bundle: &SettlementBundle,
+        obligation_bundle: &ObligationBundle,
+        is_party0: bool,
+    ) -> Result<Self, IndexerError> {
+        let settlement_bundle_data =
+            PublicIntentPublicBalanceBundle::abi_decode(&settlement_bundle.data)
+                .map_err(IndexerError::parse)?;
+
+        let settlement_obligation =
+            parse_party_settlement_obligation(obligation_bundle, is_party0)?;
+
+        Ok(Self { settlement_bundle: settlement_bundle_data, settlement_obligation })
+    }
+
     /// Get the state transition associated with the public intent creation
     /// event.
     ///
@@ -86,43 +98,21 @@ impl Ring0SettlementData {
 
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
-        Ok(Some(StateTransition::SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition {
-            amount_in,
-            intent_hash,
-            version,
-            block_number,
-        })))
+        Ok(Some(StateTransition::SettleMatchIntoPublicIntent(
+            SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, version, block_number },
+        )))
     }
 }
 
-// ------------------
-// | Member Helpers |
-// ------------------
-
+// -- Private Helpers ---
 impl Ring0SettlementData {
-    /// Parse ring 0 bundle data from the given settlement & obligation bundles
-    pub fn new(
-        settlement_bundle: &SettlementBundle,
-        obligation_bundle: &ObligationBundle,
-        is_party0: bool,
-    ) -> Result<Self, IndexerError> {
-        let settlement_bundle_data =
-            PublicIntentPublicBalanceBundle::abi_decode(&settlement_bundle.data)
-                .map_err(IndexerError::parse)?;
-
-        let settlement_obligation =
-            parse_party_settlement_obligation(obligation_bundle, is_party0)?;
-
-        Ok(Self { settlement_bundle: settlement_bundle_data, settlement_obligation })
-    }
-
     /// Get the intent hash from the settlement bundle data
-    pub fn get_intent_hash(&self) -> B256 {
+    fn get_intent_hash(&self) -> B256 {
         keccak256(self.settlement_bundle.auth.permit.abi_encode())
     }
 
     /// Get the intent from the settlement bundle data
-    pub fn get_intent(&self) -> Intent {
+    fn get_intent(&self) -> Intent {
         let sol_intent = &self.settlement_bundle.auth.permit.intent;
 
         let min_price = FixedPoint::from_repr(u256_to_scalar(&sol_intent.minPrice.repr));
@@ -138,7 +128,7 @@ impl Ring0SettlementData {
     }
 
     /// Get the input amount on the settlement obligation
-    pub fn get_amount_in(&self) -> Amount {
+    fn get_amount_in(&self) -> Amount {
         u256_to_amount(self.settlement_obligation.amountIn)
     }
 }

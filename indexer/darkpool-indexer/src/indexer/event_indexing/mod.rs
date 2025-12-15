@@ -16,26 +16,15 @@ use renegade_solidity_abi::v2::IDarkpoolV2::{
 use crate::{
     darkpool_client::utils::get_selector,
     indexer::{
-        Indexer,
-        error::IndexerError,
-        event_indexing::{
-            party_settlement_data::PartySettlementData,
-            utils::{
-                try_decode_balance_settlement_data, try_decode_intent_creation_data,
-                try_decode_intent_settlement_data, try_decode_new_output_balance_from_public_fill,
-            },
-        },
+        Indexer, error::IndexerError, event_indexing::party_settlement_data::PartySettlementData,
     },
     state_transitions::{
         StateTransition,
         cancel_order::CancelOrderTransition,
         create_balance::{BalanceCreationData, CreateBalanceTransition},
-        create_intent::CreateIntentTransition,
         deposit::DepositTransition,
         pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
-        settle_match_into_balance::SettleMatchIntoBalanceTransition,
-        settle_match_into_intent::SettleMatchIntoIntentTransition,
         withdraw::WithdrawTransition,
     },
 };
@@ -82,19 +71,22 @@ impl Indexer {
                 self.compute_pay_private_relayer_fee_transition(nullifier, tx_hash, &calldata).await
             },
             settleMatchCall::SELECTOR => {
-                let maybe_settle_match_into_balance_transition = self
-                    .try_compute_settle_match_into_balance_transition(nullifier, tx_hash, &calldata)
+                let (party0_settlement_data, party1_settlement_data) =
+                    PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
+
+                let maybe_party0_state_transition = party0_settlement_data
+                    .get_state_transition_for_nullifier(&self.darkpool_client, nullifier, tx_hash)
                     .await?;
 
-                let maybe_settle_match_into_intent_transition = self
-                    .try_compute_settle_match_into_intent_transition(nullifier, tx_hash, &calldata)
+                let maybe_party1_state_transition = party1_settlement_data
+                    .get_state_transition_for_nullifier(&self.darkpool_client, nullifier, tx_hash)
                     .await?;
 
-                maybe_settle_match_into_balance_transition
-                    .or(maybe_settle_match_into_intent_transition)
-                    .ok_or(IndexerError::invalid_settlement_bundle(format!(
-                        "no balance or intent nullified in match tx {tx_hash:#x}"
-                    )))
+                maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
+                    IndexerError::invalid_party_settlement_data(format!(
+                        "nullifier {nullifier} not spent by either party in match tx {tx_hash:#x}"
+                    )),
+                )
             },
             cancelOrderCall::SELECTOR => {
                 self.compute_cancel_order_transition(nullifier, tx_hash).await
@@ -116,34 +108,35 @@ impl Indexer {
         let calldata = recovery_id_registration_call.input;
         let selector = get_selector(&calldata);
 
-        let maybe_state_transition = match selector {
-            depositNewBalanceCall::SELECTOR => Some(
-                self.compute_create_balance_transition_from_deposit(
-                    recovery_id,
-                    tx_hash,
-                    &calldata,
-                )
-                .await?,
-            ),
+        match selector {
+            depositNewBalanceCall::SELECTOR => self
+                .compute_create_balance_transition_from_deposit(recovery_id, tx_hash, &calldata)
+                .await
+                .map(Some),
             settleMatchCall::SELECTOR => {
-                let maybe_create_intent_transition = self
-                    .try_compute_create_intent_transition(recovery_id, tx_hash, &calldata)
-                    .await?;
+                let (party0_settlement_data, party1_settlement_data) =
+                    PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
 
-                let maybe_create_balance_transition = self
-                    .try_compute_create_balance_transition_from_settlement(
+                let maybe_party0_state_transition = party0_settlement_data
+                    .get_state_transition_for_recovery_id(
+                        &self.darkpool_client,
                         recovery_id,
                         tx_hash,
-                        &calldata,
                     )
                     .await?;
 
-                maybe_create_intent_transition.or(maybe_create_balance_transition)
-            },
-            _ => None,
-        };
+                let maybe_party1_state_transition = party1_settlement_data
+                    .get_state_transition_for_recovery_id(
+                        &self.darkpool_client,
+                        recovery_id,
+                        tx_hash,
+                    )
+                    .await?;
 
-        Ok(maybe_state_transition)
+                Ok(maybe_party0_state_transition.or(maybe_party1_state_transition))
+            },
+            _ => Ok(None),
+        }
     }
 
     /// Get the state transition associated with the creation of a new public
@@ -163,17 +156,8 @@ impl Indexer {
             return Err(IndexerError::invalid_selector(selector));
         }
 
-        let settle_match_call =
-            settleMatchCall::abi_decode(&calldata).map_err(IndexerError::parse)?;
-
-        let party0_settlement_data = PartySettlementData::from_settle_match_call(
-            &settle_match_call,
-            true, // is_party0
-        )?;
-        let party1_settlement_data = PartySettlementData::from_settle_match_call(
-            &settle_match_call,
-            false, // is_party0
-        )?;
+        let (party0_settlement_data, party1_settlement_data) =
+            PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
 
         let maybe_party0_state_transition = party0_settlement_data
             .get_state_transition_for_public_intent_creation(
@@ -211,19 +195,10 @@ impl Indexer {
         let calldata = update_call.input;
         let selector = get_selector(&calldata);
 
-        let settle_match_call =
-            settleMatchCall::abi_decode(&calldata).map_err(IndexerError::parse)?;
-
         match selector {
             settleMatchCall::SELECTOR => {
-                let party0_settlement_data = PartySettlementData::from_settle_match_call(
-                    &settle_match_call,
-                    true, // is_party0
-                )?;
-                let party1_settlement_data = PartySettlementData::from_settle_match_call(
-                    &settle_match_call,
-                    false, // is_party0
-                )?;
+                let (party0_settlement_data, party1_settlement_data) =
+                    PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
 
                 let maybe_party0_state_transition = party0_settlement_data
                     .get_state_transition_for_public_intent_update(
@@ -288,51 +263,6 @@ impl Indexer {
             recovery_id,
             block_number,
             balance_creation_data,
-        }))
-    }
-
-    /// Compute a `CreateBalance` state transition associated with the
-    /// newly-registered recovery ID in a `settleMatch` call
-    async fn try_compute_create_balance_transition_from_settlement(
-        &self,
-        recovery_id: Scalar,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let maybe_party0_balance_creation_data = try_decode_new_output_balance_from_public_fill(
-            &self.darkpool_client,
-            block_number,
-            recovery_id,
-            &settle_match_call.party0SettlementBundle,
-            &settle_match_call.obligationBundle,
-            true, // is_party0
-        )
-        .await?;
-
-        let maybe_party1_balance_creation_data = try_decode_new_output_balance_from_public_fill(
-            &self.darkpool_client,
-            block_number,
-            recovery_id,
-            &settle_match_call.party1SettlementBundle,
-            &settle_match_call.obligationBundle,
-            false, // is_party0
-        )
-        .await?;
-
-        let maybe_balance_creation_data =
-            maybe_party0_balance_creation_data.or(maybe_party1_balance_creation_data);
-
-        Ok(maybe_balance_creation_data.map(|balance_creation_data| {
-            StateTransition::CreateBalance(CreateBalanceTransition {
-                recovery_id,
-                block_number,
-                balance_creation_data,
-            })
         }))
     }
 
@@ -474,159 +404,6 @@ impl Indexer {
             block_number,
             new_relayer_fee_public_share,
         }))
-    }
-
-    /// Try to compute a `SettleMatchIntoBalance` state transition associated
-    /// with the now-spent nullifier in a `settleMatch` call.
-    ///
-    /// Returns `None` if the spent nullifier does not match the input/output
-    /// balance nullifier of either party.
-    async fn try_compute_settle_match_into_balance_transition(
-        &self,
-        nullifier: Scalar,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let maybe_party0_balance_settlement_data = try_decode_balance_settlement_data(
-            &self.darkpool_client,
-            block_number,
-            nullifier,
-            &settle_match_call.party0SettlementBundle,
-            &settle_match_call.obligationBundle,
-            true, // is_party0
-        )
-        .await?;
-
-        let maybe_party1_balance_settlement_data = try_decode_balance_settlement_data(
-            &self.darkpool_client,
-            block_number,
-            nullifier,
-            &settle_match_call.party1SettlementBundle,
-            &settle_match_call.obligationBundle,
-            false, // is_party0
-        )
-        .await?;
-
-        let maybe_balance_settlement_data =
-            maybe_party0_balance_settlement_data.or(maybe_party1_balance_settlement_data);
-
-        // If we could not decode balance settlement data for either party,
-        // the spent nullifier must pertain to one of the intents nullified in the
-        // match.
-        if maybe_balance_settlement_data.is_none() {
-            return Ok(None);
-        }
-
-        let balance_settlement_data = maybe_balance_settlement_data.unwrap();
-
-        Ok(Some(StateTransition::SettleMatchIntoBalance(SettleMatchIntoBalanceTransition {
-            nullifier,
-            block_number,
-            balance_settlement_data,
-        })))
-    }
-
-    /// Try to compute a `CreateIntent` state transition associated with the
-    /// newly-registered recovery ID in a `settleMatch` call.
-    ///
-    /// Returns `None` if the registered recovery ID does not match the recovery
-    /// ID of any newly-created intents in the match.
-    async fn try_compute_create_intent_transition(
-        &self,
-        recovery_id: Scalar,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let maybe_party0_intent_creation_data = try_decode_intent_creation_data(
-            recovery_id,
-            &settle_match_call.party0SettlementBundle,
-            &settle_match_call.obligationBundle,
-            true, // is_party0
-        )?;
-
-        let maybe_party1_intent_creation_data = try_decode_intent_creation_data(
-            recovery_id,
-            &settle_match_call.party1SettlementBundle,
-            &settle_match_call.obligationBundle,
-            false, // is_party0
-        )?;
-
-        let maybe_intent_creation_data =
-            maybe_party0_intent_creation_data.or(maybe_party1_intent_creation_data);
-
-        // If we could not decode new intent shares for either party,
-        // the registered recovery ID must not match the recovery ID of any
-        // newly-created intents in the match.
-        if maybe_intent_creation_data.is_none() {
-            return Ok(None);
-        }
-
-        let intent_creation_data = maybe_intent_creation_data.unwrap();
-
-        Ok(Some(StateTransition::CreateIntent(CreateIntentTransition {
-            recovery_id,
-            block_number,
-            intent_creation_data,
-        })))
-    }
-
-    /// Try to compute a `SettleMatchIntoIntent` state transition associated
-    /// with the now-spent nullifier in a `settleMatch` call.
-    ///
-    /// Returns `None` if the spent nullifier does not match the intent
-    /// nullifier of either party.
-    async fn try_compute_settle_match_into_intent_transition(
-        &self,
-        nullifier: Scalar,
-        tx_hash: TxHash,
-        calldata: &[u8],
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        let block_number = self.darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let settle_match_call =
-            settleMatchCall::abi_decode(calldata).map_err(IndexerError::parse)?;
-
-        let maybe_party0_intent_settlement_data = try_decode_intent_settlement_data(
-            nullifier,
-            &settle_match_call.party0SettlementBundle,
-            &settle_match_call.obligationBundle,
-            true, // is_party0
-        )?;
-
-        let maybe_party1_intent_settlement_data = try_decode_intent_settlement_data(
-            nullifier,
-            &settle_match_call.party1SettlementBundle,
-            &settle_match_call.obligationBundle,
-            false, // is_party0
-        )?;
-
-        let maybe_intent_settlement_data =
-            maybe_party0_intent_settlement_data.or(maybe_party1_intent_settlement_data);
-
-        // If we could not decode the updated intent amount share for either party,
-        // the spent nullifier must pertain to one of the balances nullified in the
-        // match.
-        if maybe_intent_settlement_data.is_none() {
-            return Ok(None);
-        }
-
-        let intent_settlement_data = maybe_intent_settlement_data.unwrap();
-
-        Ok(Some(StateTransition::SettleMatchIntoIntent(SettleMatchIntoIntentTransition {
-            nullifier,
-            block_number,
-            intent_settlement_data,
-        })))
     }
 
     /// Compute a `CancelOrder` state transition associated with the now-spent
