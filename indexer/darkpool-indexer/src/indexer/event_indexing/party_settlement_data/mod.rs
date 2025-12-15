@@ -4,8 +4,10 @@
 
 use alloy::{
     primitives::{B256, TxHash},
-    sol_types::SolValue,
+    sol_types::{SolCall, SolValue},
 };
+use renegade_circuit_types::Nullifier;
+use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{ObligationBundle, SettlementObligation, settleMatchCall},
     calldata_bundles::{
@@ -74,6 +76,60 @@ pub enum PartySettlementData {
 // --------------------------
 
 impl PartySettlementData {
+    /// Get the state transition associated with the recovery ID event.
+    ///
+    /// Returns `None` if this settlement data doesn't produce a state
+    /// transition associated with the given recovery ID.
+    pub async fn get_state_transition_for_recovery_id(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        recovery_id: Scalar,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        match self {
+            Self::Ring1FirstFill(ring1_first_fill_settlement_data) => {
+                ring1_first_fill_settlement_data
+                    .get_state_transition_for_recovery_id(darkpool_client, recovery_id, tx_hash)
+                    .await
+            },
+            Self::Ring2FirstFill(_)
+            | Self::Ring2FirstFillNewOutBalance(_)
+            | Self::Ring3FirstFill(_)
+            | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
+            // The remaining settlement types don't produce a state transition for any recovery ID
+            // events
+            _ => Ok(None),
+        }
+    }
+
+    /// Get the state transition associated with the nullifier spend event.
+    ///
+    /// Returns `None` if this settlement data does not produce a state
+    /// transition for the given nullifier spend event.
+    pub async fn get_state_transition_for_nullifier(
+        &self,
+        darkpool_client: &DarkpoolClient,
+        nullifier: Nullifier,
+        tx_hash: TxHash,
+    ) -> Result<Option<StateTransition>, IndexerError> {
+        match self {
+            Self::Ring1(ring1_settlement_data) => {
+                ring1_settlement_data
+                    .get_state_transition_for_nullifier(darkpool_client, nullifier, tx_hash)
+                    .await
+            },
+            Self::Ring2(_)
+            | Self::Ring2FirstFill(_)
+            | Self::Ring2FirstFillNewOutBalance(_)
+            | Self::Ring3(_)
+            | Self::Ring3FirstFill(_)
+            | Self::Ring3FirstFillNewOutBalance(_) => todo!(),
+            // The remaining settlement types don't produce a state transition for any nullifier
+            // spend events
+            _ => Ok(None),
+        }
+    }
+
     /// Get the state transition associated with the public intent creation
     /// event.
     ///
@@ -134,6 +190,26 @@ impl PartySettlementData {
 // ------------------
 
 impl PartySettlementData {
+    /// Parse both parties' settlement data from the given settle match calldata
+    pub fn pair_from_settle_match_calldata(
+        settle_match_calldata: &[u8],
+    ) -> Result<(Self, Self), IndexerError> {
+        let settle_match_call =
+            settleMatchCall::abi_decode(settle_match_calldata).map_err(IndexerError::parse)?;
+
+        let party0_settlement_data = PartySettlementData::from_settle_match_call(
+            &settle_match_call,
+            true, // is_party0
+        )?;
+
+        let party1_settlement_data = PartySettlementData::from_settle_match_call(
+            &settle_match_call,
+            false, // is_party0
+        )?;
+
+        Ok((party0_settlement_data, party1_settlement_data))
+    }
+
     /// Parse the party settlement data from the given settle match call
     pub fn from_settle_match_call(
         settle_match_call: &settleMatchCall,
