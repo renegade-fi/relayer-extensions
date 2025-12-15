@@ -106,12 +106,12 @@ impl Ring0SettlementData {
 
 // -- Private Helpers ---
 impl Ring0SettlementData {
-    /// Get the intent hash from the settlement bundle data
+    /// Get the intent hash
     fn get_intent_hash(&self) -> B256 {
         keccak256(self.settlement_bundle.auth.permit.abi_encode())
     }
 
-    /// Get the intent from the settlement bundle data
+    /// Get the intent
     fn get_intent(&self) -> Intent {
         let sol_intent = &self.settlement_bundle.auth.permit.intent;
 
