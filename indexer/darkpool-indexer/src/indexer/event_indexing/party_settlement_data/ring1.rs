@@ -89,8 +89,7 @@ impl Ring1FirstFillSettlementData {
 
 // -- Private Helpers ---
 impl Ring1FirstFillSettlementData {
-    /// Get the newly-created intent's recovery ID from the settlement bundle
-    /// data
+    /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
         u256_to_scalar(&self.settlement_bundle.auth.statement.recoveryId)
     }
@@ -164,7 +163,7 @@ impl Ring1SettlementData {
 
 // -- Private Helpers ---
 impl Ring1SettlementData {
-    /// Get the spent intent nullifier from the settlement bundle data
+    /// Get the spent intent nullifier
     pub fn get_intent_nullifier(&self) -> Nullifier {
         u256_to_scalar(&self.settlement_bundle.auth.statement.oldIntentNullifier)
     }
