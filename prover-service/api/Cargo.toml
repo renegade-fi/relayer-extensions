@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 
 # === Renegade Dependencies === #
-renegade-circuits = { workspace = true }
-renegade-circuit-types = { workspace = true, features = ["proof-system-types"] }
+renegade-circuits-core = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 
 # === Misc Dependencies === #
 serde = { version = "1", features = ["derive"] }

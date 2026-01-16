@@ -5,165 +5,335 @@
 // ---------------------
 
 use prover_service_api::{
-    LinkCommitmentsReblindRequest, ProofAndHintResponse, ProofAndLinkResponse, ProofLinkResponse,
-    ProofResponse, ValidCommitmentsRequest, ValidFeeRedemptionRequest,
-    ValidMalleableMatchSettleAtomicRequest, ValidMatchSettleAtomicRequest, ValidMatchSettleRequest,
-    ValidMatchSettleResponse, ValidOfflineFeeSettlementRequest, ValidReblindRequest,
-    ValidWalletCreateRequest, ValidWalletUpdateRequest,
+    IntentAndBalanceBoundedSettlementRequest, IntentAndBalanceFirstFillValidityRequest,
+    IntentAndBalancePrivateSettlementRequest, IntentAndBalancePublicSettlementRequest,
+    IntentAndBalanceValidityRequest, IntentOnlyBoundedSettlementRequest,
+    IntentOnlyFirstFillValidityRequest, IntentOnlyPublicSettlementRequest,
+    IntentOnlyValidityRequest, LinkIntentAndBalanceSettlementRequest,
+    LinkIntentOnlySettlementRequest, LinkOutputBalanceSettlementRequest,
+    NewOutputBalanceValidityRequest, OutputBalanceValidityRequest, ProofAndHintResponse,
+    ProofLinkResponse, ProofResponse, ValidBalanceCreateRequest, ValidDepositRequest,
+    ValidNoteRedemptionRequest, ValidOrderCancellationRequest,
+    ValidPrivateProtocolFeePaymentRequest, ValidPrivateRelayerFeePaymentRequest,
+    ValidPublicProtocolFeePaymentRequest, ValidPublicRelayerFeePaymentRequest,
+    ValidWithdrawalRequest,
 };
-use renegade_circuit_types::{
-    PlonkLinkProof, PlonkProof, ProofLinkingHint, traits::SingleProverCircuit,
-};
-use renegade_circuits::{
+use renegade_circuit_types::{PlonkProof, ProofLinkingHint, traits::SingleProverCircuit};
+use renegade_circuits_core::{
     singleprover_prove_with_hint,
     zk_circuits::{
-        proof_linking::{
-            link_sized_commitments_atomic_match_settle, link_sized_commitments_match_settle,
-            link_sized_commitments_reblind,
+        // Fee proofs
+        fees::{
+            valid_note_redemption::SizedValidNoteRedemption,
+            valid_private_protocol_fee_payment::SizedValidPrivateProtocolFeePayment,
+            valid_private_relayer_fee_payment::SizedValidPrivateRelayerFeePayment,
+            valid_public_protocol_fee_payment::SizedValidPublicProtocolFeePayment,
+            valid_public_relayer_fee_payment::SizedValidPublicRelayerFeePayment,
         },
-        valid_commitments::SizedValidCommitments,
-        valid_fee_redemption::SizedValidFeeRedemption,
-        valid_malleable_match_settle_atomic::SizedValidMalleableMatchSettleAtomic,
-        valid_match_settle::SizedValidMatchSettle,
-        valid_match_settle_atomic::SizedValidMatchSettleAtomic,
-        valid_offline_fee_settlement::SizedValidOfflineFeeSettlement,
-        valid_reblind::SizedValidReblind,
-        valid_wallet_create::SizedValidWalletCreate,
-        valid_wallet_update::SizedValidWalletUpdate,
+        // Proof linking
+        proof_linking::{
+            intent_and_balance::link_sized_intent_and_balance_settlement_with_party,
+            intent_only::link_sized_intent_only_settlement,
+            output_balance::link_sized_output_balance_settlement_with_party,
+        },
+        // Settlement proofs
+        settlement::{
+            intent_and_balance_bounded_settlement::IntentAndBalanceBoundedSettlementCircuit,
+            intent_and_balance_private_settlement::IntentAndBalancePrivateSettlementCircuit,
+            intent_and_balance_public_settlement::IntentAndBalancePublicSettlementCircuit,
+            intent_only_bounded_settlement::IntentOnlyBoundedSettlementCircuit,
+            intent_only_public_settlement::IntentOnlyPublicSettlementCircuit,
+        },
+        // Update proofs
+        valid_balance_create::ValidBalanceCreate,
+        valid_deposit::SizedValidDeposit,
+        valid_order_cancellation::SizedValidOrderCancellationCircuit,
+        valid_withdrawal::SizedValidWithdrawal,
+        // Validity proofs
+        validity_proofs::{
+            intent_and_balance::SizedIntentAndBalanceValidityCircuit,
+            intent_and_balance_first_fill::SizedIntentAndBalanceFirstFillValidityCircuit,
+            intent_only::SizedIntentOnlyValidityCircuit,
+            intent_only_first_fill::IntentOnlyFirstFillValidityCircuit,
+            new_output_balance::SizedNewOutputBalanceValidityCircuit,
+            output_balance::SizedOutputBalanceValidityCircuit,
+        },
     },
 };
 use serde::Serialize;
-use tracing::{error, instrument};
+use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
 use crate::error::ProverServiceError;
 
-/// Handle a request to prove `VALID WALLET CREATE`
+// --- Update Proof Handlers --- //
+
+/// Handle a request to prove `VALID BALANCE CREATE`
 #[instrument(skip_all)]
-pub(crate) async fn handle_valid_wallet_create(
-    request: ValidWalletCreateRequest,
+pub(crate) async fn handle_valid_balance_create(
+    request: ValidBalanceCreateRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidWalletCreate>(request.witness, request.statement).await
+    generate_proof_json::<ValidBalanceCreate>(request.witness, request.statement).await
 }
 
-/// Handle a request to prove `VALID WALLET UPDATE`
+/// Handle a request to prove `VALID DEPOSIT`
 #[instrument(skip_all)]
-pub(crate) async fn handle_valid_wallet_update(
-    request: ValidWalletUpdateRequest,
-) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidWalletUpdate>(request.witness, request.statement).await
+pub(crate) async fn handle_valid_deposit(request: ValidDepositRequest) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidDeposit>(request.witness, request.statement).await
 }
 
-/// Handle a request to prove `VALID COMMITMENTS`
+/// Handle a request to prove `VALID ORDER CANCELLATION`
 #[instrument(skip_all)]
-pub(crate) async fn handle_valid_commitments(
-    request: ValidCommitmentsRequest,
+pub(crate) async fn handle_valid_order_cancellation(
+    request: ValidOrderCancellationRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<SizedValidCommitments>(request.witness, request.statement).await
+    generate_proof_json::<SizedValidOrderCancellationCircuit>(request.witness, request.statement)
+        .await
 }
 
-/// Handle a request to prove `VALID REBLIND`
+/// Handle a request to prove `VALID WITHDRAWAL`
 #[instrument(skip_all)]
-pub(crate) async fn handle_valid_reblind(request: ValidReblindRequest) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<SizedValidReblind>(request.witness, request.statement).await
+pub(crate) async fn handle_valid_withdrawal(
+    request: ValidWithdrawalRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidWithdrawal>(request.witness, request.statement).await
 }
 
-/// Handle a request to generate a proof-link of `VALID COMMITMENTS` <-> `VALID
-/// REBLIND`
+// --- Validity Proof Handlers --- //
+
+/// Handle a request to prove `INTENT AND BALANCE VALIDITY`
 #[instrument(skip_all)]
-pub(crate) async fn handle_link_commitments_reblind(
-    request: LinkCommitmentsReblindRequest,
+pub(crate) async fn handle_intent_and_balance_validity(
+    request: IntentAndBalanceValidityRequest,
 ) -> Result<Json, Rejection> {
-    let link_proof =
-        link_reblind_commitments(request.valid_reblind_hint, request.valid_commitments_hint)
-            .await?;
+    generate_proof_and_hint_json::<SizedIntentAndBalanceValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT AND BALANCE FIRST FILL VALIDITY`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_and_balance_first_fill_validity(
+    request: IntentAndBalanceFirstFillValidityRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<SizedIntentAndBalanceFirstFillValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT ONLY VALIDITY`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_only_validity(
+    request: IntentOnlyValidityRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<SizedIntentOnlyValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT ONLY FIRST FILL VALIDITY`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_only_first_fill_validity(
+    request: IntentOnlyFirstFillValidityRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentOnlyFirstFillValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `NEW OUTPUT BALANCE VALIDITY`
+#[instrument(skip_all)]
+pub(crate) async fn handle_new_output_balance_validity(
+    request: NewOutputBalanceValidityRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<SizedNewOutputBalanceValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `OUTPUT BALANCE VALIDITY`
+#[instrument(skip_all)]
+pub(crate) async fn handle_output_balance_validity(
+    request: OutputBalanceValidityRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<SizedOutputBalanceValidityCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+// --- Settlement Proof Handlers --- //
+
+/// Handle a request to prove `INTENT AND BALANCE BOUNDED SETTLEMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_and_balance_bounded_settlement(
+    request: IntentAndBalanceBoundedSettlementRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentAndBalanceBoundedSettlementCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT AND BALANCE PRIVATE SETTLEMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_and_balance_private_settlement(
+    request: IntentAndBalancePrivateSettlementRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentAndBalancePrivateSettlementCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT AND BALANCE PUBLIC SETTLEMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_and_balance_public_settlement(
+    request: IntentAndBalancePublicSettlementRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentAndBalancePublicSettlementCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT ONLY BOUNDED SETTLEMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_only_bounded_settlement(
+    request: IntentOnlyBoundedSettlementRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentOnlyBoundedSettlementCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+/// Handle a request to prove `INTENT ONLY PUBLIC SETTLEMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_intent_only_public_settlement(
+    request: IntentOnlyPublicSettlementRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_and_hint_json::<IntentOnlyPublicSettlementCircuit>(
+        request.witness,
+        request.statement,
+    )
+    .await
+}
+
+// --- Fee Proof Handlers --- //
+
+/// Handle a request to prove `VALID NOTE REDEMPTION`
+#[instrument(skip_all)]
+pub(crate) async fn handle_valid_note_redemption(
+    request: ValidNoteRedemptionRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidNoteRedemption>(request.witness, request.statement).await
+}
+
+/// Handle a request to prove `VALID PRIVATE PROTOCOL FEE PAYMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_valid_private_protocol_fee_payment(
+    request: ValidPrivateProtocolFeePaymentRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidPrivateProtocolFeePayment>(request.witness, request.statement)
+        .await
+}
+
+/// Handle a request to prove `VALID PRIVATE RELAYER FEE PAYMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_valid_private_relayer_fee_payment(
+    request: ValidPrivateRelayerFeePaymentRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidPrivateRelayerFeePayment>(request.witness, request.statement)
+        .await
+}
+
+/// Handle a request to prove `VALID PUBLIC PROTOCOL FEE PAYMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_valid_public_protocol_fee_payment(
+    request: ValidPublicProtocolFeePaymentRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidPublicProtocolFeePayment>(request.witness, request.statement)
+        .await
+}
+
+/// Handle a request to prove `VALID PUBLIC RELAYER FEE PAYMENT`
+#[instrument(skip_all)]
+pub(crate) async fn handle_valid_public_relayer_fee_payment(
+    request: ValidPublicRelayerFeePaymentRequest,
+) -> Result<Json, Rejection> {
+    generate_proof_json::<SizedValidPublicRelayerFeePayment>(request.witness, request.statement)
+        .await
+}
+
+// --- Proof Linking Handlers --- //
+
+/// Handle a request to link intent and balance validity <-> settlement
+#[instrument(skip_all)]
+pub(crate) async fn handle_link_intent_and_balance_settlement(
+    request: LinkIntentAndBalanceSettlementRequest,
+) -> Result<Json, Rejection> {
+    let link_proof = run_blocking(move || {
+        link_sized_intent_and_balance_settlement_with_party(
+            request.party_id,
+            &request.validity_link_hint,
+            &request.settlement_link_hint,
+        )
+    })
+    .await?;
 
     let resp = ProofLinkResponse { link_proof };
     Ok(warp::reply::json(&resp))
 }
 
-/// Handle a request to prove `VALID MATCH SETTLE`
+/// Handle a request to link intent only validity <-> settlement
 #[instrument(skip_all)]
-pub(crate) async fn handle_valid_match_settle(
-    request: ValidMatchSettleRequest,
+pub(crate) async fn handle_link_intent_only_settlement(
+    request: LinkIntentOnlySettlementRequest,
 ) -> Result<Json, Rejection> {
-    // Prove `VALID MATCH SETTLE` and generate a link hint
-    let (plonk_proof, link_hint) =
-        prove_circuit::<SizedValidMatchSettle>(request.witness, request.statement).await?;
-
-    // Generate the link proofs in parallel
-    let hint = link_hint.clone();
-    let proof0_fut = run_blocking(move || {
-        link_sized_commitments_match_settle(
-            0, // party
-            &request.valid_commitments_hint0,
-            &hint,
+    let link_proof = run_blocking(move || {
+        link_sized_intent_only_settlement(
+            &request.validity_link_hint,
+            &request.settlement_link_hint,
         )
-    });
+    })
+    .await?;
 
-    let proof1_fut = run_blocking(move || {
-        link_sized_commitments_match_settle(
-            1, // party
-            &request.valid_commitments_hint1,
-            &link_hint.clone(),
+    let resp = ProofLinkResponse { link_proof };
+    Ok(warp::reply::json(&resp))
+}
+
+/// Handle a request to link output balance validity <-> settlement
+#[instrument(skip_all)]
+pub(crate) async fn handle_link_output_balance_settlement(
+    request: LinkOutputBalanceSettlementRequest,
+) -> Result<Json, Rejection> {
+    let link_proof = run_blocking(move || {
+        link_sized_output_balance_settlement_with_party(
+            request.party_id,
+            &request.validity_link_hint,
+            &request.settlement_link_hint,
         )
-    });
+    })
+    .await?;
 
-    // Join the proofs
-    let (maybe_proof0, maybe_proof1) = tokio::join!(proof0_fut, proof1_fut);
-    let (link_proof0, link_proof1) = (maybe_proof0?, maybe_proof1?);
-    let resp = ValidMatchSettleResponse { plonk_proof, link_proof0, link_proof1 };
+    let resp = ProofLinkResponse { link_proof };
     Ok(warp::reply::json(&resp))
-}
-
-/// Handle a request to prove `VALID MATCH SETTLE ATOMIC`
-#[instrument(skip_all)]
-pub(crate) async fn handle_valid_match_settle_atomic(
-    request: ValidMatchSettleAtomicRequest,
-) -> Result<Json, Rejection> {
-    // Prove `VALID MATCH SETTLE ATOMIC` and generate a link hint
-    let (plonk_proof, link_hint) =
-        prove_circuit::<SizedValidMatchSettleAtomic>(request.witness, request.statement).await?;
-
-    // Generate the link proof
-    let link_proof =
-        link_commitments_match_settle_atomic(request.valid_commitments_hint, link_hint).await?;
-    let resp = ProofAndLinkResponse { plonk_proof, link_proof };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handle a request to prove `VALID MALLEABLE MATCH SETTLE ATOMIC`
-#[instrument(skip_all)]
-pub(crate) async fn handle_valid_malleable_match_settle_atomic(
-    request: ValidMalleableMatchSettleAtomicRequest,
-) -> Result<Json, Rejection> {
-    // Prove `VALID MALLEABLE MATCH SETTLE ATOMIC` and generate a link hint
-    let (plonk_proof, link_hint) =
-        prove_circuit::<SizedValidMalleableMatchSettleAtomic>(request.witness, request.statement)
-            .await?;
-
-    // Generate the link proof
-    let link_proof =
-        link_commitments_malleable_match_settle_atomic(request.valid_commitments_hint, link_hint)
-            .await?;
-    let resp = ProofAndLinkResponse { plonk_proof, link_proof };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handle a request to prove `VALID FEE REDEMPTION`
-#[instrument(skip_all)]
-pub(crate) async fn handle_valid_fee_redemption(
-    request: ValidFeeRedemptionRequest,
-) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidFeeRedemption>(request.witness, request.statement).await
-}
-
-/// Handle a request to prove `VALID OFFLINE FEE SETTLEMENT`
-#[instrument(skip_all)]
-pub(crate) async fn handle_valid_offline_fee_settlement(
-    request: ValidOfflineFeeSettlementRequest,
-) -> Result<Json, Rejection> {
-    generate_proof_json::<SizedValidOfflineFeeSettlement>(request.witness, request.statement).await
 }
 
 // -----------
@@ -201,42 +371,6 @@ where
     Ok(warp::reply::json(&resp))
 }
 
-// --- Proof Linking --- //
-
-/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID REBLIND`
-#[instrument(skip_all)]
-async fn link_reblind_commitments(
-    reblind_hint: ProofLinkingHint,
-    commitments_hint: ProofLinkingHint,
-) -> Result<PlonkLinkProof, Rejection> {
-    run_blocking(move || link_sized_commitments_reblind(&reblind_hint, &commitments_hint)).await
-}
-
-/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MATCH SETTLE ATOMIC`
-#[instrument(skip_all)]
-async fn link_commitments_match_settle_atomic(
-    commitments_hint: ProofLinkingHint,
-    match_settle_hint: ProofLinkingHint,
-) -> Result<PlonkLinkProof, Rejection> {
-    run_blocking(move || {
-        link_sized_commitments_atomic_match_settle(&commitments_hint, &match_settle_hint)
-    })
-    .await
-}
-
-/// Generate a proof-link of `VALID COMMITMENTS` <-> `VALID MALLEABLE MATCH
-/// SETTLE ATOMIC`
-#[instrument(skip_all)]
-async fn link_commitments_malleable_match_settle_atomic(
-    commitments_hint: ProofLinkingHint,
-    malleable_match_settle_hint: ProofLinkingHint,
-) -> Result<PlonkLinkProof, Rejection> {
-    run_blocking(move || {
-        link_sized_commitments_atomic_match_settle(&commitments_hint, &malleable_match_settle_hint)
-    })
-    .await
-}
-
 // --- Runtime --- //
 
 /// Prove a circuit in a blocking thread and log invalid bundles
@@ -251,10 +385,11 @@ where
 {
     use mpc_plonk::errors::{PlonkError, SnarkError};
     use renegade_circuit_types::errors::ProverError;
+    use tracing::error;
 
     run_blocking(move || {
         // Prove the circuit
-        let res = singleprover_prove_with_hint::<C>(witness.clone(), statement.clone());
+        let res = singleprover_prove_with_hint::<C>(&witness, &statement);
 
         // Check for constraint satisfaction errors
         if let Err(ProverError::Plonk(PlonkError::SnarkError(
@@ -288,7 +423,7 @@ where
     C::Witness: 'static + Send + Serialize,
     C::Statement: 'static + Send + Serialize,
 {
-    run_blocking(move || singleprover_prove_with_hint::<C>(witness, statement)).await
+    run_blocking(move || singleprover_prove_with_hint::<C>(&witness, &statement)).await
 }
 
 /// Block on a prover callback and handle errors
