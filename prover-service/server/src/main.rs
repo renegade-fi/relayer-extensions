@@ -12,14 +12,37 @@ use std::net::SocketAddr;
 use clap::Parser;
 use http::StatusCode;
 use renegade_circuit_types::traits::{SingleProverCircuit, setup_preprocessed_keys};
-use renegade_circuits::zk_circuits::{
-    valid_commitments::SizedValidCommitments, valid_fee_redemption::SizedValidFeeRedemption,
-    valid_malleable_match_settle_atomic::SizedValidMalleableMatchSettleAtomic,
-    valid_match_settle::SizedValidMatchSettle,
-    valid_match_settle_atomic::SizedValidMatchSettleAtomic,
-    valid_offline_fee_settlement::SizedValidOfflineFeeSettlement, valid_reblind::SizedValidReblind,
-    valid_relayer_fee_settlement::SizedValidRelayerFeeSettlement,
-    valid_wallet_create::SizedValidWalletCreate, valid_wallet_update::SizedValidWalletUpdate,
+use renegade_circuits_core::zk_circuits::{
+    // Fee proofs
+    fees::{
+        valid_note_redemption::SizedValidNoteRedemption,
+        valid_private_protocol_fee_payment::SizedValidPrivateProtocolFeePayment,
+        valid_private_relayer_fee_payment::SizedValidPrivateRelayerFeePayment,
+        valid_public_protocol_fee_payment::SizedValidPublicProtocolFeePayment,
+        valid_public_relayer_fee_payment::SizedValidPublicRelayerFeePayment,
+    },
+    // Settlement proofs
+    settlement::{
+        intent_and_balance_bounded_settlement::IntentAndBalanceBoundedSettlementCircuit,
+        intent_and_balance_private_settlement::IntentAndBalancePrivateSettlementCircuit,
+        intent_and_balance_public_settlement::IntentAndBalancePublicSettlementCircuit,
+        intent_only_bounded_settlement::IntentOnlyBoundedSettlementCircuit,
+        intent_only_public_settlement::IntentOnlyPublicSettlementCircuit,
+    },
+    // Update proofs
+    valid_balance_create::ValidBalanceCreate,
+    valid_deposit::SizedValidDeposit,
+    valid_order_cancellation::SizedValidOrderCancellationCircuit,
+    valid_withdrawal::SizedValidWithdrawal,
+    // Validity proofs
+    validity_proofs::{
+        intent_and_balance::SizedIntentAndBalanceValidityCircuit,
+        intent_and_balance_first_fill::SizedIntentAndBalanceFirstFillValidityCircuit,
+        intent_only::SizedIntentOnlyValidityCircuit,
+        intent_only_first_fill::IntentOnlyFirstFillValidityCircuit,
+        new_output_balance::SizedNewOutputBalanceValidityCircuit,
+        output_balance::SizedOutputBalanceValidityCircuit,
+    },
 };
 use tracing::{error, info};
 use warp::{Filter, reject::Rejection, reply::Reply};
@@ -29,10 +52,18 @@ use crate::{
     error::ProverServiceError,
     middleware::{basic_auth, handle_rejection, propagate_span, with_tracing},
     prover::{
-        handle_link_commitments_reblind, handle_valid_commitments, handle_valid_fee_redemption,
-        handle_valid_malleable_match_settle_atomic, handle_valid_match_settle,
-        handle_valid_match_settle_atomic, handle_valid_offline_fee_settlement,
-        handle_valid_reblind, handle_valid_wallet_create, handle_valid_wallet_update,
+        handle_intent_and_balance_bounded_settlement,
+        handle_intent_and_balance_first_fill_validity,
+        handle_intent_and_balance_private_settlement, handle_intent_and_balance_public_settlement,
+        handle_intent_and_balance_validity, handle_intent_only_bounded_settlement,
+        handle_intent_only_first_fill_validity, handle_intent_only_public_settlement,
+        handle_intent_only_validity, handle_link_intent_and_balance_settlement,
+        handle_link_intent_only_settlement, handle_link_output_balance_settlement,
+        handle_new_output_balance_validity, handle_output_balance_validity,
+        handle_valid_balance_create, handle_valid_deposit, handle_valid_note_redemption,
+        handle_valid_order_cancellation, handle_valid_private_protocol_fee_payment,
+        handle_valid_private_relayer_fee_payment, handle_valid_public_protocol_fee_payment,
+        handle_valid_public_relayer_fee_payment, handle_valid_withdrawal,
     },
 };
 
@@ -85,29 +116,77 @@ async fn async_main() {
 /// all of the circuits
 fn preprocess_circuits() -> Result<(), ProverServiceError> {
     // Set up the proving & verification keys for all of the circuits
-    setup_preprocessed_keys::<SizedValidWalletCreate>();
-    setup_preprocessed_keys::<SizedValidWalletUpdate>();
-    setup_preprocessed_keys::<SizedValidCommitments>();
-    setup_preprocessed_keys::<SizedValidReblind>();
-    setup_preprocessed_keys::<SizedValidMatchSettle>();
-    setup_preprocessed_keys::<SizedValidMatchSettleAtomic>();
-    setup_preprocessed_keys::<SizedValidMalleableMatchSettleAtomic>();
-    setup_preprocessed_keys::<SizedValidRelayerFeeSettlement>();
-    setup_preprocessed_keys::<SizedValidOfflineFeeSettlement>();
-    setup_preprocessed_keys::<SizedValidFeeRedemption>();
+
+    // Update proofs
+    setup_preprocessed_keys::<ValidBalanceCreate>();
+    setup_preprocessed_keys::<SizedValidDeposit>();
+    setup_preprocessed_keys::<SizedValidOrderCancellationCircuit>();
+    setup_preprocessed_keys::<SizedValidWithdrawal>();
+
+    // Validity proofs
+    setup_preprocessed_keys::<SizedIntentAndBalanceValidityCircuit>();
+    setup_preprocessed_keys::<SizedIntentAndBalanceFirstFillValidityCircuit>();
+    setup_preprocessed_keys::<SizedIntentOnlyValidityCircuit>();
+    setup_preprocessed_keys::<IntentOnlyFirstFillValidityCircuit>();
+    setup_preprocessed_keys::<SizedNewOutputBalanceValidityCircuit>();
+    setup_preprocessed_keys::<SizedOutputBalanceValidityCircuit>();
+
+    // Settlement proofs
+    setup_preprocessed_keys::<IntentAndBalanceBoundedSettlementCircuit>();
+    setup_preprocessed_keys::<IntentAndBalancePrivateSettlementCircuit>();
+    setup_preprocessed_keys::<IntentAndBalancePublicSettlementCircuit>();
+    setup_preprocessed_keys::<IntentOnlyBoundedSettlementCircuit>();
+    setup_preprocessed_keys::<IntentOnlyPublicSettlementCircuit>();
+
+    // Fee proofs
+    setup_preprocessed_keys::<SizedValidNoteRedemption>();
+    setup_preprocessed_keys::<SizedValidPrivateProtocolFeePayment>();
+    setup_preprocessed_keys::<SizedValidPrivateRelayerFeePayment>();
+    setup_preprocessed_keys::<SizedValidPublicProtocolFeePayment>();
+    setup_preprocessed_keys::<SizedValidPublicRelayerFeePayment>();
 
     // Set up layouts for all of the circuits
-    SizedValidWalletCreate::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidWalletUpdate::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidCommitments::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidReblind::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidMatchSettle::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidMatchSettleAtomic::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidMalleableMatchSettleAtomic::get_circuit_layout()
+
+    // Update proofs
+    ValidBalanceCreate::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidDeposit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidOrderCancellationCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidWithdrawal::get_circuit_layout().map_err(ProverServiceError::setup)?;
+
+    // Validity proofs
+    SizedIntentAndBalanceValidityCircuit::get_circuit_layout()
         .map_err(ProverServiceError::setup)?;
-    SizedValidRelayerFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidOfflineFeeSettlement::get_circuit_layout().map_err(ProverServiceError::setup)?;
-    SizedValidFeeRedemption::get_circuit_layout().map_err(ProverServiceError::setup)?;
+
+    SizedIntentAndBalanceFirstFillValidityCircuit::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
+
+    SizedIntentOnlyValidityCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    IntentOnlyFirstFillValidityCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedNewOutputBalanceValidityCircuit::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
+
+    SizedOutputBalanceValidityCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+
+    // Settlement proofs
+    IntentAndBalanceBoundedSettlementCircuit::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
+
+    IntentAndBalancePrivateSettlementCircuit::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
+
+    IntentAndBalancePublicSettlementCircuit::get_circuit_layout()
+        .map_err(ProverServiceError::setup)?;
+
+    IntentOnlyBoundedSettlementCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    IntentOnlyPublicSettlementCircuit::get_circuit_layout().map_err(ProverServiceError::setup)?;
+
+    // Fee proofs
+    SizedValidNoteRedemption::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidPrivateProtocolFeePayment::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidPrivateRelayerFeePayment::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidPublicProtocolFeePayment::get_circuit_layout().map_err(ProverServiceError::setup)?;
+    SizedValidPublicRelayerFeePayment::get_circuit_layout().map_err(ProverServiceError::setup)?;
+
     Ok(())
 }
 
@@ -122,96 +201,211 @@ fn setup_routes(
         .and(warp::get())
         .map(|| warp::reply::with_status("PONG", StatusCode::OK));
 
-    // Prove valid wallet create
-    let valid_wallet_create = warp::path("prove-valid-wallet-create")
+    // --- Update Proofs --- //
+
+    let valid_balance_create = warp::path("prove-valid-balance-create")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_valid_wallet_create);
+        .and_then(handle_valid_balance_create);
 
-    // Prove valid wallet update
-    let valid_wallet_update = warp::path("prove-valid-wallet-update")
+    let valid_deposit = warp::path("prove-valid-deposit")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_valid_wallet_update);
+        .and_then(handle_valid_deposit);
 
-    // Prove valid commitments
-    let valid_commitments = warp::path("prove-valid-commitments")
+    let valid_order_cancellation = warp::path("prove-valid-order-cancellation")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_valid_commitments);
+        .and_then(handle_valid_order_cancellation);
 
-    // Prove valid reblind
-    let valid_reblind = warp::path("prove-valid-reblind")
+    let valid_withdrawal = warp::path("prove-valid-withdrawal")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_valid_reblind);
+        .and_then(handle_valid_withdrawal);
 
-    let link_commitments_reblind = warp::path("link-commitments-reblind")
+    // --- Validity Proofs --- //
+
+    let intent_and_balance_validity = warp::path("prove-intent-and-balance-validity")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_link_commitments_reblind);
+        .and_then(handle_intent_and_balance_validity);
 
-    // Prove valid match settle
-    let valid_match_settle = warp::path("prove-valid-match-settle")
-        .and(warp::post())
-        .and(propagate_span())
-        .and(basic_auth(auth_pwd.clone()))
-        .and(warp::body::json())
-        .and_then(handle_valid_match_settle);
-
-    // Prove valid match settle atomic
-    let valid_match_settle_atomic = warp::path("prove-valid-match-settle-atomic")
-        .and(warp::post())
-        .and(propagate_span())
-        .and(basic_auth(auth_pwd.clone()))
-        .and(warp::body::json())
-        .and_then(handle_valid_match_settle_atomic);
-
-    // Prove valid malleable match settle atomic
-    let valid_malleable_match_settle_atomic =
-        warp::path("prove-valid-malleable-match-settle-atomic")
+    let intent_and_balance_first_fill_validity =
+        warp::path("prove-intent-and-balance-first-fill-validity")
             .and(warp::post())
             .and(propagate_span())
             .and(basic_auth(auth_pwd.clone()))
             .and(warp::body::json())
-            .and_then(handle_valid_malleable_match_settle_atomic);
+            .and_then(handle_intent_and_balance_first_fill_validity);
 
-    // Prove valid fee redemption
-    let valid_fee_redemption = warp::path("prove-valid-fee-redemption")
+    let intent_only_validity = warp::path("prove-intent-only-validity")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd.clone()))
         .and(warp::body::json())
-        .and_then(handle_valid_fee_redemption);
+        .and_then(handle_intent_only_validity);
 
-    // Prove valid offline fee settlement
-    let valid_offline_fee_settlement = warp::path("prove-valid-offline-fee-settlement")
+    let intent_only_first_fill_validity = warp::path("prove-intent-only-first-fill-validity")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_intent_only_first_fill_validity);
+
+    let new_output_balance_validity = warp::path("prove-new-output-balance-validity")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_new_output_balance_validity);
+
+    let output_balance_validity = warp::path("prove-output-balance-validity")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_output_balance_validity);
+
+    // --- Settlement Proofs --- //
+
+    let intent_and_balance_bounded_settlement =
+        warp::path("prove-intent-and-balance-bounded-settlement")
+            .and(warp::post())
+            .and(propagate_span())
+            .and(basic_auth(auth_pwd.clone()))
+            .and(warp::body::json())
+            .and_then(handle_intent_and_balance_bounded_settlement);
+
+    let intent_and_balance_private_settlement =
+        warp::path("prove-intent-and-balance-private-settlement")
+            .and(warp::post())
+            .and(propagate_span())
+            .and(basic_auth(auth_pwd.clone()))
+            .and(warp::body::json())
+            .and_then(handle_intent_and_balance_private_settlement);
+
+    let intent_and_balance_public_settlement =
+        warp::path("prove-intent-and-balance-public-settlement")
+            .and(warp::post())
+            .and(propagate_span())
+            .and(basic_auth(auth_pwd.clone()))
+            .and(warp::body::json())
+            .and_then(handle_intent_and_balance_public_settlement);
+
+    let intent_only_bounded_settlement = warp::path("prove-intent-only-bounded-settlement")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_intent_only_bounded_settlement);
+
+    let intent_only_public_settlement = warp::path("prove-intent-only-public-settlement")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_intent_only_public_settlement);
+
+    // --- Fee Proofs --- //
+
+    let valid_note_redemption = warp::path("prove-valid-note-redemption")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_valid_note_redemption);
+
+    let valid_private_protocol_fee_payment = warp::path("prove-valid-private-protocol-fee-payment")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_valid_private_protocol_fee_payment);
+
+    let valid_private_relayer_fee_payment = warp::path("prove-valid-private-relayer-fee-payment")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_valid_private_relayer_fee_payment);
+
+    let valid_public_protocol_fee_payment = warp::path("prove-valid-public-protocol-fee-payment")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_valid_public_protocol_fee_payment);
+
+    let valid_public_relayer_fee_payment = warp::path("prove-valid-public-relayer-fee-payment")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_valid_public_relayer_fee_payment);
+
+    // --- Proof Linking --- //
+
+    let link_intent_and_balance_settlement = warp::path("link-intent-and-balance-settlement")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_link_intent_and_balance_settlement);
+
+    let link_intent_only_settlement = warp::path("link-intent-only-settlement")
+        .and(warp::post())
+        .and(propagate_span())
+        .and(basic_auth(auth_pwd.clone()))
+        .and(warp::body::json())
+        .and_then(handle_link_intent_only_settlement);
+
+    let link_output_balance_settlement = warp::path("link-output-balance-settlement")
         .and(warp::post())
         .and(propagate_span())
         .and(basic_auth(auth_pwd))
         .and(warp::body::json())
-        .and_then(handle_valid_offline_fee_settlement);
+        .and_then(handle_link_output_balance_settlement);
 
-    ping.or(valid_wallet_create)
-        .or(valid_wallet_update)
-        .or(valid_commitments)
-        .or(valid_reblind)
-        .or(link_commitments_reblind)
-        .or(valid_match_settle)
-        .or(valid_match_settle_atomic)
-        .or(valid_malleable_match_settle_atomic)
-        .or(valid_fee_redemption)
-        .or(valid_offline_fee_settlement)
+    // Combine all routes
+    ping
+        // Update proofs
+        .or(valid_balance_create)
+        .or(valid_deposit)
+        .or(valid_order_cancellation)
+        .or(valid_withdrawal)
+        // Validity proofs
+        .or(intent_and_balance_validity)
+        .or(intent_and_balance_first_fill_validity)
+        .or(intent_only_validity)
+        .or(intent_only_first_fill_validity)
+        .or(new_output_balance_validity)
+        .or(output_balance_validity)
+        // Settlement proofs
+        .or(intent_and_balance_bounded_settlement)
+        .or(intent_and_balance_private_settlement)
+        .or(intent_and_balance_public_settlement)
+        .or(intent_only_bounded_settlement)
+        .or(intent_only_public_settlement)
+        // Fee proofs
+        .or(valid_note_redemption)
+        .or(valid_private_protocol_fee_payment)
+        .or(valid_private_relayer_fee_payment)
+        .or(valid_public_protocol_fee_payment)
+        .or(valid_public_relayer_fee_payment)
+        // Proof linking
+        .or(link_intent_and_balance_settlement)
+        .or(link_intent_only_settlement)
+        .or(link_output_balance_settlement)
         .with(with_tracing())
         .recover(handle_rejection)
 }
