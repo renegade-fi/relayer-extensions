@@ -87,13 +87,34 @@ pub struct ProofAndHintResponse {
     pub link_hint: ProofLinkingHint,
 }
 
-/// A proof-link response
+/// A settlement proof response with a linking proof
 ///
-/// Sent by the prover service when only a linking proof has been requested
+/// Sent by the prover service for settlement proofs that compute a single
+/// linking proof
 #[derive(Serialize, Deserialize)]
-pub struct ProofLinkResponse {
-    /// The proof-linking proof
+pub struct SettlementProofResponse {
+    /// The settlement proof
+    pub proof: PlonkProof,
+    /// The linking proof
     pub link_proof: PlonkLinkProof,
+}
+
+/// A private settlement proof response with multiple linking proofs
+///
+/// Sent by the prover service for private settlement proofs that compute
+/// multiple linking proofs
+#[derive(Serialize, Deserialize)]
+pub struct PrivateSettlementProofResponse {
+    /// The settlement proof
+    pub proof: PlonkProof,
+    /// Party 0's validity linking proof
+    pub validity_link_proof_0: PlonkLinkProof,
+    /// Party 1's validity linking proof
+    pub validity_link_proof_1: PlonkLinkProof,
+    /// Party 0's output balance linking proof
+    pub output_balance_link_proof_0: PlonkLinkProof,
+    /// Party 1's output balance linking proof
+    pub output_balance_link_proof_1: PlonkLinkProof,
 }
 
 // -----------------
@@ -203,6 +224,8 @@ pub struct IntentAndBalanceBoundedSettlementRequest {
     pub statement: IntentAndBalanceBoundedSettlementStatement,
     /// The witness
     pub witness: IntentAndBalanceBoundedSettlementWitness,
+    /// The link hint for the validity proof
+    pub validity_link_hint: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT AND BALANCE PRIVATE SETTLEMENT`
@@ -212,6 +235,14 @@ pub struct IntentAndBalancePrivateSettlementRequest {
     pub statement: IntentAndBalancePrivateSettlementStatement,
     /// The witness
     pub witness: IntentAndBalancePrivateSettlementWitness,
+    /// The link hint for party 0's validity proof
+    pub validity_link_hint_0: ProofLinkingHint,
+    /// The link hint for party 1's validity proof
+    pub validity_link_hint_1: ProofLinkingHint,
+    /// The link hint for party 0's output balance validity proof
+    pub output_balance_link_hint_0: ProofLinkingHint,
+    /// The link hint for party 1's output balance validity proof
+    pub output_balance_link_hint_1: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT AND BALANCE PUBLIC SETTLEMENT`
@@ -221,6 +252,10 @@ pub struct IntentAndBalancePublicSettlementRequest {
     pub statement: IntentAndBalancePublicSettlementStatement,
     /// The witness
     pub witness: IntentAndBalancePublicSettlementWitness,
+    /// The party ID (0 or 1) for two-party settlements
+    pub party_id: u8,
+    /// The link hint for the validity proof
+    pub validity_link_hint: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT ONLY BOUNDED SETTLEMENT`
@@ -230,6 +265,8 @@ pub struct IntentOnlyBoundedSettlementRequest {
     pub statement: IntentOnlyBoundedSettlementStatement,
     /// The witness
     pub witness: IntentOnlyBoundedSettlementWitness,
+    /// The link hint for the validity proof
+    pub validity_link_hint: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT ONLY PUBLIC SETTLEMENT`
@@ -239,6 +276,8 @@ pub struct IntentOnlyPublicSettlementRequest {
     pub statement: IntentOnlyPublicSettlementStatement,
     /// The witness
     pub witness: IntentOnlyPublicSettlementWitness,
+    /// The link hint for the validity proof
+    pub validity_link_hint: ProofLinkingHint,
 }
 
 // --- Fee Proofs --- //
@@ -286,37 +325,4 @@ pub struct ValidPublicRelayerFeePaymentRequest {
     pub statement: ValidPublicRelayerFeePaymentStatement,
     /// The witness
     pub witness: SizedValidPublicRelayerFeePaymentWitness,
-}
-
-// --- Proof Linking Requests --- //
-
-/// A request to link intent and balance validity <-> settlement
-#[derive(Serialize, Deserialize)]
-pub struct LinkIntentAndBalanceSettlementRequest {
-    /// The party ID (0 or 1) for two-party settlements
-    pub party_id: u8,
-    /// The link hint for the validity proof
-    pub validity_link_hint: ProofLinkingHint,
-    /// The link hint for the settlement proof
-    pub settlement_link_hint: ProofLinkingHint,
-}
-
-/// A request to link intent only validity <-> settlement
-#[derive(Serialize, Deserialize)]
-pub struct LinkIntentOnlySettlementRequest {
-    /// The link hint for the validity proof
-    pub validity_link_hint: ProofLinkingHint,
-    /// The link hint for the settlement proof
-    pub settlement_link_hint: ProofLinkingHint,
-}
-
-/// A request to link output balance validity <-> settlement
-#[derive(Serialize, Deserialize)]
-pub struct LinkOutputBalanceSettlementRequest {
-    /// The party ID (0 or 1) for two-party settlements
-    pub party_id: u8,
-    /// The link hint for the validity proof
-    pub validity_link_hint: ProofLinkingHint,
-    /// The link hint for the settlement proof
-    pub settlement_link_hint: ProofLinkingHint,
 }
