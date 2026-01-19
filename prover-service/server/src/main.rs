@@ -57,13 +57,12 @@ use crate::{
         handle_intent_and_balance_private_settlement, handle_intent_and_balance_public_settlement,
         handle_intent_and_balance_validity, handle_intent_only_bounded_settlement,
         handle_intent_only_first_fill_validity, handle_intent_only_public_settlement,
-        handle_intent_only_validity, handle_link_intent_and_balance_settlement,
-        handle_link_intent_only_settlement, handle_link_output_balance_settlement,
-        handle_new_output_balance_validity, handle_output_balance_validity,
-        handle_valid_balance_create, handle_valid_deposit, handle_valid_note_redemption,
-        handle_valid_order_cancellation, handle_valid_private_protocol_fee_payment,
-        handle_valid_private_relayer_fee_payment, handle_valid_public_protocol_fee_payment,
-        handle_valid_public_relayer_fee_payment, handle_valid_withdrawal,
+        handle_intent_only_validity, handle_new_output_balance_validity,
+        handle_output_balance_validity, handle_valid_balance_create, handle_valid_deposit,
+        handle_valid_note_redemption, handle_valid_order_cancellation,
+        handle_valid_private_protocol_fee_payment, handle_valid_private_relayer_fee_payment,
+        handle_valid_public_protocol_fee_payment, handle_valid_public_relayer_fee_payment,
+        handle_valid_withdrawal,
     },
 };
 
@@ -349,32 +348,9 @@ fn setup_routes(
     let valid_public_relayer_fee_payment = warp::path("prove-valid-public-relayer-fee-payment")
         .and(warp::post())
         .and(propagate_span())
-        .and(basic_auth(auth_pwd.clone()))
-        .and(warp::body::json())
-        .and_then(handle_valid_public_relayer_fee_payment);
-
-    // --- Proof Linking --- //
-
-    let link_intent_and_balance_settlement = warp::path("link-intent-and-balance-settlement")
-        .and(warp::post())
-        .and(propagate_span())
-        .and(basic_auth(auth_pwd.clone()))
-        .and(warp::body::json())
-        .and_then(handle_link_intent_and_balance_settlement);
-
-    let link_intent_only_settlement = warp::path("link-intent-only-settlement")
-        .and(warp::post())
-        .and(propagate_span())
-        .and(basic_auth(auth_pwd.clone()))
-        .and(warp::body::json())
-        .and_then(handle_link_intent_only_settlement);
-
-    let link_output_balance_settlement = warp::path("link-output-balance-settlement")
-        .and(warp::post())
-        .and(propagate_span())
         .and(basic_auth(auth_pwd))
         .and(warp::body::json())
-        .and_then(handle_link_output_balance_settlement);
+        .and_then(handle_valid_public_relayer_fee_payment);
 
     // Combine all routes
     ping
@@ -402,10 +378,6 @@ fn setup_routes(
         .or(valid_private_relayer_fee_payment)
         .or(valid_public_protocol_fee_payment)
         .or(valid_public_relayer_fee_payment)
-        // Proof linking
-        .or(link_intent_and_balance_settlement)
-        .or(link_intent_only_settlement)
-        .or(link_output_balance_settlement)
         .with(with_tracing())
         .recover(handle_rejection)
 }

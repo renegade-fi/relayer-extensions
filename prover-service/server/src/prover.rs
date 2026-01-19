@@ -9,16 +9,16 @@ use prover_service_api::{
     IntentAndBalancePrivateSettlementRequest, IntentAndBalancePublicSettlementRequest,
     IntentAndBalanceValidityRequest, IntentOnlyBoundedSettlementRequest,
     IntentOnlyFirstFillValidityRequest, IntentOnlyPublicSettlementRequest,
-    IntentOnlyValidityRequest, LinkIntentAndBalanceSettlementRequest,
-    LinkIntentOnlySettlementRequest, LinkOutputBalanceSettlementRequest,
-    NewOutputBalanceValidityRequest, OutputBalanceValidityRequest, ProofAndHintResponse,
-    ProofLinkResponse, ProofResponse, ValidBalanceCreateRequest, ValidDepositRequest,
-    ValidNoteRedemptionRequest, ValidOrderCancellationRequest,
-    ValidPrivateProtocolFeePaymentRequest, ValidPrivateRelayerFeePaymentRequest,
-    ValidPublicProtocolFeePaymentRequest, ValidPublicRelayerFeePaymentRequest,
-    ValidWithdrawalRequest,
+    IntentOnlyValidityRequest, NewOutputBalanceValidityRequest, OutputBalanceValidityRequest,
+    PrivateSettlementProofResponse, ProofAndHintResponse, ProofResponse, SettlementProofResponse,
+    ValidBalanceCreateRequest, ValidDepositRequest, ValidNoteRedemptionRequest,
+    ValidOrderCancellationRequest, ValidPrivateProtocolFeePaymentRequest,
+    ValidPrivateRelayerFeePaymentRequest, ValidPublicProtocolFeePaymentRequest,
+    ValidPublicRelayerFeePaymentRequest, ValidWithdrawalRequest,
 };
-use renegade_circuit_types::{PlonkProof, ProofLinkingHint, traits::SingleProverCircuit};
+use renegade_circuit_types::{
+    PlonkLinkProof, PlonkProof, ProofLinkingHint, traits::SingleProverCircuit,
+};
 use renegade_circuits_core::{
     singleprover_prove_with_hint,
     zk_circuits::{
@@ -65,6 +65,16 @@ use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
 use crate::error::ProverServiceError;
+
+// -------------
+// | Constants |
+// -------------
+
+/// Party 0 identifier for two-party settlements
+const PARTY_0: u8 = 0;
+
+/// Party 1 identifier for two-party settlements
+const PARTY_1: u8 = 1;
 
 // --- Update Proof Handlers --- //
 
@@ -180,11 +190,19 @@ pub(crate) async fn handle_output_balance_validity(
 pub(crate) async fn handle_intent_and_balance_bounded_settlement(
     request: IntentAndBalanceBoundedSettlementRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<IntentAndBalanceBoundedSettlementCircuit>(
+    let (proof, settlement_link_hint) = prove_circuit::<IntentAndBalanceBoundedSettlementCircuit>(
         request.witness,
         request.statement,
     )
-    .await
+    .await?;
+
+    // Bounded settlement always links into party 0 slot
+    let link_proof =
+        blocking_intent_and_balance_link(PARTY_0, request.validity_link_hint, settlement_link_hint)
+            .await?;
+
+    let resp = SettlementProofResponse { proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `INTENT AND BALANCE PRIVATE SETTLEMENT`
@@ -192,11 +210,49 @@ pub(crate) async fn handle_intent_and_balance_bounded_settlement(
 pub(crate) async fn handle_intent_and_balance_private_settlement(
     request: IntentAndBalancePrivateSettlementRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<IntentAndBalancePrivateSettlementCircuit>(
+    let (proof, settlement_link_hint) = prove_circuit::<IntentAndBalancePrivateSettlementCircuit>(
         request.witness,
         request.statement,
     )
-    .await
+    .await?;
+
+    // Compute all 4 linking proofs concurrently (both parties)
+    let (
+        validity_link_proof_0,
+        validity_link_proof_1,
+        output_balance_link_proof_0,
+        output_balance_link_proof_1,
+    ) = tokio::try_join!(
+        blocking_intent_and_balance_link(
+            PARTY_0,
+            request.validity_link_hint_0,
+            settlement_link_hint.clone()
+        ),
+        blocking_intent_and_balance_link(
+            PARTY_1,
+            request.validity_link_hint_1,
+            settlement_link_hint.clone()
+        ),
+        blocking_output_balance_link(
+            PARTY_0,
+            request.output_balance_link_hint_0,
+            settlement_link_hint.clone()
+        ),
+        blocking_output_balance_link(
+            PARTY_1,
+            request.output_balance_link_hint_1,
+            settlement_link_hint
+        ),
+    )?;
+
+    let resp = PrivateSettlementProofResponse {
+        proof,
+        validity_link_proof_0,
+        validity_link_proof_1,
+        output_balance_link_proof_0,
+        output_balance_link_proof_1,
+    };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `INTENT AND BALANCE PUBLIC SETTLEMENT`
@@ -204,11 +260,21 @@ pub(crate) async fn handle_intent_and_balance_private_settlement(
 pub(crate) async fn handle_intent_and_balance_public_settlement(
     request: IntentAndBalancePublicSettlementRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<IntentAndBalancePublicSettlementCircuit>(
+    let (proof, settlement_link_hint) = prove_circuit::<IntentAndBalancePublicSettlementCircuit>(
         request.witness,
         request.statement,
     )
-    .await
+    .await?;
+
+    let link_proof = blocking_intent_and_balance_link(
+        request.party_id,
+        request.validity_link_hint,
+        settlement_link_hint,
+    )
+    .await?;
+
+    let resp = SettlementProofResponse { proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `INTENT ONLY BOUNDED SETTLEMENT`
@@ -216,11 +282,15 @@ pub(crate) async fn handle_intent_and_balance_public_settlement(
 pub(crate) async fn handle_intent_only_bounded_settlement(
     request: IntentOnlyBoundedSettlementRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<IntentOnlyBoundedSettlementCircuit>(
-        request.witness,
-        request.statement,
-    )
-    .await
+    let (proof, settlement_link_hint) =
+        prove_circuit::<IntentOnlyBoundedSettlementCircuit>(request.witness, request.statement)
+            .await?;
+
+    let link_proof =
+        blocking_intent_only_link(request.validity_link_hint, settlement_link_hint).await?;
+
+    let resp = SettlementProofResponse { proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 /// Handle a request to prove `INTENT ONLY PUBLIC SETTLEMENT`
@@ -228,11 +298,15 @@ pub(crate) async fn handle_intent_only_bounded_settlement(
 pub(crate) async fn handle_intent_only_public_settlement(
     request: IntentOnlyPublicSettlementRequest,
 ) -> Result<Json, Rejection> {
-    generate_proof_and_hint_json::<IntentOnlyPublicSettlementCircuit>(
-        request.witness,
-        request.statement,
-    )
-    .await
+    let (proof, settlement_link_hint) =
+        prove_circuit::<IntentOnlyPublicSettlementCircuit>(request.witness, request.statement)
+            .await?;
+
+    let link_proof =
+        blocking_intent_only_link(request.validity_link_hint, settlement_link_hint).await?;
+
+    let resp = SettlementProofResponse { proof, link_proof };
+    Ok(warp::reply::json(&resp))
 }
 
 // --- Fee Proof Handlers --- //
@@ -281,64 +355,47 @@ pub(crate) async fn handle_valid_public_relayer_fee_payment(
         .await
 }
 
-// --- Proof Linking Handlers --- //
-
-/// Handle a request to link intent and balance validity <-> settlement
-#[instrument(skip_all)]
-pub(crate) async fn handle_link_intent_and_balance_settlement(
-    request: LinkIntentAndBalanceSettlementRequest,
-) -> Result<Json, Rejection> {
-    let link_proof = run_blocking(move || {
-        link_sized_intent_and_balance_settlement_with_party(
-            request.party_id,
-            &request.validity_link_hint,
-            &request.settlement_link_hint,
-        )
-    })
-    .await?;
-
-    let resp = ProofLinkResponse { link_proof };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handle a request to link intent only validity <-> settlement
-#[instrument(skip_all)]
-pub(crate) async fn handle_link_intent_only_settlement(
-    request: LinkIntentOnlySettlementRequest,
-) -> Result<Json, Rejection> {
-    let link_proof = run_blocking(move || {
-        link_sized_intent_only_settlement(
-            &request.validity_link_hint,
-            &request.settlement_link_hint,
-        )
-    })
-    .await?;
-
-    let resp = ProofLinkResponse { link_proof };
-    Ok(warp::reply::json(&resp))
-}
-
-/// Handle a request to link output balance validity <-> settlement
-#[instrument(skip_all)]
-pub(crate) async fn handle_link_output_balance_settlement(
-    request: LinkOutputBalanceSettlementRequest,
-) -> Result<Json, Rejection> {
-    let link_proof = run_blocking(move || {
-        link_sized_output_balance_settlement_with_party(
-            request.party_id,
-            &request.validity_link_hint,
-            &request.settlement_link_hint,
-        )
-    })
-    .await?;
-
-    let resp = ProofLinkResponse { link_proof };
-    Ok(warp::reply::json(&resp))
-}
-
 // -----------
 // | Helpers |
 // -----------
+
+// --- Proof Linking --- //
+
+/// Compute an intent-and-balance validity <-> settlement linking proof
+async fn blocking_intent_and_balance_link(
+    party_id: u8,
+    validity_hint: ProofLinkingHint,
+    settlement_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || {
+        link_sized_intent_and_balance_settlement_with_party(
+            party_id,
+            &validity_hint,
+            &settlement_hint,
+        )
+    })
+    .await
+}
+
+/// Compute an output balance validity <-> settlement linking proof
+async fn blocking_output_balance_link(
+    party_id: u8,
+    output_hint: ProofLinkingHint,
+    settlement_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || {
+        link_sized_output_balance_settlement_with_party(party_id, &output_hint, &settlement_hint)
+    })
+    .await
+}
+
+/// Compute an intent-only validity <-> settlement linking proof
+async fn blocking_intent_only_link(
+    validity_hint: ProofLinkingHint,
+    settlement_hint: ProofLinkingHint,
+) -> Result<PlonkLinkProof, Rejection> {
+    run_blocking(move || link_sized_intent_only_settlement(&validity_hint, &settlement_hint)).await
+}
 
 // --- Plonk Prover --- //
 
