@@ -1,5 +1,5 @@
 # === Chef === #
-FROM --platform=arm64 rust:1.89-trixie AS chef
+FROM --platform=arm64 rust:1.92-trixie AS chef
 
 # Create a build dir and add local dependencies
 WORKDIR /build
