@@ -6,6 +6,8 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
+// Increase compiler type recursion limit to support deeply nested `warp` filter types
+#![recursion_limit = "256"]
 
 use std::net::SocketAddr;
 
