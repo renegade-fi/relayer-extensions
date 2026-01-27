@@ -1,6 +1,6 @@
 //! Exchange metadata types
 
-use renegade_api::types::ApiToken;
+use renegade_external_api::types::ApiToken;
 use serde::{Deserialize, Serialize};
 
 /// The metadata for the Renegade exchange

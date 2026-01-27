@@ -1,12 +1,11 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
-use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
-use renegade_common::types::token::Token;
+use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::{
     DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
+use renegade_types_core::Token;
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::warn;
 

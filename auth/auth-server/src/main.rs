@@ -12,7 +12,6 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 #![feature(trivial_bounds)]
-#![feature(let_chains)]
 #![feature(duration_constructors)]
 #![feature(int_roundings)]
 
@@ -23,11 +22,10 @@ pub mod http_utils;
 mod server;
 mod telemetry;
 
-use renegade_common::types::chain::Chain;
-use renegade_system_clock::SystemClock;
-
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
+use renegade_system_clock::SystemClock;
+use renegade_types_core::Chain;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -359,9 +357,9 @@ async fn main() -> Result<(), AuthServerError> {
 
     // --- Proxied Routes --- //
 
-    let external_quote_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("quote"))
+    let external_quote_path = warp::path("v2")
+        .and(warp::path("external-matches"))
+        .and(warp::path("get-quote"))
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())

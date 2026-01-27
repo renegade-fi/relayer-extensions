@@ -2,11 +2,11 @@
 
 use aes_gcm::{AeadCore, Aes128Gcm, aead::Aead};
 use alloy::signers::k256::ecdsa::SigningKey;
-use alloy_primitives::{Signature, U256, keccak256};
+use alloy_primitives::{Address, Signature, U256, keccak256};
 use base64::{Engine as _, engine::general_purpose};
-use contracts_common::constants::NUM_BYTES_SIGNATURE;
 use rand::thread_rng;
-use renegade_api::http::external_match::SignedExternalQuote;
+use renegade_external_api::types::ApiSignedQuote;
+use renegade_types_core::Token;
 use uuid::Uuid;
 
 use crate::error::AuthServerError;
@@ -14,6 +14,9 @@ use crate::error::AuthServerError;
 // -------------
 // | Constants |
 // -------------
+
+/// The number of bytes in a secp256k1 signature
+const NUM_BYTES_SIGNATURE: usize = 65;
 
 /// The nonce size for AES128-GCM
 const NONCE_SIZE: usize = 12; // 12 bytes, 96 bits
@@ -105,12 +108,30 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
 }
 
 /// Generate a UUID for a signed quote
-pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
+pub fn generate_quote_uuid(signed_quote: &ApiSignedQuote) -> Uuid {
     let signature_hash = keccak256(signed_quote.signature.as_bytes());
     let mut uuid_bytes = [0u8; UUID_SIZE];
     uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
 
     Uuid::from_bytes(uuid_bytes)
+}
+
+/// Pick the base and quote mints from the given input and output mints,
+/// expecting one of them to be USDC. Returns a tuple of (base_mint,
+/// quote_mint).
+pub fn pick_base_and_quote_mints(
+    input_mint: Address,
+    output_mint: Address,
+) -> Result<(Address, Address), AuthServerError> {
+    let usdc_mint = Token::usdc().get_alloy_address();
+
+    if input_mint == usdc_mint {
+        Ok((output_mint, input_mint))
+    } else if output_mint == usdc_mint {
+        Ok((input_mint, output_mint))
+    } else {
+        Err(AuthServerError::bad_request("Either input or output mint must be USDC"))
+    }
 }
 
 // ---------
@@ -120,7 +141,7 @@ pub fn generate_quote_uuid(signed_quote: &SignedExternalQuote) -> Uuid {
 #[cfg(test)]
 mod tests {
     use aes_gcm::KeyInit;
-    use renegade_common::types::hmac::HmacKey;
+    use renegade_types_core::HmacKey;
 
     use super::*;
 
