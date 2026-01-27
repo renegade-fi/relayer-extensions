@@ -15,13 +15,10 @@ use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMa
 use bytes::Bytes;
 use external_match::{RequestContext, ResponseContext};
 use http::{HeaderMap, Response};
-use num_bigint::BigUint;
 use rand::Rng;
-use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_common::types::token::Token;
-use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_WRAPPER_TICKER};
-use renegade_util::hex::biguint_to_hex_addr;
+use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_external_api::types::ExternalOrder;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -64,19 +61,6 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
         .map(|v| v.to_str().unwrap_or_default())
         .unwrap_or(SDK_VERSION_DEFAULT)
         .to_string()
-}
-
-/// Get a ticker from a `BigUint` encoded mint
-pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
-    let token = Token::from_addr_biguint(mint);
-    if token.is_native_asset() {
-        return Ok(NATIVE_ASSET_WRAPPER_TICKER.to_string());
-    }
-
-    token.get_ticker().ok_or_else(|| {
-        let token_addr = biguint_to_hex_addr(mint);
-        AuthServerError::bad_request(format!("Invalid token: {token_addr}"))
-    })
 }
 
 // ---------------
