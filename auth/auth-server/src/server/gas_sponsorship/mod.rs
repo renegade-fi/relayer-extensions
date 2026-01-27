@@ -8,10 +8,7 @@ use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
 
-use refund_calculation::{
-    apply_gas_sponsorship_to_malleable_match_bundle, apply_gas_sponsorship_to_match_bundle,
-    apply_gas_sponsorship_to_quote,
-};
+use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_circuit_types::Amount;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_crypto::fields::scalar_to_u128;
@@ -73,6 +70,7 @@ impl Server {
     }
 
     /// Construct a sponsored match response from an external match response
+    // TODO: Update to generate the correct calldata
     pub(crate) fn construct_sponsored_match_response(
         &self,
         mut external_match_resp: ExternalMatchResponse,
@@ -107,49 +105,6 @@ impl Server {
         }
 
         Ok(SponsoredMatchResponse {
-            match_bundle: external_match_resp.match_bundle,
-            gas_sponsorship_info: Some(gas_sponsorship_info),
-        })
-    }
-
-    /// Construct a sponsored malleable match response from an external
-    /// malleable match response
-    pub(crate) fn construct_sponsored_malleable_match_response(
-        &self,
-        mut external_match_resp: MalleableExternalMatchResponse,
-        gas_sponsorship_info: GasSponsorshipInfo,
-        sponsorship_nonce: U256,
-        use_malleable_match_connector: bool,
-    ) -> Result<SponsoredMalleableMatchResponse, AuthServerError> {
-        let refund_native_eth = gas_sponsorship_info.refund_native_eth;
-        let refund_address = gas_sponsorship_info.get_refund_address();
-        let refund_amount = gas_sponsorship_info.get_refund_amount();
-
-        let gas_sponsor_calldata = self.generate_gas_sponsor_malleable_calldata(
-            &external_match_resp,
-            refund_address,
-            refund_native_eth,
-            refund_amount,
-            sponsorship_nonce,
-            use_malleable_match_connector,
-        )?;
-
-        let mut tx = external_match_resp.match_bundle.settlement_tx;
-        if use_malleable_match_connector {
-            tx = tx.to(self.malleable_match_connector_address);
-        } else {
-            tx = tx.to(self.gas_sponsor_address);
-        };
-        tx.input.data = Some(gas_sponsor_calldata);
-        external_match_resp.match_bundle.settlement_tx = tx;
-
-        if gas_sponsorship_info.requires_match_result_update() {
-            apply_gas_sponsorship_to_malleable_match_bundle(
-                &mut external_match_resp.match_bundle,
-                gas_sponsorship_info.refund_amount,
-            );
-        }
-        Ok(SponsoredMalleableMatchResponse {
             match_bundle: external_match_resp.match_bundle,
             gas_sponsorship_info: Some(gas_sponsorship_info),
         })
@@ -207,45 +162,50 @@ impl Server {
             .price_reporter_client
             .get_price(&address_to_hex_string(&base_mint), self.chain)
             .await?;
-        self.get_quote_amount_with_price(order, relayer_fee, price)
-    }
 
-    /// Get the quote amount that will be used in matching this order.
-    /// Importantly, this method accounts for fees charged on the order
-    /// in the case that an exact quote output amount is requested.
-    pub(crate) fn get_quote_amount_with_price(
-        &self,
-        order: &ExternalOrder,
-        relayer_fee: FixedPoint,
-        price: f64,
-    ) -> Result<Amount, AuthServerError> {
-        let (base_mint, quote_mint) =
-            pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
-
-        // If the quote amount is specified directly on the order, return it.
-        let quote_input_set = quote_mint == order.input_mint && order.input_amount != 0;
-        let quote_output_set = quote_mint == order.output_mint && order.output_amount != 0;
-        if quote_input_set {
-            return Ok(order.input_amount);
-        } else if quote_output_set {
-            return fee_adjusted_output_amount(order, relayer_fee);
-        }
-
-        // Otherwise, calculate the quote amount based on the base amount and price.
-        let base_input_set = base_mint == order.input_mint && order.input_amount != 0;
-        let base_amount = if base_input_set {
-            order.input_amount
-        } else {
-            fee_adjusted_output_amount(order, relayer_fee)?
-        };
-
-        let price_fp = FixedPoint::from_f64_round_down(price);
-        let implied_quote_amount = price_fp * base_amount;
-
-        Ok(scalar_to_u128(&implied_quote_amount.floor()))
+        let (_, quote_amount) = get_base_and_quote_amount_with_price(order, relayer_fee, price)?;
+        Ok(quote_amount)
     }
 }
 
+/// Get the quote amount that will be used in matching this order.
+/// Importantly, this method accounts for fees charged on the order
+/// in the case that an exact quote output amount is requested.
+pub(crate) fn get_base_and_quote_amount_with_price(
+    order: &ExternalOrder,
+    relayer_fee: FixedPoint,
+    price: f64,
+) -> Result<(Amount, Amount), AuthServerError> {
+    let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+
+    let base_input_set = base_mint == order.input_mint && order.input_amount != 0;
+    let base_output_set = base_mint == order.output_mint && order.output_amount != 0;
+    let quote_input_set = quote_mint == order.input_mint && order.input_amount != 0;
+
+    let price_fp = FixedPoint::from_f64_round_down(price);
+
+    if base_input_set {
+        let base_amount = order.input_amount;
+        let implied_quote_amount = price_fp * base_amount;
+        let quote_amount = scalar_to_u128(&implied_quote_amount.floor());
+        return Ok((base_amount, quote_amount));
+    } else if base_output_set {
+        let base_amount = fee_adjusted_output_amount(order, relayer_fee)?;
+        let implied_quote_amount = price_fp * base_amount;
+        let quote_amount = scalar_to_u128(&implied_quote_amount.floor());
+        return Ok((base_amount, quote_amount));
+    } else if quote_input_set {
+        let quote_amount = order.input_amount;
+        let implied_base_amount = price_fp.floor_div_int(quote_amount);
+        let base_amount = scalar_to_u128(&implied_base_amount);
+        return Ok((base_amount, quote_amount));
+    } else {
+        let quote_amount = fee_adjusted_output_amount(order, relayer_fee)?;
+        let implied_base_amount = price_fp.floor_div_int(quote_amount);
+        let base_amount = scalar_to_u128(&implied_base_amount);
+        return Ok((base_amount, quote_amount));
+    }
+}
 /// Calculate the output amount that will be used in matching this order,
 /// accounting for fees charged on the order in the case that an exact
 /// output amount is requested.

@@ -1,9 +1,6 @@
 //! Handlers for external match endpoints
 
-mod assemble_malleable_quote;
-mod assemble_quote;
-mod direct_malleable_match;
-mod direct_match;
+mod match_bundle;
 mod quote;
 
 use alloy_primitives::U256;
@@ -23,7 +20,7 @@ use crate::{
     server::{Server, helpers::pick_base_and_quote_mints},
     telemetry::helpers::record_relayer_request_500,
 };
-pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
+pub use match_bundle::SponsoredExternalMatchResponseCtx;
 
 use super::{get_sdk_version, log_unsuccessful_relayer_request};
 

@@ -122,7 +122,7 @@ impl Server {
         // Apply gas sponsorship to the assembly request
         // The request type is the same between the standard and malleable assembly
         // endpoints so we can use the same modification method
-        let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
+        let gas_sponsorship_info = self.sponsor_assembly_request_old(ctx).await?;
         ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }

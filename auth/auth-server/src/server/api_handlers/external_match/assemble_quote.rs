@@ -99,13 +99,13 @@ impl Server {
     ) -> Result<BytesResponse, Rejection> {
         // 1. Run the pre-request subroutines
         let mut ctx = self.preprocess_request(path, headers, body, query_str).await?;
-        self.assembly_pre_request(&mut ctx).await?;
+        self.assembly_pre_request_old(&mut ctx).await?;
 
         // 2. Proxy the request to the relayer
         let (raw_resp, ctx) = self.forward_request(ctx).await?;
 
         // 3. Run the post-request subroutines
-        let res = self.assembly_post_request(raw_resp, ctx)?;
+        let res = self.assembly_post_request_old(raw_resp, ctx)?;
         Ok(res)
     }
 
@@ -115,7 +115,7 @@ impl Server {
 
     /// Run the pre-request subroutines for the assembly quote endpoint
     #[instrument(skip_all)]
-    async fn assembly_pre_request(
+    async fn assembly_pre_request_old(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<(), AuthServerError> {
@@ -126,14 +126,14 @@ impl Server {
         };
 
         // Apply gas sponsorship to the assembly request
-        let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
+        let gas_sponsorship_info = self.sponsor_assembly_request_old(ctx).await?;
         ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }
 
     /// Run the post-request subroutines for the assembly quote endpoint
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
-    fn assembly_post_request(
+    fn assembly_post_request_old(
         &self,
         mut resp: BytesResponse,
         ctx: AssembleQuoteResponseCtx,
@@ -144,7 +144,7 @@ impl Server {
         }
 
         // Apply gas sponsorship to the resulting bundle, if necessary
-        let sponsored_resp = self.sponsor_match_response(&ctx)?;
+        let sponsored_resp = self.sponsor_match_response_old(&ctx)?;
         let should_stringify = ctx.should_stringify_body();
         overwrite_response_body(&mut resp, sponsored_resp.clone(), should_stringify)?;
 
@@ -161,24 +161,6 @@ impl Server {
     // | Gas Sponsorship |
     // -------------------
 
-    /// Route the assembly request to the correct matching pool
-    ///
-    /// If execution costs limits have been exceeded by the bot server, we route
-    /// to the global pool to take pressure off the quoters
-    pub(crate) async fn route_assembly_req(
-        &self,
-        ctx: &mut AssembleQuoteRequestCtx,
-    ) -> Result<(), AuthServerError> {
-        let ticker = ctx.ticker()?;
-        let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
-        if should_route_to_global {
-            info!("Routing order to global matching pool");
-            ctx.body_mut().matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
-        }
-
-        Ok(())
-    }
-
     /// Check if the given assembly request pertains to a sponsored quote,
     /// and if so, remove the effects of gas sponsorship from the signed quote,
     /// and ensure sponsorship is correctly applied to the updated order, if
@@ -191,7 +173,7 @@ impl Server {
     /// Returns the assembly request, and the gas sponsorship info (possibly
     /// zero)
     #[instrument(skip_all)]
-    pub(crate) async fn sponsor_assembly_request(
+    pub(crate) async fn sponsor_assembly_request_old(
         &self,
         ctx: &mut AssembleQuoteRequestCtx,
     ) -> Result<GasSponsorshipInfo, AuthServerError> {
@@ -229,7 +211,7 @@ impl Server {
     /// Potentially apply gas sponsorship to the given
     /// external match response, returning the resulting
     /// `SponsoredMatchResponse`
-    fn sponsor_match_response(
+    fn sponsor_match_response_old(
         &self,
         ctx: &AssembleQuoteResponseCtx,
     ) -> Result<SponsoredMatchResponse, AuthServerError> {
