@@ -405,8 +405,9 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_all_pairs_order_book_depth_request(path, headers).await
         });
 
-    let exchange_metadata_path = warp::path("v0")
-        .and(warp::path("exchange-metadata"))
+    let exchange_metadata_path = warp::path("v2")
+        .and(warp::path("metadata"))
+        .and(warp::path("exchange"))
         .and(warp::get())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
