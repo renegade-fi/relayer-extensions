@@ -4,7 +4,7 @@ use auth_server_api::{GasSponsorshipInfo, SponsoredQuoteResponse};
 use bytes::Bytes;
 use http::StatusCode;
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, GLOBAL_MATCHING_POOL};
 use renegade_external_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
@@ -16,10 +16,10 @@ use crate::{
     http_utils::request_response::overwrite_response_body,
     server::{
         Server,
-        api_handlers::{
-            GLOBAL_MATCHING_POOL,
-            external_match::{BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints},
+        api_handlers::external_match::{
+            BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints,
         },
+        gas_sponsorship::get_base_and_quote_amount_with_price,
     },
     telemetry::{
         QUOTE_FILL_RATIO_IGNORE_THRESHOLD,
@@ -269,8 +269,8 @@ impl Server {
         let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
 
         // Calculate requested and matched quote amounts
-        let requested_quote_amount =
-            self.get_quote_amount_with_price(&req.external_order, relayer_fee, price)?;
+        let (_, requested_quote_amount) =
+            get_base_and_quote_amount_with_price(&req.external_order, relayer_fee, price)?;
 
         let input_mint = resp.signed_quote.quote.match_result.input_mint;
         let output_mint = resp.signed_quote.quote.match_result.output_mint;

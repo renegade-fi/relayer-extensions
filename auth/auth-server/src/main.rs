@@ -370,9 +370,9 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_quote_request(path, headers, body, query_str).await
         });
 
-    let external_quote_assembly_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("assemble-external-match"))
+    let external_match_path = warp::path("v2")
+        .and(warp::path("external-matches"))
+        .and(warp::path("assemble-match-bundle"))
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -380,46 +380,7 @@ async fn main() -> Result<(), AuthServerError> {
         .and(with_query_string())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_assemble_quote_request(path, headers, body, query_str).await
-        });
-
-    let external_malleable_assembly_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("assemble-malleable-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_assemble_malleable_quote_request(path, headers, body, query_str).await
-        });
-
-    let atomic_match_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("request-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_external_match_request(path, headers, body, query_str).await
-        });
-
-    let direct_malleable_match_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("request-malleable-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_direct_malleable_match_request(path, headers, body, query_str).await
+            server.handle_assemble_match_bundle_request(path, headers, body, query_str).await
         });
 
     let order_book_depth_with_mint = warp::path("v0")
