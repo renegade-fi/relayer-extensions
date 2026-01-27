@@ -3,7 +3,7 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-mod connectors;
+// mod connectors;
 mod exchange_metadata;
 mod external_match;
 mod external_match_fees;

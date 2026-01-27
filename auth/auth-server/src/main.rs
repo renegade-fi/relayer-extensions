@@ -415,44 +415,41 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_exchange_metadata_request(path, headers).await
         });
 
-    let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, query_str, server: Arc<Server>| async move {
-            server.handle_rfqt_levels_request(path, headers, query_str).await
-        });
+    // let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, query_str, server: Arc<Server>| async move {
+    //         server.handle_rfqt_levels_request(path, headers, query_str).await
+    //     });
 
-    let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_rfqt_quote_request(path, headers, body, query_str).await
-        });
+    // let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
+    //     .and(warp::post())
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(warp::body::bytes())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, body, query_str, server: Arc<Server>| async
+    // move {         server.handle_rfqt_quote_request(path, headers, body,
+    // query_str).await     });
 
-    let okx_pricing_path = warp::path!("OKXDEX" / "rfq" / "pricing")
-        .and(warp::get())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, query_str, server: Arc<Server>| async move {
-            server.handle_pricing_request(path, query_str, headers).await
-        });
+    // let okx_pricing_path = warp::path!("OKXDEX" / "rfq" / "pricing")
+    //     .and(warp::get())
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, query_str, server: Arc<Server>| async move {
+    //         server.handle_pricing_request(path, query_str, headers).await
+    //     });
 
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
-        .or(atomic_match_path)
-        .or(direct_malleable_match_path)
         .or(external_quote_path)
-        .or(external_quote_assembly_path)
-        .or(external_malleable_assembly_path)
+        .or(external_match_path)
         .or(expire_api_key)
         .or(whitelist_api_key)
         .or(remove_whitelist_entry)
@@ -467,9 +464,9 @@ async fn main() -> Result<(), AuthServerError> {
         .or(order_book_depth_with_mint)
         .or(order_book_depth)
         .or(exchange_metadata_path)
-        .or(rfqt_levels_path)
-        .or(rfqt_quote_path)
-        .or(okx_pricing_path)
+        // .or(rfqt_levels_path)
+        // .or(rfqt_quote_path)
+        // .or(okx_pricing_path)
         .boxed()
         .with(with_tracing())
         .recover(handle_rejection);
