@@ -3,10 +3,6 @@ name = "auth-server"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-arbitrum = ["renegade-darkpool-client/arbitrum"]
-base = ["renegade-darkpool-client/base", "dep:renegade-solidity-abi"]
-
 [dependencies]
 # === HTTP Server === #
 clap = { version = "4.0", features = ["derive", "env"] }
@@ -53,20 +49,19 @@ ruint = { version = "1.16", default-features = false, features = [
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 price-reporter-client = { path = "../../price-reporter-client" }
-contracts-common = { workspace = true }
-renegade-darkpool-client = { workspace = true }
-renegade-circuit-types = { workspace = true }
-renegade-common = { workspace = true }
-renegade-constants = { workspace = true }
-renegade-config = { workspace = true }
-renegade-crypto = { workspace = true }
-renegade-util = { workspace = true, features = ["blockchain"] }
-renegade-api = { workspace = true }
-renegade-solidity-abi = { workspace = true, optional = true, features = [
-    "v1",
-    "v1-relayer-types",
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["hmac"] }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["blockchain"] }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", features = [
+    "v2",
+    "v2-relayer-types",
+]}
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", default-features = false, features = [
+    "auth", "full-api"
 ] }
-renegade-system-clock = { workspace = true }
 
 # === Misc Dependencies === #
 async-trait = "0.1"

@@ -1,12 +1,12 @@
 [package]
 name = "auth-server-api"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 uuid = "0.8.2"
-renegade-api = { workspace = true }
-renegade-circuit-types = { workspace = true }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 alloy-primitives = { version = "1.0.0" }
 num-bigint = "0.4"
