@@ -7,17 +7,16 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
-#![feature(let_chains)]
 
 use std::time::Duration;
 
-use bigdecimal::{num_bigint::BigInt, BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, num_bigint::BigInt};
 use error::PriceReporterClientError;
 use price_stream::MultiPriceStream;
 use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
-    token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER},
+    token::{Token, USD_TICKER, USDC_TICKER, get_all_tokens},
 };
 use reqwest::{Client, Response, Url};
 use tracing::warn;

@@ -11,10 +11,8 @@ pub mod fee_management;
 pub mod key_management;
 pub mod rfqt;
 
-use alloy_primitives::{ruint::FromUintError, Address, U256};
-use renegade_api::http::external_match::{
-    AtomicMatchApiBundle, MalleableAtomicMatchApiBundle, SignedExternalQuote,
-};
+use alloy_primitives::{Address, U256, ruint::FromUintError};
+use renegade_external_api::types::{ApiSignedQuote, BoundedExternalMatchApiBundle};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -63,29 +61,13 @@ pub struct SetRateLimitRequest {
 
 /// An external quote response from the auth server, potentially with
 /// gas sponsorship info.
-///
-/// We manually flatten the fields of
-/// [`renegade_api::http::external_match::ExternalQuoteResponse`]
-/// into this struct, as `serde` does not support `u128`s when using
-/// `#[serde(flatten)]`:
-/// https://github.com/serde-rs/json/issues/625
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SponsoredQuoteResponse {
     /// The external quote response from the relayer, potentially updated to
     /// reflect the post-sponsorship price and receive amount
-    pub signed_quote: SignedExternalQuote,
-    /// The signed gas sponsorship info, if sponsorship was requested
-    pub gas_sponsorship_info: Option<SignedGasSponsorshipInfo>,
-}
-
-/// Signed metadata regarding gas sponsorship for a quote
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SignedGasSponsorshipInfo {
-    /// The signed gas sponsorship info
-    pub gas_sponsorship_info: GasSponsorshipInfo,
-    /// The auth server's signature over the gas sponsorship info
-    #[deprecated(since = "0.1.1", note = "Gas sponsorship info signatures are no longer used")]
-    pub signature: String,
+    pub signed_quote: ApiSignedQuote,
+    /// The gas sponsorship info, if sponsorship was requested
+    pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
 }
 
 /// Metadata regarding gas sponsorship for a quote
@@ -148,19 +130,7 @@ impl GasSponsorshipInfo {
 pub struct SponsoredMatchResponse {
     /// The external match bundle, potentially updated to reflect the
     /// post-sponsorship receive amount
-    pub match_bundle: AtomicMatchApiBundle,
-    /// Whether or not the match was sponsored
-    pub is_sponsored: bool,
-    /// The gas sponsorship info
-    pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
-}
-
-/// A sponsored malleable match response from the auth server
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SponsoredMalleableMatchResponse {
-    /// The malleable match bundle, potentially updated to reflect the
-    /// post-sponsorship receive amount
-    pub match_bundle: MalleableAtomicMatchApiBundle,
+    pub match_bundle: BoundedExternalMatchApiBundle,
     /// The gas sponsorship info
     pub gas_sponsorship_info: Option<GasSponsorshipInfo>,
 }

@@ -1,9 +1,8 @@
 //! RFQT endpoint types
 
-use alloy_primitives::Bytes;
-use num_bigint::BigUint;
-use renegade_api::deserialize_biguint_from_hex_string;
+use alloy_primitives::{Address, Bytes};
 use renegade_circuit_types::Amount;
+use renegade_external_api::serde_helpers::address_as_string;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -69,11 +68,11 @@ pub struct RfqtQuoteRequest {
     /// Chain identifier
     pub chain_id: u64,
     /// Maker token address
-    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
-    pub maker_token: BigUint,
+    #[serde(with = "address_as_string")]
+    pub maker_token: Address,
     /// Taker token address
-    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
-    pub taker_token: BigUint,
+    #[serde(with = "address_as_string")]
+    pub taker_token: Address,
     /// Units of taker token that the taker is offering (alternative to
     /// maker_amount)
     pub taker_amount: Option<Amount>,
@@ -93,8 +92,8 @@ pub struct RfqtQuoteRequest {
     /// App ID (cuid, not uuid)
     pub app_id: String,
     /// Token address that fee is based on (maker or taker token)
-    #[serde(deserialize_with = "deserialize_biguint_from_hex_string")]
-    pub fee_token: BigUint,
+    #[serde(with = "address_as_string")]
+    pub fee_token: Address,
     /// Basis points of feeToken that will be billed by 0x
     pub fee_amount_bps: f64,
     /// Conversion rate from feeToken to USDC (feeTokenUsdValue / UsdcValue)

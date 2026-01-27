@@ -1,16 +1,12 @@
 //! Logic for calculating refund info for a sponsored match
 
-use alloy_primitives::U256 as AlloyU256;
+use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive};
-use renegade_api::http::external_match::{
-    ApiExternalMatchResult, ApiExternalQuote, AtomicMatchApiBundle, ExternalOrder,
-    MalleableAtomicMatchApiBundle,
-};
-use renegade_circuit_types::order::OrderSide;
-use renegade_common::types::token::Token;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
-use renegade_util::hex::biguint_to_hex_addr;
+use renegade_external_api::types::{ApiExternalQuote, ExternalOrder};
+use renegade_types_core::Token;
+use renegade_util::hex::address_to_hex_string;
 use tracing::info;
 
 use crate::{error::AuthServerError, server::Server};
@@ -21,10 +17,9 @@ use super::WETH_TICKER;
 // | Constants |
 // -------------
 
-/// The number of Wei in 1 ETH, as an `AlloyU256`.
+/// The number of Wei in 1 ETH, as an `U256`.
 /// Concretely, this is 10^18
-const ALLOY_WEI_IN_ETHER: AlloyU256 =
-    AlloyU256::from_limbs([1_000_000_000_000_000_000_u64, 0, 0, 0]);
+const ALLOY_WEI_IN_ETHER: U256 = U256::from_limbs([1_000_000_000_000_000_000_u64, 0, 0, 0]);
 
 /// The error message emitted when converting an f64 price to a `BigDecimal`
 /// fails
@@ -40,7 +35,7 @@ impl Server {
         &self,
         order: &ExternalOrder,
         refund_native_eth: bool,
-    ) -> Result<AlloyU256, AuthServerError> {
+    ) -> Result<U256, AuthServerError> {
         let conversion_rate =
             self.compute_conversion_rate_for_order(order, refund_native_eth).await?;
 
@@ -55,12 +50,8 @@ impl Server {
         &self,
         order: &ExternalOrder,
         refund_native_eth: bool,
-    ) -> Result<AlloyU256, AuthServerError> {
-        let buy_mint_biguint = match order.side {
-            OrderSide::Buy => &order.base_mint,
-            OrderSide::Sell => &order.quote_mint,
-        };
-        let buy_mint = biguint_to_hex_addr(buy_mint_biguint);
+    ) -> Result<U256, AuthServerError> {
+        let buy_mint = address_to_hex_string(&order.output_mint);
         let native_eth_buy = buy_mint == NATIVE_ASSET_ADDRESS.to_lowercase();
 
         let weth_addr = Token::from_ticker(WETH_TICKER).get_addr();
@@ -89,8 +80,8 @@ impl Server {
         let (conversion_rate_bigint, _) =
             conversion_rate.round(0 /* round_digits */).into_bigint_and_scale();
 
-        let conversion_rate_u256 = AlloyU256::try_from(conversion_rate_bigint)
-            .map_err(AuthServerError::gas_sponsorship)?;
+        let conversion_rate_u256 =
+            U256::try_from(conversion_rate_bigint).map_err(AuthServerError::gas_sponsorship)?;
 
         Ok(conversion_rate_u256)
     }
@@ -138,16 +129,16 @@ pub fn apply_gas_sponsorship_to_quote(
         gas_sponsorship_info.refund_amount,
     );
 
-    let base_amt_f64 = quote.match_result.base_amount as f64;
-    let quote_amt_f64 = quote.match_result.quote_amount as f64;
-    let price = quote_amt_f64 / base_amt_f64;
+    let input_amt_f64 = quote.match_result.input_amount as f64;
+    let output_amt_f64 = quote.match_result.output_amount as f64;
+    let price = output_amt_f64 / input_amt_f64;
 
-    quote.price.price = price.to_string();
+    quote.price.price = price;
     quote.receive.amount += gas_sponsorship_info.refund_amount;
 
     // Update order to match what was requested by the user
     if requires_exact_output_amount_update(&quote.order, gas_sponsorship_info) {
-        remove_gas_sponsorship_from_exact_output_amount(&mut quote.order, gas_sponsorship_info);
+        remove_gas_sponsorship_from_exact_output_amount(&mut quote.order, gas_sponsorship_info)?;
     }
 
     Ok(())
@@ -172,13 +163,7 @@ pub(crate) fn apply_gas_sponsorship_to_match_result(
     match_result: &mut ApiExternalMatchResult,
     refund_amount: u128,
 ) {
-    let (base_amount, quote_amount) = match match_result.direction {
-        OrderSide::Buy => (match_result.base_amount + refund_amount, match_result.quote_amount),
-        OrderSide::Sell => (match_result.base_amount, match_result.quote_amount + refund_amount),
-    };
-
-    match_result.base_amount = base_amount;
-    match_result.quote_amount = quote_amount;
+    match_result.output_amount += refund_amount;
 }
 
 /// Remove the effects of gas sponsorship from a match result.
@@ -213,12 +198,7 @@ pub fn requires_exact_output_amount_update(
     order: &ExternalOrder,
     gas_sponsorship_info: &GasSponsorshipInfo,
 ) -> bool {
-    let exact_out_requested = match order.side {
-        OrderSide::Buy => order.exact_base_output != 0,
-        OrderSide::Sell => order.exact_quote_output != 0,
-    };
-
-    exact_out_requested && gas_sponsorship_info.requires_match_result_update()
+    order.use_exact_output_amount && gas_sponsorship_info.requires_match_result_update()
 }
 
 /// Account for the given gas sponsorship refund in the exact output amount
@@ -228,15 +208,14 @@ pub fn requires_exact_output_amount_update(
 pub fn apply_gas_sponsorship_to_exact_output_amount(
     order: &mut ExternalOrder,
     gas_sponsorship_info: &GasSponsorshipInfo,
-) {
-    match order.side {
-        OrderSide::Buy => {
-            order.exact_base_output -= gas_sponsorship_info.refund_amount;
-        },
-        OrderSide::Sell => {
-            order.exact_quote_output -= gas_sponsorship_info.refund_amount;
-        },
+) -> Result<(), AuthServerError> {
+    if !order.use_exact_output_amount {
+        return Err(AuthServerError::custom("order does not use exact output amount"));
     }
+
+    order.output_amount -= gas_sponsorship_info.refund_amount;
+
+    Ok(())
 }
 
 /// Remove the effects of gas sponsorship from the exact output amount requested
@@ -247,13 +226,12 @@ pub fn apply_gas_sponsorship_to_exact_output_amount(
 pub fn remove_gas_sponsorship_from_exact_output_amount(
     order: &mut ExternalOrder,
     gas_sponsorship_info: &GasSponsorshipInfo,
-) {
-    match order.side {
-        OrderSide::Buy => {
-            order.exact_base_output += gas_sponsorship_info.refund_amount;
-        },
-        OrderSide::Sell => {
-            order.exact_quote_output += gas_sponsorship_info.refund_amount;
-        },
+) -> Result<(), AuthServerError> {
+    if !order.use_exact_output_amount {
+        return Err(AuthServerError::custom("order does not use exact output amount"));
     }
+
+    order.output_amount += gas_sponsorship_info.refund_amount;
+
+    Ok(())
 }
