@@ -8,7 +8,7 @@ mod exchange_metadata;
 mod external_match;
 mod external_match_fees;
 mod key_management;
-mod order_book;
+mod markets;
 mod settlement;
 
 use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse};

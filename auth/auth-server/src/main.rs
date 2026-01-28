@@ -383,26 +383,27 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_assemble_match_bundle_request(path, headers, body, query_str).await
         });
 
-    let order_book_depth_with_mint = warp::path("v0")
-        .and(warp::path("order_book"))
-        .and(warp::path("depth"))
+    let market_depth_by_mint = warp::path("v2")
+        .and(warp::path("markets"))
         .and(warp::path::param::<String>())
+        .and(warp::path("depth"))
+        .and(warp::path::end())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
         .and_then(|mint, path, headers, server: Arc<Server>| async move {
-            server.handle_order_book_request_with_mint(mint, path, headers).await
+            server.handle_market_depth_by_mint_request(mint, path, headers).await
         });
 
-    let order_book_depth = warp::path("v0")
-        .and(warp::path("order_book"))
+    let all_markets_depth = warp::path("v2")
+        .and(warp::path("markets"))
         .and(warp::path("depth"))
         .and(warp::path::end())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
         .and_then(|path, headers, server: Arc<Server>| async move {
-            server.handle_all_pairs_order_book_depth_request(path, headers).await
+            server.handle_all_markets_depth_request(path, headers).await
         });
 
     let exchange_metadata_path = warp::path("v2")
@@ -462,8 +463,8 @@ async fn main() -> Result<(), AuthServerError> {
         .or(set_user_fee_override)
         .or(remove_asset_default_fee)
         .or(remove_user_fee_override)
-        .or(order_book_depth_with_mint)
-        .or(order_book_depth)
+        .or(market_depth_by_mint)
+        .or(all_markets_depth)
         .or(exchange_metadata_path)
         // .or(rfqt_levels_path)
         // .or(rfqt_quote_path)
