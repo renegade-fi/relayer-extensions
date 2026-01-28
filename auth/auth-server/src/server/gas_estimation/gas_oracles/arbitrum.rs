@@ -1,9 +1,9 @@
 //! Arbitrum specific gas oracle contract methods
 
 use alloy::primitives::{Address, U256};
+use alloy::providers::DynProvider;
 use alloy::sol;
 use alloy_primitives::{FixedBytes, hex};
-use renegade_darkpool_client::client::RenegadeProvider;
 
 use crate::server::helpers::u64_to_u256;
 
@@ -32,7 +32,7 @@ sol! {
 /// - `l1_data_fee`: the cost in wei (on the L2) of including a single byte of
 ///   calldata (l1_base_fee_estimate*16).
 pub async fn estimate_l1_gas_component(
-    provider: RenegadeProvider,
+    provider: DynProvider,
     to: Address,
     data: Vec<u8>,
 ) -> Result<GasPriceEstimation, String> {

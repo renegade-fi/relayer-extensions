@@ -2,10 +2,9 @@
 
 use GasOracle::GasOracleInstance;
 use alloy::primitives::{Address, U256};
-use alloy::providers::Provider;
+use alloy::providers::{DynProvider, Provider};
 use alloy::{hex, sol};
 use alloy_primitives::FixedBytes;
-use renegade_darkpool_client::client::RenegadeProvider;
 
 use super::GasPriceEstimation;
 
@@ -24,7 +23,7 @@ sol! {
 
 /// Estimate the L1 gas component for a transaction on Base
 pub async fn estimate_l1_gas_component(
-    provider: RenegadeProvider,
+    provider: DynProvider,
     _to: Address,
     data: Vec<u8>,
 ) -> Result<GasPriceEstimation, String> {

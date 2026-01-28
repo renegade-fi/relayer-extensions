@@ -3,6 +3,10 @@ name = "auth-server"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+arbitrum = []
+base = []
+
 [dependencies]
 # === HTTP Server === #
 clap = { version = "4.0", features = ["derive", "env"] }
@@ -53,7 +57,7 @@ renegade-types-core = { package = "types-core", git = "https://github.com/renega
 renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["blockchain"] }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["blockchain", "telemetry"] }
 renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", features = [
     "v2",
