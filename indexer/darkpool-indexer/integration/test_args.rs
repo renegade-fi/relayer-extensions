@@ -28,8 +28,9 @@ use darkpool_indexer_api::types::message_queue::{
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
-use renegade_circuit_types::{Nullifier, csprng::PoseidonCSPRNG};
+use renegade_circuit_types::Nullifier;
 use renegade_constants::Scalar;
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use test_helpers::types::TestVerbosity;
 use tokio::task::JoinSet;

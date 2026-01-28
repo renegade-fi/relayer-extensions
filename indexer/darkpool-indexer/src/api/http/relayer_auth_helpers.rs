@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::engine::{Engine, general_purpose as b64_general_purpose};
 use itertools::Itertools;
-use renegade_common::types::hmac::HmacKey;
+use renegade_types_core::HmacKey;
 use warp::http::HeaderMap;
 
 // -------------

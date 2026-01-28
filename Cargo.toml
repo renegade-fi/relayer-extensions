@@ -42,7 +42,7 @@ renegade-util = { package = "util", git = "https://github.com/renegade-fi/renega
 ] }
 renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
 renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts", default-features = false }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts", rev = "1186dd6b30d33a20278a78ade3554fd0bb7b73d4" }
 
 
 # === Blockchain Dependencies === #

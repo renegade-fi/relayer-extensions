@@ -1,9 +1,10 @@
 //! Common, low-level cryptographic utilities
 
 use alloy::primitives::{Address, B256, keccak256};
-use renegade_circuit_types::{Amount, csprng::PoseidonCSPRNG};
+use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_address, scalar_to_u128};
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 
 /// Hash a message to a scalar. We do this by hashing the message, extending the
 /// hash to 64 bytes, then performing modular reduction of the result into a

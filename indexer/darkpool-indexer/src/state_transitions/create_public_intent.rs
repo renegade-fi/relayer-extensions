@@ -2,7 +2,8 @@
 
 use alloy::primitives::B256;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{Amount, intent::Intent};
+use renegade_circuit_types::Amount;
+use renegade_darkpool_types::intent::Intent;
 use tracing::warn;
 
 use crate::{

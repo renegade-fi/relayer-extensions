@@ -1,12 +1,12 @@
 //! Utilities for constructing & interacting with ring 1 settlement data
 
 use alloy::{primitives::TxHash, sol_types::SolValue};
-use renegade_circuit_types::{
-    Nullifier, intent::IntentShare,
-    settlement_obligation::SettlementObligation as CircuitSettlementObligation,
-};
+use renegade_circuit_types::Nullifier;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
+use renegade_darkpool_types::{
+    intent::IntentShare, settlement_obligation::SettlementObligation as CircuitSettlementObligation,
+};
 use renegade_solidity_abi::v2::IDarkpoolV2::{
     ObligationBundle, PrivateIntentPublicBalanceBundle, PrivateIntentPublicBalanceFirstFillBundle,
     SettlementBundle, SettlementObligation,
@@ -91,7 +91,7 @@ impl Ring1FirstFillSettlementData {
 impl Ring1FirstFillSettlementData {
     /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.recoveryId)
+        u256_to_scalar(self.settlement_bundle.auth.statement.recoveryId)
     }
 
     /// Get the pre-match, full public sharing of this party's new intent
@@ -165,7 +165,7 @@ impl Ring1SettlementData {
 impl Ring1SettlementData {
     /// Get the spent intent nullifier
     pub fn get_intent_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldIntentNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldIntentNullifier)
     }
 
     /// Get the settlement obligation

@@ -1,7 +1,7 @@
 //! Command-line interface for the darkpool indexer
 
 use clap::Parser;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
 use crate::indexer::error::IndexerError;
