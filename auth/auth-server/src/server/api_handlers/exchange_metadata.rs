@@ -5,7 +5,6 @@ use http::{HeaderMap, Method};
 use renegade_external_api::{
     http::metadata::GET_EXCHANGE_METADATA_ROUTE, types::ExchangeMetadataResponse,
 };
-use renegade_util::hex::address_to_hex_string;
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
@@ -39,7 +38,7 @@ impl Server {
         let mut response: ExchangeMetadataResponse =
             serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
 
-        response.settlement_contract_address = address_to_hex_string(&self.gas_sponsor_address);
+        response.settlement_contract_address = self.gas_sponsor_address;
 
         Ok(warp::reply::json(&response))
     }

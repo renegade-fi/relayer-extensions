@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use http::HeaderMap;
-use renegade_common::types::token::Token;
+use renegade_types_core::Token;
 use tracing::instrument;
 use warp::{filters::path::FullPath, reject::Rejection, reply::Json};
 
