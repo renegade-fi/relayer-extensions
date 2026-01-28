@@ -5,18 +5,18 @@ use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
-    Amount,
-    balance::{Balance, DarkpoolStateBalance},
-    csprng::PoseidonCSPRNG,
-    fee::FeeTake,
-    fixed_point::FixedPoint,
-    intent::{DarkpoolStateIntent, Intent},
-    max_amount,
-    settlement_obligation::SettlementObligation,
+    Amount, fixed_point::FixedPoint, max_amount, schnorr::SchnorrPrivateKey,
 };
 use renegade_circuits::test_helpers::random_amount;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
+use renegade_darkpool_types::{
+    balance::{DarkpoolBalance, DarkpoolStateBalance},
+    csprng::PoseidonCSPRNG,
+    fee::FeeTake,
+    intent::{DarkpoolStateIntent, Intent},
+    settlement_obligation::SettlementObligation,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -106,19 +106,19 @@ pub fn gen_random_master_view_seed() -> MasterViewSeed {
 }
 
 /// Generate a random balance
-pub fn gen_random_balance() -> Balance {
+pub fn gen_random_balance() -> DarkpoolBalance {
     let mint = Address::random();
     let owner = Address::random();
     let relayer_fee_recipient = Address::random();
-    let one_time_authority = Address::random();
+    let authority = SchnorrPrivateKey::random().public_key();
     let relayer_fee_balance = random_amount();
     let protocol_fee_balance = random_amount();
     let amount = random_amount();
 
-    Balance {
+    DarkpoolBalance {
         mint,
         owner,
-        one_time_authority,
+        authority,
         relayer_fee_recipient,
         relayer_fee_balance,
         protocol_fee_balance,
@@ -619,11 +619,10 @@ pub fn gen_settle_public_first_fill_into_input_balance_transition(
     // Create a dummy settlement obligation with a random match amount
     let settlement_obligation = gen_random_settlement_obligation(initial_balance.inner.amount);
 
-    // Re-encrypt the one-time authority share
-    let one_time_authority = updated_balance.inner.one_time_authority;
-    let new_one_time_authority_share = updated_balance.stream_cipher_encrypt(&one_time_authority);
-
-    updated_balance.public_share.one_time_authority = new_one_time_authority_share;
+    // TODO: Authority handling has changed from Address to SchnorrPublicKey.
+    // Using a default scalar for now until the authority encryption approach is
+    // updated.
+    let new_one_time_authority_share = Scalar::default();
 
     updated_balance.reencrypt_post_match_share();
     updated_balance.apply_obligation_in_balance(&settlement_obligation);

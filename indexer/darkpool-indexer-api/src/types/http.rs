@@ -1,8 +1,8 @@
 //! HTTP API type definitions for the darkpool indexer
 
 use alloy_primitives::B256;
-use renegade_circuit_types::{
-    Amount,
+use renegade_circuit_types::Amount;
+use renegade_darkpool_types::{
     balance::DarkpoolStateBalance,
     intent::{DarkpoolStateIntent, Intent},
 };

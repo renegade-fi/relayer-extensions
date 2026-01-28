@@ -9,8 +9,8 @@ use alloy::{
     providers::{Provider, ProviderBuilder, WsConnect},
 };
 use darkpool_indexer_api::types::message_queue::Message;
-use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
+use renegade_types_core::{Chain, HmacKey};
 use tracing::error;
 
 use crate::{
