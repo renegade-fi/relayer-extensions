@@ -8,11 +8,11 @@ use diesel::{
     Selectable,
     prelude::{AsChangeset, Insertable, Queryable},
 };
-use renegade_circuit_types::{
-    balance::{Balance, BalanceShare, DarkpoolStateBalance},
+use renegade_circuit_types::{primitives::schnorr::SchnorrPublicKey, traits::BaseType};
+use renegade_darkpool_types::{
+    balance::{DarkpoolBalance, DarkpoolBalanceShare, DarkpoolStateBalance},
     csprng::PoseidonCSPRNG,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
-    traits::BaseType,
 };
 use uuid::Uuid;
 
@@ -580,11 +580,11 @@ impl From<BalanceStateObject> for BalanceModel {
             balance:
                 DarkpoolStateBalance {
                     inner:
-                        Balance {
+                        DarkpoolBalance {
                             mint,
                             owner,
                             relayer_fee_recipient,
-                            one_time_authority,
+                            authority,
                             relayer_fee_balance,
                             protocol_fee_balance,
                             amount,
@@ -600,7 +600,9 @@ impl From<BalanceStateObject> for BalanceModel {
         let mint_string = mint.to_string();
         let owner_address_string = owner.to_string();
         let relayer_fee_recipient_string = relayer_fee_recipient.to_string();
-        let one_time_authority_string = one_time_authority.to_string();
+        let one_time_authority_string = serde_json::to_string(&authority)
+            .expect("SchnorrPublicKey serialization should not fail");
+
         let protocol_fee_bigdecimal = protocol_fee_balance.into();
         let relayer_fee_bigdecimal = relayer_fee_balance.into();
         let amount_bigdecimal = amount.into();
@@ -669,8 +671,9 @@ impl From<BalanceModel> for BalanceStateObject {
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed_scalar);
         share_stream.index = share_stream_index_u64;
 
-        let public_shares_scalars =
-            BalanceShare::from_scalars(&mut public_shares.into_iter().map(bigdecimal_to_scalar));
+        let public_shares_scalars = DarkpoolBalanceShare::from_scalars(
+            &mut public_shares.into_iter().map(bigdecimal_to_scalar),
+        );
 
         let mint_address = Address::from_str(&mint).expect("Mint must be a valid address");
         let owner_address_address =
@@ -679,8 +682,8 @@ impl From<BalanceModel> for BalanceStateObject {
         let relayer_fee_recipient_address = Address::from_str(&relayer_fee_recipient)
             .expect("Relayer fee recipient must be a valid address");
 
-        let one_time_authority_address = Address::from_str(&one_time_authority)
-            .expect("One time authority must be a valid address");
+        let authority_key: SchnorrPublicKey = serde_json::from_str(&one_time_authority)
+            .expect("Authority must be a valid SchnorrPublicKey JSON");
 
         let relayer_fee_u128 =
             relayer_fee.to_u128().expect("Relayer fee cannot be converted to u128");
@@ -692,11 +695,11 @@ impl From<BalanceModel> for BalanceStateObject {
 
         BalanceStateObject {
             balance: DarkpoolStateBalance {
-                inner: Balance {
+                inner: DarkpoolBalance {
                     mint: mint_address,
                     owner: owner_address_address,
                     relayer_fee_recipient: relayer_fee_recipient_address,
-                    one_time_authority: one_time_authority_address,
+                    authority: authority_key,
                     relayer_fee_balance: relayer_fee_u128,
                     protocol_fee_balance: protocol_fee_u128,
                     amount: amount_u128,

@@ -1,8 +1,8 @@
 //! Helper functions for working with recovery streams
 
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
 use renegade_crypto::hash::compute_poseidon_hash;
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 
 use crate::crypto_mocks::utils::hash_to_scalar;
 

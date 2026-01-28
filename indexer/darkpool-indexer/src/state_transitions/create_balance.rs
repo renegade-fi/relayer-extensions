@@ -1,14 +1,14 @@
 //! Defines the application-specific logic for creating a new balance object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{
-    balance::{BalanceShare, PostMatchBalanceShare, PreMatchBalanceShare},
-    fee::FeeTake,
-    fixed_point::FixedPoint,
-    settlement_obligation::SettlementObligation,
-};
+use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
+use renegade_darkpool_types::{
+    balance::{DarkpoolBalanceShare, PostMatchBalanceShare, PreMatchBalanceShare},
+    fee::FeeTake,
+    settlement_obligation::SettlementObligation,
+};
 use tracing::warn;
 
 use crate::{
@@ -37,7 +37,7 @@ pub enum BalanceCreationData {
     /// The balance creation data obtained from deposit of a new balance
     DepositNewBalance {
         /// The full public shares of the new balance
-        public_share: BalanceShare,
+        public_share: DarkpoolBalanceShare,
     },
     /// The balance creation data obtained from the settlement of a public-fill
     /// match into a new output balance
@@ -189,11 +189,11 @@ fn construct_new_balance(
             protocol_fee_rate,
         } => {
             // Construct the initial balance from the pre-update public shares
-            let public_share = BalanceShare {
+            let public_share = DarkpoolBalanceShare {
                 mint: pre_match_balance_share.mint,
                 owner: pre_match_balance_share.owner,
                 relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
-                one_time_authority: pre_match_balance_share.one_time_authority,
+                authority: pre_match_balance_share.authority,
                 relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
                 protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
                 amount: post_match_balance_share.amount,
@@ -223,11 +223,11 @@ fn construct_new_balance(
             post_match_balance_share,
         } => {
             // Construct the balance from the updated public shares
-            let public_share = BalanceShare {
+            let public_share = DarkpoolBalanceShare {
                 mint: pre_match_balance_share.mint,
                 owner: pre_match_balance_share.owner,
                 relayer_fee_recipient: pre_match_balance_share.relayer_fee_recipient,
-                one_time_authority: pre_match_balance_share.one_time_authority,
+                authority: pre_match_balance_share.authority,
                 relayer_fee_balance: post_match_balance_share.relayer_fee_balance,
                 protocol_fee_balance: post_match_balance_share.protocol_fee_balance,
                 amount: post_match_balance_share.amount,
@@ -245,7 +245,7 @@ fn construct_new_balance(
 
 #[cfg(test)]
 mod tests {
-    use renegade_circuit_types::balance::DarkpoolStateBalance;
+    use renegade_darkpool_types::balance::DarkpoolStateBalance;
 
     use crate::{
         db::test_utils::cleanup_test_db,

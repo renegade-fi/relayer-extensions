@@ -2,8 +2,8 @@
 //! object
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::settlement_obligation::SettlementObligation;
 use renegade_constants::Scalar;
+use renegade_darkpool_types::settlement_obligation::SettlementObligation;
 use tracing::warn;
 
 use crate::{
@@ -104,7 +104,7 @@ fn apply_settlement_into_intent(
 
 #[cfg(test)]
 mod tests {
-    use renegade_circuit_types::intent::DarkpoolStateIntent;
+    use renegade_darkpool_types::intent::DarkpoolStateIntent;
 
     use crate::{
         db::test_utils::cleanup_test_db,

@@ -1,13 +1,13 @@
 //! Utilities for constructing & interacting with ring 3 settlement data
 
 use alloy::{primitives::TxHash, sol_types::SolValue};
-use renegade_circuit_types::{
-    Nullifier,
+use renegade_circuit_types::Nullifier;
+use renegade_constants::Scalar;
+use renegade_crypto::fields::u256_to_scalar;
+use renegade_darkpool_types::{
     balance::{PostMatchBalanceShare, PreMatchBalanceShare},
     intent::{IntentShare, PreMatchIntentShare},
 };
-use renegade_constants::Scalar;
-use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{
         ExistingBalanceBundle, NewBalanceBundle, ObligationBundle, PrivateObligationBundle,
@@ -149,12 +149,12 @@ impl Ring3FirstFillNewOutBalanceSettlementData {
 impl Ring3FirstFillNewOutBalanceSettlementData {
     /// Get the new output balance recovery ID
     fn get_new_output_balance_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.new_balance_bundle.statement.recoveryId)
+        u256_to_scalar(self.new_balance_bundle.statement.recoveryId)
     }
 
     /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+        u256_to_scalar(self.settlement_bundle.auth.statement.intentRecoveryId)
     }
 
     /// Get the public sharing of the new output balance fields which are not
@@ -179,9 +179,9 @@ impl Ring3FirstFillNewOutBalanceSettlementData {
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
 
         let amount_in_u256 = if self.is_party0 {
-            &self.obligation_bundle.statement.newAmountPublicShare0
+            self.obligation_bundle.statement.newAmountPublicShare0
         } else {
-            &self.obligation_bundle.statement.newAmountPublicShare1
+            self.obligation_bundle.statement.newAmountPublicShare1
         };
 
         let amount_in = u256_to_scalar(amount_in_u256);
@@ -191,7 +191,7 @@ impl Ring3FirstFillNewOutBalanceSettlementData {
 
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the public sharing of the post-update input balance fields which are
@@ -307,7 +307,7 @@ impl Ring3FirstFillSettlementData {
 impl Ring3FirstFillSettlementData {
     /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+        u256_to_scalar(self.settlement_bundle.auth.statement.intentRecoveryId)
     }
 
     /// Get the post-update intent share
@@ -316,9 +316,9 @@ impl Ring3FirstFillSettlementData {
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
 
         let amount_in_u256 = if self.is_party0 {
-            &self.obligation_bundle.statement.newAmountPublicShare0
+            self.obligation_bundle.statement.newAmountPublicShare0
         } else {
-            &self.obligation_bundle.statement.newAmountPublicShare1
+            self.obligation_bundle.statement.newAmountPublicShare1
         };
 
         let amount_in = u256_to_scalar(amount_in_u256);
@@ -328,12 +328,12 @@ impl Ring3FirstFillSettlementData {
 
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+        u256_to_scalar(self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
     /// Get the public sharing of the post-update input balance fields which are
@@ -445,25 +445,25 @@ impl Ring3SettlementData {
 impl Ring3SettlementData {
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+        u256_to_scalar(self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
     /// Get the spent intent nullifier
     fn get_intent_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldIntentNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldIntentNullifier)
     }
 
     /// Get the public sharing of the post-update intent amount
     fn get_intent_amount_share(&self) -> Scalar {
         if self.is_party0 {
-            u256_to_scalar(&self.obligation_bundle.statement.newAmountPublicShare0)
+            u256_to_scalar(self.obligation_bundle.statement.newAmountPublicShare0)
         } else {
-            u256_to_scalar(&self.obligation_bundle.statement.newAmountPublicShare1)
+            u256_to_scalar(self.obligation_bundle.statement.newAmountPublicShare1)
         }
     }
 
