@@ -3,9 +3,11 @@
 
 use std::sync::Arc;
 
-use alloy::primitives::{Address, U256};
+use alloy::{
+    primitives::{Address, U256},
+    providers::DynProvider,
+};
 use rand::{RngCore, thread_rng};
-use renegade_darkpool_client::client::RenegadeProvider;
 use renegade_system_clock::{SystemClock, SystemClockError};
 use tokio::sync::RwLock;
 
@@ -25,7 +27,7 @@ pub struct GasCostSampler {
     /// The latest estimate of the gas cost for an external match
     latest_estimate: Arc<RwLock<U256>>,
     /// An Arbitrum RPC client
-    client: RenegadeProvider,
+    client: DynProvider,
     /// The address of the gas sponsor contract
     gas_sponsor_address: Address,
 }
@@ -33,7 +35,7 @@ pub struct GasCostSampler {
 impl GasCostSampler {
     /// Create a new gas cost sampler
     pub async fn new(
-        client: RenegadeProvider,
+        client: DynProvider,
         gas_sponsor_address: Address,
         system_clock: &SystemClock,
     ) -> Result<Self, AuthServerError> {
