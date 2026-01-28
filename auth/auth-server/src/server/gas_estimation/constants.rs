@@ -9,7 +9,7 @@ use crate::server::helpers::u64_to_u256;
 /// A pessimistic overestimate of the gas cost of L2 execution for an external
 /// match, rounded up to the nearest 100k.
 /// The estimated L2 gas cost of submitting an external match settlement
-pub const ESTIMATED_L2_GAS_U64: u64 = 3_600_000; // 3.6m
+pub const ESTIMATED_L2_GAS_U64: u64 = 500_000; // 500k
 
 /// The estimated L2 gas cost as a U256
 /// In the future, we can consider sampling execution gas costs from a recent
