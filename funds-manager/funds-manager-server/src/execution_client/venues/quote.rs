@@ -15,7 +15,7 @@ use crate::{
         error::ExecutionClientError,
         venues::{
             bebop::BebopQuoteExecutionData, cowswap::CowswapQuoteExecutionData,
-            lifi::LifiQuoteExecutionData, okx::OkxQuoteExecutionData, SupportedExecutionVenue,
+            lifi::LifiQuoteExecutionData, SupportedExecutionVenue,
         },
     },
     helpers::{contains_byte_subslice, get_darkpool_address, to_chain_id},
@@ -158,8 +158,6 @@ pub enum QuoteExecutionData {
     Cowswap(CowswapQuoteExecutionData),
     /// Bebop-specific quote execution data
     Bebop(BebopQuoteExecutionData),
-    /// Okx-specific quote execution data
-    Okx(OkxQuoteExecutionData),
 }
 
 impl QuoteExecutionData {
@@ -189,15 +187,6 @@ impl QuoteExecutionData {
             _ => Err(ExecutionClientError::quote_conversion("Non-Bebop quote execution data")),
         }
     }
-
-    /// "Unwraps" Okx quote execution data, returning an error if it is not
-    /// the Okx variant
-    pub fn okx(&self) -> Result<OkxQuoteExecutionData, ExecutionClientError> {
-        match self {
-            QuoteExecutionData::Okx(data) => Ok(data.clone()),
-            _ => Err(ExecutionClientError::quote_conversion("Non-Okx quote execution data")),
-        }
-    }
 }
 
 /// An executable quote, which includes the basic quote information
@@ -225,7 +214,6 @@ impl ExecutableQuote {
         let calldata = match execution_data {
             QuoteExecutionData::Lifi(data) => data.data.as_ref(),
             QuoteExecutionData::Bebop(data) => data.data.as_ref(),
-            QuoteExecutionData::Okx(data) => data.data.as_ref(),
             // Cowswap doesn't supply calldata in quotes
             QuoteExecutionData::Cowswap(_) => return false,
         };
@@ -255,8 +243,6 @@ pub enum CrossVenueQuoteSource {
     BebopPMMv3,
     /// A quote from Cowswap
     Cowswap,
-    /// A quote from a specific liquidity source via Okx
-    Okx(Vec<String>),
 }
 
 impl Display for CrossVenueQuoteSource {
@@ -266,7 +252,6 @@ impl Display for CrossVenueQuoteSource {
             CrossVenueQuoteSource::BebopJAMv2 => write!(f, "Bebop JAMv2"),
             CrossVenueQuoteSource::BebopPMMv3 => write!(f, "Bebop PMMv3"),
             CrossVenueQuoteSource::Cowswap => write!(f, "Cowswap"),
-            CrossVenueQuoteSource::Okx(route) => write!(f, "Okx ({route:?})"),
         }
     }
 }

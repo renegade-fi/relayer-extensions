@@ -12,7 +12,7 @@ pub mod custody_client;
 pub mod db;
 pub mod error;
 pub mod execution_client;
-pub mod fee_indexer;
+// pub mod fee_indexer;
 pub mod handlers;
 pub mod helpers;
 pub mod metrics;
@@ -24,7 +24,7 @@ pub mod server;
 use clap::Parser;
 use cli::Cli;
 use custody_client::rpc_shim::JsonRpcRequest;
-use fee_indexer::Indexer;
+// use fee_indexer::Indexer;
 use funds_manager_api::fees::{
     WithdrawFeeBalanceRequest, GET_FEE_HOT_WALLET_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE,
     GET_UNREDEEMED_FEE_TOTALS_ROUTE, INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE,

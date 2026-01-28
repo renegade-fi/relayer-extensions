@@ -10,7 +10,6 @@ use crate::execution_client::{
         bebop::BebopClient,
         cowswap::CowswapClient,
         lifi::LifiClient,
-        okx::OkxClient,
         quote::{CrossVenueQuoteSource, ExecutableQuote},
     },
 };
@@ -18,7 +17,6 @@ use crate::execution_client::{
 pub mod bebop;
 pub mod cowswap;
 pub mod lifi;
-pub mod okx;
 pub mod quote;
 
 /// A collection of all execution venues used by the execution client
@@ -30,8 +28,6 @@ pub struct AllExecutionVenues {
     pub cowswap: CowswapClient,
     /// The Bebop client
     pub bebop: BebopClient,
-    /// The Okx client
-    pub okx: OkxClient,
 }
 
 impl AllExecutionVenues {
@@ -39,16 +35,23 @@ impl AllExecutionVenues {
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
         // TEMP: We are disabling Cowswap by default until we have a mechanism
         // for self-trade prevention
-        vec![&self.lifi, &self.bebop, &self.okx]
+        vec![&self.lifi, &self.bebop]
     }
 
     /// Get a venue by its specifier
+    ///
+    /// # Panics
+    /// Panics if `Okx` is passed, as it is no longer supported. This should
+    /// never happen in practice as OKX requests are filtered out before calling
+    /// this method.
     pub fn get_venue(&self, venue: SupportedExecutionVenue) -> &dyn ExecutionVenue {
         match venue {
             SupportedExecutionVenue::Lifi => &self.lifi,
             SupportedExecutionVenue::Cowswap => &self.cowswap,
             SupportedExecutionVenue::Bebop => &self.bebop,
-            SupportedExecutionVenue::Okx => &self.okx,
+            SupportedExecutionVenue::Okx => {
+                unreachable!("OKX execution venue should be filtered out before calling get_venue")
+            },
         }
     }
 }

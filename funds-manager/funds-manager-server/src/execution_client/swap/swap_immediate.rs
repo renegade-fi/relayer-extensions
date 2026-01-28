@@ -270,6 +270,12 @@ impl ExecutionClient {
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         // If a venue is specified in the params, we only consider that venue
         let venues = if let Some(venue) = params.venue {
+            // Check if OKX is requested (no longer supported)
+            if matches!(venue, funds_manager_api::quoters::SupportedExecutionVenue::Okx) {
+                return Err(ExecutionClientError::custom(
+                    "OKX execution venue is no longer supported",
+                ));
+            }
             vec![self.venues.get_venue(venue)]
         } else {
             self.venues.get_all_venues()
@@ -394,20 +400,18 @@ impl ExecutionClient {
         mut cumulative_gas_cost: U256,
         num_swaps_with_exclusion: &mut usize,
     ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
-        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } = match executable_quote
-            .execution_data
-        {
-            QuoteExecutionData::Lifi(_) => {
-                self.venues.lifi.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Cowswap(_) => {
-                self.venues.cowswap.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Bebop(_) => {
-                self.venues.bebop.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Okx(_) => self.venues.okx.execute_quote(&executable_quote).await?,
-        };
+        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+            match executable_quote.execution_data {
+                QuoteExecutionData::Lifi(_) => {
+                    self.venues.lifi.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Cowswap(_) => {
+                    self.venues.cowswap.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Bebop(_) => {
+                    self.venues.bebop.execute_quote(&executable_quote).await?
+                },
+            };
 
         cumulative_gas_cost += gas_cost;
 

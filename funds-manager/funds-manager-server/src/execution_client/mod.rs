@@ -14,7 +14,6 @@ use crate::{
         bebop::BebopClient,
         cowswap::CowswapClient,
         lifi::LifiClient,
-        okx::{OkxApiCredentials, OkxClient},
         AllExecutionVenues,
     },
     helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
@@ -46,7 +45,6 @@ impl ExecutionClient {
         chain: Chain,
         lifi_api_key: Option<String>,
         bebop_api_key: Option<String>,
-        okx_credentials: OkxApiCredentials,
         base_provider: DynProvider,
         price_reporter: PriceReporterClient,
         quoter_hot_wallet: PrivateKeySigner,
@@ -67,9 +65,7 @@ impl ExecutionClient {
             chain,
         );
 
-        let okx = OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain).await?;
-
-        let venues = AllExecutionVenues { lifi, cowswap, bebop, okx };
+        let venues = AllExecutionVenues { lifi, cowswap, bebop };
 
         Ok(Self {
             chain,
