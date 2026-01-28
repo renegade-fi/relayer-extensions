@@ -5,9 +5,7 @@ use std::time::Duration;
 use alloy::{primitives::U256, rpc::types::TransactionReceipt};
 use eyre::Result;
 use rand::{Rng, thread_rng};
-use renegade_circuit_types::{
-    Amount, balance::DarkpoolStateBalance, withdrawal::Withdrawal as CircuitWithdrawal,
-};
+use renegade_circuit_types::Amount;
 use renegade_circuits::{
     singleprover_prove,
     zk_circuits::valid_withdrawal::{
@@ -15,12 +13,15 @@ use renegade_circuits::{
         ValidWithdrawalWitness,
     },
 };
-use renegade_common::types::merkle::MerkleAuthenticationPath;
+use renegade_darkpool_types::{
+    balance::DarkpoolStateBalance, withdrawal::Withdrawal as CircuitWithdrawal,
+};
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{Withdrawal, WithdrawalProofBundle},
     relayer_types::u256_to_u128,
     transfer_auth::withdrawal::create_withdrawal_auth,
 };
+use renegade_types_account::MerkleAuthenticationPath;
 
 use crate::{
     indexer_integration_test,
@@ -85,8 +86,12 @@ async fn submit_withdrawal(
 
     let withdrawal = random_withdrawal(initial_balance.inner.amount, args)?;
     let proof_bundle = gen_withdrawal_proof_bundle(&withdrawal, initial_balance, &merkle_path)?;
-    let withdrawal_auth =
-        create_withdrawal_auth(proof_bundle.statement.newBalanceCommitment, &args.party0_signer())?;
+    let chain_id = args.chain_id().await?;
+    let withdrawal_auth = create_withdrawal_auth(
+        proof_bundle.statement.newBalanceCommitment,
+        chain_id,
+        &args.party0_signer(),
+    )?;
 
     let darkpool = args.darkpool_instance();
     let call = darkpool.withdraw(withdrawal_auth, proof_bundle);

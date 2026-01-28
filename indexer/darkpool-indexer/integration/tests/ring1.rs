@@ -5,18 +5,14 @@ use std::time::Duration;
 
 use alloy::{primitives::U256, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner};
 use eyre::Result;
-use renegade_circuit_types::{
-    Commitment, PlonkLinkProof, PlonkProof, ProofLinkingHint,
-    intent::{DarkpoolStateIntent, Intent},
-    settlement_obligation::SettlementObligation,
-};
+use renegade_circuit_types::{Commitment, PlonkLinkProof, PlonkProof, ProofLinkingHint};
 use renegade_circuits::{
     singleprover_prove_with_hint,
     test_helpers::random_scalar,
     zk_circuits::{
         proof_linking::intent_only::link_sized_intent_only_settlement,
         settlement::intent_only_public_settlement::{
-            self, IntentOnlyPublicSettlementStatement, SizedIntentOnlyPublicSettlementCircuit,
+            self, IntentOnlyPublicSettlementCircuit, IntentOnlyPublicSettlementStatement,
         },
         validity_proofs::{
             intent_only::{self, IntentOnlyValidityStatement, SizedIntentOnlyValidityCircuit},
@@ -27,15 +23,16 @@ use renegade_circuits::{
         },
     },
 };
-use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::MERKLE_HEIGHT;
-use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{
-        ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill,
-        SettlementBundle,
-    },
-    auth_helpers::sign_with_nonce,
+use renegade_darkpool_types::{
+    intent::{DarkpoolStateIntent, Intent},
+    settlement_obligation::SettlementObligation,
 };
+use renegade_solidity_abi::v2::IDarkpoolV2::{
+    ObligationBundle, PrivateIntentAuthBundle, PrivateIntentAuthBundleFirstFill, SettlementBundle,
+    SignatureWithNonce,
+};
+use renegade_types_account::MerkleAuthenticationPath;
 
 use crate::{
     indexer_integration_test,
@@ -134,7 +131,8 @@ async fn submit_ring1_first_fill(
         true, // is_party0
         &intent0,
         &first_obligation0,
-    )?;
+    )
+    .await?;
 
     // We build a ring 0 settlement bundle for party 1 for simplicity - this way, we
     // don't need to find a Merkle opening for party 1's intent on subsequent fills
@@ -143,7 +141,8 @@ async fn submit_ring1_first_fill(
         false, // is_party
         &intent1,
         &first_obligation1,
-    )?;
+    )
+    .await?;
 
     let obligation_bundle = ObligationBundle::new_public(
         first_obligation0.clone().into(),
@@ -182,7 +181,7 @@ async fn submit_ring1_subsequent_fill(
         build_ring1_settlement_bundle_subsequent_fill(state_intent0, &opening0, obligation0)?;
 
     let (settlement_bundle1, _) =
-        build_ring0_settlement_bundle(args, false /* is_party0 */, intent1, obligation1)?;
+        build_ring0_settlement_bundle(args, false /* is_party0 */, intent1, obligation1).await?;
 
     let obligation_bundle =
         ObligationBundle::new_public(obligation0.clone().into(), obligation1.clone().into());
@@ -194,7 +193,7 @@ async fn submit_ring1_subsequent_fill(
 }
 
 /// Build a settlement bundle for the first fill of a ring 1 intent
-fn build_ring1_settlement_bundle_first_fill(
+async fn build_ring1_settlement_bundle_first_fill(
     args: &mut TestArgs,
     is_party0: bool,
     intent: &Intent,
@@ -212,8 +211,14 @@ fn build_ring1_settlement_bundle_first_fill(
     // Build bundles
     let commitment = state_intent.compute_commitment();
     let owner = if is_party0 { args.party0_signer() } else { args.party1_signer() };
-    let auth_bundle =
-        build_auth_bundle_first_fill(&owner, commitment, &validity_statement, &validity_proof)?;
+    let chain_id = args.chain_id().await?;
+    let auth_bundle = build_auth_bundle_first_fill(
+        &owner,
+        commitment,
+        &validity_statement,
+        &validity_proof,
+        chain_id,
+    )?;
 
     let settlement_bundle = SettlementBundle::private_intent_public_balance_first_fill(
         auth_bundle.clone(),
@@ -349,9 +354,8 @@ fn generate_ring1_settlement_proof(
     let (witness, mut statement) = intent_only_public_settlement::test_helpers::create_witness_statement_with_intent_and_obligation(intent, obligation);
     statement.relayer_fee = settlement_relayer_fee();
 
-    let (proof, link_hint) = singleprover_prove_with_hint::<SizedIntentOnlyPublicSettlementCircuit>(
-        &witness, &statement,
-    )?;
+    let (proof, link_hint) =
+        singleprover_prove_with_hint::<IntentOnlyPublicSettlementCircuit>(&witness, &statement)?;
 
     Ok((statement, proof, link_hint))
 }
@@ -362,8 +366,9 @@ fn build_auth_bundle_first_fill(
     commitment: Commitment,
     validity_statement: &IntentOnlyFirstFillValidityStatement,
     validity_proof: &PlonkProof,
+    chain_id: u64,
 ) -> Result<PrivateIntentAuthBundleFirstFill> {
-    let signature = sign_with_nonce(&commitment.to_bytes_be(), owner)?;
+    let signature = SignatureWithNonce::sign(&commitment.to_bytes_be(), chain_id, owner)?;
 
     Ok(PrivateIntentAuthBundleFirstFill {
         intentSignature: signature,

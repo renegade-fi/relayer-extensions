@@ -4,8 +4,8 @@ use alloy::primitives::TxHash;
 use darkpool_indexer_api::types::message_queue::{
     Message, NullifierSpendMessage, RecoveryIdMessage,
 };
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 use tokio::task::JoinSet;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
