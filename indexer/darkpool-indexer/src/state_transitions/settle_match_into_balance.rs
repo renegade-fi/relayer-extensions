@@ -2,12 +2,12 @@
 //! object.
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{
-    balance::PostMatchBalanceShare, fee::FeeTake, fixed_point::FixedPoint,
-    settlement_obligation::SettlementObligation,
-};
+use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
+use renegade_darkpool_types::{
+    balance::PostMatchBalanceShare, fee::FeeTake, settlement_obligation::SettlementObligation,
+};
 use tracing::warn;
 
 use crate::{
@@ -147,7 +147,7 @@ fn apply_settlement_into_balance(
 
 #[cfg(test)]
 mod tests {
-    use renegade_circuit_types::balance::DarkpoolStateBalance;
+    use renegade_darkpool_types::balance::DarkpoolStateBalance;
 
     use crate::{
         db::test_utils::cleanup_test_db,

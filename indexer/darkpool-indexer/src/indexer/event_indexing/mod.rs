@@ -4,13 +4,13 @@ use alloy::{
     primitives::{B256, TxHash},
     sol_types::SolCall,
 };
-use renegade_circuit_types::{balance::BalanceShare, traits::BaseType};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
+use renegade_darkpool_types::balance::DarkpoolBalanceShare;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    cancelOrderCall, depositCall, depositNewBalanceCall, payPrivateProtocolFeeCall,
-    payPrivateRelayerFeeCall, payPublicProtocolFeeCall, payPublicRelayerFeeCall, settleMatchCall,
-    withdrawCall,
+    cancelPrivateOrderCall, cancelPublicOrderCall, depositCall, depositNewBalanceCall,
+    payPrivateProtocolFeeCall, payPrivateRelayerFeeCall, payPublicProtocolFeeCall,
+    payPublicRelayerFeeCall, settleMatchCall, withdrawCall,
 };
 
 use crate::{
@@ -86,7 +86,7 @@ impl Indexer {
                     )),
                 )
             },
-            cancelOrderCall::SELECTOR => {
+            cancelPrivateOrderCall::SELECTOR => {
                 self.compute_cancel_order_transition(nullifier, tx_hash).await
             },
             _ => Err(IndexerError::invalid_selector(selector)),
@@ -222,7 +222,10 @@ impl Indexer {
                     ),
                 )
             },
-            // TODO: Handle intent cancellation once ABI is finalized
+            cancelPublicOrderCall::SELECTOR => {
+                // TODO: Implement public intent cancellation handling
+                Err(IndexerError::invalid_selector(selector))
+            },
             _ => Err(IndexerError::invalid_selector(selector)),
         }
     }
@@ -246,14 +249,8 @@ impl Indexer {
         let deposit_new_balance_call =
             depositNewBalanceCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
-        let mut public_shares_iter = deposit_new_balance_call
-            .newBalanceProofBundle
-            .statement
-            .newBalancePublicShares
-            .iter()
-            .map(u256_to_scalar);
-
-        let public_share = BalanceShare::from_scalars(&mut public_shares_iter);
+        let public_share: DarkpoolBalanceShare =
+            deposit_new_balance_call.newBalanceProofBundle.statement.newBalanceShares.into();
 
         let balance_creation_data = BalanceCreationData::DepositNewBalance { public_share };
 
@@ -277,7 +274,7 @@ impl Indexer {
         let deposit_call = depositCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_amount_public_share =
-            u256_to_scalar(&deposit_call.depositProofBundle.statement.newAmountShare);
+            u256_to_scalar(deposit_call.depositProofBundle.statement.newAmountShare);
 
         Ok(StateTransition::Deposit(DepositTransition {
             nullifier,
@@ -299,7 +296,7 @@ impl Indexer {
         let withdraw_call = withdrawCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_amount_public_share =
-            u256_to_scalar(&withdraw_call.withdrawalProofBundle.statement.newAmountShare);
+            u256_to_scalar(withdraw_call.withdrawalProofBundle.statement.newAmountShare);
 
         Ok(StateTransition::Withdraw(WithdrawTransition {
             nullifier,
@@ -322,7 +319,7 @@ impl Indexer {
             payPublicProtocolFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_protocol_fee_public_share = u256_to_scalar(
-            &pay_public_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
+            pay_public_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
         );
 
         Ok(StateTransition::PayProtocolFee(PayProtocolFeeTransition {
@@ -346,7 +343,7 @@ impl Indexer {
             payPrivateProtocolFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_protocol_fee_public_share = u256_to_scalar(
-            &pay_private_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
+            pay_private_protocol_fee_call.proofBundle.statement.newProtocolFeeBalanceShare,
         );
 
         Ok(StateTransition::PayProtocolFee(PayProtocolFeeTransition {
@@ -370,7 +367,7 @@ impl Indexer {
             payPublicRelayerFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_relayer_fee_public_share = u256_to_scalar(
-            &pay_public_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
+            pay_public_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
         );
 
         Ok(StateTransition::PayRelayerFee(PayRelayerFeeTransition {
@@ -394,7 +391,7 @@ impl Indexer {
             payPrivateRelayerFeeCall::abi_decode(calldata).map_err(IndexerError::parse)?;
 
         let new_relayer_fee_public_share = u256_to_scalar(
-            &pay_private_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
+            pay_private_relayer_fee_call.proofBundle.statement.newRelayerFeeBalanceShare,
         );
 
         Ok(StateTransition::PayRelayerFee(PayRelayerFeeTransition {

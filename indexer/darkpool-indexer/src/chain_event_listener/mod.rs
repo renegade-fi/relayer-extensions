@@ -54,7 +54,7 @@ impl ChainEventListener {
         let mut stream = filter.subscribe().await?.into_stream();
 
         while let Some(Ok((event, log))) = stream.next().await {
-            let nullifier = u256_to_scalar(&event.nullifier);
+            let nullifier = u256_to_scalar(event.nullifier);
             let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(format!(
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;
@@ -85,7 +85,7 @@ impl ChainEventListener {
         let mut stream = filter.subscribe().await?.into_stream();
 
         while let Some(Ok((event, log))) = stream.next().await {
-            let recovery_id = u256_to_scalar(&event.recoveryId);
+            let recovery_id = u256_to_scalar(event.recoveryId);
             let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(format!(
                 "no tx hash for recovery ID {recovery_id} registration event"
             )))?;

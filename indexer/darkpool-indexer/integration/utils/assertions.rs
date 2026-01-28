@@ -2,10 +2,8 @@
 
 use alloy::providers::DynProvider;
 use eyre::Result;
-use renegade_circuit_types::{
-    state_wrapper::StateWrapper,
-    traits::{CircuitBaseType, SecretShareBaseType},
-};
+use renegade_circuit_types::traits::{CircuitBaseType, SecretShareBaseType};
+use renegade_darkpool_types::state_wrapper::StateWrapper;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use test_helpers::assert_eq_result;
 

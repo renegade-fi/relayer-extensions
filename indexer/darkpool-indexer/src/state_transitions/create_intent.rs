@@ -1,8 +1,8 @@
 //! Defines the application-specific logic for creating a new intent object
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use renegade_circuit_types::{intent::IntentShare, settlement_obligation::SettlementObligation};
 use renegade_constants::Scalar;
+use renegade_darkpool_types::{intent::IntentShare, settlement_obligation::SettlementObligation};
 use tracing::warn;
 
 use crate::{
@@ -180,7 +180,7 @@ fn construct_new_intent(
 
 #[cfg(test)]
 mod tests {
-    use renegade_circuit_types::intent::DarkpoolStateIntent;
+    use renegade_darkpool_types::intent::DarkpoolStateIntent;
 
     use crate::{
         db::test_utils::cleanup_test_db,

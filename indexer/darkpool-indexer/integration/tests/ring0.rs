@@ -8,9 +8,9 @@ use alloy::{
     rpc::types::TransactionReceipt,
     sol_types::SolValue,
 };
-use darkpool_indexer::indexer::event_indexing::types::settlement_bundle::NATIVELY_SETTLED_PUBLIC_INTENT;
 use eyre::Result;
-use renegade_circuit_types::{intent::Intent, settlement_obligation::SettlementObligation};
+use renegade_darkpool_types::{intent::Intent, settlement_obligation::SettlementObligation};
+use renegade_solidity_abi::v2::calldata_bundles::NATIVE_SETTLED_PUBLIC_INTENT_BUNDLE_TYPE;
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{
         self, FeeRate, ObligationBundle, PublicIntentAuthBundle, PublicIntentPermit,
@@ -125,14 +125,16 @@ async fn submit_ring0_first_fill(
         true, // is_party0
         &intent0,
         &first_obligation0,
-    )?;
+    )
+    .await?;
 
     let (settlement_bundle1, _) = build_ring0_settlement_bundle(
         args,
         false, // is_party0
         &intent1,
         &first_obligation1,
-    )?;
+    )
+    .await?;
 
     let obligation_bundle = ObligationBundle::new_public(
         first_obligation0.clone().into(),
@@ -163,14 +165,16 @@ async fn submit_ring0_subsequent_fill(
         true, // is_party0
         original_intent0,
         second_obligation0,
-    )?;
+    )
+    .await?;
 
     let (settlement_bundle1, _) = build_ring0_settlement_bundle(
         args,
         false, // is_party0
         original_intent1,
         second_obligation1,
-    )?;
+    )
+    .await?;
 
     let obligation_bundle = ObligationBundle::new_public(
         second_obligation0.clone().into(),
@@ -188,7 +192,7 @@ async fn submit_ring0_subsequent_fill(
 /// Build a settlement bundle a ring 0 intent.
 ///
 /// Returns the settlement bundle alongside the intent hash.
-pub fn build_ring0_settlement_bundle(
+pub async fn build_ring0_settlement_bundle(
     args: &TestArgs,
     is_party0: bool,
     circuit_intent: &Intent,
@@ -205,19 +209,22 @@ pub fn build_ring0_settlement_bundle(
     let intent_hash = keccak256(permit.abi_encode());
     let owner = if is_party0 { args.party0_signer() } else { args.party1_signer() };
 
-    let intent_signature = permit.sign(&owner)?;
+    let chain_id = args.chain_id().await?;
+    let intent_signature = permit.sign(chain_id, &owner)?;
 
     // Generate executor signature
     let relayer_fee_rate =
         FeeRate { rate: settlement_relayer_fee().into(), recipient: Address::random() };
 
     let obligation: IDarkpoolV2::SettlementObligation = circuit_obligation.clone().into();
-    let executor_signature = obligation.create_executor_signature(&relayer_fee_rate, &executor)?;
+    let executor_signature =
+        obligation.create_executor_signature(&relayer_fee_rate, chain_id, &executor)?;
 
     let auth = PublicIntentAuthBundle {
-        permit,
+        intentPermit: permit,
         intentSignature: intent_signature,
         executorSignature: executor_signature,
+        allowancePermit: Default::default(),
     };
 
     let bundle_data = PublicIntentPublicBalanceBundle { auth, relayerFeeRate: relayer_fee_rate };
@@ -225,7 +232,7 @@ pub fn build_ring0_settlement_bundle(
     let bundle = SettlementBundle {
         // The contracts never expect this field to be set
         isFirstFill: false,
-        bundleType: NATIVELY_SETTLED_PUBLIC_INTENT,
+        bundleType: NATIVE_SETTLED_PUBLIC_INTENT_BUNDLE_TYPE,
         data: bundle_data.abi_encode().into(),
     };
 

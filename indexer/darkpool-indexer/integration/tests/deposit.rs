@@ -7,7 +7,7 @@ use alloy::{
     primitives::Address, rpc::types::TransactionReceipt, signers::local::PrivateKeySigner,
 };
 use eyre::Result;
-use renegade_circuit_types::balance::{Balance, DarkpoolStateBalance};
+use renegade_circuit_types::schnorr::SchnorrPrivateKey;
 use renegade_circuits::{
     singleprover_prove,
     zk_circuits::{
@@ -19,14 +19,15 @@ use renegade_circuits::{
         },
     },
 };
-use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::Scalar;
 use renegade_crypto::fields::{scalar_to_u256, u256_to_scalar};
+use renegade_darkpool_types::balance::{DarkpoolBalance, DarkpoolStateBalance};
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{Deposit, DepositAuth, DepositProofBundle, NewBalanceDepositProofBundle},
     relayer_types::u256_to_u128,
     transfer_auth::deposit::create_deposit_permit,
 };
+use renegade_types_account::MerkleAuthenticationPath;
 
 use crate::{
     indexer_integration_test,
@@ -110,7 +111,7 @@ pub async fn submit_deposit_new_balance(
 ) -> Result<(TransactionReceipt, DarkpoolStateBalance, Scalar)> {
     // Build calldata for the balance creation
     let (witness, bundle) = gen_new_balance_deposit_proof_bundle(args, deposit)?;
-    let commitment = u256_to_scalar(&bundle.statement.newBalanceCommitment);
+    let commitment = u256_to_scalar(bundle.statement.newBalanceCommitment);
     let signer = args.party0_signer();
     let deposit_auth = build_deposit_permit(args, commitment, deposit, &signer).await?;
 
@@ -154,11 +155,12 @@ fn build_new_balance_deposit_witness_statement(
     // Build a state object
     let relayer_fee_recipient = Address::random();
     let amount_u128 = u256_to_u128(deposit.amount);
-    let balance = Balance::new(
+    let authority = SchnorrPrivateKey::random().public_key();
+    let balance = DarkpoolBalance::new(
         deposit.token,
         args.party0_address(),
         relayer_fee_recipient,
-        args.party0_address(),
+        authority,
     )
     .with_amount(amount_u128);
 
@@ -201,7 +203,7 @@ async fn submit_deposit(
 
     let second_deposit = random_deposit(args)?;
     let proof_bundle = gen_deposit_proof_bundle(&second_deposit, initial_balance, &merkle_path)?;
-    let commitment = u256_to_scalar(&proof_bundle.statement.newBalanceCommitment);
+    let commitment = u256_to_scalar(proof_bundle.statement.newBalanceCommitment);
     let deposit_auth =
         build_deposit_permit(args, commitment, &second_deposit, &args.party0_signer()).await?;
 

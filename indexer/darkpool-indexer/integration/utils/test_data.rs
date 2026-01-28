@@ -3,32 +3,18 @@
 use alloy::primitives::U256;
 use eyre::Result;
 use rand::{Rng, thread_rng};
-use renegade_circuit_types::{
-    balance::{Balance, PostMatchBalanceShare},
-    fixed_point::FixedPoint,
-    intent::Intent,
-    max_amount,
-    settlement_obligation::SettlementObligation,
-    traits::BaseType,
-};
+use renegade_circuit_types::{fixed_point::FixedPoint, max_amount, traits::BaseType};
 use renegade_circuits::test_helpers::{
     BOUNDED_MAX_AMT, compute_implied_price, compute_min_amount_out, random_price,
+};
+use renegade_darkpool_types::{
+    balance::{DarkpoolBalance, PostMatchBalanceShare},
+    intent::Intent,
+    settlement_obligation::SettlementObligation,
 };
 use renegade_solidity_abi::v2::IDarkpoolV2::Deposit;
 
 use crate::test_args::TestArgs;
-
-// -------------
-// | Constants |
-// -------------
-
-/// The number of public shares to include in the partial commitment to the
-/// updated balance
-///
-/// This is the set of shares that will not change after the match.
-// TODO: Remove once this is exported from the relayer repo
-pub const NEW_BALANCE_PARTIAL_COMMITMENT_SIZE: usize =
-    Balance::NUM_SCALARS - PostMatchBalanceShare::NUM_SCALARS;
 
 /// Generate a random circuit-compatible amount as a U256.
 ///
