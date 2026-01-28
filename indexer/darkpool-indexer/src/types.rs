@@ -5,20 +5,21 @@ use alloy::primitives::{Address, B256};
 use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
 use renegade_circuit_types::{
     Amount,
-    balance::{BalanceShare, DarkpoolStateBalance, PostMatchBalanceShare},
+    traits::{BaseType, SecretShareType},
+};
+use renegade_constants::Scalar;
+use renegade_darkpool_types::{
+    balance::{DarkpoolBalanceShare, DarkpoolStateBalance, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
     fee::FeeTake,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
     settlement_obligation::SettlementObligation,
-    traits::{BaseType, SecretShareType},
 };
-use renegade_constants::Scalar;
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
-    recovery_stream::create_recovery_seed_csprng,
-    share_stream::create_share_seed_csprng,
-    utils::{decrypt_address, decrypt_amount},
+    recovery_stream::create_recovery_seed_csprng, share_stream::create_share_seed_csprng,
+    utils::decrypt_amount,
 };
 
 // -------------
@@ -105,14 +106,14 @@ pub struct BalanceStateObject {
 impl BalanceStateObject {
     /// Create a new balance state object
     pub fn new(
-        public_share: BalanceShare,
+        public_share: DarkpoolBalanceShare,
         recovery_stream_seed: Scalar,
         share_stream_seed: Scalar,
         account_id: Uuid,
     ) -> Self {
         // Compute the balance's private shares & reconstruct the plaintext
         let mut share_stream = PoseidonCSPRNG::new(share_stream_seed);
-        let private_share = BalanceShare::from_scalars(&mut share_stream);
+        let private_share = DarkpoolBalanceShare::from_scalars(&mut share_stream);
         let balance_inner = public_share.add_shares(&private_share);
 
         // Ensure that the recovery stream has been advanced to indicate the usage of
@@ -148,21 +149,22 @@ impl BalanceStateObject {
 
     /// Update the balance as the input balance in the first fill of a
     /// public-fill match settlement
+    ///
+    /// TODO: The authority field type has changed from Address to
+    /// SchnorrPublicKey. The new_one_time_authority_share parameter and
+    /// authority update logic needs to be redesigned for the new type
+    /// system.
     pub fn update_from_public_first_fill_as_input_balance(
         &mut self,
         settlement_obligation: &SettlementObligation,
-        new_one_time_authority_share: Scalar,
+        _new_one_time_authority_share: Scalar,
     ) {
-        // Decrypt the one-time authority share
-        let new_one_time_authority =
-            decrypt_address(new_one_time_authority_share, &mut self.balance.share_stream);
+        // TODO: Authority update logic needs redesign for SchnorrPublicKey type.
+        // Previously this would decrypt an Address from the share and update both
+        // the inner authority and public_share.authority fields.
 
         // Re-encrypt the updated balance shares
         self.balance.reencrypt_post_match_share();
-
-        // Update the one-time authority of the balance
-        self.balance.inner.one_time_authority = new_one_time_authority;
-        self.balance.public_share.one_time_authority = new_one_time_authority_share;
 
         // Apply the settlement obligation to the balance
         self.balance.apply_obligation_in_balance(settlement_obligation);

@@ -20,11 +20,12 @@ required-features = ["integration"]
 
 [dependencies]
 # === Renegade === #
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["proof-system-types"] }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["hmac"] }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["telemetry"] }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
@@ -56,7 +57,7 @@ base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", branch = "andrew/contracts-v2-patch", features = ["v2", "v2-relayer-types"] }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git" }
 
 # === Misc === #
 thiserror = { workspace = true }
@@ -66,8 +67,9 @@ bytes = "1.10.1"
 
 [dev-dependencies]
 # === Renegade === #
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch", features = ["test_helpers"] }
-test-helpers = { git = "https://github.com/renegade-fi/renegade.git", branch = "andrew/relayer-v2-patch" }
+renegade-circuits = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["test_helpers"] }
+renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
+test-helpers = { git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
 
 # === Runtime === #
 inventory = "0.3"

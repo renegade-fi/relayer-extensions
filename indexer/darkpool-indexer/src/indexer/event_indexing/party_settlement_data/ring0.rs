@@ -4,8 +4,9 @@ use alloy::{
     primitives::{B256, TxHash, keccak256},
     sol_types::SolValue,
 };
-use renegade_circuit_types::{Amount, fixed_point::FixedPoint, intent::Intent};
+use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_crypto::fields::u256_to_scalar;
+use renegade_darkpool_types::intent::Intent;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
     ObligationBundle, PublicIntentPublicBalanceBundle, SettlementBundle, SettlementObligation,
 };
@@ -108,14 +109,14 @@ impl Ring0SettlementData {
 impl Ring0SettlementData {
     /// Get the intent hash
     fn get_intent_hash(&self) -> B256 {
-        keccak256(self.settlement_bundle.auth.permit.abi_encode())
+        keccak256(self.settlement_bundle.auth.intentPermit.abi_encode())
     }
 
     /// Get the intent
     fn get_intent(&self) -> Intent {
-        let sol_intent = &self.settlement_bundle.auth.permit.intent;
+        let sol_intent = &self.settlement_bundle.auth.intentPermit.intent;
 
-        let min_price = FixedPoint::from_repr(u256_to_scalar(&sol_intent.minPrice.repr));
+        let min_price = FixedPoint::from_repr(u256_to_scalar(sol_intent.minPrice.repr));
         let amount_in = u256_to_amount(sol_intent.amountIn);
 
         Intent {

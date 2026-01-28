@@ -8,11 +8,10 @@ use alloy::{
 };
 use eyre::{Result, eyre};
 use itertools::Itertools;
-use num_bigint::BigUint;
-use renegade_common::types::merkle::MerkleAuthenticationPath;
 use renegade_constants::{MERKLE_HEIGHT, Scalar};
 use renegade_crypto::fields::{scalar_to_u256, u256_to_scalar};
 use renegade_solidity_abi::v2::IDarkpoolV2::{IDarkpoolV2Events, IDarkpoolV2Instance};
+use renegade_types_account::MerkleAuthenticationPath;
 
 /// Helper function to size a vector
 fn size_vec<const N: usize, T>(vec: Vec<T>) -> [T; N] {
@@ -141,11 +140,7 @@ fn build_authentication_path(
     siblings: Vec<(u128, U256)>,
 ) -> MerkleAuthenticationPath {
     let path_siblings =
-        size_vec(siblings.into_iter().map(|(_, v)| u256_to_scalar(&v)).collect_vec());
+        size_vec(siblings.into_iter().map(|(_, v)| u256_to_scalar(v)).collect_vec());
 
-    MerkleAuthenticationPath {
-        path_siblings,
-        leaf_index: BigUint::from(leaf_index),
-        value: commitment,
-    }
+    MerkleAuthenticationPath { path_siblings, leaf_index: leaf_index as u64, value: commitment }
 }

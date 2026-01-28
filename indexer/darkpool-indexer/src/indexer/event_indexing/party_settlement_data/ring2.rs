@@ -1,15 +1,14 @@
 //! Utilities for constructing & interacting with ring 2 settlement data
 
 use alloy::{primitives::TxHash, sol_types::SolValue};
-use renegade_circuit_types::{
-    Nullifier,
+use renegade_circuit_types::{Nullifier, fixed_point::FixedPoint};
+use renegade_constants::Scalar;
+use renegade_crypto::fields::u256_to_scalar;
+use renegade_darkpool_types::{
     balance::{PostMatchBalanceShare, PreMatchBalanceShare},
-    fixed_point::FixedPoint,
     intent::{IntentShare, PreMatchIntentShare},
     settlement_obligation::SettlementObligation as CircuitSettlementObligation,
 };
-use renegade_constants::Scalar;
-use renegade_crypto::fields::u256_to_scalar;
 use renegade_solidity_abi::v2::{
     IDarkpoolV2::{
         ExistingBalanceBundle, NewBalanceBundle, ObligationBundle, RenegadeSettledIntentBundle,
@@ -173,12 +172,12 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
 impl Ring2FirstFillNewOutBalanceSettlementData {
     /// Get the new output balance recovery ID
     fn get_new_output_balance_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.new_balance_bundle.statement.recoveryId)
+        u256_to_scalar(self.new_balance_bundle.statement.recoveryId)
     }
 
     /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+        u256_to_scalar(self.settlement_bundle.auth.statement.intentRecoveryId)
     }
 
     /// Get the public sharing of the new output balance fields which are not
@@ -224,19 +223,24 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
 
         let amount_in =
-            u256_to_scalar(&self.settlement_bundle.settlementStatement.amountPublicShare);
+            u256_to_scalar(self.settlement_bundle.settlementStatement.amountPublicShare);
 
         IntentShare { in_token, out_token, owner, min_price, amount_in }
     }
 
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the new one-time authority share
+    ///
+    /// TODO: This field has been removed from the ABI. Need to determine the
+    /// new way to handle authority in first-fill scenarios.
     fn get_new_one_time_authority_share(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
+        // The newOneTimeAddressPublicShare field no longer exists in the new ABI.
+        // Using default for now until the correct approach is determined.
+        Scalar::default()
     }
 }
 
@@ -363,7 +367,7 @@ impl Ring2FirstFillSettlementData {
 impl Ring2FirstFillSettlementData {
     /// Get the newly-created intent's recovery ID
     fn get_new_intent_recovery_id(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.intentRecoveryId)
+        u256_to_scalar(self.settlement_bundle.auth.statement.intentRecoveryId)
     }
 
     /// Get the pre-update intent share
@@ -372,7 +376,7 @@ impl Ring2FirstFillSettlementData {
             self.settlement_bundle.auth.statement.intentPublicShare.clone().into();
 
         let amount_in =
-            u256_to_scalar(&self.settlement_bundle.settlementStatement.amountPublicShare);
+            u256_to_scalar(self.settlement_bundle.settlementStatement.amountPublicShare);
 
         IntentShare { in_token, out_token, owner, min_price, amount_in }
     }
@@ -384,17 +388,22 @@ impl Ring2FirstFillSettlementData {
 
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+        u256_to_scalar(self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
     /// Get the new one-time authority share
+    ///
+    /// TODO: This field has been removed from the ABI. Need to determine the
+    /// new way to handle authority in first-fill scenarios.
     fn get_new_one_time_authority_share(&self) -> Scalar {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.newOneTimeAddressPublicShare)
+        // The newOneTimeAddressPublicShare field no longer exists in the new ABI.
+        // Using default for now until the correct approach is determined.
+        Scalar::default()
     }
 
     /// Get the relayer fee rate
@@ -516,17 +525,17 @@ impl Ring2SettlementData {
 impl Ring2SettlementData {
     /// Get the spent input balance nullifier
     fn get_input_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldBalanceNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldBalanceNullifier)
     }
 
     /// Get the spent output balance nullifier
     fn get_output_balance_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.existing_balance_bundle.statement.oldBalanceNullifier)
+        u256_to_scalar(self.existing_balance_bundle.statement.oldBalanceNullifier)
     }
 
     /// Get the spent intent nullifier
     fn get_intent_nullifier(&self) -> Nullifier {
-        u256_to_scalar(&self.settlement_bundle.auth.statement.oldIntentNullifier)
+        u256_to_scalar(self.settlement_bundle.auth.statement.oldIntentNullifier)
     }
 
     /// Get the settlement obligation
