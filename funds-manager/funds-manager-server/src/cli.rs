@@ -17,12 +17,11 @@ use crate::{
     custody_client::CustodyClient,
     db::DbPool,
     error::FundsManagerError,
-    execution_client::{venues::okx::OkxApiCredentials, ExecutionClient},
+    execution_client::ExecutionClient,
     helpers::{base_ws_provider, fetch_s3_object, get_darkpool_address, get_gas_sponsor_address},
     metrics::MetricsRecorder,
     mux_darkpool_client::MuxDarkpoolClient,
     relayer_client::RelayerClient,
-    Indexer,
 };
 
 // -------------
@@ -212,8 +211,6 @@ pub struct ChainConfig {
     pub lifi_api_key: Option<String>,
     /// The Bebop API key
     pub bebop_api_key: Option<String>,
-    /// The Okx API credentials
-    pub okx_api_credentials: OkxApiCredentials,
     /// A map from token ticker to the maximum price deviation allowed in a
     /// quote for that token
     #[serde(default)]
@@ -280,7 +277,6 @@ impl ChainConfig {
             chain,
             self.lifi_api_key.clone(),
             self.bebop_api_key.clone(),
-            self.okx_api_credentials.clone(),
             base_provider.clone(),
             price_reporter.clone(),
             quoter_hot_wallet_private_key,
@@ -300,24 +296,11 @@ impl ChainConfig {
                 .push(DecryptionKey::from_hex_str(protocol_key).map_err(FundsManagerError::parse)?);
         }
 
-        let fee_indexer = Indexer::new(
-            chain_id,
-            chain,
-            aws_config.clone(),
-            darkpool_client.clone(),
-            decryption_keys,
-            db_pool.clone(),
-            relayer_client.clone(),
-            custody_client.clone(),
-            price_reporter,
-        );
-
         let custody_client = Arc::new(custody_client);
         let execution_client = Arc::new(execution_client);
         let metrics_recorder = Arc::new(metrics_recorder);
-        let fee_indexer = Arc::new(fee_indexer);
 
-        Ok(ChainClients { custody_client, execution_client, metrics_recorder, fee_indexer })
+        Ok(ChainClients { custody_client, execution_client, metrics_recorder })
     }
 }
 
@@ -333,6 +316,7 @@ pub struct ChainClients {
     // TODO: Turn into top-level chain-agnostic struct that holds references to
     // necessary chain-specific clients
     pub(crate) metrics_recorder: Arc<MetricsRecorder>,
-    /// The fee indexer for the given chain
-    pub(crate) fee_indexer: Arc<Indexer>,
+    // TODO: Add fee indexer back in
+    // /// The fee indexer for the given chain
+    // pub(crate) fee_indexer: Arc<Indexer>,
 }

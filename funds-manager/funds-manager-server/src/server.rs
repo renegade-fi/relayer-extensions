@@ -15,7 +15,7 @@ use crate::{
     error::FundsManagerError,
     execution_client::ExecutionClient,
     metrics::MetricsRecorder,
-    Indexer,
+    // Indexer,
 };
 
 // -------------
@@ -121,11 +121,11 @@ impl Server {
             .ok_or(FundsManagerError::custom(format!("No metrics recorder configured for {chain}")))
     }
 
-    /// Get the fee indexer for the given chain
-    pub fn get_fee_indexer(&self, chain: &Chain) -> Result<Arc<Indexer>, FundsManagerError> {
-        self.chain_clients
-            .get(chain)
-            .map(|clients| clients.fee_indexer.clone())
-            .ok_or(FundsManagerError::custom(format!("No fee indexer configured for {chain}")))
-    }
+    // /// Get the fee indexer for the given chain
+    // pub fn get_fee_indexer(&self, chain: &Chain) -> Result<Arc<Indexer>,
+    // FundsManagerError> {     self.chain_clients
+    //         .get(chain)
+    //         .map(|clients| clients.fee_indexer.clone())
+    //         .ok_or(FundsManagerError::custom(format!("No fee indexer configured
+    // for {chain}"))) }
 }

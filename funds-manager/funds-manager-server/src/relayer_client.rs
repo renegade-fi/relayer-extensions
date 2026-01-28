@@ -2,44 +2,19 @@
 
 use std::time::Duration;
 
-use alloy::signers::local::PrivateKeySigner;
 use base64::engine::{general_purpose as b64_general_purpose, Engine};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
-    auth::create_request_signature,
-    http::{
-        task::{GetTaskStatusResponse, GET_TASK_STATUS_ROUTE},
-        wallet::{
-            CreateWalletRequest, CreateWalletResponse, FindWalletRequest, FindWalletResponse,
-            GetWalletResponse, RedeemNoteRequest, RedeemNoteResponse, WithdrawBalanceRequest,
-            WithdrawBalanceResponse, CREATE_WALLET_ROUTE, FIND_WALLET_ROUTE, GET_WALLET_ROUTE,
-            REDEEM_NOTE_ROUTE, WITHDRAW_BALANCE_ROUTE,
-        },
-    },
-    types::ApiKeychain,
-    RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
+    auth::create_request_signature, http::wallet::RedeemNoteRequest, RENEGADE_AUTH_HEADER_NAME,
+    RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
-use renegade_common::types::{
-    chain::Chain,
-    hmac::HmacKey,
-    wallet::{
-        derivation::{derive_blinder_seed, derive_share_seed, derive_wallet_id},
-        keychain::KeyChain,
-        Wallet, WalletIdentifier,
-    },
-};
-use renegade_constants::Scalar;
-use renegade_crypto::fields::scalar_to_biguint;
+use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
-use uuid::Uuid;
 
 use crate::{error::FundsManagerError, helpers::convert_headers};
 
-/// The interval at which to poll relayer task status
-const POLL_INTERVAL_MS: u64 = 1000;
 /// The amount of time (ms) to declare a wallet signature value for
 const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
 
@@ -58,101 +33,13 @@ impl RelayerClient {
         Self { base_url: base_url.to_string(), chain }
     }
 
-    // ------------------
-    // | Wallet Methods |
-    // ------------------
-
-    /// Get the wallet for a given id, looking up the wallet if not initially
-    /// found
-    pub async fn get_wallet(
-        &self,
-        wallet_id: WalletIdentifier,
-        eth_key: &PrivateKeySigner,
-        keychain: KeyChain,
-    ) -> Result<GetWalletResponse, FundsManagerError> {
-        let mut path = GET_WALLET_ROUTE.to_string();
-        path = path.replace(":wallet_id", &wallet_id.to_string());
-
-        let wallet_key = keychain.symmetric_key();
-
-        match self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await {
-            Ok(resp) => Ok(resp),
-            Err(err) => {
-                warn!("Failed to get wallet {wallet_id} from relayer: {err}");
-                self.lookup_wallet(eth_key, keychain).await?;
-                self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await
-            },
-        }
-    }
-
-    /// Lookup a wallet in the configured relayer
-    async fn lookup_wallet(
-        &self,
-        eth_key: &PrivateKeySigner,
-        keychain: KeyChain,
-    ) -> Result<(), FundsManagerError> {
-        let path = FIND_WALLET_ROUTE.to_string();
-        let wallet_id = derive_wallet_id(eth_key).unwrap();
-        let blinder_seed = derive_blinder_seed(eth_key).unwrap();
-        let share_seed = derive_share_seed(eth_key).unwrap();
-        let wallet_key = keychain.symmetric_key();
-
-        let body = FindWalletRequest {
-            wallet_id,
-            secret_share_seed: scalar_to_biguint(&share_seed),
-            blinder_seed: scalar_to_biguint(&blinder_seed),
-            private_keychain: ApiKeychain::from(keychain).private_keys,
-        };
-
-        let resp: FindWalletResponse =
-            self.post_relayer_with_auth(&path, &body, &wallet_key).await?;
-        self.await_relayer_task(resp.task_id).await
-    }
-
-    /// Create a new wallet via the configured relayer
-    pub(crate) async fn create_new_wallet(
-        &self,
-        wallet: Wallet,
-        blinder_seed: &Scalar,
-    ) -> Result<(), FundsManagerError> {
-        let body = CreateWalletRequest {
-            wallet: wallet.into(),
-            blinder_seed: scalar_to_biguint(blinder_seed),
-        };
-
-        let resp: CreateWalletResponse = self.post_relayer(CREATE_WALLET_ROUTE, &body).await?;
-        self.await_relayer_task(resp.task_id).await
-    }
-
     /// Redeem a note into a wallet
     pub(crate) async fn redeem_note(
         &self,
-        wallet_id: WalletIdentifier,
         req: RedeemNoteRequest,
         wallet_key: &HmacKey,
     ) -> Result<(), FundsManagerError> {
-        let mut path = REDEEM_NOTE_ROUTE.to_string();
-        path = path.replace(":wallet_id", &wallet_id.to_string());
-
-        let resp: RedeemNoteResponse = self.post_relayer_with_auth(&path, &req, wallet_key).await?;
-        self.await_relayer_task(resp.task_id).await
-    }
-
-    /// Withdraw a balance from a wallet
-    pub async fn withdraw_balance(
-        &self,
-        wallet_id: WalletIdentifier,
-        mint: String,
-        req: WithdrawBalanceRequest,
-        root_key: &HmacKey,
-    ) -> Result<(), FundsManagerError> {
-        let mut path = WITHDRAW_BALANCE_ROUTE.to_string();
-        path = path.replace(":wallet_id", &wallet_id.to_string());
-        path = path.replace(":mint", &mint);
-
-        let resp: WithdrawBalanceResponse =
-            self.post_relayer_with_auth(&path, &req, root_key).await?;
-        self.await_relayer_task(resp.task_id).await
+        todo!("Implement redeem note")
     }
 
     // -----------
@@ -284,28 +171,6 @@ impl RelayerClient {
         }
 
         resp.json::<Resp>().await.map_err(err_str!(FundsManagerError::Parse))
-    }
-
-    /// Await a relayer task
-    async fn await_relayer_task(&self, task_id: Uuid) -> Result<(), FundsManagerError> {
-        let mut path = GET_TASK_STATUS_ROUTE.to_string();
-        path = path.replace(":task_id", &task_id.to_string());
-
-        // Enter a polling loop until the task finishes
-        let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
-        loop {
-            // For now, we assume that an error is a 404 in which case the task has
-            // completed
-            // TODO: Improve this break condition if it proves problematic
-            if self.get_relayer::<GetTaskStatusResponse>(&path).await.is_err() {
-                break;
-            }
-
-            // Sleep for a bit before polling again
-            std::thread::sleep(poll_interval);
-        }
-
-        Ok(())
     }
 }
 

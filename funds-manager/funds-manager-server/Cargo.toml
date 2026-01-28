@@ -4,12 +4,6 @@ description = "Manages custody of funds for protocol operator"
 version = "0.1.0"
 edition = "2021"
 
-[net]
-git-fetch-with-cli = true
-
-[http]
-check-revoke = false
-
 [dependencies]
 # === CLI + Server === #
 clap = { version = "4.5.3", features = ["derive", "env"] }
@@ -52,7 +46,10 @@ renegade-circuits = { package = "circuits", workspace = true }
 renegade-circuit-types = { package = "circuit-types", workspace = true }
 renegade-crypto = { workspace = true }
 renegade-util = { package = "util", workspace = true }
-renegade-solidity-abi = { workspace = true }
+renegade-solidity-abi = { workspace = true, features = [
+    "v1",
+    "v1-relayer-types",
+], default-features = false }
 
 # === Misc Dependencies === #
 async-trait = "0.1"
@@ -71,7 +68,7 @@ serde = "1.0"
 serde_json = "1.0"
 thiserror = { workspace = true }
 tracing = "0.1"
-uuid = "=1.17.0"
+uuid = { version = "0.8.2", features = ["serde", "v4"] }
 serde_qs = { version = "1.0.0-rc.3", features = ["warp"] }
 sha2 = { version = "0.10", features = ["asm"] }
 hmac = "0.12"
