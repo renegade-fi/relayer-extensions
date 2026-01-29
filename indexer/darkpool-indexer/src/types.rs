@@ -5,9 +5,11 @@ use alloy::primitives::{Address, B256};
 use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
 use renegade_circuit_types::{
     Amount,
+    fixed_point::FixedPoint,
     traits::{BaseType, SecretShareType},
 };
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u128;
 use renegade_darkpool_types::{
     balance::{DarkpoolBalanceShare, DarkpoolStateBalance, PostMatchBalanceShare},
     csprng::PoseidonCSPRNG,
@@ -463,6 +465,28 @@ impl PublicIntentStateObject {
             min_fill_size,
             precompute_cancellation_proof,
         }
+    }
+
+    /// Update the public intent from an external match settlement
+    ///
+    /// Computes: internal_party_amount_in = external_party_amount_in / price
+    /// Then subtracts from the intent's amount_in
+    pub fn update_from_external_match(
+        &mut self,
+        price: FixedPoint,
+        external_party_amount_in: Amount,
+    ) {
+        // `price` is in terms of the internal party's out_token / in_token,
+        // equivalently the external party's in_token / out_token.
+        // We invert it to get in terms of the external party's out_token / in_token.
+        let inverse_price = price.inverse().expect("price is zero");
+
+        // Multiplying this by `external_party_amount_in` gives the external party's
+        // output amount, equivalently the internal party's input amount.
+        let internal_party_amount_in =
+            scalar_to_u128(&inverse_price.floor_mul_int(external_party_amount_in));
+
+        self.intent.amount_in -= internal_party_amount_in;
     }
 }
 
