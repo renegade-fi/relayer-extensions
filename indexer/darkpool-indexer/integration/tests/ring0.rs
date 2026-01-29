@@ -76,12 +76,7 @@ async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
     )
     .await?;
 
-    args.send_public_intent_update_message(
-        intent_hash,
-        1, // version
-        receipt.transaction_hash,
-    )
-    .await?;
+    args.send_public_intent_update_message(intent_hash, receipt.transaction_hash).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
