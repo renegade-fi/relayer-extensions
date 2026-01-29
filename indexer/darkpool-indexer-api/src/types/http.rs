@@ -76,8 +76,6 @@ pub struct ApiPublicIntent {
     pub intent_hash: B256,
     /// The underlying intent circuit type
     pub intent: Intent,
-    /// The intent's version
-    pub version: u64,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
     /// Whether the intent allows external matches

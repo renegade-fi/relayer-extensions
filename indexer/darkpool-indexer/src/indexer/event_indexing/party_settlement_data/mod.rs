@@ -202,7 +202,6 @@ impl PartySettlementData {
         &self,
         darkpool_client: &DarkpoolClient,
         intent_hash: B256,
-        version: u64,
         tx_hash: TxHash,
     ) -> Result<Option<StateTransition>, IndexerError> {
         match self {
@@ -211,7 +210,6 @@ impl PartySettlementData {
                     .get_state_transition_for_public_intent_update(
                         darkpool_client,
                         intent_hash,
-                        version,
                         tx_hash,
                     )
                     .await

@@ -75,6 +75,7 @@ impl Ring0SettlementData {
             intent,
             amount_in,
             intent_hash,
+            tx_hash,
             block_number,
         })))
     }
@@ -87,7 +88,6 @@ impl Ring0SettlementData {
         &self,
         darkpool_client: &DarkpoolClient,
         intent_hash: B256,
-        version: u64,
         tx_hash: TxHash,
     ) -> Result<Option<StateTransition>, IndexerError> {
         // If the intent hash doesn't match, this party did not update the public intent
@@ -100,7 +100,7 @@ impl Ring0SettlementData {
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
         Ok(Some(StateTransition::SettleMatchIntoPublicIntent(
-            SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, version, block_number },
+            SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, tx_hash, block_number },
         )))
     }
 }

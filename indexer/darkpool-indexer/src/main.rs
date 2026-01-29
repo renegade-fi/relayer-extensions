@@ -9,7 +9,8 @@ use darkpool_indexer::{
     cli::Cli,
     indexer::{
         Indexer, error::IndexerError, run_message_queue_consumer, run_nullifier_spend_listener,
-        run_recovery_id_registration_listener,
+        run_public_intent_cancellation_listener, run_public_intent_creation_listener,
+        run_public_intent_update_listener, run_recovery_id_registration_listener,
     },
 };
 use tokio::task::JoinSet;
@@ -33,7 +34,9 @@ async fn main() -> Result<(), IndexerError> {
     // Spawn onchain event listeners
     tasks.spawn(run_nullifier_spend_listener(indexer.clone()));
     tasks.spawn(run_recovery_id_registration_listener(indexer.clone()));
-    // TODO: Run public intent event listeners
+    tasks.spawn(run_public_intent_creation_listener(indexer.clone()));
+    tasks.spawn(run_public_intent_update_listener(indexer.clone()));
+    tasks.spawn(run_public_intent_cancellation_listener(indexer.clone()));
 
     // Spawn HTTP server
     tasks.spawn(run_http_server(indexer.clone(), cli.http_port));

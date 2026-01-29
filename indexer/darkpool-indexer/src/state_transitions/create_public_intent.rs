@@ -1,6 +1,6 @@
 //! Defines the application-specific logic for creating a new public intent
 
-use alloy::primitives::B256;
+use alloy::primitives::{B256, TxHash};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::Amount;
 use renegade_darkpool_types::intent::Intent;
@@ -24,6 +24,8 @@ pub struct CreatePublicIntentTransition {
     pub amount_in: Amount,
     /// The intent hash
     pub intent_hash: B256,
+    /// The transaction hash in which the public intent was created
+    pub tx_hash: TxHash,
     /// The block number in which the public intent was created
     pub block_number: u64,
 }
@@ -38,8 +40,13 @@ impl StateApplicator {
         &self,
         transition: CreatePublicIntentTransition,
     ) -> Result<(), StateTransitionError> {
-        let CreatePublicIntentTransition { mut intent, amount_in, intent_hash, block_number } =
-            transition;
+        let CreatePublicIntentTransition {
+            mut intent,
+            amount_in,
+            intent_hash,
+            tx_hash,
+            block_number,
+        } = transition;
 
         intent.amount_in -= amount_in;
 
@@ -53,7 +60,7 @@ impl StateApplicator {
         conn.transaction(move |conn| {
             async move {
                 // Check if the public intent creation has already been processed, no-oping if so
-                let public_intent_creation_processed = self.db_client.check_public_intent_update_processed(intent_hash, public_intent.version, conn).await?;
+                let public_intent_creation_processed = self.db_client.check_public_intent_creation_processed(intent_hash, tx_hash, conn).await?;
 
                 if public_intent_creation_processed {
                     warn!(
@@ -64,7 +71,7 @@ impl StateApplicator {
                 }
 
                 // Mark the public intent creation as processed
-                self.db_client.mark_public_intent_update_processed(intent_hash, public_intent.version, block_number, conn).await?;
+                self.db_client.mark_public_intent_creation_processed(intent_hash, tx_hash, block_number, conn).await?;
 
                 // Check if a public intent record already exists for the intent hash.
                 // This is possible in the case that we previously processed a metadata update message for the public intent.
@@ -109,6 +116,7 @@ mod tests {
         let transition = gen_create_public_intent_transition(master_view_seed.owner_address);
 
         let intent_hash = transition.intent_hash;
+        let tx_hash = transition.tx_hash;
         let mut intent = transition.intent.clone();
         intent.amount_in -= transition.amount_in;
 
@@ -121,7 +129,7 @@ mod tests {
         let mut conn = db_client.get_db_conn().await?;
         assert!(
             db_client
-                .check_public_intent_update_processed(intent_hash, 0 /* version */, &mut conn)
+                .check_public_intent_creation_processed(intent_hash, tx_hash, &mut conn)
                 .await?
         );
 

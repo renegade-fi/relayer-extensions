@@ -1,7 +1,7 @@
 //! Defines the application-specific logic for settling a match into a public
 //! intent
 
-use alloy::primitives::B256;
+use alloy::primitives::{B256, TxHash};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::Amount;
 use tracing::warn;
@@ -19,8 +19,8 @@ pub struct SettleMatchIntoPublicIntentTransition {
     pub amount_in: Amount,
     /// The intent hash
     pub intent_hash: B256,
-    /// The post-match version of the public intent
-    pub version: u64,
+    /// The transaction hash in which the match settled
+    pub tx_hash: TxHash,
     /// The block number in which the match settled
     pub block_number: u64,
 }
@@ -35,7 +35,7 @@ impl StateApplicator {
         &self,
         transition: SettleMatchIntoPublicIntentTransition,
     ) -> Result<(), StateTransitionError> {
-        let SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, version, block_number } =
+        let SettleMatchIntoPublicIntentTransition { amount_in, intent_hash, tx_hash, block_number } =
             transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
@@ -43,16 +43,15 @@ impl StateApplicator {
             self.db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
 
         public_intent.intent.amount_in -= amount_in;
-        public_intent.version = version;
 
         conn.transaction(move |conn| {
             async move {
                 // Check if the public intent update has already been processed, no-oping if so
-                let public_intent_update_processed = self.db_client.check_public_intent_update_processed(intent_hash, version, conn).await?;
+                let public_intent_update_processed = self.db_client.check_public_intent_update_processed(intent_hash, tx_hash, conn).await?;
 
                 if public_intent_update_processed {
                     warn!(
-                        "Public intent update for intent hash {intent_hash} & version {version} has already been processed, skipping update"
+                        "Public intent update for intent hash {intent_hash} in tx {tx_hash} has already been processed, skipping update"
                     );
 
                     return Ok(());
@@ -62,7 +61,7 @@ impl StateApplicator {
                 self.db_client.update_public_intent(public_intent, conn).await?;
 
                 // Mark the public intent update as processed
-                self.db_client.mark_public_intent_update_processed(intent_hash, version, block_number, conn).await?;
+                self.db_client.mark_public_intent_update_processed(intent_hash, tx_hash, block_number, conn).await?;
 
                 Ok(())
             }.scope_boxed()
@@ -107,6 +106,8 @@ mod tests {
         let settle_match_into_public_intent_transition =
             gen_settle_match_into_public_intent_transition(&initial_public_intent);
 
+        let tx_hash = settle_match_into_public_intent_transition.tx_hash;
+
         let mut intent = create_public_intent_transition.intent.clone();
         intent.amount_in -= create_public_intent_transition.amount_in;
         intent.amount_in -= settle_match_into_public_intent_transition.amount_in;
@@ -119,11 +120,8 @@ mod tests {
         validate_public_intent_indexing(db_client, intent_hash, &intent).await?;
 
         // Assert that the public intent update was marked as processed
-
         assert!(
-            db_client
-                .check_public_intent_update_processed(intent_hash, 1 /* version */, &mut conn)
-                .await?
+            db_client.check_public_intent_update_processed(intent_hash, tx_hash, &mut conn).await?
         );
 
         cleanup_test_db(&postgres).await?;

@@ -10,9 +10,14 @@ use alloy::{
         CallFrame, GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingOptions,
         GethTrace,
     },
+    sol_types::SolEvent,
 };
 use renegade_circuit_types::{Nullifier, fixed_point::FixedPoint};
 use renegade_constants::Scalar;
+use renegade_solidity_abi::v2::IDarkpoolV2::{
+    NullifierSpent, PublicIntentCancelled, PublicIntentCreated, PublicIntentUpdated,
+    RecoveryIdRegistered,
+};
 
 use crate::darkpool_client::{DarkpoolClient, error::DarkpoolClientError, utils::scalar_to_b256};
 
@@ -29,22 +34,18 @@ impl DarkpoolClient {
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
+        let nullifier_topic = scalar_to_b256(nullifier);
 
-        // TEMP: use first callframe until nullifier spend events are
-        // implemented in the contracts
-        calls.first().ok_or(DarkpoolClientError::NullifierNotFound).cloned()
-
-        // let nullifier_topic = scalar_to_b256(nullifier);
-
-        // calls
-        //     .into_iter()
-        //     .find(|call| {
-        //         call.logs
-        //             .iter()
-        //             .any(|log|
-        // log.topics.clone().unwrap_or_default().contains(&nullifier_topic))
-        //     })
-        //     .ok_or(DarkpoolClientError::NullifierNotFound)
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    let topics = log.topics.clone().unwrap_or_default();
+                    topics.first() == Some(&NullifierSpent::SIGNATURE_HASH)
+                        && topics.contains(&nullifier_topic)
+                })
+            })
+            .ok_or(DarkpoolClientError::NullifierNotFound)
     }
 
     /// Find the call that registered the given recovery ID in the given
@@ -55,22 +56,18 @@ impl DarkpoolClient {
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
+        let recovery_id_topic = scalar_to_b256(recovery_id);
 
-        // TEMP: use first callframe until recovery ID registration events are
-        // implemented in the contracts
-        calls.first().ok_or(DarkpoolClientError::RecoveryIdNotFound).cloned()
-
-        // let recovery_id_topic = scalar_to_b256(recovery_id);
-
-        // calls
-        //     .into_iter()
-        //     .find(|call| {
-        //         call.logs
-        //             .iter()
-        //             .any(|log|
-        // log.topics.clone().unwrap_or_default().contains(&recovery_id_topic))
-        //     })
-        //     .ok_or(DarkpoolClientError::RecoveryIdNotFound)
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    let topics = log.topics.clone().unwrap_or_default();
+                    topics.first() == Some(&RecoveryIdRegistered::SIGNATURE_HASH)
+                        && topics.contains(&recovery_id_topic)
+                })
+            })
+            .ok_or(DarkpoolClientError::RecoveryIdNotFound)
     }
 
     /// Find the call that created the given public intent in the given
@@ -82,21 +79,16 @@ impl DarkpoolClient {
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
 
-        // TEMP: use first callframe until public intent creation events are implemented
-        // in the contracts
-        calls.first().ok_or(DarkpoolClientError::PublicIntentHashNotFound).cloned()
-
-        // calls
-        //     .into_iter()
-        //     .find(|call| {
-        //         call.logs.iter().any(|log| {
-        //             // TODO: Also check for inclusion of public intent
-        // creation event signature in             // topic 0, once the
-        // ABI is finalized.
-        // log.topics.clone().unwrap_or_default().contains(&intent_hash)
-        //         })
-        //     })
-        //     .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    let topics = log.topics.clone().unwrap_or_default();
+                    topics.first() == Some(&PublicIntentCreated::SIGNATURE_HASH)
+                        && topics.contains(&intent_hash)
+                })
+            })
+            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
     }
 
     /// Find the call that updated the given public intent in the given
@@ -108,21 +100,37 @@ impl DarkpoolClient {
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
 
-        // TEMP: use first callframe until public update creation events are implemented
-        // in the contracts
-        calls.first().ok_or(DarkpoolClientError::PublicIntentHashNotFound).cloned()
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    let topics = log.topics.clone().unwrap_or_default();
+                    topics.first() == Some(&PublicIntentUpdated::SIGNATURE_HASH)
+                        && topics.contains(&intent_hash)
+                })
+            })
+            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
+    }
 
-        // calls
-        //     .into_iter()
-        //     .find(|call| {
-        //         call.logs.iter().any(|log| {
-        //             // TODO: Also check for inclusion of public intent update
-        // event signature in             // topic 0, once the ABI is
-        // finalized.
-        // log.topics.clone().unwrap_or_default().contains(&intent_hash)
-        //         })
-        //     })
-        //     .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
+    /// Find the call that cancelled the given public intent in the given
+    /// transaction
+    pub async fn find_public_intent_cancellation_call(
+        &self,
+        intent_hash: B256,
+        tx_hash: TxHash,
+    ) -> Result<CallFrame, DarkpoolClientError> {
+        let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
+
+        calls
+            .into_iter()
+            .find(|call| {
+                call.logs.iter().any(|log| {
+                    let topics = log.topics.clone().unwrap_or_default();
+                    topics.first() == Some(&PublicIntentCancelled::SIGNATURE_HASH)
+                        && topics.contains(&intent_hash)
+                })
+            })
+            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
     }
 
     /// Fetch all darkpool calls made in the given transaction

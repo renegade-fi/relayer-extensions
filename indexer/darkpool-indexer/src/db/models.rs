@@ -202,6 +202,21 @@ pub struct ProcessedRecoveryIDModel {
     pub block_number: i64,
 }
 
+// === Processed Public Intent Creations Table ===
+
+/// A processed public intent creation record
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = crate::db::schema::processed_public_intent_creations)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ProcessedPublicIntentCreationModel {
+    /// The public intent's hash
+    pub intent_hash: String,
+    /// The transaction hash in which the public intent was created
+    pub tx_hash: String,
+    /// The block number in which the public intent was created
+    pub block_number: i64,
+}
+
 // === Processed Public Intent Updates Table ===
 
 /// A processed public intent update record
@@ -211,8 +226,8 @@ pub struct ProcessedRecoveryIDModel {
 pub struct ProcessedPublicIntentUpdateModel {
     /// The public intent's hash
     pub intent_hash: String,
-    /// The public intent's version
-    pub version: i64,
+    /// The transaction hash in which the public intent was updated
+    pub tx_hash: String,
     /// The block number in which the public intent was updated
     pub block_number: i64,
 }
@@ -407,8 +422,6 @@ impl From<IntentModel> for IntentStateObject {
 pub struct PublicIntentModel {
     /// The intent's hash
     pub intent_hash: String,
-    /// The intent's version
-    pub version: i64,
     /// The mint of the input token in the intent
     pub input_mint: String,
     /// The mint of the output token in the intent
@@ -438,7 +451,6 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         let PublicIntentStateObject {
             intent_hash,
             intent: Intent { in_token, out_token, owner, min_price, amount_in },
-            version,
             account_id,
             active,
             matching_pool,
@@ -455,13 +467,10 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         let min_price_bigdecimal = fixed_point_to_bigdecimal(min_price);
         let input_amount_bigdecimal = amount_in.into();
 
-        let version_i64 = version as i64;
-
         let min_fill_size_bigdecimal = min_fill_size.into();
 
         PublicIntentModel {
             intent_hash: intent_hash_string,
-            version: version_i64,
             account_id,
             active,
             input_mint: input_mint_string,
@@ -481,7 +490,6 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
     fn from(value: PublicIntentModel) -> Self {
         let PublicIntentModel {
             intent_hash,
-            version,
             account_id,
             active,
             input_mint,
@@ -497,8 +505,6 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
 
         let intent_hash_b256 =
             B256::from_str(&intent_hash).expect("Intent hash must be a valid B256");
-
-        let version_u64 = version as u64;
 
         let input_mint_address =
             Address::from_str(&input_mint).expect("Input mint must be a valid address");
@@ -522,7 +528,6 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
                 min_price: min_price_fixed_point,
                 amount_in: input_amount_u128,
             },
-            version: version_u64,
             account_id,
             active,
             matching_pool,
