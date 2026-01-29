@@ -7,7 +7,7 @@ use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
     Amount, fixed_point::FixedPoint, max_amount, schnorr::SchnorrPrivateKey,
 };
-use renegade_circuits::test_helpers::random_amount;
+use renegade_circuits::test_helpers::{random_amount, random_price};
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
 use renegade_darkpool_types::{
@@ -26,14 +26,16 @@ use crate::{
         cancel_order::CancelOrderTransition,
         create_balance::{BalanceCreationData, CreateBalanceTransition},
         create_intent::{CreateIntentTransition, IntentCreationData},
-        create_public_intent::CreatePublicIntentTransition,
+        create_public_intent::{CreatePublicIntentTransition, PublicIntentCreationData},
         deposit::DepositTransition,
         error::StateTransitionError,
         pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::{BalanceSettlementData, SettleMatchIntoBalanceTransition},
         settle_match_into_intent::{IntentSettlementData, SettleMatchIntoIntentTransition},
-        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
+        settle_match_into_public_intent::{
+            PublicIntentSettlementData, SettleMatchIntoPublicIntentTransition,
+        },
         withdraw::WithdrawTransition,
     },
     types::{ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
@@ -723,7 +725,7 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
 }
 
 /// Generate the state transition which should result in the given
-/// owner creating a new public intent
+/// owner creating a new public intent from an internal match
 pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
     let intent = gen_random_intent(owner);
 
@@ -733,11 +735,53 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
     let intent_hash = B256::random();
     let tx_hash = TxHash::random();
 
-    CreatePublicIntentTransition { intent, amount_in, intent_hash, tx_hash, block_number: 0 }
+    let public_intent_creation_data = PublicIntentCreationData::InternalMatch { intent, amount_in };
+
+    CreatePublicIntentTransition {
+        intent_hash,
+        tx_hash,
+        block_number: 0,
+        public_intent_creation_data,
+    }
 }
 
 /// Generate the state transition which should result in the given
-/// public intent being updated with a match settlement.
+/// owner creating a new public intent from an external match
+pub fn gen_create_public_intent_external_match_transition(
+    owner: Address,
+) -> CreatePublicIntentTransition {
+    let intent = gen_random_intent(owner);
+
+    // Generate a random price for the external match
+    let price = random_price();
+
+    // Compute the upper bound for external party amount in.
+    // External party amount is in terms of output_token (internal party's output).
+    // Upper bound is the internal party's remaining input amount converted to
+    // output via price.
+    let max_external_amount_in = scalar_to_u128(&price.floor_mul_int(intent.amount_in));
+
+    // Generate a random external party amount in, bounded by what the internal
+    // party can provide
+    let external_party_amount_in = random_amount().min(max_external_amount_in);
+
+    // Create dummy hashes, we don't need to actually hash for testing
+    let intent_hash = B256::random();
+    let tx_hash = TxHash::random();
+
+    let public_intent_creation_data =
+        PublicIntentCreationData::ExternalMatch { intent, price, external_party_amount_in };
+
+    CreatePublicIntentTransition {
+        intent_hash,
+        tx_hash,
+        block_number: 0,
+        public_intent_creation_data,
+    }
+}
+
+/// Generate the state transition which should result in the given
+/// public intent being updated with an internal match settlement.
 ///
 /// Returns the match settlement transition.
 pub fn gen_settle_match_into_public_intent_transition(
@@ -749,11 +793,49 @@ pub fn gen_settle_match_into_public_intent_transition(
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
 
+    let public_intent_settlement_data = PublicIntentSettlementData::InternalMatch { amount_in };
+
     SettleMatchIntoPublicIntentTransition {
-        amount_in,
         intent_hash: initial_public_intent.intent_hash,
         tx_hash,
         block_number: 0,
+        public_intent_settlement_data,
+    }
+}
+
+/// Generate the state transition which should result in the given
+/// public intent being updated with an external match settlement.
+///
+/// Returns the match settlement transition.
+pub fn gen_settle_external_match_into_public_intent_transition(
+    initial_public_intent: &PublicIntentStateObject,
+) -> SettleMatchIntoPublicIntentTransition {
+    // Generate a random price for the external match
+    // Price is in terms of internal party's output_token / input_token
+    let price = random_price();
+
+    // Compute the upper bound for external party amount in.
+    // External party amount is in terms of output_token (internal party's output).
+    // Upper bound is the internal party's remaining input amount converted to
+    // output via price.
+    let max_external_amount_in =
+        scalar_to_u128(&price.floor_mul_int(initial_public_intent.intent.amount_in));
+
+    // Generate a random external party amount in, bounded by what the internal
+    // party can provide
+    let external_party_amount_in = random_amount().min(max_external_amount_in);
+
+    // Create a dummy tx hash for testing
+    let tx_hash = TxHash::random();
+
+    let public_intent_settlement_data =
+        PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in };
+
+    SettleMatchIntoPublicIntentTransition {
+        intent_hash: initial_public_intent.intent_hash,
+        tx_hash,
+        block_number: 0,
+        public_intent_settlement_data,
     }
 }
 
