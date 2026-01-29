@@ -53,19 +53,17 @@ ruint = { version = "1.16", default-features = false, features = [
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 price-reporter-client = { path = "../../price-reporter-client" }
-renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["hmac"] }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["blockchain", "telemetry"] }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", features = [
-    "v2",
-    "v2-relayer-types",
-]}
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", default-features = false, features = [
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = ["hmac"] }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["blockchain", "telemetry"] }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git" }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", default-features = false, features = [
     "auth", "full-api"
 ] }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Misc Dependencies === #
 async-trait = "0.1"
