@@ -429,8 +429,6 @@ pub struct PublicIntentStateObject {
     pub intent_hash: B256,
     /// The underlying intent circuit type
     pub intent: Intent,
-    /// The intent's version
-    pub version: u64,
     /// The ID of the account which owns the intent
     pub account_id: Uuid,
     /// Whether the intent is active
@@ -449,7 +447,6 @@ impl PublicIntentStateObject {
     /// Create a new public intent state object
     pub fn new(intent_hash: B256, intent: Intent, account_id: Uuid) -> Self {
         // Select safe default values for the public intent metadata
-        let version = 0;
         let active = true;
         let matching_pool = GLOBAL_MATCHING_POOL.to_string();
         let allow_external_matches = false;
@@ -459,7 +456,6 @@ impl PublicIntentStateObject {
         Self {
             intent_hash,
             intent,
-            version,
             account_id,
             active,
             matching_pool,
@@ -475,7 +471,6 @@ impl From<PublicIntentStateObject> for ApiPublicIntent {
         let PublicIntentStateObject {
             intent_hash,
             intent,
-            version,
             matching_pool,
             allow_external_matches,
             min_fill_size,
@@ -486,7 +481,6 @@ impl From<PublicIntentStateObject> for ApiPublicIntent {
         ApiPublicIntent {
             intent_hash,
             intent,
-            version,
             matching_pool,
             allow_external_matches,
             min_fill_size,

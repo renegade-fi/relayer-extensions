@@ -184,7 +184,6 @@ impl Indexer {
     pub async fn get_state_transition_for_public_intent_update(
         &self,
         intent_hash: B256,
-        version: u64,
         tx_hash: TxHash,
     ) -> Result<StateTransition, IndexerError> {
         let update_call =
@@ -202,7 +201,6 @@ impl Indexer {
                     .get_state_transition_for_public_intent_update(
                         &self.darkpool_client,
                         intent_hash,
-                        version,
                         tx_hash,
                     )
                     .await?;
@@ -211,20 +209,37 @@ impl Indexer {
                     .get_state_transition_for_public_intent_update(
                         &self.darkpool_client,
                         intent_hash,
-                        version,
                         tx_hash,
                     )
                     .await?;
 
                 maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
                     IndexerError::invalid_party_settlement_data(
-                        "no public intent creation found in settle match call",
+                        "no public intent update found in settle match call",
                     ),
                 )
             },
+            _ => Err(IndexerError::invalid_selector(selector)),
+        }
+    }
+
+    /// Get the state transition associated with the cancellation of a public
+    /// intent
+    pub async fn get_state_transition_for_public_intent_cancellation(
+        &self,
+        intent_hash: B256,
+        tx_hash: TxHash,
+    ) -> Result<StateTransition, IndexerError> {
+        let cancellation_call =
+            self.darkpool_client.find_public_intent_cancellation_call(intent_hash, tx_hash).await?;
+
+        let calldata = cancellation_call.input;
+        let selector = get_selector(&calldata);
+
+        match selector {
             cancelPublicOrderCall::SELECTOR => {
-                // TODO: Implement public intent cancellation handling
-                Err(IndexerError::invalid_selector(selector))
+                // TODO: Implement public intent cancellation state transition
+                unimplemented!("Public intent cancellation state transition not yet implemented")
             },
             _ => Err(IndexerError::invalid_selector(selector)),
         }
