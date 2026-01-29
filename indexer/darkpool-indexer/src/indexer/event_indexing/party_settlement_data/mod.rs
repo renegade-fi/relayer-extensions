@@ -9,7 +9,9 @@ use alloy::{
 use renegade_circuit_types::Nullifier;
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::{
-    IDarkpoolV2::{ObligationBundle, SettlementObligation, settleMatchCall},
+    IDarkpoolV2::{
+        ObligationBundle, SettlementObligation, settleExternalMatchCall, settleMatchCall,
+    },
     calldata_bundles::{
         NATIVE_SETTLED_PRIVATE_INTENT_BUNDLE_TYPE, NATIVE_SETTLED_PUBLIC_INTENT_BUNDLE_TYPE,
         NATIVE_SETTLED_RENEGADE_PRIVATE_INTENT_BUNDLE_TYPE,
@@ -22,7 +24,9 @@ use crate::{
     indexer::{
         error::IndexerError,
         event_indexing::party_settlement_data::{
-            ring0::{Ring0SettlementData, parse_ring0_settlement_data},
+            ring0::{
+                Ring0ExternalSettlementData, Ring0SettlementData, parse_ring0_settlement_data,
+            },
             ring1::{
                 Ring1FirstFillSettlementData, Ring1SettlementData, parse_ring1_settlement_data,
             },
@@ -49,6 +53,8 @@ pub mod ring3;
 pub enum PartySettlementData {
     /// A natively-settled, public-intent bundle
     Ring0(Ring0SettlementData),
+    /// A natively-settled, public-intent bundle from an external match
+    Ring0ExternalMatch(Ring0ExternalSettlementData),
     /// A natively-settled, private-intent first fill bundle
     Ring1FirstFill(Ring1FirstFillSettlementData),
     /// A natively-settled, private-intent bundle
@@ -190,6 +196,15 @@ impl PartySettlementData {
                     )
                     .await
             },
+            Self::Ring0ExternalMatch(ring0_external_data) => {
+                ring0_external_data
+                    .get_state_transition_for_public_intent_creation(
+                        darkpool_client,
+                        intent_hash,
+                        tx_hash,
+                    )
+                    .await
+            },
             _ => Ok(None),
         }
     }
@@ -207,6 +222,15 @@ impl PartySettlementData {
         match self {
             Self::Ring0(ring0_settlement_data) => {
                 ring0_settlement_data
+                    .get_state_transition_for_public_intent_update(
+                        darkpool_client,
+                        intent_hash,
+                        tx_hash,
+                    )
+                    .await
+            },
+            Self::Ring0ExternalMatch(ring0_external_data) => {
+                ring0_external_data
                     .get_state_transition_for_public_intent_update(
                         darkpool_client,
                         intent_hash,
@@ -285,6 +309,30 @@ impl PartySettlementData {
                 "invalid settlement bundle type: {bundle_type}"
             ))),
         }
+    }
+
+    /// Parse the internal party settlement data from a settleExternalMatch call
+    pub fn from_settle_external_match_call(
+        settle_external_match_call: &settleExternalMatchCall,
+    ) -> Result<Self, IndexerError> {
+        let settlement_bundle = &settle_external_match_call.internalPartySettlementBundle;
+        let bundle_type = settlement_bundle.bundleType;
+
+        // Only ring 0 (public intent) bundles are currently supported for external
+        // matches
+        if bundle_type != NATIVE_SETTLED_PUBLIC_INTENT_BUNDLE_TYPE {
+            return Err(IndexerError::invalid_settlement_bundle(format!(
+                "unsupported settlement bundle type for external match: {bundle_type}"
+            )));
+        }
+
+        let ring0_external_data = Ring0ExternalSettlementData::new(
+            settlement_bundle,
+            settle_external_match_call.matchResult.clone(),
+            settle_external_match_call.externalPartyAmountIn,
+        )?;
+
+        Ok(PartySettlementData::Ring0ExternalMatch(ring0_external_data))
     }
 }
 
