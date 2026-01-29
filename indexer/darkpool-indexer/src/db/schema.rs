@@ -54,7 +54,6 @@ diesel::table! {
 diesel::table! {
     public_intents (intent_hash) {
         intent_hash -> Text,
-        version -> BigInt,
         input_mint -> Text,
         output_mint -> Text,
         owner_address -> Text,
@@ -94,9 +93,17 @@ diesel::table! {
 }
 
 diesel::table! {
-    processed_public_intent_updates (intent_hash, version) {
+    processed_public_intent_creations (intent_hash, tx_hash) {
         intent_hash -> Text,
-        version -> BigInt,
+        tx_hash -> Text,
+        block_number -> BigInt,
+    }
+}
+
+diesel::table! {
+    processed_public_intent_updates (intent_hash, tx_hash) {
+        intent_hash -> Text,
+        tx_hash -> Text,
         block_number -> BigInt,
     }
 }
@@ -109,5 +116,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     master_view_seeds,
     processed_nullifiers,
     processed_recovery_ids,
+    processed_public_intent_creations,
     processed_public_intent_updates,
 );

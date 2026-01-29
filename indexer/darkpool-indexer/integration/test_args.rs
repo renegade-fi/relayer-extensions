@@ -108,6 +108,9 @@ impl TestArgs {
             self.darkpool_client().clone(),
             0, // nullifier_start_block
             0, // recovery_id_start_block
+            0, // public_intent_creation_start_block
+            0, // public_intent_update_start_block
+            0, // public_intent_cancellation_start_block
             message_queue.clone(),
         );
 
@@ -221,17 +224,15 @@ impl TestArgs {
     pub async fn send_public_intent_update_message(
         &self,
         intent_hash: B256,
-        version: u64,
         tx_hash: TxHash,
     ) -> Result<()> {
-        let message = Message::UpdatePublicIntent(UpdatePublicIntentMessage {
-            intent_hash,
-            version,
-            tx_hash,
-        });
+        let message =
+            Message::UpdatePublicIntent(UpdatePublicIntentMessage { intent_hash, tx_hash });
 
-        let message_id = format!("{intent_hash}-{version}");
-        self.send_message(message, message_id.clone(), message_id).await
+        let intent_hash_str = intent_hash.to_string();
+        let tx_hash_str = tx_hash.to_string();
+
+        self.send_message(message, tx_hash_str.clone(), intent_hash_str).await
     }
 
     // --- DB Helpers --- //
