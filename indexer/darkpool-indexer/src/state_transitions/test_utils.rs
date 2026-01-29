@@ -1,6 +1,6 @@
 //! Common utilities for state transition tests
 
-use alloy::primitives::{Address, B256};
+use alloy::primitives::{Address, B256, TxHash};
 use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, thread_rng};
@@ -729,11 +729,11 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
 
     let amount_in = thread_rng().gen_range(1..=intent.amount_in);
 
-    // Create a dummy intent hash, we don't need to actually hash the intent for
-    // testing
+    // Create dummy hashes, we don't need to actually hash for testing
     let intent_hash = B256::random();
+    let tx_hash = TxHash::random();
 
-    CreatePublicIntentTransition { intent, amount_in, intent_hash, block_number: 0 }
+    CreatePublicIntentTransition { intent, amount_in, intent_hash, tx_hash, block_number: 0 }
 }
 
 /// Generate the state transition which should result in the given
@@ -746,10 +746,13 @@ pub fn gen_settle_match_into_public_intent_transition(
     // Generate a random match amount
     let amount_in = random_amount().min(initial_public_intent.intent.amount_in);
 
+    // Create a dummy tx hash for testing
+    let tx_hash = TxHash::random();
+
     SettleMatchIntoPublicIntentTransition {
         amount_in,
         intent_hash: initial_public_intent.intent_hash,
-        version: initial_public_intent.version + 1,
+        tx_hash,
         block_number: 0,
     }
 }
