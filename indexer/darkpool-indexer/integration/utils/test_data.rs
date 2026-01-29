@@ -3,15 +3,11 @@
 use alloy::primitives::U256;
 use eyre::Result;
 use rand::{Rng, thread_rng};
-use renegade_circuit_types::{fixed_point::FixedPoint, max_amount, traits::BaseType};
+use renegade_circuit_types::{fixed_point::FixedPoint, max_amount};
 use renegade_circuits::test_helpers::{
     BOUNDED_MAX_AMT, compute_implied_price, compute_min_amount_out, random_price,
 };
-use renegade_darkpool_types::{
-    balance::{DarkpoolBalance, PostMatchBalanceShare},
-    intent::Intent,
-    settlement_obligation::SettlementObligation,
-};
+use renegade_darkpool_types::{intent::Intent, settlement_obligation::SettlementObligation};
 use renegade_solidity_abi::v2::IDarkpoolV2::Deposit;
 
 use crate::test_args::TestArgs;

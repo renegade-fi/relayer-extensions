@@ -57,7 +57,7 @@ base64 = "0.22.1"
 
 # === Blockchain === #
 alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git" }
+renegade-solidity-abi = { workspace = true, default-features = true }
 
 # === Misc === #
 thiserror = { workspace = true }

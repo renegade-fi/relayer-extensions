@@ -2,8 +2,8 @@
 //! indexer
 
 use darkpool_indexer_api::types::message_queue::{
-    CreatePublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
-    RecoveryIdMessage, UpdatePublicIntentMessage,
+    CancelPublicIntentMessage, CreatePublicIntentMessage, MasterViewSeedMessage, Message,
+    NullifierSpendMessage, RecoveryIdMessage, UpdatePublicIntentMessage,
 };
 use tracing::info;
 
@@ -40,6 +40,9 @@ impl Indexer {
             },
             Message::UpdatePublicIntent(message) => {
                 self.handle_update_public_intent_message(message).await?;
+            },
+            Message::CancelPublicIntent(message) => {
+                self.handle_cancel_public_intent_message(message).await?;
             },
         }
 
@@ -136,10 +139,25 @@ impl Indexer {
         &self,
         message: UpdatePublicIntentMessage,
     ) -> Result<(), IndexerError> {
-        let UpdatePublicIntentMessage { intent_hash, version, tx_hash } = message;
-        let state_transition = self
-            .get_state_transition_for_public_intent_update(intent_hash, version, tx_hash)
-            .await?;
+        let UpdatePublicIntentMessage { intent_hash, tx_hash } = message;
+        let state_transition =
+            self.get_state_transition_for_public_intent_update(intent_hash, tx_hash).await?;
+
+        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Cancellation Message Handler ===
+
+    /// Handle a message representing the cancellation of a public intent
+    pub async fn handle_cancel_public_intent_message(
+        &self,
+        message: CancelPublicIntentMessage,
+    ) -> Result<(), IndexerError> {
+        let CancelPublicIntentMessage { intent_hash, tx_hash } = message;
+        let state_transition =
+            self.get_state_transition_for_public_intent_cancellation(intent_hash, tx_hash).await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 
