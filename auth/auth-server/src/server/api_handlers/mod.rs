@@ -31,7 +31,9 @@ use crate::error::AuthServerError;
 pub use crate::server::api_handlers::external_match::SponsoredExternalMatchResponseCtx;
 use crate::server::gas_sponsorship::get_base_and_quote_amount_with_price;
 use crate::server::helpers::pick_base_and_quote_mints;
-use crate::telemetry::helpers::calculate_quote_per_base_price;
+use crate::telemetry::helpers::{
+    calculate_quote_per_base_price, get_default_base_amount, get_default_quote_amount,
+};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::record_external_match_metrics,
@@ -197,16 +199,16 @@ fn log_bundle(
     let is_sponsored = gas_sponsorship_info.is_some();
 
     // Get the decimal-corrected price
-    let price = calculate_quote_per_base_price(&match_bundle)?;
+    let price = calculate_quote_per_base_price(&match_bundle.match_result)?;
 
     let match_result = &match_bundle.match_result;
-    let (base_mint, quote_mint) =
+    let (base_mint, _) =
         pick_base_and_quote_mints(match_result.input_mint, match_result.output_mint)?;
     let is_buy = base_mint == match_result.output_mint;
-    let min_recv = match_bundle.min_receive;
-    let max_recv = match_bundle.max_receive;
-    let min_send = match_bundle.min_send;
-    let max_send = match_bundle.max_send;
+    let min_recv = &match_bundle.min_receive;
+    let max_recv = &match_bundle.max_receive;
+    let min_send = &match_bundle.min_send;
+    let max_send = &match_bundle.max_send;
 
     let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
     let (requested_base_amount, requested_quote_amount) =

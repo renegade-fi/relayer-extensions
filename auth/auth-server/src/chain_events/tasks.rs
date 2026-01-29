@@ -5,13 +5,17 @@ use alloy_primitives::{TxHash, U256};
 use alloy_sol_types::SolEvent;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, ToPrimitive};
-use renegade_api::http::external_match::ApiExternalMatchResult;
-use renegade_circuit_types::order::OrderSide;
-use renegade_common::types::token::Token;
+use renegade_circuit_types::Amount;
+use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
+use renegade_external_api::types::ApiBoundedMatchResult;
+use renegade_types_core::Token;
+use renegade_util::hex::address_to_hex_string;
 use tracing::warn;
 
 use crate::chain_events::abis::GasSponsorContract::SponsoredExternalMatch;
 use crate::chain_events::utils::GPv2Settlement;
+use crate::server::helpers::pick_base_and_quote_mints;
+use crate::telemetry::helpers::calculate_quote_per_base_price;
 use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
@@ -49,29 +53,121 @@ const REFUND_ASSET_TICKER_ERROR_MSG: &str = "failed to get refund asset ticker";
 const HIGH_SPREAD_COST_THRESHOLD_USD: f64 = 20.; // $20 USD
 
 impl OnChainEventListenerExecutor {
+    /// Process an external match for settlement metrics
+    ///
+    /// This consolidates all the metrics recording logic for a settled external
+    /// match
+    pub async fn process_external_match(
+        &self,
+        match_result: &BoundedMatchResult,
+        actual_external_input: Amount,
+        nonce: U256,
+        tx: TxHash,
+        receipt: &TransactionReceipt,
+        settlement_time: u64,
+    ) -> Result<(), AuthServerError> {
+        // Look up the bundle context
+        let bundle_ctx = match self.bundle_store.read(&nonce) {
+            Some(ctx) => ctx,
+            None => return Ok(()), // No bundle context found for this nonce
+        };
+
+        // Increase rate limit
+        self.add_bundle_rate_limit_token(&bundle_ctx.key_description).await?;
+
+        // Convert to API type and compute actual amounts
+        let api_match: ApiBoundedMatchResult = match_result.clone().into();
+        let (actual_input, actual_output) =
+            compute_external_amounts(match_result, actual_external_input);
+
+        // Record external match spread cost
+        self.record_external_match_spread_cost(
+            tx,
+            &bundle_ctx,
+            &api_match,
+            actual_input,
+            actual_output,
+        )
+        .await?;
+
+        // Record settlement metrics
+        self.record_settlement_metrics(
+            &receipt,
+            &bundle_ctx,
+            &api_match,
+            actual_input,
+            actual_output,
+        )?;
+
+        // Record sponsorship metrics
+        if let Some((gas_sponsorship_info, sponsorship_nonce)) = &bundle_ctx.gas_sponsorship_info {
+            self.record_settled_match_sponsorship(
+                &bundle_ctx,
+                &api_match,
+                &receipt,
+                gas_sponsorship_info,
+                *sponsorship_nonce,
+            )
+            .await?;
+        }
+
+        // Cleanup the bundle context
+        self.bundle_store.remove_bundle(&bundle_ctx.bundle_id);
+
+        // Record price sample to assembly delay
+        self.record_assembly_delay(&bundle_ctx);
+
+        // Record assembly to settlement delay
+        self.record_assembly_to_settlement_delay(settlement_time, &bundle_ctx);
+
+        // Record price sample to settlement delay
+        self.record_settlement_delay(settlement_time, &bundle_ctx);
+
+        Ok(())
+    }
     /// Record settlement metrics for a bundle
+    ///
+    /// Metrics are recorded from the external party's perspective
     pub fn record_settlement_metrics(
         &self,
         receipt: &TransactionReceipt,
         ctx: &BundleContext,
-        match_result: &ApiExternalMatchResult,
+        match_result: &ApiBoundedMatchResult,
+        actual_input: Amount,
+        actual_output: Amount,
     ) -> Result<(), AuthServerError> {
         let mut labels = self.get_labels(ctx);
         let is_settled_via_cowswap = self.detect_cowswap_settlement(receipt);
         labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
 
+        let input_mint = match_result.input_mint;
+        let output_mint = match_result.output_mint;
+
+        // Derive base/quote from input/output (base is non-USDC)
+        let (base_mint, quote_mint) = pick_base_and_quote_mints(input_mint, output_mint)?;
+
+        // Compute base/quote amounts from external party's input/output
+        let (base_amount, quote_amount) = if base_mint == match_result.output_mint {
+            // External buys base: input is quote, output is base
+            (actual_output, actual_input)
+        } else {
+            // External sells base: input is base, output is quote
+            (actual_input, actual_output)
+        };
+
         record_volume_with_tags(
-            &match_result.base_mint,
-            match_result.base_amount,
+            &address_to_hex_string(&base_mint),
+            base_amount,
             EXTERNAL_MATCH_SETTLED_BASE_VOLUME,
             &labels,
         );
 
-        labels = extend_labels_with_base_asset(&match_result.base_mint, labels);
-        labels = extend_labels_with_side(&match_result.direction, labels);
+        labels = extend_labels_with_base_asset(&base_mint, labels);
+        labels = extend_labels_with_side(input_mint, output_mint, labels)?;
+
         record_volume_with_tags(
-            &match_result.quote_mint,
-            match_result.quote_amount,
+            &address_to_hex_string(&quote_mint),
+            quote_amount,
             EXTERNAL_MATCH_SETTLED_QUOTE_VOLUME,
             &labels,
         );
@@ -82,42 +178,65 @@ impl OnChainEventListenerExecutor {
     /// Record the cost experienced by the internal party in an external match
     /// due to the spread between the match price and the reference price at the
     /// time of settlement
+    ///
     /// 1. We don't have to remove the effects of gas sponsorship from the match
     ///    result, as it is parsed from settlement calldata, where sponsorship
     ///    is already factored out.
-    /// 2. We use the match base/quote amounts to compute the trade price, as
+    /// 2. We use the match input/output amounts to compute the trade price, as
     ///    opposed to the send/receive amounts on the bundle. This is so that we
     ///    don't factor fees into the spread. We are interested in the cost
     ///    purely due to price drift between price sampling for the quote and
     ///    settlement.
     /// 3. We sample a reference price w/in this method, meaning it should be
     ///    called as close to the actual time of settlement as possible.
+    ///
+    /// Note: This metric is recorded from the internal party's perspective
     pub async fn record_external_match_spread_cost(
         &self,
         tx: TxHash,
         ctx: &BundleContext,
-        match_result: &ApiExternalMatchResult,
+        match_result: &ApiBoundedMatchResult,
+        actual_input: Amount,
+        actual_output: Amount,
     ) -> Result<(), AuthServerError> {
-        let reference_price =
-            self.price_reporter_client.get_price(&match_result.base_mint, self.chain).await?;
+        // Derive base/quote from input/output (base is non-USDC)
+        // Note: input/output are from external party's perspective
+        let (base_mint, quote_mint) =
+            pick_base_and_quote_mints(match_result.input_mint, match_result.output_mint)?;
 
-        let base_token = Token::from_addr_on_chain(&match_result.base_mint, self.chain);
-        let quote_token = Token::from_addr_on_chain(&match_result.quote_mint, self.chain);
+        // Sample reference price for the base token (in decimal-corrected quote/base
+        // units)
+        let reference_price = self
+            .price_reporter_client
+            .get_price(&address_to_hex_string(&base_mint), self.chain)
+            .await?;
 
-        let base_amount_decimal = base_token.convert_to_decimal(match_result.base_amount);
-        let quote_amount_decimal = quote_token.convert_to_decimal(match_result.quote_amount);
+        // Compute the decimal-corrected match price using the helper
+        let match_price = calculate_quote_per_base_price(match_result)?;
 
-        let match_price = quote_amount_decimal / base_amount_decimal;
+        // Determine side from internal party's perspective
+        // External's input is internal's output, so:
+        // - base == input_mint (external sells base) => internal buys base
+        // - base == output_mint (external buys base) => internal sells base
+        let internal_buys = base_mint == match_result.input_mint;
 
-        // The internal party takes the *opposite* side of the direction specified in
-        // the `ApiExternalMatchResult`, so we must record spread cost from
-        // their perspective accordingly
-        let trade_side_factor = match match_result.direction.opposite() {
-            OrderSide::Buy => 1.0,
-            OrderSide::Sell => -1.0,
-        };
+        // For spread cost calculation from internal perspective:
+        // - If internal buys at a higher price than reference, they overpay (positive
+        //   cost)
+        // - If internal sells at a lower price than reference, they undersell (positive
+        //   cost)
+        let trade_side_factor = if internal_buys { 1.0 } else { -1.0 };
 
         let relative_spread = trade_side_factor * (match_price - reference_price) / reference_price;
+
+        // Compute quote amount for the spread cost calculation (from internal
+        // perspective)
+        // - When internal buys base, they pay quote (which is external's output)
+        // - When internal sells base, they receive quote (which is external's input)
+        let quote_token = Token::from_alloy_address(&quote_mint);
+        let quote_amount = if internal_buys { actual_output } else { actual_input };
+        let quote_amount_decimal = quote_token.convert_to_decimal(quote_amount);
+
         let spread_cost = quote_amount_decimal * relative_spread;
         if spread_cost > HIGH_SPREAD_COST_THRESHOLD_USD {
             warn!(
@@ -128,10 +247,8 @@ impl OnChainEventListenerExecutor {
             );
         }
 
-        let side_tag_value = match match_result.direction {
-            OrderSide::Buy => "buy",
-            OrderSide::Sell => "sell",
-        };
+        let side_tag_value = if internal_buys { "buy" } else { "sell" };
+        let base_token = Token::from_alloy_address(&base_mint);
         let asset_tag_value = base_token.get_ticker().unwrap_or(base_token.get_addr());
 
         let labels = vec![
@@ -156,22 +273,24 @@ impl OnChainEventListenerExecutor {
 
     /// Record the gas sponsorship rate limit & metrics for a given settled
     /// match
+    ///
+    /// The refund asset is the external party's output token (what they
+    /// receive)
     pub async fn record_settled_match_sponsorship(
         &self,
         ctx: &BundleContext,
-        match_result: &ApiExternalMatchResult,
+        match_result: &ApiBoundedMatchResult,
         receipt: &TransactionReceipt,
         gas_sponsorship_info: &GasSponsorshipInfo,
         nonce: U256,
     ) -> Result<(), AuthServerError> {
+        // Refund is in the external party's output token (what they receive)
         let refund_asset = if gas_sponsorship_info.refund_native_eth {
             Token::from_ticker(WETH_TICKER)
         } else {
-            match match_result.direction {
-                OrderSide::Buy => Token::from_addr(&match_result.base_mint),
-                OrderSide::Sell => Token::from_addr(&match_result.quote_mint),
-            }
+            Token::from_alloy_address(&match_result.output_mint)
         };
+
         let nominal_price =
             self.price_reporter_client.get_price_usd(&refund_asset.get_addr(), self.chain).await?;
 
@@ -369,4 +488,21 @@ impl OnChainEventListenerExecutor {
 
         U256::ZERO
     }
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// Compute the external party's actual input and output amounts from a
+/// `BoundedMatchResult` and the actual external party input amount
+///
+/// Uses `to_external_obligation` which returns a `SettlementObligation`
+/// containing the external party's `amount_in` and `amount_out`
+fn compute_external_amounts(
+    match_result: &BoundedMatchResult,
+    actual_external_input: Amount,
+) -> (Amount, Amount) {
+    let obligation = match_result.to_external_obligation(actual_external_input);
+    (obligation.amount_in, obligation.amount_out)
 }

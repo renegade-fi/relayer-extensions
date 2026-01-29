@@ -6,7 +6,9 @@ use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::{
     DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
-use renegade_external_api::types::{BoundedExternalMatchApiBundle, ExternalOrder};
+use renegade_external_api::types::{
+    ApiBoundedMatchResult, BoundedExternalMatchApiBundle, ExternalOrder,
+};
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use tracing::warn;
@@ -51,16 +53,16 @@ fn get_asset_and_volume(mint: &str, amount: u128) -> (String, f64) {
 
 // --- Price Calculation --- //
 
-/// Calculates the decimal-corrected quote per base price from a match bundle
+/// Calculates the decimal-corrected quote per base price from a match result
 /// Returns the price as an f64 decimal adjusted value, accounting for the
 /// difference in decimal places between quote and base tokens
 pub(crate) fn calculate_quote_per_base_price(
-    match_bundle: &BoundedExternalMatchApiBundle,
+    match_result: &ApiBoundedMatchResult,
 ) -> Result<f64, AuthServerError> {
-    let out_per_in_price = match_bundle.match_result.price_fp.to_f64();
+    let out_per_in_price = match_result.price_fp.to_f64();
 
-    let input_mint = match_bundle.match_result.input_mint;
-    let output_mint = match_bundle.match_result.output_mint;
+    let input_mint = match_result.input_mint;
+    let output_mint = match_result.output_mint;
     let (base_mint, quote_mint) = pick_base_and_quote_mints(input_mint, output_mint)?;
 
     let quote_per_base_price =
@@ -101,14 +103,23 @@ pub(crate) fn extend_labels_with_base_asset(
     labels
 }
 
-/// Extends the given labels with a side tag
+/// Extends the given labels with a side tag derived from input/output mints
+///
+/// The side is from the external party's perspective:
+/// - If base == output_mint → external receives base → external BUYS → "buy"
+/// - If base == input_mint → external sends base → external SELLS → "sell"
 pub(crate) fn extend_labels_with_side(
-    side: &OrderSide,
+    input_mint: Address,
+    output_mint: Address,
     mut labels: Vec<(String, String)>,
-) -> Vec<(String, String)> {
-    let side_label = if side == &OrderSide::Sell { "sell" } else { "buy" };
+) -> Result<Vec<(String, String)>, AuthServerError> {
+    let (base_mint, _) = pick_base_and_quote_mints(input_mint, output_mint)?;
+
+    // External party buys if they receive the base token (base == output)
+    let side_label = if base_mint == output_mint { "buy" } else { "sell" };
     labels.insert(0, (SIDE_TAG.to_string(), side_label.to_string()));
-    labels
+
+    Ok(labels)
 }
 
 /// Record a volume metric with the given extra tags
@@ -229,7 +240,7 @@ pub(crate) fn record_external_match_metrics(
     labels: &[(String, String)],
 ) -> Result<(), AuthServerError> {
     // Get decimal-corrected quote / base price
-    let price = calculate_quote_per_base_price(match_bundle)?;
+    let price = calculate_quote_per_base_price(&match_bundle.match_result)?;
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, labels) {
@@ -242,8 +253,6 @@ pub(crate) fn record_external_match_metrics(
     let (_, requested_quote_amount) =
         get_base_and_quote_amount_with_price(order, relayer_fee, price)?;
 
-    // TODO: Implement `get_default_quote_amount` to get the quote amount given by
-    // the default input amount set in the match bundle calldata
     let matched_quote_amount = get_default_quote_amount(match_bundle)?;
     if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, labels) {
         warn!("Error recording fill ratio metric: {e}");
@@ -279,4 +288,20 @@ pub(crate) fn record_quote_not_found(key_description: String, base_mint: &str) {
     ];
 
     metrics::counter!(QUOTE_NOT_FOUND_COUNT, &labels).increment(1);
+}
+
+/// Get the base amount implied by the default setting of the
+/// `externalPartyAmountIn` calldata field in the match bundle
+pub(crate) fn get_default_base_amount(
+    _match_bundle: &BoundedExternalMatchApiBundle,
+) -> Result<u128, AuthServerError> {
+    todo!()
+}
+
+/// Get the quote amount implied by the default setting of the
+/// `externalPartyAmountIn` calldata field in the match bundle
+pub(crate) fn get_default_quote_amount(
+    _match_bundle: &BoundedExternalMatchApiBundle,
+) -> Result<u128, AuthServerError> {
+    todo!()
 }

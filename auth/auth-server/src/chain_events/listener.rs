@@ -5,26 +5,21 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
-    rpc::types::{Filter, trace::geth::CallFrame},
+    rpc::types::Filter,
     sol_types::SolEvent,
 };
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
-use renegade_api::http::external_match::ApiExternalMatchResult;
+use renegade_circuit_types::Amount;
 use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::DarkpoolClient;
+use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
 use tracing::{error, info};
 
 use crate::{
     bundle_store::BundleStore,
-    chain_events::abis::{
-        GasSponsorContract::{self},
-        parse_external_match,
-    },
-};
-use crate::{
-    chain_events::abis::ExternalMatch,
+    chain_events::abis::GasSponsorContract::{self},
     server::{
         gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
     },
@@ -87,7 +82,7 @@ pub struct OnChainEventListenerExecutor {
     /// If not configured, the listener will poll using the darkpool client
     websocket_addr: Option<String>,
     /// The bundle store to use for retrieving bundle contexts
-    bundle_store: BundleStore,
+    pub(crate) bundle_store: BundleStore,
     /// The rate limiter
     pub(crate) rate_limiter: AuthServerRateLimiter,
     /// The price reporter client with WebSocket streaming support
@@ -209,6 +204,7 @@ impl OnChainEventListenerExecutor {
     /// one is present, record metrics for it
     ///
     /// Returns whether the tx settled an external match
+    #[allow(unreachable_code)]
     async fn check_external_match_settlement(
         &self,
         nonce: U256,
@@ -231,64 +227,24 @@ impl OnChainEventListenerExecutor {
         // Get the time of settlement
         let settlement_time = self.get_settlement_timestamp(&receipt).await?;
 
-        let matches = self.fetch_external_matches_in_tx(receipt.transaction_hash).await?;
-        for external_match in matches {
-            if let Some(bundle_ctx) = self.bundle_store.read(&nonce) {
-                // Increase rate limit
-                self.add_bundle_rate_limit_token(&bundle_ctx.key_description).await?;
+        // TODO: Update fetch_external_matches_in_tx to return Vec<(BoundedMatchResult,
+        // Amount)> let matches =
+        // self.fetch_external_matches_in_tx(receipt.transaction_hash).await?;
+        let matches: Vec<(BoundedMatchResult, Amount)> = todo!();
 
-                let api_match: ApiExternalMatchResult = external_match.match_result().into();
-
-                // Record external match spread cost
-                self.record_external_match_spread_cost(tx, &bundle_ctx, &api_match).await?;
-
-                // Record settlement metrics
-                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match)?;
-
-                // Record sponsorship metrics
-                if let Some((gas_sponsorship_info, nonce)) = &bundle_ctx.gas_sponsorship_info {
-                    self.record_settled_match_sponsorship(
-                        &bundle_ctx,
-                        &api_match,
-                        &receipt,
-                        gas_sponsorship_info,
-                        *nonce,
-                    )
-                    .await?;
-                }
-
-                // Cleanup the bundle context
-                self.bundle_store.remove_bundle(&bundle_ctx.bundle_id);
-
-                // Record price sample to assembly delay
-                self.record_assembly_delay(&bundle_ctx);
-
-                // Record assembly to settlement delay
-                self.record_assembly_to_settlement_delay(settlement_time, &bundle_ctx);
-
-                // Record price sample to settlement delay
-                self.record_settlement_delay(settlement_time, &bundle_ctx);
-            }
+        for (bounded_match, actual_external_input) in matches {
+            // Process the external match (records all metrics)
+            self.process_external_match(
+                &bounded_match,
+                actual_external_input,
+                nonce,
+                tx,
+                &receipt,
+                settlement_time,
+            )
+            .await?;
         }
 
         Ok(())
-    }
-
-    /// Fetch all external matches in a transaction
-    async fn fetch_external_matches_in_tx(
-        &self,
-        tx: TxHash,
-    ) -> Result<Vec<ExternalMatch>, OnChainEventListenerError> {
-        let darkpool_calls: Vec<CallFrame> =
-            self.darkpool_client.fetch_tx_darkpool_calls(tx).await?;
-
-        let mut matches = Vec::new();
-        for call in darkpool_calls.into_iter() {
-            if let Some(match_result) = parse_external_match(&call.input)? {
-                matches.push(match_result)
-            }
-        }
-
-        Ok(matches)
     }
 }
