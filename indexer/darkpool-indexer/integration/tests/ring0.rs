@@ -47,7 +47,7 @@ async fn test_ring0_first_fill(args: TestArgs) -> Result<()> {
     // Fetch the new public intent from the indexer
     let indexed_public_intent = args.get_public_intent_by_hash(intent_hash).await?;
 
-    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.intent.amount_in);
+    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.order.intent.inner.amount_in);
     let onchain_remaining_amount = args
         .darkpool_instance()
         .openPublicIntents(indexed_public_intent.intent_hash)
@@ -84,7 +84,7 @@ async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
     // Fetch the public intent from the indexer
     let indexed_public_intent = args.get_public_intent_by_hash(intent_hash).await?;
 
-    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.intent.amount_in);
+    let indexed_remaining_amount = u128_to_u256(indexed_public_intent.order.intent.inner.amount_in);
     let onchain_remaining_amount = args
         .darkpool_instance()
         .openPublicIntents(indexed_public_intent.intent_hash)
