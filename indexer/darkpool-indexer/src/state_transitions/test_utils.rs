@@ -788,7 +788,7 @@ pub fn gen_settle_match_into_public_intent_transition(
     initial_public_intent: &PublicIntentStateObject,
 ) -> SettleMatchIntoPublicIntentTransition {
     // Generate a random match amount
-    let amount_in = random_amount().min(initial_public_intent.intent.amount_in);
+    let amount_in = random_amount().min(initial_public_intent.order.intent.inner.amount_in);
 
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
@@ -819,7 +819,7 @@ pub fn gen_settle_external_match_into_public_intent_transition(
     // Upper bound is the internal party's remaining input amount converted to
     // output via price.
     let max_external_amount_in =
-        scalar_to_u128(&price.floor_mul_int(initial_public_intent.intent.amount_in));
+        scalar_to_u128(&price.floor_mul_int(initial_public_intent.order.intent.inner.amount_in));
 
     // Generate a random external party amount in, bounded by what the internal
     // party can provide
@@ -1017,7 +1017,7 @@ pub async fn validate_public_intent_indexing(
     let indexed_public_intent = db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
 
     // Assert that the indexed public intent matches the expected intent.
-    assert_eq!(&indexed_public_intent.intent, expected_intent);
+    assert_eq!(&indexed_public_intent.order.intent.inner, expected_intent);
 
     Ok(())
 }
