@@ -16,7 +16,9 @@ use renegade_darkpool_types::{
     fee::FeeTake,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
     settlement_obligation::SettlementObligation,
+    state_wrapper::StateWrapper,
 };
+use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
 use crate::crypto_mocks::{
@@ -288,16 +290,6 @@ impl From<BalanceStateObject> for ApiStateObject {
     }
 }
 
-/// A struct representing the input/output amounts parsed from a public
-/// obligation bundle associated with a match settlement
-#[derive(Clone)]
-pub struct ObligationAmounts {
-    /// The input amount on the obligation bundle
-    pub amount_in: Scalar,
-    /// The output amount on the obligation bundle
-    pub amount_out: Scalar,
-}
-
 /// An intent state object
 #[derive(Clone)]
 pub struct IntentStateObject {
@@ -429,41 +421,39 @@ impl From<IntentStateObject> for ApiStateObject {
 pub struct PublicIntentStateObject {
     /// The intent's hash
     pub intent_hash: B256,
-    /// The underlying intent circuit type
-    pub intent: Intent,
+    /// The underlying order type
+    pub order: Order,
     /// The ID of the account which owns the intent
     pub account_id: Uuid,
-    /// Whether the intent is active
-    pub active: bool,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
-    /// Whether the intent allows external matches
-    pub allow_external_matches: bool,
-    /// The minimum fill size allowed for the intent
-    pub min_fill_size: Amount,
-    /// Whether to precompute a cancellation proof for the intent
-    pub precompute_cancellation_proof: bool,
+    /// Whether the intent is active
+    pub active: bool,
 }
 
 impl PublicIntentStateObject {
     /// Create a new public intent state object
     pub fn new(intent_hash: B256, intent: Intent, account_id: Uuid) -> Self {
-        // Select safe default values for the public intent metadata
-        let active = true;
-        let matching_pool = GLOBAL_MATCHING_POOL.to_string();
-        let allow_external_matches = false;
-        let min_fill_size = intent.amount_in;
-        let precompute_cancellation_proof = false;
+        // Create a Ring0 state wrapper with zero seeds (public intents don't use
+        // secret shares or recovery streams)
+        let state_intent = StateWrapper::new(intent, Scalar::zero(), Scalar::zero());
+
+        // Build the order metadata with safe defaults
+        let metadata = OrderMetadata::new(
+            state_intent.inner.amount_in, // min_fill_size
+            false,                        // allow_external_matches
+        );
+
+        // Build the order with a new ID, Ring0 privacy level
+        let order =
+            Order::new_with_ring(Uuid::new_v4(), state_intent, metadata, PrivacyRing::Ring0);
 
         Self {
             intent_hash,
-            intent,
+            order,
             account_id,
-            active,
-            matching_pool,
-            allow_external_matches,
-            min_fill_size,
-            precompute_cancellation_proof,
+            matching_pool: GLOBAL_MATCHING_POOL.to_string(),
+            active: true,
         }
     }
 
@@ -486,30 +476,15 @@ impl PublicIntentStateObject {
         let internal_party_amount_in =
             scalar_to_u128(&inverse_price.floor_mul_int(external_party_amount_in));
 
-        self.intent.amount_in -= internal_party_amount_in;
+        self.order.intent.inner.amount_in -= internal_party_amount_in;
     }
 }
 
 impl From<PublicIntentStateObject> for ApiPublicIntent {
     fn from(value: PublicIntentStateObject) -> Self {
-        let PublicIntentStateObject {
-            intent_hash,
-            intent,
-            matching_pool,
-            allow_external_matches,
-            min_fill_size,
-            precompute_cancellation_proof,
-            ..
-        } = value;
+        let PublicIntentStateObject { intent_hash, order, matching_pool, .. } = value;
 
-        ApiPublicIntent {
-            intent_hash,
-            intent,
-            matching_pool,
-            allow_external_matches,
-            min_fill_size,
-            precompute_cancellation_proof,
-        }
+        ApiPublicIntent { intent_hash, order, matching_pool }
     }
 }
 

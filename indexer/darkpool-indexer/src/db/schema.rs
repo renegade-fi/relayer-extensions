@@ -54,6 +54,7 @@ diesel::table! {
 diesel::table! {
     public_intents (intent_hash) {
         intent_hash -> Text,
+        order_id -> Uuid,
         input_mint -> Text,
         output_mint -> Text,
         owner_address -> Text,
@@ -64,7 +65,6 @@ diesel::table! {
         matching_pool -> Text,
         allow_external_matches -> Bool,
         min_fill_size -> Numeric,
-        precompute_cancellation_proof -> Bool,
     }
 }
 

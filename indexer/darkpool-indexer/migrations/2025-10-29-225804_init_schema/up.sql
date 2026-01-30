@@ -116,6 +116,7 @@ CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active
 -- Stores public darkpool intents
 CREATE TABLE "public_intents"(
 	"intent_hash" TEXT NOT NULL PRIMARY KEY,
+	"order_id" UUID NOT NULL,
 	"input_mint" TEXT NOT NULL,
 	"output_mint" TEXT NOT NULL,
 	"owner_address" TEXT NOT NULL,
@@ -125,8 +126,7 @@ CREATE TABLE "public_intents"(
 	"active" BOOL NOT NULL,
 	"matching_pool" TEXT NOT NULL,
 	"allow_external_matches" BOOL NOT NULL,
-	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0),
-	"precompute_cancellation_proof" BOOL NOT NULL
+	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0)
 );
 
 -- Indexes a public intent by its account ID & active flag

@@ -2,10 +2,8 @@
 
 use alloy_primitives::B256;
 use renegade_circuit_types::Amount;
-use renegade_darkpool_types::{
-    balance::DarkpoolStateBalance,
-    intent::{DarkpoolStateIntent, Intent},
-};
+use renegade_darkpool_types::{balance::DarkpoolStateBalance, intent::DarkpoolStateIntent};
+use renegade_types_account::account::order::Order;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -74,16 +72,10 @@ impl From<ApiIntent> for ApiStateObject {
 pub struct ApiPublicIntent {
     /// The intent's hash
     pub intent_hash: B256,
-    /// The underlying intent circuit type
-    pub intent: Intent,
+    /// The underlying order type
+    pub order: Order,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
-    /// Whether the intent allows external matches
-    pub allow_external_matches: bool,
-    /// The minimum fill size allowed for the intent
-    pub min_fill_size: Amount,
-    /// Whether to precompute a cancellation proof for the intent
-    pub precompute_cancellation_proof: bool,
 }
 
 impl From<ApiPublicIntent> for ApiStateObject {

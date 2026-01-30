@@ -9,11 +9,14 @@ use diesel::{
     prelude::{AsChangeset, Insertable, Queryable},
 };
 use renegade_circuit_types::{primitives::schnorr::SchnorrPublicKey, traits::BaseType};
+use renegade_constants::Scalar;
 use renegade_darkpool_types::{
     balance::{DarkpoolBalance, DarkpoolBalanceShare, DarkpoolStateBalance},
     csprng::PoseidonCSPRNG,
     intent::{DarkpoolStateIntent, Intent, IntentShare},
+    state_wrapper::StateWrapper,
 };
+use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
 use crate::{
@@ -422,6 +425,8 @@ impl From<IntentModel> for IntentStateObject {
 pub struct PublicIntentModel {
     /// The intent's hash
     pub intent_hash: String,
+    /// The order's ID
+    pub order_id: Uuid,
     /// The mint of the input token in the intent
     pub input_mint: String,
     /// The mint of the output token in the intent
@@ -442,35 +447,30 @@ pub struct PublicIntentModel {
     pub allow_external_matches: bool,
     /// The minimum fill size allowed for the intent
     pub min_fill_size: BigDecimal,
-    /// Whether to precompute a cancellation proof for the intent
-    pub precompute_cancellation_proof: bool,
 }
 
 impl From<PublicIntentStateObject> for PublicIntentModel {
     fn from(value: PublicIntentStateObject) -> Self {
-        let PublicIntentStateObject {
-            intent_hash,
-            intent: Intent { in_token, out_token, owner, min_price, amount_in },
-            account_id,
-            active,
-            matching_pool,
-            allow_external_matches,
-            min_fill_size,
-            precompute_cancellation_proof,
-        } = value;
+        let PublicIntentStateObject { intent_hash, order, account_id, matching_pool, active } =
+            value;
+
+        // Extract intent fields from the order
+        let Intent { in_token, out_token, owner, min_price, amount_in } = order.intent.inner;
+
+        // Extract metadata fields from the order
+        let OrderMetadata { min_fill_size, allow_external_matches } = order.metadata;
 
         let intent_hash_string = intent_hash.to_string();
-
         let input_mint_string = in_token.to_string();
         let output_mint_string = out_token.to_string();
         let owner_address_string = owner.to_string();
         let min_price_bigdecimal = fixed_point_to_bigdecimal(min_price);
         let input_amount_bigdecimal = amount_in.into();
-
         let min_fill_size_bigdecimal = min_fill_size.into();
 
         PublicIntentModel {
             intent_hash: intent_hash_string,
+            order_id: order.id,
             account_id,
             active,
             input_mint: input_mint_string,
@@ -481,7 +481,6 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             matching_pool,
             allow_external_matches,
             min_fill_size: min_fill_size_bigdecimal,
-            precompute_cancellation_proof,
         }
     }
 }
@@ -490,6 +489,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
     fn from(value: PublicIntentModel) -> Self {
         let PublicIntentModel {
             intent_hash,
+            order_id,
             account_id,
             active,
             input_mint,
@@ -500,7 +500,6 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             matching_pool,
             allow_external_matches,
             min_fill_size,
-            precompute_cancellation_proof,
         } = value;
 
         let intent_hash_b256 =
@@ -508,10 +507,13 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
 
         let input_mint_address =
             Address::from_str(&input_mint).expect("Input mint must be a valid address");
+
         let output_mint_address =
             Address::from_str(&output_mint).expect("Output mint must be a valid address");
+
         let owner_address_address =
             Address::from_str(&owner_address).expect("Owner address must be a valid address");
+
         let min_price_fixed_point = bigdecimal_to_fixed_point(min_price);
         let input_amount_u128 =
             input_amount.to_u128().expect("Input amount cannot be converted to u128");
@@ -519,21 +521,31 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
         let min_fill_size_u128 =
             min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
 
+        // Reconstruct the intent
+        let intent = Intent {
+            in_token: input_mint_address,
+            out_token: output_mint_address,
+            owner: owner_address_address,
+            min_price: min_price_fixed_point,
+            amount_in: input_amount_u128,
+        };
+
+        // Reconstruct the state wrapper with zero seeds (Ring0 intents don't use
+        // secret shares or recovery streams)
+        let state_intent = StateWrapper::new(intent, Scalar::zero(), Scalar::zero());
+
+        // Reconstruct the order metadata
+        let metadata = OrderMetadata::new(min_fill_size_u128, allow_external_matches);
+
+        // Reconstruct the order with Ring0 privacy level
+        let order = Order::new_with_ring(order_id, state_intent, metadata, PrivacyRing::Ring0);
+
         PublicIntentStateObject {
             intent_hash: intent_hash_b256,
-            intent: Intent {
-                in_token: input_mint_address,
-                out_token: output_mint_address,
-                owner: owner_address_address,
-                min_price: min_price_fixed_point,
-                amount_in: input_amount_u128,
-            },
+            order,
             account_id,
-            active,
             matching_pool,
-            allow_external_matches,
-            min_fill_size: min_fill_size_u128,
-            precompute_cancellation_proof,
+            active,
         }
     }
 }
