@@ -44,8 +44,8 @@ impl Server {
 
         // Create the darkpool client
         let darkpool_client = create_darkpool_client(
-            args.darkpool_address.clone(),
-            args.permit2_address.clone(),
+            &args.darkpool_address,
+            &args.permit2_address,
             args.chain_id,
             args.rpc_url.clone(),
         )
@@ -202,8 +202,8 @@ fn parse_gas_sponsor_address(args: &Cli) -> Result<Address, AuthServerError> {
 
 /// Create a darkpool client with the provided configuration
 pub fn create_darkpool_client(
-    darkpool_address: String,
-    permit2_address: String,
+    darkpool_address: &str,
+    permit2_address: &str,
     chain: Chain,
     rpc_url: String,
 ) -> Result<DarkpoolClient, String> {

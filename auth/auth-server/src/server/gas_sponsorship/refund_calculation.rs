@@ -97,7 +97,7 @@ impl Server {
 pub fn remove_gas_sponsorship_from_quote(
     quote: &mut ApiExternalQuote,
     gas_sponsorship_info: &GasSponsorshipInfo,
-) {
+) -> Result<(), AuthServerError> {
     quote.match_result.output_amount -= gas_sponsorship_info.refund_amount;
 
     let input_amt_f64 = quote.match_result.input_amount as f64;
@@ -110,8 +110,10 @@ pub fn remove_gas_sponsorship_from_quote(
     // Subtract the refund amount from the exact output amount requested in the
     // order, to match the order received & signed by the relayer
     if requires_exact_output_amount_update(&quote.order, gas_sponsorship_info) {
-        apply_gas_sponsorship_to_exact_output_amount(&mut quote.order, gas_sponsorship_info);
+        apply_gas_sponsorship_to_exact_output_amount(&mut quote.order, gas_sponsorship_info)?;
     }
+
+    Ok(())
 }
 
 /// Update a quote to reflect a gas sponsorship refund.

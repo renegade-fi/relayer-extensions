@@ -224,14 +224,14 @@ impl Server {
             // Reconstruct original signed quote
             if gas_sponsorship_info.requires_match_result_update() {
                 let quote = &mut signed_quote.quote;
-                remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info);
+                remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info)?;
             }
 
             // Ensure that the exact output amount is respected on the updated order
             if let Some(updated_order) = updated_order
                 && requires_exact_output_amount_update(updated_order, gas_sponsorship_info)
             {
-                apply_gas_sponsorship_to_exact_output_amount(updated_order, gas_sponsorship_info);
+                apply_gas_sponsorship_to_exact_output_amount(updated_order, gas_sponsorship_info)?;
             }
         }
 

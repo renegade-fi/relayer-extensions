@@ -130,7 +130,7 @@ impl Server {
             info!(
                 "Adjusting exact output amount requested in order to account for gas sponsorship"
             );
-            apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info);
+            apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info)?;
         }
 
         Ok(gas_sponsorship_info)
