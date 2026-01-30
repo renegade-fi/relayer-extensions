@@ -1,4 +1,5 @@
 //! Database access helpers for the auth server
+#![allow(mismatched_lifetime_syntaxes)]
 use std::time::Duration;
 
 use bb8::{Pool, PooledConnection};
