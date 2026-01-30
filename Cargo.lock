@@ -15,7 +15,7 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade-contracts.git#f2ff12893d43280923d58542b992a1bf60859c89"
+source = "git+https://github.com/renegade-fi/renegade-contracts.git#34ad7a73f206688d82bedbfdac92e52f371c8637"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -1379,8 +1379,10 @@ dependencies = [
  "chrono",
  "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "clap",
+ "config 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "darkpool-client 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "dashmap",
  "diesel",
@@ -2091,7 +2093,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2472,7 +2474,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2548,7 +2550,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -2641,7 +2643,7 @@ dependencies = [
 [[package]]
 name = "circuits-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy-primitives",
  "ark-crypto-primitives",
@@ -2814,7 +2816,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2908,7 +2910,7 @@ dependencies = [
  "colored",
  "common",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
- "darkpool-client",
+ "darkpool-client 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "ed25519-dalek 1.0.1",
  "json",
  "libp2p",
@@ -2921,6 +2923,35 @@ dependencies = [
  "tracing",
  "url",
  "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
+]
+
+[[package]]
+name = "config"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
+dependencies = [
+ "alloy",
+ "base64 0.13.1",
+ "bimap",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "clap",
+ "colored",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "darkpool-client 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "ed25519-dalek 1.0.1",
+ "json",
+ "libp2p",
+ "rand 0.8.5",
+ "rand_core 0.5.1",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "toml 0.5.11",
+ "tracing",
+ "types-core",
+ "types-gossip",
+ "url",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
 ]
 
 [[package]]
@@ -2998,7 +3029,7 @@ dependencies = [
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3202,7 +3233,7 @@ dependencies = [
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy-primitives",
  "ark-ec",
@@ -3344,6 +3375,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "darkpool-client"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
+dependencies = [
+ "abi",
+ "alloy",
+ "alloy-contract",
+ "alloy-primitives",
+ "alloy-sol-types",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "async-trait",
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "itertools 0.12.1",
+ "lazy_static",
+ "matching-engine-core",
+ "num-bigint",
+ "num-traits",
+ "ruint",
+ "serde",
+ "thiserror 2.0.17",
+ "tracing",
+ "types-account",
+ "types-core",
+ "types-proofs",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+]
+
+[[package]]
 name = "darkpool-types"
 version = "0.1.0"
 source = "git+https://github.com/renegade-fi/renegade.git?branch=joey%2Frelayer-v2#f19b246eff2d2e3773eab8de3082279c7418acff"
@@ -3364,7 +3428,7 @@ dependencies = [
 [[package]]
 name = "darkpool-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy-primitives",
  "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
@@ -4290,7 +4354,7 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "abi",
  "alloy",
@@ -4531,9 +4595,9 @@ dependencies = [
  "circuits",
  "clap",
  "common",
- "config",
+ "config 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
- "darkpool-client",
+ "darkpool-client 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "diesel",
  "diesel-async",
  "ethers",
@@ -5951,6 +6015,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
  "regex-automata",
+]
+
+[[package]]
+name = "matching-engine-core"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
+dependencies = [
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "dashmap",
+ "rustc-hash 2.1.1",
+ "types-account",
+ "types-core",
+ "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
 ]
 
 [[package]]
@@ -7819,7 +7898,7 @@ dependencies = [
  "atomic_float 0.1.0",
  "clap",
  "common",
- "config",
+ "config 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "crossbeam-skiplist",
  "derivative",
  "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
@@ -7883,7 +7962,7 @@ dependencies = [
  "bimap",
  "clap",
  "common",
- "config",
+ "config 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "lru 0.12.5",
  "price-reporter-client",
@@ -9227,7 +9306,7 @@ dependencies = [
 [[package]]
 name = "system-clock"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "tokio",
  "tokio-cron-scheduler",
@@ -10039,7 +10118,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 [[package]]
 name = "types-account"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "abi",
  "alloy",
@@ -10063,7 +10142,7 @@ dependencies = [
 [[package]]
 name = "types-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy",
  "base64 0.22.1",
@@ -10083,7 +10162,7 @@ dependencies = [
 [[package]]
 name = "types-gossip"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "base64 0.22.1",
  "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
@@ -10099,9 +10178,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "types-proofs"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
+dependencies = [
+ "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "serde",
+ "types-core",
+]
+
+[[package]]
 name = "types-runtime"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "async-trait",
  "tokio",
@@ -10319,7 +10410,7 @@ dependencies = [
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#e6e7364022e0e355fb11a4c3e0fdbd505bfcb537"
+source = "git+https://github.com/renegade-fi/renegade.git#7d4d63556408433d93d13587de6954c84fc70a51"
 dependencies = [
  "alloy",
  "ark-ec",
@@ -10692,7 +10783,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

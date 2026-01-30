@@ -4,7 +4,9 @@ use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use renegade_constants::NATIVE_ASSET_ADDRESS;
-use renegade_external_api::types::{ApiExternalQuote, ExternalOrder};
+use renegade_external_api::types::{
+    ApiExternalQuote, BoundedExternalMatchApiBundle, ExternalOrder,
+};
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use tracing::info;
@@ -96,16 +98,13 @@ pub fn remove_gas_sponsorship_from_quote(
     quote: &mut ApiExternalQuote,
     gas_sponsorship_info: &GasSponsorshipInfo,
 ) {
-    remove_gas_sponsorship_from_match_result(
-        &mut quote.match_result,
-        gas_sponsorship_info.refund_amount,
-    );
+    quote.match_result.output_amount -= gas_sponsorship_info.refund_amount;
 
-    let base_amt_f64 = quote.match_result.base_amount as f64;
-    let quote_amt_f64 = quote.match_result.quote_amount as f64;
-    let price = quote_amt_f64 / base_amt_f64;
+    let input_amt_f64 = quote.match_result.input_amount as f64;
+    let output_amt_f64 = quote.match_result.output_amount as f64;
+    let price = output_amt_f64 / input_amt_f64;
 
-    quote.price.price = price.to_string();
+    quote.price.price = price;
     quote.receive.amount -= gas_sponsorship_info.refund_amount;
 
     // Subtract the refund amount from the exact output amount requested in the
@@ -124,10 +123,7 @@ pub fn apply_gas_sponsorship_to_quote(
 ) -> Result<(), AuthServerError> {
     info!("Updating quote to reflect gas sponsorship");
 
-    apply_gas_sponsorship_to_match_result(
-        &mut quote.match_result,
-        gas_sponsorship_info.refund_amount,
-    );
+    quote.match_result.output_amount += gas_sponsorship_info.refund_amount;
 
     let input_amt_f64 = quote.match_result.input_amount as f64;
     let output_amt_f64 = quote.match_result.output_amount as f64;
@@ -148,46 +144,10 @@ pub fn apply_gas_sponsorship_to_quote(
 /// This method assumes that the refund was in-kind, i.e. that the refund
 /// amount is in terms of the buy-side token.
 pub(crate) fn apply_gas_sponsorship_to_match_bundle(
-    match_bundle: &mut AtomicMatchApiBundle,
+    match_bundle: &mut BoundedExternalMatchApiBundle,
     refund_amount: u128,
 ) {
     info!("Updating match bundle to reflect gas sponsorship");
-    apply_gas_sponsorship_to_match_result(&mut match_bundle.match_result, refund_amount);
-    match_bundle.receive.amount += refund_amount;
-}
-
-/// Update a match result to reflect a gas sponsorship refund.
-/// This method assumes that the refund was in-kind, i.e. that the refund
-/// amount is in terms of the buy-side token.
-pub(crate) fn apply_gas_sponsorship_to_match_result(
-    match_result: &mut ApiExternalMatchResult,
-    refund_amount: u128,
-) {
-    match_result.output_amount += refund_amount;
-}
-
-/// Remove the effects of gas sponsorship from a match result.
-/// This method assumes that the refund was in-kind, i.e. that the refund
-/// amount is in terms of the buy-side token.
-pub(crate) fn remove_gas_sponsorship_from_match_result(
-    match_result: &mut ApiExternalMatchResult,
-    refund_amount: u128,
-) {
-    let (base_amount, quote_amount) = match match_result.direction {
-        OrderSide::Buy => (match_result.base_amount - refund_amount, match_result.quote_amount),
-        OrderSide::Sell => (match_result.base_amount, match_result.quote_amount - refund_amount),
-    };
-
-    match_result.base_amount = base_amount;
-    match_result.quote_amount = quote_amount;
-}
-
-/// Apply a gas sponsorship refund a malleable match bundle
-pub(crate) fn apply_gas_sponsorship_to_malleable_match_bundle(
-    match_bundle: &mut MalleableAtomicMatchApiBundle,
-    refund_amount: u128,
-) {
-    info!("Updating malleable match bundle to reflect gas sponsorship");
     match_bundle.max_receive.amount += refund_amount;
     match_bundle.min_receive.amount += refund_amount;
 }
