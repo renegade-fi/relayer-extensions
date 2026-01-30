@@ -71,11 +71,15 @@ impl StateApplicator {
         conn.transaction(move |conn| {
             async move {
                 // Check if the public intent update has already been processed, no-oping if so
-                let public_intent_update_processed = self.db_client.check_public_intent_update_processed(intent_hash, tx_hash, conn).await?;
+                let public_intent_update_processed = self
+                    .db_client
+                    .check_public_intent_update_processed(intent_hash, tx_hash, conn)
+                    .await?;
 
                 if public_intent_update_processed {
                     warn!(
-                        "Public intent update for intent hash {intent_hash} in tx {tx_hash} has already been processed, skipping update"
+                        "Public intent update for intent hash {intent_hash} in tx {tx_hash} has \
+                         already been processed, skipping update"
                     );
 
                     return Ok(());
@@ -85,11 +89,15 @@ impl StateApplicator {
                 self.db_client.update_public_intent(public_intent, conn).await?;
 
                 // Mark the public intent update as processed
-                self.db_client.mark_public_intent_update_processed(intent_hash, tx_hash, block_number, conn).await?;
+                self.db_client
+                    .mark_public_intent_update_processed(intent_hash, tx_hash, block_number, conn)
+                    .await?;
 
                 Ok(())
-            }.scope_boxed()
-        }).await
+            }
+            .scope_boxed()
+        })
+        .await
     }
 }
 
@@ -104,7 +112,7 @@ fn apply_settlement_into_public_intent(
 ) {
     match public_intent_settlement_data {
         PublicIntentSettlementData::InternalMatch { amount_in } => {
-            public_intent.intent.amount_in -= amount_in;
+            public_intent.order.intent.inner.amount_in -= amount_in;
         },
         PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in } => {
             public_intent.update_from_external_match(*price, *external_party_amount_in);
