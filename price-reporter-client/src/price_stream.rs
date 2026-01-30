@@ -14,7 +14,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use renegade_api::websocket::WebsocketMessage;
+use renegade_external_api::websocket::WebsocketMessage;
 use serde::Deserialize;
 use tokio::{net::TcpStream, sync::RwLock, task::JoinHandle};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};

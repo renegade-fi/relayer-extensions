@@ -12,22 +12,20 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 #![feature(trivial_bounds)]
-#![feature(let_chains)]
 #![feature(duration_constructors)]
 #![feature(int_roundings)]
 
 mod bundle_store;
-mod chain_events;
+// mod chain_events;
 pub(crate) mod error;
 pub mod http_utils;
 mod server;
 mod telemetry;
 
-use renegade_common::types::chain::Chain;
-use renegade_system_clock::SystemClock;
-
 use auth_server_api::API_KEYS_PATH;
 use clap::Parser;
+use renegade_system_clock::SystemClock;
+use renegade_types_core::Chain;
 use reqwest::StatusCode;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -100,6 +98,9 @@ pub struct Cli {
     /// The address of the darkpool contract
     #[clap(short, long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
+    /// The address of the permit2 contract
+    #[clap(short, long, env = "PERMIT2_ADDRESS")]
+    permit2_address: String,
     /// The URL of the price reporter
     #[arg(long, env = "PRICE_REPORTER_URL")]
     pub price_reporter_url: String,
@@ -116,9 +117,6 @@ pub struct Cli {
     /// The address of the gas sponsor contract
     #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
     gas_sponsor_address: String,
-    /// The address of the malleable match gas sponsor connector
-    #[clap(long, env = "MALLEABLE_MATCH_CONNECTOR_ADDRESS")]
-    malleable_match_connector_address: String,
     /// The auth private key used for gas sponsorship, encoded as a hex string
     #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
     gas_sponsor_auth_key: String,
@@ -359,9 +357,9 @@ async fn main() -> Result<(), AuthServerError> {
 
     // --- Proxied Routes --- //
 
-    let external_quote_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("quote"))
+    let external_quote_path = warp::path("v2")
+        .and(warp::path("external-matches"))
+        .and(warp::path("get-quote"))
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -372,9 +370,9 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_quote_request(path, headers, body, query_str).await
         });
 
-    let external_quote_assembly_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("assemble-external-match"))
+    let external_match_path = warp::path("v2")
+        .and(warp::path("external-matches"))
+        .and(warp::path("assemble-match-bundle"))
         .and(warp::post())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -382,72 +380,35 @@ async fn main() -> Result<(), AuthServerError> {
         .and(with_query_string())
         .and(with_server(server.clone()))
         .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_assemble_quote_request(path, headers, body, query_str).await
+            server.handle_assemble_match_bundle_request(path, headers, body, query_str).await
         });
 
-    let external_malleable_assembly_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("assemble-malleable-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_assemble_malleable_quote_request(path, headers, body, query_str).await
-        });
-
-    let atomic_match_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("request-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_external_match_request(path, headers, body, query_str).await
-        });
-
-    let direct_malleable_match_path = warp::path("v0")
-        .and(warp::path("matching-engine"))
-        .and(warp::path("request-malleable-external-match"))
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_direct_malleable_match_request(path, headers, body, query_str).await
-        });
-
-    let order_book_depth_with_mint = warp::path("v0")
-        .and(warp::path("order_book"))
-        .and(warp::path("depth"))
+    let market_depth_by_mint = warp::path("v2")
+        .and(warp::path("markets"))
         .and(warp::path::param::<String>())
+        .and(warp::path("depth"))
+        .and(warp::path::end())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
         .and_then(|mint, path, headers, server: Arc<Server>| async move {
-            server.handle_order_book_request_with_mint(mint, path, headers).await
+            server.handle_market_depth_by_mint_request(mint, path, headers).await
         });
 
-    let order_book_depth = warp::path("v0")
-        .and(warp::path("order_book"))
+    let all_markets_depth = warp::path("v2")
+        .and(warp::path("markets"))
         .and(warp::path("depth"))
         .and(warp::path::end())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(with_server(server.clone()))
         .and_then(|path, headers, server: Arc<Server>| async move {
-            server.handle_all_pairs_order_book_depth_request(path, headers).await
+            server.handle_all_markets_depth_request(path, headers).await
         });
 
-    let exchange_metadata_path = warp::path("v0")
-        .and(warp::path("exchange-metadata"))
+    let exchange_metadata_path = warp::path("v2")
+        .and(warp::path("metadata"))
+        .and(warp::path("exchange"))
         .and(warp::get())
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -456,44 +417,41 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_exchange_metadata_request(path, headers).await
         });
 
-    let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, query_str, server: Arc<Server>| async move {
-            server.handle_rfqt_levels_request(path, headers, query_str).await
-        });
+    // let rfqt_levels_path = warp::path!("rfqt" / "v3" / "levels")
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, query_str, server: Arc<Server>| async move {
+    //         server.handle_rfqt_levels_request(path, headers, query_str).await
+    //     });
 
-    let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
-        .and(warp::post())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::bytes())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, body, query_str, server: Arc<Server>| async move {
-            server.handle_rfqt_quote_request(path, headers, body, query_str).await
-        });
+    // let rfqt_quote_path = warp::path!("rfqt" / "v3" / "quote")
+    //     .and(warp::post())
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(warp::body::bytes())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, body, query_str, server: Arc<Server>| async
+    // move {         server.handle_rfqt_quote_request(path, headers, body,
+    // query_str).await     });
 
-    let okx_pricing_path = warp::path!("OKXDEX" / "rfq" / "pricing")
-        .and(warp::get())
-        .and(warp::path::full())
-        .and(warp::header::headers_cloned())
-        .and(with_query_string())
-        .and(with_server(server.clone()))
-        .and_then(|path, headers, query_str, server: Arc<Server>| async move {
-            server.handle_pricing_request(path, query_str, headers).await
-        });
+    // let okx_pricing_path = warp::path!("OKXDEX" / "rfq" / "pricing")
+    //     .and(warp::get())
+    //     .and(warp::path::full())
+    //     .and(warp::header::headers_cloned())
+    //     .and(with_query_string())
+    //     .and(with_server(server.clone()))
+    //     .and_then(|path, headers, query_str, server: Arc<Server>| async move {
+    //         server.handle_pricing_request(path, query_str, headers).await
+    //     });
 
     // Bind the server and listen
     info!("Starting auth server on port {}", listen_addr.port());
     let routes = ping
-        .or(atomic_match_path)
-        .or(direct_malleable_match_path)
         .or(external_quote_path)
-        .or(external_quote_assembly_path)
-        .or(external_malleable_assembly_path)
+        .or(external_match_path)
         .or(expire_api_key)
         .or(whitelist_api_key)
         .or(remove_whitelist_entry)
@@ -505,12 +463,12 @@ async fn main() -> Result<(), AuthServerError> {
         .or(set_user_fee_override)
         .or(remove_asset_default_fee)
         .or(remove_user_fee_override)
-        .or(order_book_depth_with_mint)
-        .or(order_book_depth)
+        .or(market_depth_by_mint)
+        .or(all_markets_depth)
         .or(exchange_metadata_path)
-        .or(rfqt_levels_path)
-        .or(rfqt_quote_path)
-        .or(okx_pricing_path)
+        // .or(rfqt_levels_path)
+        // .or(rfqt_quote_path)
+        // .or(okx_pricing_path)
         .boxed()
         .with(with_tracing())
         .recover(handle_rejection);

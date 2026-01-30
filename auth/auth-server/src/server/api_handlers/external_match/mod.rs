@@ -1,17 +1,13 @@
 //! Handlers for external match endpoints
 
-mod assemble_malleable_quote;
-mod assemble_quote;
-mod direct_malleable_match;
-mod direct_match;
+mod match_bundle;
 mod quote;
 
 use alloy_primitives::U256;
 use auth_server_api::GasSponsorshipInfo;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Response, StatusCode};
-use num_bigint::BigUint;
-use renegade_common::types::token::Token;
+use renegade_types_core::Token;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use uuid::Uuid;
@@ -21,10 +17,10 @@ use crate::{
     http_utils::{
         request_response::should_stringify_numbers, stringify_formatter::json_deserialize,
     },
-    server::{Server, api_handlers::ticker_from_biguint},
+    server::{Server, helpers::pick_base_and_quote_mints},
     telemetry::helpers::record_relayer_request_500,
 };
-pub(crate) use assemble_malleable_quote::SponsoredAssembleMalleableQuoteResponseCtx;
+pub use match_bundle::SponsoredExternalMatchResponseCtx;
 
 use super::{get_sdk_version, log_unsuccessful_relayer_request};
 
@@ -104,18 +100,24 @@ impl<Req: Serialize + for<'de> Deserialize<'de>> RequestContext<Req> {
 /// A trait used to define access patterns on different request types
 #[allow(unused)]
 pub trait ExternalMatchRequestType: Serialize + for<'de> Deserialize<'de> {
-    /// Get the base token for the request
-    fn base_mint(&self) -> &BigUint;
+    /// Get the input token for the request
+    fn input_token(&self) -> Token;
+
+    /// Get the output token for the request
+    fn output_token(&self) -> Token;
+
     /// Get the base ticker for the request
     fn base_ticker(&self) -> Result<String, AuthServerError> {
-        ticker_from_biguint(self.base_mint())
-    }
+        let (base_mint, quote_mint) = pick_base_and_quote_mints(
+            self.input_token().get_alloy_address(),
+            self.output_token().get_alloy_address(),
+        )?;
 
-    /// Get the quote token for the request
-    fn quote_mint(&self) -> &BigUint;
-    /// Get the quote ticker for the request
-    fn quote_ticker(&self) -> Result<String, AuthServerError> {
-        ticker_from_biguint(self.quote_mint())
+        let base_token = Token::from_alloy_address(&base_mint);
+        base_token.get_ticker().ok_or_else(|| {
+            let base_addr = base_token.get_addr();
+            AuthServerError::bad_request(format!("Invalid base token: {base_addr}"))
+        })
     }
 
     /// Set the fee for the request
@@ -300,21 +302,27 @@ impl Server {
     where
         Req: ExternalMatchRequestType,
     {
-        // Check that the base and quote tokens are valid
-        let base = Token::from_addr_biguint(body.base_mint());
-        let quote = Token::from_addr_biguint(body.quote_mint());
+        // Check that the input and output tokens are valid
+        let input_token = body.input_token();
+        let output_token = body.output_token();
 
-        let base_valid = base.is_named() || base.is_native_asset();
-        if !base_valid {
-            let base_addr = base.get_addr();
-            return Err(AuthServerError::bad_request(format!("Invalid base token: {base_addr}")));
+        let input_valid = input_token.is_named() || input_token.is_native_asset();
+        if !input_valid {
+            let input_addr = input_token.get_addr();
+            return Err(AuthServerError::bad_request(format!("Invalid input token: {input_addr}")));
         }
 
-        if quote != Token::usdc() {
-            let quote_addr = quote.get_addr();
+        let output_valid = output_token.is_named() || output_token.is_native_asset();
+        if !output_valid {
+            let output_addr = output_token.get_addr();
             return Err(AuthServerError::bad_request(format!(
-                "Quote token must be USDC, got {quote_addr}"
+                "Invalid output token: {output_addr}"
             )));
+        }
+
+        // Check that either the input or output token is USDC
+        if input_token != Token::usdc() && output_token != Token::usdc() {
+            return Err(AuthServerError::bad_request("Either input or output token must be USDC"));
         }
 
         Ok(())

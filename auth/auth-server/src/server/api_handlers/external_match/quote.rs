@@ -3,12 +3,11 @@
 use auth_server_api::{GasSponsorshipInfo, SponsoredQuoteResponse};
 use bytes::Bytes;
 use http::StatusCode;
-use num_bigint::BigUint;
-use renegade_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_common::types::{price::TimestampedPrice, token::Token};
-use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
-use renegade_util::hex::biguint_to_hex_addr;
+use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, GLOBAL_MATCHING_POOL};
+use renegade_external_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
+use renegade_types_core::Token;
+use renegade_util::hex::address_to_hex_string;
 use tracing::{error, info, instrument, warn};
 use warp::reject::Rejection;
 
@@ -17,10 +16,10 @@ use crate::{
     http_utils::request_response::overwrite_response_body,
     server::{
         Server,
-        api_handlers::{
-            GLOBAL_MATCHING_POOL,
-            external_match::{BytesResponse, ExternalMatchRequestType},
+        api_handlers::external_match::{
+            BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints,
         },
+        gas_sponsorship::get_base_and_quote_amount_with_price,
     },
     telemetry::{
         QUOTE_FILL_RATIO_IGNORE_THRESHOLD,
@@ -42,20 +41,20 @@ use super::{RequestContext, ResponseContext};
 type QuoteRequestCtx = RequestContext<ExternalQuoteRequest>;
 
 impl ExternalMatchRequestType for ExternalQuoteRequest {
-    fn base_mint(&self) -> &BigUint {
-        &self.external_order.base_mint
+    fn input_token(&self) -> Token {
+        Token::from_alloy_address(&self.external_order.input_mint)
     }
 
-    fn quote_mint(&self) -> &BigUint {
-        &self.external_order.quote_mint
+    fn output_token(&self) -> Token {
+        Token::from_alloy_address(&self.external_order.output_mint)
     }
 
     fn set_fee(&mut self, fee: f64) {
-        self.relayer_fee_rate = fee;
+        self.options.relayer_fee_rate = Some(fee);
     }
 }
 
-/// The response context for a quote request
+/// The response context for a quote response
 type QuoteResponseCtx = ResponseContext<ExternalQuoteRequest, ExternalQuoteResponse>;
 /// The response context for a sponsored quote response
 pub type SponsoredQuoteResponseCtx = ResponseContext<ExternalQuoteRequest, SponsoredQuoteResponse>;
@@ -132,9 +131,10 @@ impl Server {
         };
         self.route_quote_req(ctx).await?;
 
+        // GAS SPONSORSHIP TEMPORARILY DISABLED
         // Apply gas sponsorship to the quote request
-        let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
-        ctx.set_sponsorship_info(gas_sponsorship_info);
+        // let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
+        // ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }
 
@@ -181,7 +181,7 @@ impl Server {
         let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
         if should_route_to_global {
             info!("Routing order to global matching pool");
-            ctx.body_mut().matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
+            ctx.body_mut().options.matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }
 
         Ok(())
@@ -266,13 +266,23 @@ impl Server {
         // Get the decimal-corrected price
         let req = ctx.request();
         let resp = ctx.response();
-        let ts_price: TimestampedPrice = resp.signed_quote.quote.price.clone().into();
-        let price = ts_price.as_fixed_point();
+        let price: f64 = resp.signed_quote.quote.price.price;
         let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
 
         // Calculate requested and matched quote amounts
-        let requested_quote_amount = req.external_order.get_quote_amount(price, relayer_fee);
-        let matched_quote_amount = resp.signed_quote.quote.match_result.quote_amount;
+        let (_, requested_quote_amount) =
+            get_base_and_quote_amount_with_price(&req.external_order, relayer_fee, price)?;
+
+        let input_mint = resp.signed_quote.quote.match_result.input_mint;
+        let output_mint = resp.signed_quote.quote.match_result.output_mint;
+        let (base_mint, quote_mint) = pick_base_and_quote_mints(input_mint, output_mint)?;
+
+        let quote_is_input = quote_mint == input_mint;
+        let matched_quote_amount = if quote_is_input {
+            resp.signed_quote.quote.match_result.input_amount
+        } else {
+            resp.signed_quote.quote.match_result.output_amount
+        };
 
         // Record fill ratio metric
         let labels = vec![
@@ -283,8 +293,11 @@ impl Server {
         record_fill_ratio(requested_quote_amount, matched_quote_amount, &labels)?;
 
         // Record endpoint metrics
-        let base_token = Token::from_addr_biguint(&req.external_order.base_mint);
-        record_endpoint_metrics(&base_token.addr, EXTERNAL_MATCH_QUOTE_REQUEST_COUNT, &labels);
+        record_endpoint_metrics(
+            &address_to_hex_string(&base_mint),
+            EXTERNAL_MATCH_QUOTE_REQUEST_COUNT,
+            &labels,
+        );
 
         Ok(())
     }
@@ -306,14 +319,17 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let req = ctx.request();
         let order = &req.external_order;
-        let base_mint = biguint_to_hex_addr(&order.base_mint);
-        record_quote_not_found(ctx.user(), &base_mint);
+        let (base_mint, _) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+
+        record_quote_not_found(ctx.user(), &address_to_hex_string(&base_mint));
 
         // Record a zero fill ratio
-        let price_f64 = self.price_reporter_client.get_price(&base_mint, self.chain).await.unwrap();
-        let price = FixedPoint::from_f64_round_down(price_f64);
-        let relayer_fee = FixedPoint::zero();
-        let quote_amt = order.get_quote_amount(price, relayer_fee);
+        let quote_amt = self
+            .get_quote_amount(
+                order,
+                FixedPoint::zero(), // relayer_fee
+            )
+            .await?;
 
         // We ignore excessively large quotes for telemetry, as they're likely spam
         if quote_amt >= QUOTE_FILL_RATIO_IGNORE_THRESHOLD {
@@ -324,7 +340,7 @@ impl Server {
         let labels = vec![
             (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.to_string()),
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.user()),
-            (BASE_ASSET_METRIC_TAG.to_string(), base_mint),
+            (BASE_ASSET_METRIC_TAG.to_string(), address_to_hex_string(&base_mint)),
         ];
         record_fill_ratio(quote_amt, 0 /* matched_quote_amount */, &labels)
             .expect("Failed to record fill ratio");
@@ -342,14 +358,15 @@ fn log_quote(ctx: &SponsoredQuoteResponseCtx) -> Result<(), AuthServerError> {
     let SponsoredQuoteResponse { signed_quote, gas_sponsorship_info } = ctx.response();
     let sdk_version = &ctx.sdk_version;
     let key_desc = &ctx.user();
-    let match_result = signed_quote.match_result();
-    let is_buy = match_result.direction;
-    let recv = signed_quote.receive_amount();
-    let send = signed_quote.send_amount();
+    let match_result = signed_quote.quote.match_result;
+    let (base_mint, _) =
+        pick_base_and_quote_mints(match_result.input_mint, match_result.output_mint)?;
+
+    let is_buy = base_mint == match_result.output_mint;
     let is_sponsored = gas_sponsorship_info.is_some();
     let (refund_amount, refund_native_eth) = gas_sponsorship_info
         .as_ref()
-        .map(|s| (s.gas_sponsorship_info.refund_amount, s.gas_sponsorship_info.refund_native_eth))
+        .map(|s| (s.refund_amount, s.refund_native_eth))
         .unwrap_or((0, false));
 
     info!(
@@ -357,10 +374,10 @@ fn log_quote(ctx: &SponsoredQuoteResponseCtx) -> Result<(), AuthServerError> {
         key_description = key_desc,
         sdk_version = sdk_version,
         "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-        recv.amount,
-        recv.mint,
-        send.amount,
-        send.mint,
+        match_result.output_amount,
+        match_result.output_mint,
+        match_result.input_amount,
+        match_result.input_mint,
         refund_amount,
         refund_native_eth
     );

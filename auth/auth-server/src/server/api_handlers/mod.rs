@@ -3,25 +3,22 @@
 //! At a high level the server must first authenticate the request, then forward
 //! it to the relayer with admin authentication
 
-mod connectors;
+// mod connectors;
 mod exchange_metadata;
 mod external_match;
 mod external_match_fees;
 mod key_management;
-mod order_book;
+mod markets;
 mod settlement;
 
 use auth_server_api::{GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse};
 use bytes::Bytes;
-use external_match::{RequestContext, ResponseContext};
+use external_match::RequestContext;
 use http::{HeaderMap, Response};
-use num_bigint::BigUint;
 use rand::Rng;
-use renegade_api::http::external_match::ExternalOrder;
 use renegade_circuit_types::fixed_point::FixedPoint;
-use renegade_common::types::token::Token;
-use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_WRAPPER_TICKER};
-use renegade_util::hex::biguint_to_hex_addr;
+use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_external_api::types::ExternalOrder;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -31,7 +28,12 @@ use super::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, requires_exact_output_amount_update,
 };
 use crate::error::AuthServerError;
-use crate::telemetry::helpers::calculate_implied_price;
+pub use crate::server::api_handlers::external_match::SponsoredExternalMatchResponseCtx;
+use crate::server::gas_sponsorship::get_base_and_quote_amount_with_price;
+use crate::server::helpers::pick_base_and_quote_mints;
+use crate::telemetry::helpers::{
+    calculate_quote_per_base_price, get_default_base_amount, get_default_quote_amount,
+};
 use crate::telemetry::labels::{GAS_SPONSORED_METRIC_TAG, SDK_VERSION_METRIC_TAG};
 use crate::telemetry::{
     helpers::record_external_match_metrics,
@@ -42,19 +44,8 @@ use crate::telemetry::{
 const SDK_VERSION_HEADER: &str = "x-renegade-sdk-version";
 /// The default SDK version to use if the header is not set
 const SDK_VERSION_DEFAULT: &str = "pre-v0.1.0";
-/// The name of the matching pool to route to if the execution cost rate limit
-/// is exceeded
-const GLOBAL_MATCHING_POOL: &str = "global";
 /// The default relayer fee to charge if no per-user or per-asset fee is set
 pub(crate) const DEFAULT_RELAYER_FEE: f64 = 0.0001; // 1bp
-
-/// A type alias for the response context for endpoints that return a match
-/// bundle
-///
-/// This type is generic over request type, which allows us to use the same
-/// handlers for endpoints with different request types but the same fundamental
-/// match response type
-type MatchBundleResponseCtx<Req> = ResponseContext<Req, SponsoredMatchResponse>;
 
 /// Parse the SDK version from the given headers.
 /// If unset or malformed, returns an empty string.
@@ -64,19 +55,6 @@ pub fn get_sdk_version(headers: &HeaderMap) -> String {
         .map(|v| v.to_str().unwrap_or_default())
         .unwrap_or(SDK_VERSION_DEFAULT)
         .to_string()
-}
-
-/// Get a ticker from a `BigUint` encoded mint
-pub fn ticker_from_biguint(mint: &BigUint) -> Result<String, AuthServerError> {
-    let token = Token::from_addr_biguint(mint);
-    if token.is_native_asset() {
-        return Ok(NATIVE_ASSET_WRAPPER_TICKER.to_string());
-    }
-
-    token.get_ticker().ok_or_else(|| {
-        let token_addr = biguint_to_hex_addr(mint);
-        AuthServerError::bad_request(format!("Invalid token: {token_addr}"))
-    })
 }
 
 // ---------------
@@ -152,7 +130,7 @@ impl Server {
             info!(
                 "Adjusting exact output amount requested in order to account for gas sponsorship"
             );
-            apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info);
+            apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info)?;
         }
 
         Ok(gas_sponsorship_info)
@@ -163,21 +141,18 @@ impl Server {
     /// Record and watch a bundle that was forwarded to the client
     ///
     /// This method will await settlement and update metrics, rate limits, etc
-    #[allow(clippy::too_many_arguments)]
-    fn handle_bundle_response<Req>(
+    fn handle_bundle_response(
         &self,
         order: &ExternalOrder,
-        ctx: &MatchBundleResponseCtx<Req>,
-    ) -> Result<(), AuthServerError>
-    where
-        Req: Serialize + for<'de> Deserialize<'de>,
-    {
+        ctx: &SponsoredExternalMatchResponseCtx,
+    ) -> Result<(), AuthServerError> {
         // Log the bundle
         log_bundle(order, ctx)?;
 
         // Note: if sponsored in-kind w/ refund going to the receiver,
         // the amounts in the match bundle will have been updated
-        let SponsoredMatchResponse { match_bundle, is_sponsored, .. } = ctx.response();
+        let SponsoredMatchResponse { match_bundle, gas_sponsorship_info, .. } = ctx.response();
+        let is_sponsored = gas_sponsorship_info.is_some();
 
         let labels = vec![
             (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.user()),
@@ -216,35 +191,35 @@ pub fn log_unsuccessful_relayer_request(
 }
 
 /// Log the bundle parameters
-fn log_bundle<Req>(
+fn log_bundle(
     order: &ExternalOrder,
-    ctx: &MatchBundleResponseCtx<Req>,
-) -> Result<(), AuthServerError>
-where
-    Req: Serialize + for<'de> Deserialize<'de>,
-{
-    let SponsoredMatchResponse { match_bundle, is_sponsored, gas_sponsorship_info } =
-        ctx.response();
+    ctx: &SponsoredExternalMatchResponseCtx,
+) -> Result<(), AuthServerError> {
+    let SponsoredMatchResponse { match_bundle, gas_sponsorship_info } = ctx.response();
+    let is_sponsored = gas_sponsorship_info.is_some();
 
     // Get the decimal-corrected price
-    let price = calculate_implied_price(&match_bundle, true /* decimal_correct */)?;
-    let price_fixed = FixedPoint::from_f64_round_down(price);
+    let price = calculate_quote_per_base_price(&match_bundle.match_result)?;
 
     let match_result = &match_bundle.match_result;
-    let is_buy = match_result.direction;
-    let recv = &match_bundle.receive;
-    let send = &match_bundle.send;
+    let (base_mint, _) =
+        pick_base_and_quote_mints(match_result.input_mint, match_result.output_mint)?;
+    let is_buy = base_mint == match_result.output_mint;
+    let min_recv = &match_bundle.min_receive;
+    let max_recv = &match_bundle.max_receive;
+    let min_send = &match_bundle.min_send;
+    let max_send = &match_bundle.max_send;
 
     let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
+    let (requested_base_amount, requested_quote_amount) =
+        get_base_and_quote_amount_with_price(order, relayer_fee, price)?;
 
     // Get the base fill ratio
-    let requested_base_amount = order.get_base_amount(price_fixed, relayer_fee);
-    let response_base_amount = match_result.base_amount;
+    let response_base_amount = get_default_base_amount(&match_bundle)?;
     let base_fill_ratio = response_base_amount as f64 / requested_base_amount as f64;
 
     // Get the quote fill ratio
-    let requested_quote_amount = order.get_quote_amount(price_fixed, relayer_fee);
-    let response_quote_amount = match_result.quote_amount;
+    let response_quote_amount = get_default_quote_amount(&match_bundle)?;
     let quote_fill_ratio = response_quote_amount as f64 / requested_quote_amount as f64;
 
     // Get the gas sponsorship info
@@ -267,12 +242,14 @@ where
         is_sponsored = is_sponsored,
         endpoint = ctx.path,
         sdk_version = ctx.sdk_version,
-        "Sending bundle(is_buy: {}, recv: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
+        "Sending bundle(is_buy: {}, recv: [{}, {}] ({}), send: [{}, {}] ({}), refund_amount: {} (refund_native_eth: {})) to client",
         is_buy,
-        recv.amount,
-        recv.mint,
-        send.amount,
-        send.mint,
+        min_recv.amount,
+        max_recv.amount,
+        min_recv.mint,
+        min_send.amount,
+        max_send.amount,
+        min_send.mint,
         refund_amount,
         refund_native_eth
     );
