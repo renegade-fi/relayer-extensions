@@ -120,9 +120,10 @@ impl Server {
         };
         self.route_assembly_req(ctx).await?;
 
+        // GAS SPONSORSHIP TEMPORARILY DISABLED
         // Apply gas sponsorship to the assembly request
-        let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
-        ctx.set_sponsorship_info(gas_sponsorship_info);
+        // let gas_sponsorship_info = self.sponsor_assembly_request(ctx).await?;
+        // ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }
 

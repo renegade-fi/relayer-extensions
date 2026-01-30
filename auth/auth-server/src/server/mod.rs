@@ -30,10 +30,9 @@ use http::{HeaderMap, HeaderName, HeaderValue, Method, Response};
 use price_reporter_client::PriceReporterClient;
 use rate_limiter::AuthServerRateLimiter;
 use redis::aio::ConnectionManager;
-use renegade_api::auth::create_request_signature;
-use renegade_api::{RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME};
-use renegade_common::types::chain::Chain;
-use renegade_common::types::hmac::HmacKey;
+use renegade_external_api::auth::create_request_signature;
+use renegade_external_api::{RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME};
+use renegade_types_core::{Chain, HmacKey};
 use renegade_util::get_current_time_millis;
 use renegade_util::telemetry::propagation::trace_context;
 use reqwest::Client;
@@ -69,8 +68,6 @@ pub struct Server {
     pub metrics_sampling_rate: f64,
     /// The address of the gas sponsor address
     pub gas_sponsor_address: Address,
-    /// The address of the malleable match connector contract
-    pub malleable_match_connector_address: Address,
     /// The auth key for the gas sponsor
     pub gas_sponsor_auth_key: SigningKey,
     /// The price reporter client with WebSocket streaming support

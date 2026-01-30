@@ -16,7 +16,7 @@
 #![feature(int_roundings)]
 
 mod bundle_store;
-mod chain_events;
+// mod chain_events;
 pub(crate) mod error;
 pub mod http_utils;
 mod server;
@@ -98,6 +98,9 @@ pub struct Cli {
     /// The address of the darkpool contract
     #[clap(short, long, env = "DARKPOOL_ADDRESS")]
     darkpool_address: String,
+    /// The address of the permit2 contract
+    #[clap(short, long, env = "PERMIT2_ADDRESS")]
+    permit2_address: String,
     /// The URL of the price reporter
     #[arg(long, env = "PRICE_REPORTER_URL")]
     pub price_reporter_url: String,
@@ -114,9 +117,6 @@ pub struct Cli {
     /// The address of the gas sponsor contract
     #[clap(long, env = "GAS_SPONSOR_ADDRESS")]
     gas_sponsor_address: String,
-    /// The address of the malleable match gas sponsor connector
-    #[clap(long, env = "MALLEABLE_MATCH_CONNECTOR_ADDRESS")]
-    malleable_match_connector_address: String,
     /// The auth private key used for gas sponsorship, encoded as a hex string
     #[clap(long, env = "GAS_SPONSOR_AUTH_KEY")]
     gas_sponsor_auth_key: String,

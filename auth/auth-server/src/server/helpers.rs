@@ -109,7 +109,7 @@ pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
 
 /// Generate a UUID for a signed quote
 pub fn generate_quote_uuid(signed_quote: &ApiSignedQuote) -> Uuid {
-    let signature_hash = keccak256(signed_quote.signature.as_bytes());
+    let signature_hash = keccak256(&signed_quote.signature);
     let mut uuid_bytes = [0u8; UUID_SIZE];
     uuid_bytes.copy_from_slice(&signature_hash[..UUID_SIZE]);
 

@@ -16,13 +16,13 @@ use renegade_external_api::http::external_match::{ExternalMatchResponse, Externa
 use renegade_external_api::types::ExternalOrder;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
-use renegade_util::on_chain::get_external_match_fee;
+use renegade_util::on_chain::get_protocol_fee;
 
 use super::Server;
 use crate::server::helpers::generate_quote_uuid;
 use crate::{error::AuthServerError, server::helpers::pick_base_and_quote_mints};
 
-pub mod contract_interaction;
+// pub mod contract_interaction;
 pub mod refund_calculation;
 
 // -------------
@@ -81,13 +81,14 @@ impl Server {
         let refund_address = gas_sponsorship_info.get_refund_address();
         let refund_amount = gas_sponsorship_info.get_refund_amount();
 
-        let gas_sponsor_calldata = self.generate_gas_sponsor_calldata(
-            &external_match_resp,
-            refund_address,
-            refund_native_eth,
-            refund_amount,
-            sponsorship_nonce,
-        )?;
+        // let gas_sponsor_calldata = self.generate_gas_sponsor_calldata(
+        //     &external_match_resp,
+        //     refund_address,
+        //     refund_native_eth,
+        //     refund_amount,
+        //     sponsorship_nonce,
+        // )?;
+        let gas_sponsor_calldata = todo!();
 
         let mut tx = external_match_resp.match_bundle.settlement_tx;
         tx = tx.to(self.gas_sponsor_address);
@@ -218,9 +219,9 @@ fn fee_adjusted_output_amount(
         return Ok(output_amount);
     }
 
-    let (base_mint, _) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+    let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
 
-    let protocol_fee = get_external_match_fee(&base_mint);
+    let protocol_fee = get_protocol_fee(&base_mint, &quote_mint);
     let total_fee = protocol_fee + relayer_fee;
 
     let one_minus_fee = FixedPoint::one() - total_fee;
