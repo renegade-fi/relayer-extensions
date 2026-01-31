@@ -16,10 +16,10 @@ use crate::{
     http_utils::request_response::overwrite_response_body,
     server::{
         Server,
-        api_handlers::external_match::{
-            BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints,
+        api_handlers::{
+            external_match::{BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints},
+            get_base_and_quote_amount_with_price,
         },
-        gas_sponsorship::get_base_and_quote_amount_with_price,
     },
     telemetry::{
         QUOTE_FILL_RATIO_IGNORE_THRESHOLD,

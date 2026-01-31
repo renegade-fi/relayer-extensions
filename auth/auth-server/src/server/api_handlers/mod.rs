@@ -16,9 +16,13 @@ use bytes::Bytes;
 use external_match::RequestContext;
 use http::{HeaderMap, Response};
 use rand::Rng;
+use renegade_circuit_types::Amount;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::DEFAULT_EXTERNAL_MATCH_RELAYER_FEE;
+use renegade_crypto::fields::scalar_to_u128;
 use renegade_external_api::types::ExternalOrder;
+use renegade_util::hex::address_to_hex_string;
+use renegade_util::on_chain::get_protocol_fee;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -29,7 +33,6 @@ use super::gas_sponsorship::refund_calculation::{
 };
 use crate::error::AuthServerError;
 pub use crate::server::api_handlers::external_match::SponsoredExternalMatchResponseCtx;
-use crate::server::gas_sponsorship::get_base_and_quote_amount_with_price;
 use crate::server::helpers::pick_base_and_quote_mints;
 use crate::telemetry::helpers::{
     calculate_quote_per_base_price, get_default_base_amount, get_default_quote_amount,
@@ -166,6 +169,90 @@ impl Server {
         record_external_match_metrics(order, &match_bundle, &labels)?;
         Ok(())
     }
+
+    // --- Helpers --- //
+
+    /// Get the quote amount for the given order, fetching a price from the
+    /// price reporter client if necessary
+    pub(crate) async fn get_quote_amount(
+        &self,
+        order: &ExternalOrder,
+        relayer_fee: FixedPoint,
+    ) -> Result<Amount, AuthServerError> {
+        let (base_mint, _) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+
+        let price = self
+            .price_reporter_client
+            .get_price(&address_to_hex_string(&base_mint), self.chain)
+            .await?;
+
+        let (_, quote_amount) = get_base_and_quote_amount_with_price(order, relayer_fee, price)?;
+        Ok(quote_amount)
+    }
+}
+
+// ----------------------------
+// | Quote Conversion Helpers |
+// ----------------------------
+
+/// Get the quote amount that will be used in matching this order.
+/// Importantly, this method accounts for fees charged on the order
+/// in the case that an exact quote output amount is requested.
+pub(crate) fn get_base_and_quote_amount_with_price(
+    order: &ExternalOrder,
+    relayer_fee: FixedPoint,
+    price: f64,
+) -> Result<(Amount, Amount), AuthServerError> {
+    let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+
+    let base_input_set = base_mint == order.input_mint && order.input_amount != 0;
+    let base_output_set = base_mint == order.output_mint && order.output_amount != 0;
+    let quote_input_set = quote_mint == order.input_mint && order.input_amount != 0;
+
+    let price_fp = FixedPoint::from_f64_round_down(price);
+
+    if base_input_set {
+        let base_amount = order.input_amount;
+        let implied_quote_amount = price_fp * base_amount;
+        let quote_amount = scalar_to_u128(&implied_quote_amount.floor());
+        Ok((base_amount, quote_amount))
+    } else if base_output_set {
+        let base_amount = fee_adjusted_output_amount(order, relayer_fee)?;
+        let implied_quote_amount = price_fp * base_amount;
+        let quote_amount = scalar_to_u128(&implied_quote_amount.floor());
+        Ok((base_amount, quote_amount))
+    } else if quote_input_set {
+        let quote_amount = order.input_amount;
+        let implied_base_amount = price_fp.floor_div_int(quote_amount);
+        let base_amount = scalar_to_u128(&implied_base_amount);
+        Ok((base_amount, quote_amount))
+    } else {
+        let quote_amount = fee_adjusted_output_amount(order, relayer_fee)?;
+        let implied_base_amount = price_fp.floor_div_int(quote_amount);
+        let base_amount = scalar_to_u128(&implied_base_amount);
+        Ok((base_amount, quote_amount))
+    }
+}
+/// Calculate the output amount that will be used in matching this order,
+/// accounting for fees charged on the order in the case that an exact
+/// output amount is requested.
+fn fee_adjusted_output_amount(
+    order: &ExternalOrder,
+    relayer_fee: FixedPoint,
+) -> Result<Amount, AuthServerError> {
+    let output_amount = order.output_amount;
+    if !order.use_exact_output_amount {
+        return Ok(output_amount);
+    }
+
+    let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
+
+    let protocol_fee = get_protocol_fee(&base_mint, &quote_mint);
+    let total_fee = protocol_fee + relayer_fee;
+
+    let one_minus_fee = FixedPoint::one() - total_fee;
+    let adjusted_amount = one_minus_fee.floor_div_int(output_amount);
+    Ok(scalar_to_u128(&adjusted_amount))
 }
 
 // -------------------
