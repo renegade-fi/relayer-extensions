@@ -206,21 +206,6 @@ pub struct ProcessedRecoveryIDModel {
     pub block_number: i64,
 }
 
-// === Processed Public Intent Creations Table ===
-
-/// A processed public intent creation record
-#[derive(Queryable, Selectable, Insertable)]
-#[diesel(table_name = crate::db::schema::processed_public_intent_creations)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct ProcessedPublicIntentCreationModel {
-    /// The public intent's hash
-    pub intent_hash: String,
-    /// The transaction hash in which the public intent was created
-    pub tx_hash: String,
-    /// The block number in which the public intent was created
-    pub block_number: i64,
-}
-
 // === Processed Public Intent Updates Table ===
 
 /// A processed public intent update record

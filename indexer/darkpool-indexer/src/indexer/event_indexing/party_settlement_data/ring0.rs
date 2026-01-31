@@ -22,10 +22,7 @@ use crate::{
     },
     state_transitions::{
         StateTransition,
-        create_public_intent::{CreatePublicIntentTransition, PublicIntentCreationData},
-        settle_match_into_public_intent::{
-            PublicIntentSettlementData, SettleMatchIntoPublicIntentTransition,
-        },
+        settle_public_intent::{PublicIntentSettlementData, SettlePublicIntentTransition},
     },
 };
 
@@ -55,39 +52,7 @@ impl Ring0SettlementData {
         Ok(Self { settlement_bundle: settlement_bundle_data, settlement_obligation })
     }
 
-    /// Get the state transition associated with the public intent creation
-    /// event.
-    ///
-    /// Returns `None` if this party did not create the public intent.
-    pub async fn get_state_transition_for_public_intent_creation(
-        &self,
-        darkpool_client: &DarkpoolClient,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        // If the intent hash doesn't match, this party did not create the public intent
-        if self.get_intent_hash() != intent_hash {
-            return Ok(None);
-        }
-
-        let intent = self.get_intent();
-        let intent_signature = self.get_intent_signature();
-        let amount_in = self.get_amount_in();
-        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let public_intent_creation_data =
-            PublicIntentCreationData::InternalMatch { intent, intent_signature, amount_in };
-
-        Ok(Some(StateTransition::CreatePublicIntent(CreatePublicIntentTransition {
-            intent_hash,
-            tx_hash,
-            block_number,
-            public_intent_creation_data,
-        })))
-    }
-
-    /// Get the state transition associated with the public intent update
-    /// event.
+    /// Get the state transition associated with the public intent update event.
     ///
     /// Returns `None` if this party did not update the public intent.
     pub async fn get_state_transition_for_public_intent_update(
@@ -101,19 +66,20 @@ impl Ring0SettlementData {
             return Ok(None);
         }
 
+        let intent = self.get_intent();
+        let intent_signature = self.get_intent_signature();
         let amount_in = self.get_amount_in();
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
-        let public_intent_settlement_data = PublicIntentSettlementData::InternalMatch { amount_in };
+        let public_intent_settlement_data =
+            PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
 
-        Ok(Some(StateTransition::SettleMatchIntoPublicIntent(
-            SettleMatchIntoPublicIntentTransition {
-                intent_hash,
-                tx_hash,
-                block_number,
-                public_intent_settlement_data,
-            },
-        )))
+        Ok(Some(StateTransition::SettlePublicIntent(SettlePublicIntentTransition {
+            intent_hash,
+            tx_hash,
+            block_number,
+            public_intent_settlement_data,
+        })))
     }
 }
 
@@ -232,44 +198,7 @@ impl Ring0ExternalSettlementData {
         u256_to_amount(self.external_party_amount_in)
     }
 
-    /// Get the state transition associated with the public intent creation
-    /// event.
-    ///
-    /// Returns `None` if this party did not create the public intent.
-    pub async fn get_state_transition_for_public_intent_creation(
-        &self,
-        darkpool_client: &DarkpoolClient,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        // If the intent hash doesn't match, this party did not create the public intent
-        if self.get_intent_hash() != intent_hash {
-            return Ok(None);
-        }
-
-        let intent = self.get_intent();
-        let intent_signature = self.get_intent_signature();
-        let price = self.get_price();
-        let external_party_amount_in = self.get_external_party_amount_in();
-        let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
-
-        let public_intent_creation_data = PublicIntentCreationData::ExternalMatch {
-            intent,
-            intent_signature,
-            price,
-            external_party_amount_in,
-        };
-
-        Ok(Some(StateTransition::CreatePublicIntent(CreatePublicIntentTransition {
-            intent_hash,
-            tx_hash,
-            block_number,
-            public_intent_creation_data,
-        })))
-    }
-
-    /// Get the state transition associated with the public intent update
-    /// event.
+    /// Get the state transition associated with the public intent update event.
     ///
     /// Returns `None` if this party did not update the public intent.
     pub async fn get_state_transition_for_public_intent_update(
@@ -283,20 +212,24 @@ impl Ring0ExternalSettlementData {
             return Ok(None);
         }
 
+        let intent = self.get_intent();
+        let intent_signature = self.get_intent_signature();
         let price = self.get_price();
         let external_party_amount_in = self.get_external_party_amount_in();
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
-        let public_intent_settlement_data =
-            PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in };
+        let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
+            intent,
+            intent_signature,
+            price,
+            external_party_amount_in,
+        };
 
-        Ok(Some(StateTransition::SettleMatchIntoPublicIntent(
-            SettleMatchIntoPublicIntentTransition {
-                intent_hash,
-                tx_hash,
-                block_number,
-                public_intent_settlement_data,
-            },
-        )))
+        Ok(Some(StateTransition::SettlePublicIntent(SettlePublicIntentTransition {
+            intent_hash,
+            tx_hash,
+            block_number,
+            public_intent_settlement_data,
+        })))
     }
 }

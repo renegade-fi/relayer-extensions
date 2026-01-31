@@ -35,11 +35,7 @@ use crate::{
 
 /// Test the indexing of the settlement of the first fill of a ring 0 intent
 async fn test_ring0_first_fill(args: TestArgs) -> Result<()> {
-    let (receipt, intent_hash, _, _, _, _) = submit_ring0_first_fill(&args).await?;
-
-    // TEMP: Bypass the chain event listener & enqueue messages directly until event
-    // emission is implemented in the contracts
-    args.send_public_intent_creation_message(intent_hash, receipt.transaction_hash).await?;
+    let (_, intent_hash, _, _, _, _) = submit_ring0_first_fill(&args).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -60,14 +56,10 @@ indexer_integration_test!(test_ring0_first_fill);
 
 /// Test the indexing of the settlement of a subsequent fill of a ring 0 intent
 async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
-    let (initial_receipt, intent_hash, intent0, intent1, second_obligation0, second_obligation1) =
+    let (_, intent_hash, intent0, intent1, second_obligation0, second_obligation1) =
         submit_ring0_first_fill(&args).await?;
 
-    // TEMP: Bypass the chain event listener & enqueue messages directly until event
-    // emission is implemented in the contracts
-    args.send_public_intent_creation_message(intent_hash, initial_receipt.transaction_hash).await?;
-
-    let receipt = submit_ring0_subsequent_fill(
+    submit_ring0_subsequent_fill(
         &args,
         &intent0,
         &intent1,
@@ -75,8 +67,6 @@ async fn test_ring0_subsequent_fill(args: TestArgs) -> Result<()> {
         &second_obligation1,
     )
     .await?;
-
-    args.send_public_intent_update_message(intent_hash, receipt.transaction_hash).await?;
 
     // Give some time for the message to be processed
     tokio::time::sleep(Duration::from_secs(3)).await;

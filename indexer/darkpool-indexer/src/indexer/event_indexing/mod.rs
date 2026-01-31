@@ -137,67 +137,6 @@ impl Indexer {
         }
     }
 
-    /// Get the state transition associated with the creation of a new public
-    /// intent
-    pub async fn get_state_transition_for_public_intent_creation(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<StateTransition, IndexerError> {
-        let creation_call =
-            self.darkpool_client.find_public_intent_creation_call(intent_hash, tx_hash).await?;
-
-        let calldata = creation_call.input;
-        let selector = get_selector(&calldata);
-
-        match selector {
-            settleMatchCall::SELECTOR => {
-                let (party0_settlement_data, party1_settlement_data) =
-                    PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
-
-                let maybe_party0_state_transition = party0_settlement_data
-                    .get_state_transition_for_public_intent_creation(
-                        &self.darkpool_client,
-                        intent_hash,
-                        tx_hash,
-                    )
-                    .await?;
-
-                let maybe_party1_state_transition = party1_settlement_data
-                    .get_state_transition_for_public_intent_creation(
-                        &self.darkpool_client,
-                        intent_hash,
-                        tx_hash,
-                    )
-                    .await?;
-
-                maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
-                    IndexerError::invalid_party_settlement_data(
-                        "no public intent creation found in settle match call",
-                    ),
-                )
-            },
-            settleExternalMatchCall::SELECTOR => {
-                let call =
-                    settleExternalMatchCall::abi_decode(&calldata).map_err(IndexerError::parse)?;
-
-                let settlement_data = PartySettlementData::from_settle_external_match_call(&call)?;
-
-                settlement_data
-                    .get_state_transition_for_public_intent_creation(
-                        &self.darkpool_client,
-                        intent_hash,
-                        tx_hash,
-                    )
-                    .await?
-                    .ok_or(IndexerError::invalid_party_settlement_data(
-                        "no public intent creation found in settle external match call",
-                    ))
-            },
-            _ => Err(IndexerError::invalid_selector(selector)),
-        }
-    }
-
     /// Get the state transition associated with the update of a public intent
     pub async fn get_state_transition_for_public_intent_update(
         &self,
