@@ -3,6 +3,7 @@
 use alloy_primitives::B256;
 use renegade_circuit_types::Amount;
 use renegade_darkpool_types::{balance::DarkpoolStateBalance, intent::DarkpoolStateIntent};
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use renegade_types_account::account::order::Order;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -74,6 +75,8 @@ pub struct ApiPublicIntent {
     pub intent_hash: B256,
     /// The underlying order type
     pub order: Order,
+    /// The intent signature
+    pub intent_signature: SignatureWithNonce,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
 }

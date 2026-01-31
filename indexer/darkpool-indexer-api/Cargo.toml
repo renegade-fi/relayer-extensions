@@ -12,6 +12,7 @@ renegade-types-account = { package = "types-account", git = "https://github.com/
 
 # === Blockchain === #
 alloy-primitives = { workspace = true }
+renegade-solidity-abi = { workspace = true, default-features = true }
 
 # === Misc === #
 serde = "1.0"
