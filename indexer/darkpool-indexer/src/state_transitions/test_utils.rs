@@ -1,6 +1,6 @@
 //! Common utilities for state transition tests
 
-use alloy::primitives::{Address, B256, TxHash};
+use alloy::primitives::{Address, B256, Bytes, TxHash, U256};
 use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, thread_rng};
@@ -17,6 +17,7 @@ use renegade_darkpool_types::{
     intent::{DarkpoolStateIntent, Intent},
     settlement_obligation::SettlementObligation,
 };
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use uuid::Uuid;
 
 use crate::{
@@ -136,6 +137,11 @@ pub fn gen_random_intent(owner: Address) -> Intent {
     let amount_in = random_amount();
 
     Intent { in_token, out_token, owner, min_price, amount_in }
+}
+
+/// Generate a mock intent signature for public intents
+pub fn gen_mock_intent_signature() -> SignatureWithNonce {
+    SignatureWithNonce { nonce: U256::random(), signature: Bytes::from(vec![0u8; 65]) }
 }
 
 /// Compute the first recovery ID of the nth expected state object for the given
@@ -728,6 +734,7 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
 /// owner creating a new public intent from an internal match
 pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
     let intent = gen_random_intent(owner);
+    let intent_signature = gen_mock_intent_signature();
 
     let amount_in = thread_rng().gen_range(1..=intent.amount_in);
 
@@ -735,7 +742,8 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
     let intent_hash = B256::random();
     let tx_hash = TxHash::random();
 
-    let public_intent_creation_data = PublicIntentCreationData::InternalMatch { intent, amount_in };
+    let public_intent_creation_data =
+        PublicIntentCreationData::InternalMatch { intent, intent_signature, amount_in };
 
     CreatePublicIntentTransition {
         intent_hash,
@@ -751,6 +759,7 @@ pub fn gen_create_public_intent_external_match_transition(
     owner: Address,
 ) -> CreatePublicIntentTransition {
     let intent = gen_random_intent(owner);
+    let intent_signature = gen_mock_intent_signature();
 
     // Generate a random price for the external match
     let price = random_price();
@@ -769,8 +778,12 @@ pub fn gen_create_public_intent_external_match_transition(
     let intent_hash = B256::random();
     let tx_hash = TxHash::random();
 
-    let public_intent_creation_data =
-        PublicIntentCreationData::ExternalMatch { intent, price, external_party_amount_in };
+    let public_intent_creation_data = PublicIntentCreationData::ExternalMatch {
+        intent,
+        intent_signature,
+        price,
+        external_party_amount_in,
+    };
 
     CreatePublicIntentTransition {
         intent_hash,

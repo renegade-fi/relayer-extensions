@@ -65,6 +65,8 @@ diesel::table! {
         matching_pool -> Text,
         allow_external_matches -> Bool,
         min_fill_size -> Numeric,
+        intent_signature_nonce -> Numeric,
+        intent_signature_bytes -> Text,
     }
 }
 

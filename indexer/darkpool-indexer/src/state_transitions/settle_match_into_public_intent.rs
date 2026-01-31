@@ -155,6 +155,7 @@ mod tests {
         let PublicIntentCreationData::InternalMatch {
             intent: initial_intent,
             amount_in: creation_amount_in,
+            intent_signature: _,
         } = create_public_intent_transition.public_intent_creation_data.clone()
         else {
             panic!("Expected InternalMatch variant for creation");
@@ -216,6 +217,7 @@ mod tests {
         let PublicIntentCreationData::InternalMatch {
             intent: initial_intent,
             amount_in: creation_amount_in,
+            intent_signature: _,
         } = create_public_intent_transition.public_intent_creation_data.clone()
         else {
             panic!("Expected InternalMatch variant for creation");

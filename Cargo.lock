@@ -3575,6 +3575,7 @@ dependencies = [
  "postgres-native-tls",
  "postgresql_embedded",
  "rand 0.8.5",
+ "ruint",
  "serde",
  "serde_json",
  "test-helpers",
@@ -3594,6 +3595,7 @@ dependencies = [
 name = "darkpool-indexer-api"
 version = "0.1.0"
 dependencies = [
+ "abi",
  "alloy-primitives",
  "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
