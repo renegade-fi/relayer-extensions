@@ -8,6 +8,7 @@ use super::rate_limiter::AuthServerRateLimiter;
 use std::{iter, sync::Arc, time::Duration};
 
 use crate::bundle_store::BundleStore;
+use crate::chain_events::listener::{OnChainEventListener, OnChainEventListenerConfig};
 use crate::server::caching::ServerCache;
 use crate::telemetry::configure_telemetry_from_args;
 use crate::{Cli, error::AuthServerError};
@@ -87,23 +88,22 @@ impl Server {
         // Create the shared in-memory bundle store
         let bundle_store = BundleStore::new();
 
-        // CHAIN EVENTS LISTENER TEMPORARILY DISABLED
         // Start the on-chain event listener
-        // let chain_listener_config = OnChainEventListenerConfig {
-        //     chain: args.chain_id,
-        //     gas_sponsor_address,
-        //     websocket_addr: args.eth_websocket_addr.clone(),
-        //     bundle_store: bundle_store.clone(),
-        //     rate_limiter: rate_limiter.clone(),
-        //     price_reporter_client: price_reporter_client.clone(),
-        //     gas_cost_sampler: gas_cost_sampler.clone(),
-        //     darkpool_client: darkpool_client.clone(),
-        // };
-        // let mut chain_listener = OnChainEventListener::new(chain_listener_config)
-        //     .expect("failed to build on-chain event listener");
-        // chain_listener.start().expect("failed to start on-chain event listener");
+        let chain_listener_config = OnChainEventListenerConfig {
+            chain: args.chain_id,
+            gas_sponsor_address,
+            websocket_addr: args.eth_websocket_addr.clone(),
+            bundle_store: bundle_store.clone(),
+            rate_limiter: rate_limiter.clone(),
+            price_reporter_client: price_reporter_client.clone(),
+            gas_cost_sampler: gas_cost_sampler.clone(),
+            darkpool_client: darkpool_client.clone(),
+        };
+        let mut chain_listener = OnChainEventListener::new(chain_listener_config)
+            .expect("failed to build on-chain event listener");
+        chain_listener.start().expect("failed to start on-chain event listener");
         let chain_listener_cancellation_token = CancellationToken::new();
-        // chain_listener.watch(chain_listener_cancellation_token.clone());
+        chain_listener.watch(chain_listener_cancellation_token.clone());
 
         let server = Self {
             chain: args.chain_id,

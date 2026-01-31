@@ -5,7 +5,9 @@ use alloy::signers::k256::ecdsa::SigningKey;
 use alloy_primitives::{Address, Signature, U256, keccak256};
 use base64::{Engine as _, engine::general_purpose};
 use rand::thread_rng;
+use renegade_circuit_types::Amount;
 use renegade_external_api::types::ApiSignedQuote;
+use renegade_solidity_abi::v2::relayer_types::u256_to_u128;
 use renegade_types_core::Token;
 use uuid::Uuid;
 
@@ -94,18 +96,24 @@ pub const fn u64_to_u256(value: u64) -> U256 {
     U256::from_limbs([value, 0, 0, 0])
 }
 
+// --------------------
+// | Calldata Helpers |
+// --------------------
+
+/// Parse an external party's amount in from calldata
+pub fn get_external_party_amount_in(calldata: &[u8]) -> Result<Amount, AuthServerError> {
+    // The first four bytes of the calldata are the function selector
+    // The next 32 bytes (U256) are the external party's amount in
+    let buf = &calldata[4..36];
+    let sized_buf: [u8; 32] = buf.try_into().map_err(AuthServerError::serde)?;
+    let amount_u256 = U256::from_be_bytes(sized_buf);
+    let amount = u256_to_u128(amount_u256);
+    Ok(amount)
+}
+
 // ----------------
 // | Misc Helpers |
 // ----------------
-
-/// Get the function selector from calldata
-pub fn get_selector(calldata: &[u8]) -> Result<[u8; 4], AuthServerError> {
-    calldata
-        .get(0..4)
-        .ok_or(AuthServerError::serde("expected selector"))?
-        .try_into()
-        .map_err(AuthServerError::serde)
-}
 
 /// Generate a UUID for a signed quote
 pub fn generate_quote_uuid(signed_quote: &ApiSignedQuote) -> Uuid {

@@ -188,18 +188,6 @@ pub struct RateLimit {
     pub requests_per_minute: i32,
 }
 
-impl RateLimit {
-    /// Get the rate limit method as an enum
-    pub fn method_enum(&self) -> Option<RateLimitMethod> {
-        RateLimitMethod::from_str(&self.method)
-    }
-
-    /// Get the requests per minute as u32
-    pub fn requests_per_minute_u32(&self) -> u32 {
-        self.requests_per_minute as u32
-    }
-}
-
 /// New rate limit for insertion (not using Insertable due to custom enum type)
 pub struct NewRateLimit {
     /// The API key ID
