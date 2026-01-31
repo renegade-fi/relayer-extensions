@@ -95,14 +95,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    processed_public_intent_creations (intent_hash, tx_hash) {
-        intent_hash -> Text,
-        tx_hash -> Text,
-        block_number -> BigInt,
-    }
-}
-
-diesel::table! {
     processed_public_intent_updates (intent_hash, tx_hash) {
         intent_hash -> Text,
         tx_hash -> Text,
@@ -118,6 +110,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     master_view_seeds,
     processed_nullifiers,
     processed_recovery_ids,
-    processed_public_intent_creations,
     processed_public_intent_updates,
 );

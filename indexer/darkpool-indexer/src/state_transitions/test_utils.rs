@@ -27,16 +27,13 @@ use crate::{
         cancel_order::CancelOrderTransition,
         create_balance::{BalanceCreationData, CreateBalanceTransition},
         create_intent::{CreateIntentTransition, IntentCreationData},
-        create_public_intent::{CreatePublicIntentTransition, PublicIntentCreationData},
         deposit::DepositTransition,
         error::StateTransitionError,
         pay_protocol_fee::PayProtocolFeeTransition,
         pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::{BalanceSettlementData, SettleMatchIntoBalanceTransition},
         settle_match_into_intent::{IntentSettlementData, SettleMatchIntoIntentTransition},
-        settle_match_into_public_intent::{
-            PublicIntentSettlementData, SettleMatchIntoPublicIntentTransition,
-        },
+        settle_public_intent::{PublicIntentSettlementData, SettlePublicIntentTransition},
         withdraw::WithdrawTransition,
     },
     types::{ExpectedStateObject, MasterViewSeed, PublicIntentStateObject},
@@ -730,9 +727,9 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
     (transition, updated_balance)
 }
 
-/// Generate the state transition which should result in the given
-/// owner creating a new public intent from an internal match
-pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntentTransition {
+/// Generate a settle public intent transition with an internal match
+/// that will create a new public intent (since none exists yet)
+pub fn gen_settle_public_intent_transition(owner: Address) -> SettlePublicIntentTransition {
     let intent = gen_random_intent(owner);
     let intent_signature = gen_mock_intent_signature();
 
@@ -742,22 +739,22 @@ pub fn gen_create_public_intent_transition(owner: Address) -> CreatePublicIntent
     let intent_hash = B256::random();
     let tx_hash = TxHash::random();
 
-    let public_intent_creation_data =
-        PublicIntentCreationData::InternalMatch { intent, intent_signature, amount_in };
+    let public_intent_settlement_data =
+        PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
 
-    CreatePublicIntentTransition {
+    SettlePublicIntentTransition {
         intent_hash,
         tx_hash,
         block_number: 0,
-        public_intent_creation_data,
+        public_intent_settlement_data,
     }
 }
 
-/// Generate the state transition which should result in the given
-/// owner creating a new public intent from an external match
-pub fn gen_create_public_intent_external_match_transition(
+/// Generate a settle public intent transition with an external match
+/// that will create a new public intent (since none exists yet)
+pub fn gen_settle_public_intent_external_match_transition(
     owner: Address,
-) -> CreatePublicIntentTransition {
+) -> SettlePublicIntentTransition {
     let intent = gen_random_intent(owner);
     let intent_signature = gen_mock_intent_signature();
 
@@ -778,37 +775,42 @@ pub fn gen_create_public_intent_external_match_transition(
     let intent_hash = B256::random();
     let tx_hash = TxHash::random();
 
-    let public_intent_creation_data = PublicIntentCreationData::ExternalMatch {
+    let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
         intent,
         intent_signature,
         price,
         external_party_amount_in,
     };
 
-    CreatePublicIntentTransition {
+    SettlePublicIntentTransition {
         intent_hash,
         tx_hash,
         block_number: 0,
-        public_intent_creation_data,
+        public_intent_settlement_data,
     }
 }
 
-/// Generate the state transition which should result in the given
-/// public intent being updated with an internal match settlement.
+/// Generate a settle public intent transition with an internal match
+/// that will update an existing public intent.
 ///
-/// Returns the match settlement transition.
-pub fn gen_settle_match_into_public_intent_transition(
+/// Returns the settlement transition.
+pub fn gen_settle_public_intent_transition_for_existing(
     initial_public_intent: &PublicIntentStateObject,
-) -> SettleMatchIntoPublicIntentTransition {
+) -> SettlePublicIntentTransition {
     // Generate a random match amount
     let amount_in = random_amount().min(initial_public_intent.order.intent.inner.amount_in);
+
+    // Get the existing intent and signature from the public intent
+    let intent = initial_public_intent.order.intent.inner.clone();
+    let intent_signature = initial_public_intent.intent_signature.clone();
 
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
 
-    let public_intent_settlement_data = PublicIntentSettlementData::InternalMatch { amount_in };
+    let public_intent_settlement_data =
+        PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
 
-    SettleMatchIntoPublicIntentTransition {
+    SettlePublicIntentTransition {
         intent_hash: initial_public_intent.intent_hash,
         tx_hash,
         block_number: 0,
@@ -816,13 +818,13 @@ pub fn gen_settle_match_into_public_intent_transition(
     }
 }
 
-/// Generate the state transition which should result in the given
-/// public intent being updated with an external match settlement.
+/// Generate a settle public intent transition with an external match
+/// that will update an existing public intent.
 ///
-/// Returns the match settlement transition.
-pub fn gen_settle_external_match_into_public_intent_transition(
+/// Returns the settlement transition.
+pub fn gen_settle_public_intent_external_match_transition_for_existing(
     initial_public_intent: &PublicIntentStateObject,
-) -> SettleMatchIntoPublicIntentTransition {
+) -> SettlePublicIntentTransition {
     // Generate a random price for the external match
     // Price is in terms of internal party's output_token / input_token
     let price = random_price();
@@ -838,13 +840,21 @@ pub fn gen_settle_external_match_into_public_intent_transition(
     // party can provide
     let external_party_amount_in = random_amount().min(max_external_amount_in);
 
+    // Get the existing intent and signature from the public intent
+    let intent = initial_public_intent.order.intent.inner.clone();
+    let intent_signature = initial_public_intent.intent_signature.clone();
+
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
 
-    let public_intent_settlement_data =
-        PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in };
+    let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
+        intent,
+        intent_signature,
+        price,
+        external_party_amount_in,
+    };
 
-    SettleMatchIntoPublicIntentTransition {
+    SettlePublicIntentTransition {
         intent_hash: initial_public_intent.intent_hash,
         tx_hash,
         block_number: 0,
