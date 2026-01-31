@@ -6,6 +6,7 @@ use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::{
     DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
 };
+use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
 use renegade_external_api::types::{
     ApiBoundedMatchResult, BoundedExternalMatchApiBundle, ExternalOrder,
 };
@@ -15,6 +16,7 @@ use tracing::warn;
 
 use crate::{
     error::AuthServerError,
+    server::helpers::get_external_party_amount_in,
     server::{
         api_handlers::get_base_and_quote_amount_with_price, helpers::pick_base_and_quote_mints,
     },
@@ -188,8 +190,6 @@ fn record_external_match_response_metrics(
         match_bundle.match_result.output_mint,
     )?;
 
-    // TODO: Implement `get_default_base_amount` to get the base amount given by
-    // the default input amount set in the match bundle calldata
     let base_amount = get_default_base_amount(match_bundle)?;
     record_volume_with_tags(
         &address_to_hex_string(&base_mint),
@@ -293,15 +293,41 @@ pub(crate) fn record_quote_not_found(key_description: String, base_mint: &str) {
 /// Get the base amount implied by the default setting of the
 /// `externalPartyAmountIn` calldata field in the match bundle
 pub(crate) fn get_default_base_amount(
-    _match_bundle: &BoundedExternalMatchApiBundle,
+    match_bundle: &BoundedExternalMatchApiBundle,
 ) -> Result<u128, AuthServerError> {
-    todo!()
+    let match_res = BoundedMatchResult::from(match_bundle.match_result.clone());
+    let calldata = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    let amount_in = get_external_party_amount_in(calldata)?;
+
+    // Get a settlement obligation for the external party
+    let usdc_addr = Token::usdc().get_alloy_address();
+    let obligation = match_res.to_external_obligation(amount_in);
+    let base_amt = if obligation.input_token == usdc_addr {
+        obligation.amount_out
+    } else {
+        obligation.amount_in
+    };
+
+    Ok(base_amt)
 }
 
 /// Get the quote amount implied by the default setting of the
 /// `externalPartyAmountIn` calldata field in the match bundle
 pub(crate) fn get_default_quote_amount(
-    _match_bundle: &BoundedExternalMatchApiBundle,
+    match_bundle: &BoundedExternalMatchApiBundle,
 ) -> Result<u128, AuthServerError> {
-    todo!()
+    let match_res = BoundedMatchResult::from(match_bundle.match_result.clone());
+    let calldata = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    let amount_in = get_external_party_amount_in(calldata)?;
+
+    // Get a settlement obligation for the external party
+    let usdc_addr = Token::usdc().get_alloy_address();
+    let obligation = match_res.to_external_obligation(amount_in);
+    let quote_amt = if obligation.input_token == usdc_addr {
+        obligation.amount_in
+    } else {
+        obligation.amount_out
+    };
+
+    Ok(quote_amt)
 }

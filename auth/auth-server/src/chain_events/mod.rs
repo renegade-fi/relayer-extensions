@@ -3,7 +3,6 @@
 //! The event listener is responsible for:
 //! - Metrics: listening for nullifier spent events and recording metrics
 //!   related to settlement volume
-mod abis;
 mod error;
 pub mod listener;
 mod tasks;

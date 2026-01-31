@@ -8,11 +8,11 @@ use bigdecimal::{BigDecimal, ToPrimitive};
 use renegade_circuit_types::Amount;
 use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
 use renegade_external_api::types::ApiBoundedMatchResult;
+use renegade_solidity_abi::v2::IDarkpoolV2::SponsoredExternalMatch;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use tracing::warn;
 
-use crate::chain_events::abis::GasSponsorContract::SponsoredExternalMatch;
 use crate::chain_events::utils::GPv2Settlement;
 use crate::server::helpers::pick_base_and_quote_mints;
 use crate::telemetry::helpers::calculate_quote_per_base_price;
@@ -92,7 +92,7 @@ impl OnChainEventListenerExecutor {
 
         // Record settlement metrics
         self.record_settlement_metrics(
-            &receipt,
+            receipt,
             &bundle_ctx,
             &api_match,
             actual_input,
@@ -104,7 +104,7 @@ impl OnChainEventListenerExecutor {
             self.record_settled_match_sponsorship(
                 &bundle_ctx,
                 &api_match,
-                &receipt,
+                receipt,
                 gas_sponsorship_info,
                 *sponsorship_nonce,
             )
@@ -482,7 +482,7 @@ impl OnChainEventListenerExecutor {
             if let Ok(sponsorship_log) = SponsoredExternalMatch::decode_log(&log.inner)
                 && sponsorship_log.nonce == nonce
             {
-                return sponsorship_log.amount;
+                return sponsorship_log.refundAmount;
             };
         }
 

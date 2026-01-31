@@ -11,15 +11,13 @@ use alloy::{
 use alloy_primitives::{Address, TxHash, U256};
 use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
-use renegade_circuit_types::Amount;
-use renegade_common::types::chain::Chain;
 use renegade_darkpool_client::DarkpoolClient;
-use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
+use renegade_solidity_abi::v2::IDarkpoolV2;
+use renegade_types_core::Chain;
 use tracing::{error, info};
 
 use crate::{
     bundle_store::BundleStore,
-    chain_events::abis::GasSponsorContract::{self},
     server::{
         gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
     },
@@ -28,7 +26,7 @@ use crate::{
 use super::error::OnChainEventListenerError;
 
 /// The nonce used event for the gas sponsor contract
-type NonceUsed = GasSponsorContract::NonceUsed;
+type NonceUsed = IDarkpoolV2::NonceUsed;
 
 // ----------
 // | Worker |
@@ -204,7 +202,6 @@ impl OnChainEventListenerExecutor {
     /// one is present, record metrics for it
     ///
     /// Returns whether the tx settled an external match
-    #[allow(unreachable_code)]
     async fn check_external_match_settlement(
         &self,
         nonce: U256,
@@ -220,18 +217,14 @@ impl OnChainEventListenerExecutor {
         let receipt = match maybe_receipt {
             Some(receipt) => receipt,
             None => {
-                return Err(OnChainEventListenerError::darkpool("no receipt found for tx {tx:#x}"));
+                let error_msg = format!("no receipt found for tx {tx:#x}");
+                return Err(OnChainEventListenerError::darkpool(error_msg));
             },
         };
 
-        // Get the time of settlement
+        // Get the time of settlement and the matches in the tx
         let settlement_time = self.get_settlement_timestamp(&receipt).await?;
-
-        // TODO: Update fetch_external_matches_in_tx to return Vec<(BoundedMatchResult,
-        // Amount)> let matches =
-        // self.fetch_external_matches_in_tx(receipt.transaction_hash).await?;
-        let matches: Vec<(BoundedMatchResult, Amount)> = todo!();
-
+        let matches = self.darkpool_client.find_external_matches_in_tx(tx).await?;
         for (bounded_match, actual_external_input) in matches {
             // Process the external match (records all metrics)
             self.process_external_match(
