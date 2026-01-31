@@ -176,41 +176,7 @@ impl PartySettlementData {
         }
     }
 
-    /// Get the state transition associated with the public intent creation
-    /// event.
-    ///
-    /// Returns `None` if this party did not create the public intent.
-    pub async fn get_state_transition_for_public_intent_creation(
-        &self,
-        darkpool_client: &DarkpoolClient,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<Option<StateTransition>, IndexerError> {
-        match self {
-            Self::Ring0(ring0_settlement_data) => {
-                ring0_settlement_data
-                    .get_state_transition_for_public_intent_creation(
-                        darkpool_client,
-                        intent_hash,
-                        tx_hash,
-                    )
-                    .await
-            },
-            Self::Ring0ExternalMatch(ring0_external_data) => {
-                ring0_external_data
-                    .get_state_transition_for_public_intent_creation(
-                        darkpool_client,
-                        intent_hash,
-                        tx_hash,
-                    )
-                    .await
-            },
-            _ => Ok(None),
-        }
-    }
-
-    /// Get the state transition associated with the public intent update
-    /// event.
+    /// Get the state transition associated with the public intent update event.
     ///
     /// Returns `None` if this party did not update the public intent.
     pub async fn get_state_transition_for_public_intent_update(

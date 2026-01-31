@@ -2,8 +2,8 @@
 //! indexer
 
 use darkpool_indexer_api::types::message_queue::{
-    CancelPublicIntentMessage, CreatePublicIntentMessage, MasterViewSeedMessage, Message,
-    NullifierSpendMessage, RecoveryIdMessage, UpdatePublicIntentMessage,
+    CancelPublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
+    RecoveryIdMessage, UpdatePublicIntentMessage,
 };
 use tracing::info;
 
@@ -34,9 +34,6 @@ impl Indexer {
             },
             Message::NullifierSpend(message) => {
                 self.handle_nullifier_spend_message(message).await?;
-            },
-            Message::CreatePublicIntent(message) => {
-                self.handle_create_public_intent_message(message).await?;
             },
             Message::UpdatePublicIntent(message) => {
                 self.handle_update_public_intent_message(message).await?;
@@ -110,22 +107,6 @@ impl Indexer {
 
         let NullifierSpendMessage { nullifier, tx_hash } = message;
         let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
-
-        self.state_applicator.apply_state_transition(state_transition).await?;
-
-        Ok(())
-    }
-
-    // === Public Intent Creation Message Handler ===
-
-    /// Handle a message representing the creation of a new public intent
-    pub async fn handle_create_public_intent_message(
-        &self,
-        message: CreatePublicIntentMessage,
-    ) -> Result<(), IndexerError> {
-        let CreatePublicIntentMessage { intent_hash, tx_hash } = message;
-        let state_transition =
-            self.get_state_transition_for_public_intent_creation(intent_hash, tx_hash).await?;
 
         self.state_applicator.apply_state_transition(state_transition).await?;
 

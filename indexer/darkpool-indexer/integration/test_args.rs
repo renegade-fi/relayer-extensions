@@ -23,8 +23,7 @@ use darkpool_indexer::{
     types::{BalanceStateObject, IntentStateObject, MasterViewSeed, PublicIntentStateObject},
 };
 use darkpool_indexer_api::types::message_queue::{
-    CreatePublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
-    UpdatePublicIntentMessage,
+    Message, NullifierSpendMessage, RecoveryIdMessage,
 };
 use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
@@ -108,7 +107,6 @@ impl TestArgs {
             self.darkpool_client().clone(),
             0, // nullifier_start_block
             0, // recovery_id_start_block
-            0, // public_intent_creation_start_block
             0, // public_intent_update_start_block
             0, // public_intent_cancellation_start_block
             message_queue.clone(),
@@ -205,34 +203,6 @@ impl TestArgs {
 
         let nullifier_str = nullifier.to_string();
         self.send_message(message, nullifier_str.clone(), nullifier_str).await
-    }
-
-    /// Send a public intent creation message to the indexer's message queue
-    pub async fn send_public_intent_creation_message(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<()> {
-        let message =
-            Message::CreatePublicIntent(CreatePublicIntentMessage { intent_hash, tx_hash });
-
-        let intent_hash_str = intent_hash.to_string();
-        self.send_message(message, intent_hash_str.clone(), intent_hash_str).await
-    }
-
-    /// Send a public intent update message to the indexer's message queue
-    pub async fn send_public_intent_update_message(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<()> {
-        let message =
-            Message::UpdatePublicIntent(UpdatePublicIntentMessage { intent_hash, tx_hash });
-
-        let intent_hash_str = intent_hash.to_string();
-        let tx_hash_str = tx_hash.to_string();
-
-        self.send_message(message, tx_hash_str.clone(), intent_hash_str).await
     }
 
     // --- DB Helpers --- //

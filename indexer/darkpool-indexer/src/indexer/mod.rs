@@ -79,22 +79,6 @@ const BASE_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 0;
 /// events on devnet
 const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 
-/// The block number from which to start listening for public intent creation
-/// events on Arbitrum One
-const ARBITRUM_ONE_PUBLIC_INTENT_CREATION_START_BLOCK: u64 = 0;
-/// The block number from which to start listening for public intent creation
-/// events on Arbitrum Sepolia
-const ARBITRUM_SEPOLIA_PUBLIC_INTENT_CREATION_START_BLOCK: u64 = 0;
-/// The block number from which to start listening for public intent creation
-/// events on Base mainnet
-const BASE_MAINNET_PUBLIC_INTENT_CREATION_START_BLOCK: u64 = 0;
-/// The block number from which to start listening for public intent creation
-/// events on Base Sepolia
-const BASE_SEPOLIA_PUBLIC_INTENT_CREATION_START_BLOCK: u64 = 0;
-/// The block number from which to start listening for public intent creation
-/// events on devnet
-const DEVNET_PUBLIC_INTENT_CREATION_START_BLOCK: u64 = 0;
-
 /// The block number from which to start listening for public intent update
 /// events on Arbitrum One
 const ARBITRUM_ONE_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
@@ -181,11 +165,6 @@ impl Indexer {
             .await?
             .unwrap_or_else(|| get_recovery_id_start_block(cli.chain));
 
-        let public_intent_creation_start_block = db_client
-            .get_latest_processed_public_intent_creation_block(&mut conn)
-            .await?
-            .unwrap_or_else(|| get_public_intent_creation_start_block(cli.chain));
-
         let public_intent_update_start_block = db_client
             .get_latest_processed_public_intent_update_block(&mut conn)
             .await?
@@ -199,7 +178,6 @@ impl Indexer {
             darkpool_client.clone(),
             nullifier_start_block,
             recovery_id_start_block,
-            public_intent_creation_start_block,
             public_intent_update_start_block,
             public_intent_cancellation_start_block,
             message_queue.clone(),
@@ -265,15 +243,6 @@ pub async fn run_recovery_id_registration_listener(
     Ok(())
 }
 
-/// Run the public intent creation event listener, watching for public intent
-/// creation events and forwarding them to the message queue
-pub async fn run_public_intent_creation_listener(
-    indexer: Arc<Indexer>,
-) -> Result<(), IndexerError> {
-    indexer.chain_event_listener.watch_public_intent_creations().await?;
-    Ok(())
-}
-
 /// Run the public intent update event listener, watching for public intent
 /// update events and forwarding them to the message queue
 pub async fn run_public_intent_update_listener(indexer: Arc<Indexer>) -> Result<(), IndexerError> {
@@ -325,18 +294,6 @@ fn get_recovery_id_start_block(chain: Chain) -> u64 {
         Chain::BaseMainnet => BASE_MAINNET_RECOVERY_ID_START_BLOCK,
         Chain::BaseSepolia => BASE_SEPOLIA_RECOVERY_ID_START_BLOCK,
         Chain::Devnet => DEVNET_RECOVERY_ID_START_BLOCK,
-    }
-}
-
-/// Get the public intent creation event listener start block for the given
-/// chain
-fn get_public_intent_creation_start_block(chain: Chain) -> u64 {
-    match chain {
-        Chain::ArbitrumOne => ARBITRUM_ONE_PUBLIC_INTENT_CREATION_START_BLOCK,
-        Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_PUBLIC_INTENT_CREATION_START_BLOCK,
-        Chain::BaseMainnet => BASE_MAINNET_PUBLIC_INTENT_CREATION_START_BLOCK,
-        Chain::BaseSepolia => BASE_SEPOLIA_PUBLIC_INTENT_CREATION_START_BLOCK,
-        Chain::Devnet => DEVNET_PUBLIC_INTENT_CREATION_START_BLOCK,
     }
 }
 

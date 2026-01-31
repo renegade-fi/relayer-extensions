@@ -11,20 +11,18 @@ use crate::{
     db::client::DbClient,
     state_transitions::{
         cancel_order::CancelOrderTransition, create_balance::CreateBalanceTransition,
-        create_intent::CreateIntentTransition, create_public_intent::CreatePublicIntentTransition,
-        deposit::DepositTransition, error::StateTransitionError,
-        pay_protocol_fee::PayProtocolFeeTransition, pay_relayer_fee::PayRelayerFeeTransition,
+        create_intent::CreateIntentTransition, deposit::DepositTransition,
+        error::StateTransitionError, pay_protocol_fee::PayProtocolFeeTransition,
+        pay_relayer_fee::PayRelayerFeeTransition,
         settle_match_into_balance::SettleMatchIntoBalanceTransition,
         settle_match_into_intent::SettleMatchIntoIntentTransition,
-        settle_match_into_public_intent::SettleMatchIntoPublicIntentTransition,
-        withdraw::WithdrawTransition,
+        settle_public_intent::SettlePublicIntentTransition, withdraw::WithdrawTransition,
     },
 };
 
 pub mod cancel_order;
 pub mod create_balance;
 pub mod create_intent;
-pub mod create_public_intent;
 pub mod deposit;
 pub mod error;
 pub mod pay_protocol_fee;
@@ -32,7 +30,7 @@ pub mod pay_relayer_fee;
 pub mod register_master_view_seed;
 pub mod settle_match_into_balance;
 pub mod settle_match_into_intent;
-pub mod settle_match_into_public_intent;
+pub mod settle_public_intent;
 pub mod withdraw;
 
 #[cfg(test)]
@@ -62,10 +60,8 @@ pub enum StateTransition {
     CreateIntent(CreateIntentTransition),
     /// The settlement of a match into an intent object
     SettleMatchIntoIntent(SettleMatchIntoIntentTransition),
-    /// The creation of a new public intent
-    CreatePublicIntent(CreatePublicIntentTransition),
-    /// The settlement of a match into a public intent
-    SettleMatchIntoPublicIntent(SettleMatchIntoPublicIntentTransition),
+    /// The settlement of a match into a public intent (upsert semantics)
+    SettlePublicIntent(SettlePublicIntentTransition),
     /// The cancellation of an order
     CancelOrder(CancelOrderTransition),
 }
@@ -83,10 +79,7 @@ impl StateTransition {
             StateTransition::SettleMatchIntoBalance(_) => "SettleMatchIntoBalance".to_string(),
             StateTransition::CreateIntent(_) => "CreateIntent".to_string(),
             StateTransition::SettleMatchIntoIntent(_) => "SettleMatchIntoIntent".to_string(),
-            StateTransition::CreatePublicIntent(_) => "CreatePublicIntent".to_string(),
-            StateTransition::SettleMatchIntoPublicIntent(_) => {
-                "SettleMatchIntoPublicIntent".to_string()
-            },
+            StateTransition::SettlePublicIntent(_) => "SettlePublicIntent".to_string(),
             StateTransition::CancelOrder(_) => "CancelOrder".to_string(),
         }
     }
@@ -127,11 +120,8 @@ impl StateApplicator {
             StateTransition::SettleMatchIntoIntent(transition) => {
                 self.settle_match_into_intent(transition).await
             },
-            StateTransition::CreatePublicIntent(transition) => {
-                self.create_public_intent(transition).await
-            },
-            StateTransition::SettleMatchIntoPublicIntent(transition) => {
-                self.settle_match_into_public_intent(transition).await
+            StateTransition::SettlePublicIntent(transition) => {
+                self.settle_public_intent(transition).await
             },
             StateTransition::CancelOrder(transition) => self.cancel_order(transition).await,
         }
