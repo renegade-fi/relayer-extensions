@@ -4,6 +4,7 @@ use alloy::primitives::{Address, B256, TxHash};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_darkpool_types::intent::Intent;
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -36,6 +37,8 @@ pub enum PublicIntentCreationData {
     InternalMatch {
         /// The public intent to create
         intent: Intent,
+        /// The intent signature
+        intent_signature: SignatureWithNonce,
         /// The input amount on the obligation bundle
         amount_in: Amount,
     },
@@ -43,6 +46,8 @@ pub enum PublicIntentCreationData {
     ExternalMatch {
         /// The public intent to create
         intent: Intent,
+        /// The intent signature
+        intent_signature: SignatureWithNonce,
         /// The price of the match
         price: FixedPoint,
         /// The external party's input amount
@@ -140,12 +145,19 @@ fn construct_new_public_intent(
     account_id: Uuid,
 ) -> PublicIntentStateObject {
     match public_intent_creation_data {
-        PublicIntentCreationData::InternalMatch { amount_in, mut intent } => {
+        PublicIntentCreationData::InternalMatch { mut intent, intent_signature, amount_in } => {
             intent.amount_in -= amount_in;
-            PublicIntentStateObject::new(intent_hash, intent, account_id)
+            PublicIntentStateObject::new(intent_hash, intent, intent_signature, account_id)
         },
-        PublicIntentCreationData::ExternalMatch { price, external_party_amount_in, intent } => {
-            let mut public_intent = PublicIntentStateObject::new(intent_hash, intent, account_id);
+        PublicIntentCreationData::ExternalMatch {
+            intent,
+            intent_signature,
+            price,
+            external_party_amount_in,
+        } => {
+            let mut public_intent =
+                PublicIntentStateObject::new(intent_hash, intent, intent_signature, account_id);
+
             public_intent.update_from_external_match(price, external_party_amount_in);
             public_intent
         },
@@ -182,7 +194,7 @@ mod tests {
         let tx_hash = transition.tx_hash;
 
         // Extract intent and amount_in from the creation data, expecting InternalMatch
-        let PublicIntentCreationData::InternalMatch { intent, amount_in } =
+        let PublicIntentCreationData::InternalMatch { intent, amount_in, .. } =
             &transition.public_intent_creation_data
         else {
             panic!("Expected InternalMatch variant");
@@ -224,8 +236,9 @@ mod tests {
         let tx_hash = transition.tx_hash;
 
         // Extract intent and external match data, expecting ExternalMatch
-        let PublicIntentCreationData::ExternalMatch { intent, price, external_party_amount_in } =
-            &transition.public_intent_creation_data
+        let PublicIntentCreationData::ExternalMatch {
+            intent, price, external_party_amount_in, ..
+        } = &transition.public_intent_creation_data
         else {
             panic!("Expected ExternalMatch variant");
         };

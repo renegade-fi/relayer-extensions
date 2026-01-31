@@ -126,7 +126,9 @@ CREATE TABLE "public_intents"(
 	"active" BOOL NOT NULL,
 	"matching_pool" TEXT NOT NULL,
 	"allow_external_matches" BOOL NOT NULL,
-	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0)
+	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0),
+	"intent_signature_nonce" NUMERIC(78) NOT NULL CHECK (intent_signature_nonce >= 0),
+	"intent_signature_bytes" TEXT NOT NULL
 );
 
 -- Indexes a public intent by its account ID & active flag

@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use alloy::primitives::{Address, B256};
+use alloy::primitives::{Address, B256, Bytes};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,
@@ -16,6 +16,7 @@ use renegade_darkpool_types::{
     intent::{DarkpoolStateIntent, Intent, IntentShare},
     state_wrapper::StateWrapper,
 };
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
@@ -24,8 +25,8 @@ use crate::{
         recovery_stream::create_recovery_seed_csprng, share_stream::create_share_seed_csprng,
     },
     db::utils::{
-        bigdecimal_to_fixed_point, bigdecimal_to_scalar, fixed_point_to_bigdecimal,
-        scalar_to_bigdecimal,
+        bigdecimal_to_fixed_point, bigdecimal_to_scalar, bigdecimal_to_u256,
+        fixed_point_to_bigdecimal, scalar_to_bigdecimal, u256_to_bigdecimal,
     },
     types::{
         BalanceStateObject, ExpectedStateObject, IntentStateObject, MasterViewSeed,
@@ -447,12 +448,22 @@ pub struct PublicIntentModel {
     pub allow_external_matches: bool,
     /// The minimum fill size allowed for the intent
     pub min_fill_size: BigDecimal,
+    /// The nonce from the intent signature
+    pub intent_signature_nonce: BigDecimal,
+    /// The bytes of the intent signature (hex encoded)
+    pub intent_signature_bytes: String,
 }
 
 impl From<PublicIntentStateObject> for PublicIntentModel {
     fn from(value: PublicIntentStateObject) -> Self {
-        let PublicIntentStateObject { intent_hash, order, account_id, matching_pool, active } =
-            value;
+        let PublicIntentStateObject {
+            intent_hash,
+            order,
+            intent_signature,
+            account_id,
+            matching_pool,
+            active,
+        } = value;
 
         // Extract intent fields from the order
         let Intent { in_token, out_token, owner, min_price, amount_in } = order.intent.inner;
@@ -468,6 +479,10 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         let input_amount_bigdecimal = amount_in.into();
         let min_fill_size_bigdecimal = min_fill_size.into();
 
+        let intent_signature_nonce_bigdecimal = u256_to_bigdecimal(intent_signature.nonce);
+        // Hex-encode the signature bytes
+        let intent_signature_bytes_string = intent_signature.signature.to_string();
+
         PublicIntentModel {
             intent_hash: intent_hash_string,
             order_id: order.id,
@@ -481,6 +496,8 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             matching_pool,
             allow_external_matches,
             min_fill_size: min_fill_size_bigdecimal,
+            intent_signature_nonce: intent_signature_nonce_bigdecimal,
+            intent_signature_bytes: intent_signature_bytes_string,
         }
     }
 }
@@ -500,6 +517,8 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             matching_pool,
             allow_external_matches,
             min_fill_size,
+            intent_signature_nonce,
+            intent_signature_bytes,
         } = value;
 
         let intent_hash_b256 =
@@ -520,6 +539,15 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
 
         let min_fill_size_u128 =
             min_fill_size.to_u128().expect("Min fill size cannot be converted to u128");
+
+        // Reconstruct the intent signature
+        let nonce =
+            bigdecimal_to_u256(intent_signature_nonce).expect("Nonce cannot be converted to U256");
+
+        let signature =
+            Bytes::from_str(&intent_signature_bytes).expect("Signature bytes must be valid hex");
+
+        let intent_signature = SignatureWithNonce { nonce, signature };
 
         // Reconstruct the intent
         let intent = Intent {
@@ -543,6 +571,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
         PublicIntentStateObject {
             intent_hash: intent_hash_b256,
             order,
+            intent_signature,
             account_id,
             matching_pool,
             active,

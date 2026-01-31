@@ -18,6 +18,7 @@ use renegade_darkpool_types::{
     settlement_obligation::SettlementObligation,
     state_wrapper::StateWrapper,
 };
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
@@ -423,6 +424,8 @@ pub struct PublicIntentStateObject {
     pub intent_hash: B256,
     /// The underlying order type
     pub order: Order,
+    /// The intent signature
+    pub intent_signature: SignatureWithNonce,
     /// The ID of the account which owns the intent
     pub account_id: Uuid,
     /// The matching pool to which the intent is allocated
@@ -433,7 +436,12 @@ pub struct PublicIntentStateObject {
 
 impl PublicIntentStateObject {
     /// Create a new public intent state object
-    pub fn new(intent_hash: B256, intent: Intent, account_id: Uuid) -> Self {
+    pub fn new(
+        intent_hash: B256,
+        intent: Intent,
+        intent_signature: SignatureWithNonce,
+        account_id: Uuid,
+    ) -> Self {
         // Create a Ring0 state wrapper with zero seeds (public intents don't use
         // secret shares or recovery streams)
         let state_intent = StateWrapper::new(intent, Scalar::zero(), Scalar::zero());
@@ -451,6 +459,7 @@ impl PublicIntentStateObject {
         Self {
             intent_hash,
             order,
+            intent_signature,
             account_id,
             matching_pool: GLOBAL_MATCHING_POOL.to_string(),
             active: true,
@@ -482,9 +491,10 @@ impl PublicIntentStateObject {
 
 impl From<PublicIntentStateObject> for ApiPublicIntent {
     fn from(value: PublicIntentStateObject) -> Self {
-        let PublicIntentStateObject { intent_hash, order, matching_pool, .. } = value;
+        let PublicIntentStateObject { intent_hash, order, intent_signature, matching_pool, .. } =
+            value;
 
-        ApiPublicIntent { intent_hash, order, matching_pool }
+        ApiPublicIntent { intent_hash, order, intent_signature, matching_pool }
     }
 }
 
