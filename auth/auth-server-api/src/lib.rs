@@ -106,7 +106,7 @@ impl GasSponsorshipInfo {
     /// Whether this sponsorship implies an update to the effective price /
     /// receive amount of the associated match result
     pub fn requires_match_result_update(&self) -> bool {
-        !self.refund_native_eth && self.refund_address.is_none() && self.refund_amount > 0
+        !self.refund_native_eth && self.refund_amount > 0
     }
 
     /// Get the refund amount as an alloy U256

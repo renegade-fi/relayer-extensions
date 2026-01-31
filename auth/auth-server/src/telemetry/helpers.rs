@@ -16,7 +16,7 @@ use tracing::warn;
 use crate::{
     error::AuthServerError,
     server::{
-        gas_sponsorship::get_base_and_quote_amount_with_price, helpers::pick_base_and_quote_mints,
+        api_handlers::get_base_and_quote_amount_with_price, helpers::pick_base_and_quote_mints,
     },
     telemetry::labels::{
         ASSET_METRIC_TAG, BASE_ASSET_METRIC_TAG, EXTERNAL_MATCH_BASE_VOLUME,

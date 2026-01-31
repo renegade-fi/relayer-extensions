@@ -207,8 +207,8 @@ pub fn create_darkpool_client(
     chain: Chain,
     rpc_url: String,
 ) -> Result<DarkpoolClient, String> {
-    let darkpool_addr = address_from_hex_string(&darkpool_address)?;
-    let permit2_addr = address_from_hex_string(&permit2_address)?;
+    let darkpool_addr = address_from_hex_string(darkpool_address)?;
+    let permit2_addr = address_from_hex_string(permit2_address)?;
 
     // Create the client
     DarkpoolClient::new(DarkpoolClientConfig {

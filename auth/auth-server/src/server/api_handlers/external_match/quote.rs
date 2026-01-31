@@ -16,10 +16,10 @@ use crate::{
     http_utils::request_response::overwrite_response_body,
     server::{
         Server,
-        api_handlers::external_match::{
-            BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints,
+        api_handlers::{
+            external_match::{BytesResponse, ExternalMatchRequestType, pick_base_and_quote_mints},
+            get_base_and_quote_amount_with_price,
         },
-        gas_sponsorship::get_base_and_quote_amount_with_price,
     },
     telemetry::{
         QUOTE_FILL_RATIO_IGNORE_THRESHOLD,
@@ -131,10 +131,9 @@ impl Server {
         };
         self.route_quote_req(ctx).await?;
 
-        // GAS SPONSORSHIP TEMPORARILY DISABLED
         // Apply gas sponsorship to the quote request
-        // let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
-        // ctx.set_sponsorship_info(gas_sponsorship_info);
+        let gas_sponsorship_info = self.sponsor_quote_request(ctx).await?;
+        ctx.set_sponsorship_info(gas_sponsorship_info);
         Ok(())
     }
 
@@ -218,17 +217,16 @@ impl Server {
         ctx: &QuoteResponseCtx,
     ) -> Result<SponsoredQuoteResponse, AuthServerError> {
         let resp = ctx.response();
-        let sponsorship_info = ctx.sponsorship_info();
-        if sponsorship_info.is_none() {
-            return Ok(SponsoredQuoteResponse {
-                signed_quote: resp.signed_quote,
-                gas_sponsorship_info: None,
-            });
-        }
+        let sponsorship_info = match ctx.sponsorship_info() {
+            Some(info) => info,
+            None => {
+                return Ok(SponsoredQuoteResponse {
+                    signed_quote: resp.signed_quote,
+                    gas_sponsorship_info: None,
+                });
+            },
+        };
 
-        // The sponsorship nonce generated for the quote response is ignored.
-        // A new nonce will be generated when the quote is assembled.
-        let sponsorship_info = ctx.sponsorship_info().unwrap();
         self.construct_sponsored_quote_response(resp, sponsorship_info)
     }
 
