@@ -3600,6 +3600,7 @@ dependencies = [
  "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
  "serde",
  "types-account",
  "uuid 1.17.0",

@@ -3,7 +3,7 @@
 
 use darkpool_indexer_api::types::message_queue::{
     CancelPublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
-    RecoveryIdMessage, UpdatePublicIntentMessage,
+    PublicIntentMetadataUpdateMessage, RecoveryIdMessage, UpdatePublicIntentMessage,
 };
 use tracing::info;
 
@@ -40,6 +40,9 @@ impl Indexer {
             },
             Message::CancelPublicIntent(message) => {
                 self.handle_cancel_public_intent_message(message).await?;
+            },
+            Message::PublicIntentMetadataUpdate(message) => {
+                self.handle_public_intent_metadata_update_message(message).await?;
             },
         }
 
@@ -140,6 +143,19 @@ impl Indexer {
         let state_transition =
             self.get_state_transition_for_public_intent_cancellation(intent_hash, tx_hash).await?;
 
+        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Metadata Update Message Handler ===
+
+    /// Handle a message representing an update to a public intent's metadata
+    pub async fn handle_public_intent_metadata_update_message(
+        &self,
+        message: PublicIntentMetadataUpdateMessage,
+    ) -> Result<(), IndexerError> {
+        let state_transition = StateTransition::UpdatePublicIntentMetadata(message);
         self.state_applicator.apply_state_transition(state_transition).await?;
 
         Ok(())

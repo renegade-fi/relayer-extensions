@@ -2,7 +2,10 @@
 //! canonical representations of data outside of the external API & DB layers.
 
 use alloy::primitives::{Address, B256};
-use darkpool_indexer_api::types::http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject};
+use darkpool_indexer_api::types::{
+    http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject},
+    message_queue::PublicIntentMetadataUpdateMessage,
+};
 use renegade_circuit_types::{
     Amount,
     fixed_point::FixedPoint,
@@ -486,6 +489,42 @@ impl PublicIntentStateObject {
             scalar_to_u128(&inverse_price.floor_mul_int(external_party_amount_in));
 
         self.order.intent.inner.amount_in -= internal_party_amount_in;
+    }
+
+    /// Create a new public intent state object from a metadata update message
+    pub fn from_metadata_update_message(
+        message: &PublicIntentMetadataUpdateMessage,
+        account_id: Uuid,
+    ) -> Self {
+        // Create a Ring0 state wrapper with zero seeds (public intents don't use
+        // secret shares or recovery streams)
+        let state_intent =
+            StateWrapper::new(message.intent.clone(), Scalar::zero(), Scalar::zero());
+
+        // Build the order metadata from the message fields (not defaults)
+        let metadata = OrderMetadata::new(message.min_fill_size, message.allow_external_matches);
+
+        // Build the order with the provided order_id
+        let order =
+            Order::new_with_ring(message.order_id, state_intent, metadata, PrivacyRing::Ring0);
+
+        Self {
+            intent_hash: message.intent_hash,
+            order,
+            intent_signature: message.intent_signature.clone(),
+            account_id,
+            matching_pool: message.matching_pool.clone(),
+            active: true,
+        }
+    }
+
+    /// Update the public intent's metadata fields from a metadata update
+    /// message
+    pub fn update_metadata(&mut self, message: &PublicIntentMetadataUpdateMessage) {
+        self.order.id = message.order_id;
+        self.matching_pool = message.matching_pool.clone();
+        self.order.metadata.allow_external_matches = message.allow_external_matches;
+        self.order.metadata.min_fill_size = message.min_fill_size;
     }
 }
 

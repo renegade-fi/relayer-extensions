@@ -1,7 +1,10 @@
 //! Message type definitions for the darkpool indexer
 
 use alloy_primitives::{Address, B256, TxHash};
+use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
+use renegade_darkpool_types::intent::Intent;
+use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -19,6 +22,8 @@ pub enum Message {
     UpdatePublicIntent(UpdatePublicIntentMessage),
     /// A message representing the cancellation of a public intent
     CancelPublicIntent(CancelPublicIntentMessage),
+    /// A message representing an update to a public intent's metadata
+    PublicIntentMetadataUpdate(PublicIntentMetadataUpdateMessage),
 }
 
 /// A message representing the registration of a new master view seed
@@ -66,4 +71,23 @@ pub struct CancelPublicIntentMessage {
     pub intent_hash: B256,
     /// The transaction hash of the public intent cancellation
     pub tx_hash: TxHash,
+}
+
+/// A message representing an update to a public intent's metadata
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PublicIntentMetadataUpdateMessage {
+    /// The intent hash
+    pub intent_hash: B256,
+    /// The public intent
+    pub intent: Intent,
+    /// The intent signature
+    pub intent_signature: SignatureWithNonce,
+    /// The order ID
+    pub order_id: Uuid,
+    /// The matching pool to which the intent is allocated
+    pub matching_pool: String,
+    /// Whether the intent allows external matches
+    pub allow_external_matches: bool,
+    /// The minimum fill size allowed for the intent
+    pub min_fill_size: Amount,
 }
