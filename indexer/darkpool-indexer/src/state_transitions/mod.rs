@@ -5,7 +5,9 @@
 //! are defined over canonical object types & have no dependencies on external
 //! resources like the database or RPC client.
 
-use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
+use darkpool_indexer_api::types::message_queue::{
+    MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
+};
 
 use crate::{
     db::client::DbClient,
@@ -31,6 +33,7 @@ pub mod register_master_view_seed;
 pub mod settle_match_into_balance;
 pub mod settle_match_into_intent;
 pub mod settle_public_intent;
+pub mod update_public_intent_metadata;
 pub mod withdraw;
 
 #[cfg(test)]
@@ -62,6 +65,8 @@ pub enum StateTransition {
     SettleMatchIntoIntent(SettleMatchIntoIntentTransition),
     /// The settlement of a match into a public intent (upsert semantics)
     SettlePublicIntent(SettlePublicIntentTransition),
+    /// An update to a public intent's metadata (upsert semantics)
+    UpdatePublicIntentMetadata(PublicIntentMetadataUpdateMessage),
     /// The cancellation of an order
     CancelOrder(CancelOrderTransition),
 }
@@ -80,6 +85,9 @@ impl StateTransition {
             StateTransition::CreateIntent(_) => "CreateIntent".to_string(),
             StateTransition::SettleMatchIntoIntent(_) => "SettleMatchIntoIntent".to_string(),
             StateTransition::SettlePublicIntent(_) => "SettlePublicIntent".to_string(),
+            StateTransition::UpdatePublicIntentMetadata(_) => {
+                "UpdatePublicIntentMetadata".to_string()
+            },
             StateTransition::CancelOrder(_) => "CancelOrder".to_string(),
         }
     }
@@ -122,6 +130,9 @@ impl StateApplicator {
             },
             StateTransition::SettlePublicIntent(transition) => {
                 self.settle_public_intent(transition).await
+            },
+            StateTransition::UpdatePublicIntentMetadata(message) => {
+                self.update_public_intent_metadata(message).await
             },
             StateTransition::CancelOrder(transition) => self.cancel_order(transition).await,
         }

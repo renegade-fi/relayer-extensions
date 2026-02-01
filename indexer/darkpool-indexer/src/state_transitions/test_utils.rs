@@ -1,7 +1,9 @@
 //! Common utilities for state transition tests
 
 use alloy::primitives::{Address, B256, Bytes, TxHash, U256};
-use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
+use darkpool_indexer_api::types::message_queue::{
+    MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
+};
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, thread_rng};
 use renegade_circuit_types::{
@@ -81,11 +83,10 @@ fn add_up_to_max(amount_a: Amount, amount_b: Amount) -> Amount {
 }
 
 /// Generate a random settlement obligation, representing a trade of up to
-/// `max_amount`.
-///
-/// We bound both the input and output amounts to the given `max_amount` for
-/// simplicity.
+/// `max_amount`
 fn gen_random_settlement_obligation(max_amount: Amount) -> SettlementObligation {
+    // We bound both the input and output amounts to the given `max_amount` for
+    // simplicity.
     let amount = thread_rng().gen_range(1..=max_amount);
     SettlementObligation {
         // We use random addresses as this is not yet relevent in testing code
@@ -862,6 +863,45 @@ pub fn gen_settle_public_intent_external_match_transition_for_existing(
     }
 }
 
+/// Generate a public intent metadata update message for testing
+pub fn gen_public_intent_metadata_update_message(
+    owner: Address,
+) -> PublicIntentMetadataUpdateMessage {
+    let intent = gen_random_intent(owner);
+    let intent_signature = gen_mock_intent_signature();
+    let intent_hash = B256::random();
+    let order_id = Uuid::new_v4();
+    let matching_pool = "test-pool".to_string();
+    let allow_external_matches = true;
+    let min_fill_size = random_amount().min(intent.amount_in);
+
+    PublicIntentMetadataUpdateMessage {
+        intent_hash,
+        intent,
+        intent_signature,
+        order_id,
+        matching_pool,
+        allow_external_matches,
+        min_fill_size,
+    }
+}
+
+/// Generate a metadata update message for an existing public intent
+pub fn gen_public_intent_metadata_update_message_for_existing(
+    existing: &PublicIntentStateObject,
+) -> PublicIntentMetadataUpdateMessage {
+    // Use same intent_hash but different metadata values
+    PublicIntentMetadataUpdateMessage {
+        intent_hash: existing.intent_hash,
+        intent: existing.order.intent.inner.clone(),
+        intent_signature: existing.intent_signature.clone(),
+        order_id: Uuid::new_v4(),
+        matching_pool: "updated-pool".to_string(),
+        allow_external_matches: !existing.order.metadata.allow_external_matches,
+        min_fill_size: random_amount().min(existing.order.intent.inner.amount_in),
+    }
+}
+
 /// Generate the state transition which should result in the given
 /// intent being updated with a match settlement.
 ///
@@ -1041,6 +1081,30 @@ pub async fn validate_public_intent_indexing(
 
     // Assert that the indexed public intent matches the expected intent.
     assert_eq!(&indexed_public_intent.order.intent.inner, expected_intent);
+
+    Ok(())
+}
+
+/// Validate the metadata fields of a public intent against expected values
+pub async fn validate_public_intent_metadata(
+    db_client: &DbClient,
+    intent_hash: B256,
+    expected_order_id: Uuid,
+    expected_matching_pool: &str,
+    expected_allow_external_matches: bool,
+    expected_min_fill_size: Amount,
+) -> Result<(), DbError> {
+    let mut conn = db_client.get_db_conn().await?;
+
+    let indexed_public_intent = db_client.get_public_intent_by_hash(intent_hash, &mut conn).await?;
+
+    assert_eq!(indexed_public_intent.order.id, expected_order_id);
+    assert_eq!(indexed_public_intent.matching_pool, expected_matching_pool);
+    assert_eq!(
+        indexed_public_intent.order.metadata.allow_external_matches,
+        expected_allow_external_matches
+    );
+    assert_eq!(indexed_public_intent.order.metadata.min_fill_size, expected_min_fill_size);
 
     Ok(())
 }
