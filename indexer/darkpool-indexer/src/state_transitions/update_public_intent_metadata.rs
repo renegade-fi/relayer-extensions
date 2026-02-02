@@ -50,7 +50,8 @@ impl StateApplicator {
                     let public_intent = PublicIntentStateObject::from_metadata_update_message(
                         &message,
                         master_view_seed.account_id,
-                    );
+                    )
+                    .map_err(StateTransitionError::Conversion)?;
 
                     self.db_client.create_public_intent(public_intent, conn).await?;
                 }

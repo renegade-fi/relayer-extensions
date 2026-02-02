@@ -26,6 +26,7 @@ renegade-darkpool-types = { package = "darkpool-types", git = "https://github.co
 renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = ["hmac"] }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["telemetry"] }
 
 # === Runtime === #
@@ -70,7 +71,7 @@ ruint = { version = "1.17.0", features = ["num-bigint"] }
 [dev-dependencies]
 # === Renegade === #
 renegade-circuits = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git", features = ["test_helpers"] }
-renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git", features = ["mocks"] }
 test-helpers = { git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Runtime === #

@@ -41,7 +41,7 @@ impl Indexer {
             Message::CancelPublicIntent(message) => {
                 self.handle_cancel_public_intent_message(message).await?;
             },
-            Message::PublicIntentMetadataUpdate(message) => {
+            Message::UpdatePublicIntentMetadata(message) => {
                 self.handle_public_intent_metadata_update_message(message).await?;
             },
         }
