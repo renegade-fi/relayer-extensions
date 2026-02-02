@@ -8,9 +8,9 @@ use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_darkpool_types::balance::DarkpoolBalanceShare;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    cancelPrivateOrderCall, cancelPublicOrderCall, depositCall, depositNewBalanceCall,
-    payPrivateProtocolFeeCall, payPrivateRelayerFeeCall, payPublicProtocolFeeCall,
-    payPublicRelayerFeeCall, settleExternalMatchCall, settleMatchCall, withdrawCall,
+    cancelPrivateOrderCall, depositCall, depositNewBalanceCall, payPrivateProtocolFeeCall,
+    payPrivateRelayerFeeCall, payPublicProtocolFeeCall, payPublicRelayerFeeCall,
+    settleExternalMatchCall, settleMatchCall, withdrawCall,
 };
 
 use crate::{
@@ -192,28 +192,6 @@ impl Indexer {
                     .ok_or(IndexerError::invalid_party_settlement_data(
                         "no public intent update found in settle external match call",
                     ))
-            },
-            _ => Err(IndexerError::invalid_selector(selector)),
-        }
-    }
-
-    /// Get the state transition associated with the cancellation of a public
-    /// intent
-    pub async fn get_state_transition_for_public_intent_cancellation(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<StateTransition, IndexerError> {
-        let cancellation_call =
-            self.darkpool_client.find_public_intent_cancellation_call(intent_hash, tx_hash).await?;
-
-        let calldata = cancellation_call.input;
-        let selector = get_selector(&calldata);
-
-        match selector {
-            cancelPublicOrderCall::SELECTOR => {
-                // TODO: Implement public intent cancellation state transition
-                unimplemented!("Public intent cancellation state transition not yet implemented")
             },
             _ => Err(IndexerError::invalid_selector(selector)),
         }

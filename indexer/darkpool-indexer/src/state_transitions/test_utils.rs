@@ -3,7 +3,7 @@
 use alloy::primitives::{Address, B256, TxHash, U256};
 use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine};
 use darkpool_indexer_api::types::message_queue::{
-    MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
+    CancelPublicIntentMessage, MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
 };
 use postgresql_embedded::PostgreSQL;
 use rand::{Rng, thread_rng};
@@ -916,6 +916,11 @@ pub fn gen_public_intent_metadata_update_message_for_existing(
         allow_external_matches: !existing.order.metadata.allow_external_matches,
         min_fill_size: random_amount().min(existing.order.intent.inner.amount_in),
     }
+}
+
+/// Generate a cancel public intent message for testing
+pub fn gen_cancel_public_intent_message(intent_hash: B256) -> CancelPublicIntentMessage {
+    CancelPublicIntentMessage { intent_hash, tx_hash: TxHash::random() }
 }
 
 /// Generate the state transition which should result in the given
