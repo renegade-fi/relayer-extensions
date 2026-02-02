@@ -139,10 +139,7 @@ impl Indexer {
         &self,
         message: CancelPublicIntentMessage,
     ) -> Result<(), IndexerError> {
-        let CancelPublicIntentMessage { intent_hash, tx_hash } = message;
-        let state_transition =
-            self.get_state_transition_for_public_intent_cancellation(intent_hash, tx_hash).await?;
-
+        let state_transition = StateTransition::CancelPublicIntent(message);
         self.state_applicator.apply_state_transition(state_transition).await?;
 
         Ok(())

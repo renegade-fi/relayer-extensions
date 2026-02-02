@@ -15,8 +15,7 @@ use alloy::{
 use renegade_circuit_types::{Nullifier, fixed_point::FixedPoint};
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    NullifierSpent, PublicIntentCancelled, PublicIntentCreated, PublicIntentUpdated,
-    RecoveryIdRegistered,
+    NullifierSpent, PublicIntentCreated, PublicIntentUpdated, RecoveryIdRegistered,
 };
 
 use crate::darkpool_client::{DarkpoolClient, error::DarkpoolClientError, utils::scalar_to_b256};
@@ -106,27 +105,6 @@ impl DarkpoolClient {
                 call.logs.iter().any(|log| {
                     let topics = log.topics.clone().unwrap_or_default();
                     topics.first() == Some(&PublicIntentUpdated::SIGNATURE_HASH)
-                        && topics.contains(&intent_hash)
-                })
-            })
-            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
-    }
-
-    /// Find the call that cancelled the given public intent in the given
-    /// transaction
-    pub async fn find_public_intent_cancellation_call(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<CallFrame, DarkpoolClientError> {
-        let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
-
-        calls
-            .into_iter()
-            .find(|call| {
-                call.logs.iter().any(|log| {
-                    let topics = log.topics.clone().unwrap_or_default();
-                    topics.first() == Some(&PublicIntentCancelled::SIGNATURE_HASH)
                         && topics.contains(&intent_hash)
                 })
             })

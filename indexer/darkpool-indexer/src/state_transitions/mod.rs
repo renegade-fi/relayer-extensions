@@ -6,7 +6,7 @@
 //! resources like the database or RPC client.
 
 use darkpool_indexer_api::types::message_queue::{
-    MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
+    CancelPublicIntentMessage, MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
 };
 
 use crate::{
@@ -23,6 +23,7 @@ use crate::{
 };
 
 pub mod cancel_order;
+pub mod cancel_public_intent;
 pub mod create_balance;
 pub mod create_intent;
 pub mod deposit;
@@ -69,6 +70,8 @@ pub enum StateTransition {
     UpdatePublicIntentMetadata(PublicIntentMetadataUpdateMessage),
     /// The cancellation of an order
     CancelOrder(CancelOrderTransition),
+    /// The cancellation of a public intent
+    CancelPublicIntent(CancelPublicIntentMessage),
 }
 
 impl StateTransition {
@@ -89,6 +92,7 @@ impl StateTransition {
                 "UpdatePublicIntentMetadata".to_string()
             },
             StateTransition::CancelOrder(_) => "CancelOrder".to_string(),
+            StateTransition::CancelPublicIntent(_) => "CancelPublicIntent".to_string(),
         }
     }
 }
@@ -135,6 +139,9 @@ impl StateApplicator {
                 self.update_public_intent_metadata(message).await
             },
             StateTransition::CancelOrder(transition) => self.cancel_order(transition).await,
+            StateTransition::CancelPublicIntent(message) => {
+                self.cancel_public_intent(message).await
+            },
         }
     }
 }
