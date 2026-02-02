@@ -2,7 +2,11 @@
 
 use std::str::FromStr;
 
-use alloy::primitives::{Address, B256, Bytes};
+use alloy::{
+    hex,
+    primitives::{Address, B256, Bytes},
+    sol_types::SolValue,
+};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use diesel::{
     Selectable,
@@ -16,7 +20,7 @@ use renegade_darkpool_types::{
     intent::{DarkpoolStateIntent, Intent, IntentShare},
     state_wrapper::StateWrapper,
 };
-use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
+use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
 use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
@@ -437,6 +441,8 @@ pub struct PublicIntentModel {
     pub intent_signature_nonce: BigDecimal,
     /// The bytes of the intent signature (hex encoded)
     pub intent_signature_bytes: String,
+    /// The permit for the public intent (ABI-encoded, hex string)
+    pub permit: String,
 }
 
 impl From<PublicIntentStateObject> for PublicIntentModel {
@@ -445,6 +451,7 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             intent_hash,
             order,
             intent_signature,
+            permit,
             account_id,
             matching_pool,
             active,
@@ -468,6 +475,9 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         // Hex-encode the signature bytes
         let intent_signature_bytes_string = intent_signature.signature.to_string();
 
+        // ABI-encode and hex-encode the permit
+        let permit_string = hex::encode_prefixed(permit.abi_encode());
+
         PublicIntentModel {
             intent_hash: intent_hash_string,
             order_id: order.id,
@@ -483,6 +493,7 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             min_fill_size: min_fill_size_bigdecimal,
             intent_signature_nonce: intent_signature_nonce_bigdecimal,
             intent_signature_bytes: intent_signature_bytes_string,
+            permit: permit_string,
         }
     }
 }
@@ -504,6 +515,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             min_fill_size,
             intent_signature_nonce,
             intent_signature_bytes,
+            permit,
         } = value;
 
         let intent_hash_b256 =
@@ -534,6 +546,11 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
 
         let intent_signature = SignatureWithNonce { nonce, signature };
 
+        // Decode the permit from hex and ABI-decode
+        let permit_bytes = hex::decode(&permit).expect("Permit must be valid hex");
+        let permit =
+            PublicIntentPermit::abi_decode(&permit_bytes).expect("Permit must be valid ABI");
+
         // Reconstruct the intent
         let intent = Intent {
             in_token: input_mint_address,
@@ -557,6 +574,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             intent_hash: intent_hash_b256,
             order,
             intent_signature,
+            permit,
             account_id,
             matching_pool,
             active,

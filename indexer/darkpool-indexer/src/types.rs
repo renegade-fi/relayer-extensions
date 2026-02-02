@@ -21,7 +21,9 @@ use renegade_darkpool_types::{
     settlement_obligation::SettlementObligation,
     state_wrapper::StateWrapper,
 };
-use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
+use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine};
+use renegade_external_api::types::SignatureWithNonce as ApiSignatureWithNonce;
+use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
 use renegade_types_account::account::order::{Order, OrderMetadata, PrivacyRing};
 use uuid::Uuid;
 
@@ -429,6 +431,8 @@ pub struct PublicIntentStateObject {
     pub order: Order,
     /// The intent signature
     pub intent_signature: SignatureWithNonce,
+    /// The permit for the intent
+    pub permit: PublicIntentPermit,
     /// The ID of the account which owns the intent
     pub account_id: Uuid,
     /// The matching pool to which the intent is allocated
@@ -443,6 +447,7 @@ impl PublicIntentStateObject {
         intent_hash: B256,
         intent: Intent,
         intent_signature: SignatureWithNonce,
+        permit: PublicIntentPermit,
         account_id: Uuid,
     ) -> Self {
         // Create a Ring0 state wrapper with zero seeds (public intents don't use
@@ -463,6 +468,7 @@ impl PublicIntentStateObject {
             intent_hash,
             order,
             intent_signature,
+            permit,
             account_id,
             matching_pool: GLOBAL_MATCHING_POOL.to_string(),
             active: true,
@@ -512,6 +518,7 @@ impl PublicIntentStateObject {
             intent_hash: message.intent_hash,
             order,
             intent_signature: message.intent_signature.clone(),
+            permit: message.permit.clone(),
             account_id,
             matching_pool: message.matching_pool.clone(),
             active: true,
@@ -530,10 +537,22 @@ impl PublicIntentStateObject {
 
 impl From<PublicIntentStateObject> for ApiPublicIntent {
     fn from(value: PublicIntentStateObject) -> Self {
-        let PublicIntentStateObject { intent_hash, order, intent_signature, matching_pool, .. } =
-            value;
+        let PublicIntentStateObject {
+            intent_hash,
+            order,
+            intent_signature,
+            permit,
+            matching_pool,
+            ..
+        } = value;
 
-        ApiPublicIntent { intent_hash, order, intent_signature, matching_pool }
+        // Convert the intent signature to the API type
+        let intent_signature = ApiSignatureWithNonce {
+            nonce: intent_signature.nonce.to_string(),
+            signature: BASE64_STANDARD_NO_PAD.encode(&intent_signature.signature),
+        };
+
+        ApiPublicIntent { intent_hash, order, intent_signature, permit, matching_pool }
     }
 }
 

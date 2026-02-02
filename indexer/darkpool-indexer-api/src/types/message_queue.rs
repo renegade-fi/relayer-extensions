@@ -4,12 +4,13 @@ use alloy_primitives::{Address, B256, TxHash};
 use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
 use renegade_darkpool_types::intent::Intent;
-use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
+use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// The top-level enum of all possible message queue messages
 #[derive(Serialize, Deserialize, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum Message {
     /// A message representing the registration of a new master view seed
     RegisterMasterViewSeed(MasterViewSeedMessage),
@@ -82,6 +83,8 @@ pub struct PublicIntentMetadataUpdateMessage {
     pub intent: Intent,
     /// The intent signature
     pub intent_signature: SignatureWithNonce,
+    /// The permit for the intent
+    pub permit: PublicIntentPermit,
     /// The order ID
     pub order_id: Uuid,
     /// The matching pool to which the intent is allocated

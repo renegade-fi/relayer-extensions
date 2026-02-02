@@ -8,8 +8,8 @@ use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_darkpool_types::intent::Intent;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    BoundedMatchResult, ObligationBundle, PublicIntentPublicBalanceBundle, SettlementBundle,
-    SettlementObligation, SignatureWithNonce,
+    BoundedMatchResult, ObligationBundle, PublicIntentPermit, PublicIntentPublicBalanceBundle,
+    SettlementBundle, SettlementObligation, SignatureWithNonce,
 };
 
 use crate::{
@@ -68,11 +68,12 @@ impl Ring0SettlementData {
 
         let intent = self.get_intent();
         let intent_signature = self.get_intent_signature();
+        let permit = self.get_permit();
         let amount_in = self.get_amount_in();
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
 
         let public_intent_settlement_data =
-            PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
+            PublicIntentSettlementData::InternalMatch { intent, intent_signature, permit, amount_in };
 
         Ok(Some(StateTransition::SettlePublicIntent(SettlePublicIntentTransition {
             intent_hash,
@@ -109,6 +110,11 @@ impl Ring0SettlementData {
     /// Get the intent signature
     fn get_intent_signature(&self) -> SignatureWithNonce {
         self.settlement_bundle.auth.intentSignature.clone()
+    }
+
+    /// Get the permit
+    fn get_permit(&self) -> PublicIntentPermit {
+        self.settlement_bundle.auth.intentPermit.clone()
     }
 
     /// Get the input amount on the settlement obligation
@@ -188,6 +194,11 @@ impl Ring0ExternalSettlementData {
         self.settlement_bundle.auth.intentSignature.clone()
     }
 
+    /// Get the permit
+    pub fn get_permit(&self) -> PublicIntentPermit {
+        self.settlement_bundle.auth.intentPermit.clone()
+    }
+
     /// Get the price from the match result
     pub fn get_price(&self) -> FixedPoint {
         self.match_result.price.clone().into()
@@ -214,6 +225,7 @@ impl Ring0ExternalSettlementData {
 
         let intent = self.get_intent();
         let intent_signature = self.get_intent_signature();
+        let permit = self.get_permit();
         let price = self.get_price();
         let external_party_amount_in = self.get_external_party_amount_in();
         let block_number = darkpool_client.get_tx_block_number(tx_hash).await?;
@@ -221,6 +233,7 @@ impl Ring0ExternalSettlementData {
         let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
             intent,
             intent_signature,
+            permit,
             price,
             external_party_amount_in,
         };

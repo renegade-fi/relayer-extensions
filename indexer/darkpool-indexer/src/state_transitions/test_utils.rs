@@ -20,6 +20,7 @@ use renegade_darkpool_types::{
     settlement_obligation::SettlementObligation,
 };
 use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
+use renegade_types_account::account::order_auth::mocks::mock_public_intent_permit;
 use uuid::Uuid;
 
 use crate::{
@@ -733,6 +734,7 @@ pub fn gen_settle_public_fill_into_output_balance_transition(
 pub fn gen_settle_public_intent_transition(owner: Address) -> SettlePublicIntentTransition {
     let intent = gen_random_intent(owner);
     let intent_signature = gen_mock_intent_signature();
+    let permit = mock_public_intent_permit();
 
     let amount_in = thread_rng().gen_range(1..=intent.amount_in);
 
@@ -741,7 +743,7 @@ pub fn gen_settle_public_intent_transition(owner: Address) -> SettlePublicIntent
     let tx_hash = TxHash::random();
 
     let public_intent_settlement_data =
-        PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
+        PublicIntentSettlementData::InternalMatch { intent, intent_signature, permit, amount_in };
 
     SettlePublicIntentTransition {
         intent_hash,
@@ -758,6 +760,7 @@ pub fn gen_settle_public_intent_external_match_transition(
 ) -> SettlePublicIntentTransition {
     let intent = gen_random_intent(owner);
     let intent_signature = gen_mock_intent_signature();
+    let permit = mock_public_intent_permit();
 
     // Generate a random price for the external match
     let price = random_price();
@@ -779,6 +782,7 @@ pub fn gen_settle_public_intent_external_match_transition(
     let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
         intent,
         intent_signature,
+        permit,
         price,
         external_party_amount_in,
     };
@@ -801,15 +805,16 @@ pub fn gen_settle_public_intent_transition_for_existing(
     // Generate a random match amount
     let amount_in = random_amount().min(initial_public_intent.order.intent.inner.amount_in);
 
-    // Get the existing intent and signature from the public intent
+    // Get the existing intent, signature, and permit from the public intent
     let intent = initial_public_intent.order.intent.inner.clone();
     let intent_signature = initial_public_intent.intent_signature.clone();
+    let permit = initial_public_intent.permit.clone();
 
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
 
     let public_intent_settlement_data =
-        PublicIntentSettlementData::InternalMatch { intent, intent_signature, amount_in };
+        PublicIntentSettlementData::InternalMatch { intent, intent_signature, permit, amount_in };
 
     SettlePublicIntentTransition {
         intent_hash: initial_public_intent.intent_hash,
@@ -841,9 +846,10 @@ pub fn gen_settle_public_intent_external_match_transition_for_existing(
     // party can provide
     let external_party_amount_in = random_amount().min(max_external_amount_in);
 
-    // Get the existing intent and signature from the public intent
+    // Get the existing intent, signature, and permit from the public intent
     let intent = initial_public_intent.order.intent.inner.clone();
     let intent_signature = initial_public_intent.intent_signature.clone();
+    let permit = initial_public_intent.permit.clone();
 
     // Create a dummy tx hash for testing
     let tx_hash = TxHash::random();
@@ -851,6 +857,7 @@ pub fn gen_settle_public_intent_external_match_transition_for_existing(
     let public_intent_settlement_data = PublicIntentSettlementData::ExternalMatch {
         intent,
         intent_signature,
+        permit,
         price,
         external_party_amount_in,
     };
@@ -869,6 +876,7 @@ pub fn gen_public_intent_metadata_update_message(
 ) -> PublicIntentMetadataUpdateMessage {
     let intent = gen_random_intent(owner);
     let intent_signature = gen_mock_intent_signature();
+    let permit = mock_public_intent_permit();
     let intent_hash = B256::random();
     let order_id = Uuid::new_v4();
     let matching_pool = "test-pool".to_string();
@@ -879,6 +887,7 @@ pub fn gen_public_intent_metadata_update_message(
         intent_hash,
         intent,
         intent_signature,
+        permit,
         order_id,
         matching_pool,
         allow_external_matches,
@@ -895,6 +904,7 @@ pub fn gen_public_intent_metadata_update_message_for_existing(
         intent_hash: existing.intent_hash,
         intent: existing.order.intent.inner.clone(),
         intent_signature: existing.intent_signature.clone(),
+        permit: existing.permit.clone(),
         order_id: Uuid::new_v4(),
         matching_pool: "updated-pool".to_string(),
         allow_external_matches: !existing.order.metadata.allow_external_matches,

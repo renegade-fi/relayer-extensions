@@ -5,7 +5,7 @@ use alloy::primitives::{Address, B256, TxHash};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_darkpool_types::intent::Intent;
-use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce;
+use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -40,6 +40,8 @@ pub enum PublicIntentSettlementData {
         intent: Intent,
         /// The intent signature
         intent_signature: SignatureWithNonce,
+        /// The permit for the intent
+        permit: PublicIntentPermit,
         /// The input amount on the obligation bundle
         amount_in: Amount,
     },
@@ -49,6 +51,8 @@ pub enum PublicIntentSettlementData {
         intent: Intent,
         /// The intent signature
         intent_signature: SignatureWithNonce,
+        /// The permit for the intent
+        permit: PublicIntentPermit,
         /// The price of the match
         price: FixedPoint,
         /// The external party's input amount
@@ -172,18 +176,29 @@ fn construct_new_public_intent(
     account_id: Uuid,
 ) -> PublicIntentStateObject {
     match public_intent_settlement_data {
-        PublicIntentSettlementData::InternalMatch { mut intent, intent_signature, amount_in } => {
+        PublicIntentSettlementData::InternalMatch {
+            mut intent,
+            intent_signature,
+            permit,
+            amount_in,
+        } => {
             intent.amount_in -= amount_in;
-            PublicIntentStateObject::new(intent_hash, intent, intent_signature, account_id)
+            PublicIntentStateObject::new(intent_hash, intent, intent_signature, permit, account_id)
         },
         PublicIntentSettlementData::ExternalMatch {
             intent,
             intent_signature,
+            permit,
             price,
             external_party_amount_in,
         } => {
-            let mut public_intent =
-                PublicIntentStateObject::new(intent_hash, intent, intent_signature, account_id);
+            let mut public_intent = PublicIntentStateObject::new(
+                intent_hash,
+                intent,
+                intent_signature,
+                permit,
+                account_id,
+            );
 
             public_intent.update_from_external_match(price, external_party_amount_in);
             public_intent
