@@ -15,7 +15,7 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade-contracts.git#bdc18ae5e0e2dada36b9da099a2076cf5dfbed1e"
+source = "git+https://github.com/renegade-fi/renegade-contracts#bdc18ae5e0e2dada36b9da099a2076cf5dfbed1e"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -7203,7 +7203,8 @@ version = "0.1.0"
 dependencies = [
  "atomic_float 1.1.0",
  "bigdecimal 0.4.9",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "common",
+ "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "futures-util",
  "reqwest 0.11.27",
  "serde",
@@ -7212,7 +7213,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tracing",
- "types-core",
 ]
 
 [[package]]
