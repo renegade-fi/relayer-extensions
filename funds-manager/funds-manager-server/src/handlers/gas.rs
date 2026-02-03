@@ -13,13 +13,10 @@ use funds_manager_api::{
 };
 use renegade_common::types::chain::Chain;
 use serde_json::json;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use warp::reply::Json;
 
-use crate::{
-    custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError,
-    server::Server,
-};
+use crate::{custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError, server::Server};
 
 // -------------
 // | Constants |
@@ -123,7 +120,7 @@ pub(crate) async fn report_active_peers_handler(
     Ok(warp::reply::json(&resp))
 }
 
-/// Handler for refilling gas for the gas sponsor contract
+/// Handler for refilling gas for the gas sponsor contracts (v1 and v2)
 pub(crate) async fn refill_gas_sponsor_handler(
     chain: Chain,
     _body: Bytes, // no body
@@ -137,29 +134,35 @@ pub(crate) async fn refill_gas_sponsor_handler(
     let quoter_wallet = custody_client.get_quoter_hot_wallet().await?;
     let signer = custody_client.get_hot_wallet_private_key(&quoter_wallet.address).await?;
 
-    // Refill the gas sponsor with native ETH
-    custody_client.refill_gas_sponsor_eth().await?;
+    // Refill each gas sponsor contract (v1 and v2)
+    for gas_sponsor in custody_client.gas_sponsor_addresses() {
+        info!("Refilling gas sponsor: {gas_sponsor}");
 
-    // Refill the gas sponsor with ERC20s
-    let tokens_needing_refill = custody_client.get_tokens_needing_refill().await?;
+        // Refill the gas sponsor with native ETH
+        custody_client.refill_gas_sponsor_eth(&gas_sponsor).await?;
 
-    // Swap into the target tokens such that we can cover the refill amounts
-    let swap_outcomes =
-        execution_client.multi_swap_into_target_tokens(&tokens_needing_refill).await?;
+        // Refill the gas sponsor with ERC20s
+        let tokens_needing_refill = custody_client.get_tokens_needing_refill(&gas_sponsor).await?;
 
-    // Send the tokens to the gas sponsor
-    for (token, refill_amount) in tokens_needing_refill {
-        let ticker = token.get_ticker().unwrap_or(token.get_addr());
-        if let Err(e) =
-            custody_client.send_token_to_gas_sponsor(&token, refill_amount, signer.clone()).await
-        {
-            error!("Failed to send {ticker} to gas sponsor, skipping: {e}");
+        // Swap into the target tokens such that we can cover the refill amounts
+        let swap_outcomes =
+            execution_client.multi_swap_into_target_tokens(&tokens_needing_refill).await?;
+
+        // Send the tokens to the gas sponsor
+        for (token, refill_amount) in tokens_needing_refill {
+            let ticker = token.get_ticker().unwrap_or(token.get_addr());
+            if let Err(e) = custody_client
+                .send_token_to_gas_sponsor(&token, refill_amount, signer.clone(), &gas_sponsor)
+                .await
+            {
+                error!("Failed to send {ticker} to gas sponsor ({gas_sponsor}), skipping: {e}");
+            }
         }
-    }
 
-    for outcome in swap_outcomes {
-        if let Err(e) = metrics_recorder.record_swap_cost(&outcome).await {
-            warn!("Failed to record swap cost metrics: {e}");
+        for outcome in swap_outcomes {
+            if let Err(e) = metrics_recorder.record_swap_cost(&outcome).await {
+                warn!("Failed to record swap cost metrics: {e}");
+            }
         }
     }
 

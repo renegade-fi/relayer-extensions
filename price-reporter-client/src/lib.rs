@@ -13,11 +13,7 @@ use std::time::Duration;
 use bigdecimal::{BigDecimal, FromPrimitive, num_bigint::BigInt};
 use error::PriceReporterClientError;
 use price_stream::MultiPriceStream;
-use renegade_common::types::{
-    chain::Chain,
-    exchange::Exchange,
-    token::{get_all_tokens, Token, USD_TICKER, USDC_TICKER},
-};
+use renegade_types_core::{Chain, Exchange, Token, USD_TICKER, USDC_TICKER, get_all_tokens};
 use reqwest::{Client, Response, Url};
 use tracing::warn;
 

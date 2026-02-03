@@ -7,7 +7,7 @@ use alloy::{
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
-use alloy_primitives::utils::parse_ether;
+use alloy_primitives::{utils::parse_ether, Address};
 use alloy_sol_types::SolCall;
 use renegade_common::types::{
     chain::Chain,
@@ -55,9 +55,10 @@ impl CustodyClient {
     /// Gets the tokens which the gas sponsor needs to be refilled for.
     ///
     /// Returns a vector of (token, refill_amount).
-    pub async fn get_tokens_needing_refill(&self) -> Result<Vec<(Token, f64)>, FundsManagerError> {
-        let gas_sponsor_address = self.gas_sponsor_address();
-
+    pub async fn get_tokens_needing_refill(
+        &self,
+        gas_sponsor_address: &str,
+    ) -> Result<Vec<(Token, f64)>, FundsManagerError> {
         let mut tokens = Vec::new();
 
         // Get all tokens on the chain that are not USD
@@ -68,7 +69,7 @@ impl CustodyClient {
         for token in all_tokens_on_chain {
             // Get the gas sponsor's balance of the token
             let price = self.price_reporter.get_price(&token.addr, self.chain).await?;
-            let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
+            let bal = self.get_erc20_balance(&token.addr, gas_sponsor_address).await?;
             let bal_value = bal * price;
 
             if bal_value < DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - MIN_TRANSFER_VALUE {
@@ -86,21 +87,24 @@ impl CustodyClient {
     }
 
     /// Refill the gas sponsor with ETH
-    pub async fn refill_gas_sponsor_eth(&self) -> Result<(), FundsManagerError> {
+    pub async fn refill_gas_sponsor_eth(
+        &self,
+        gas_sponsor_address: &str,
+    ) -> Result<(), FundsManagerError> {
         let price = self.price_reporter.get_eth_price().await?;
-        let bal = self.get_ether_balance(&self.gas_sponsor_address()).await?;
+        let bal = self.get_ether_balance(gas_sponsor_address).await?;
         let bal_value = bal * price;
 
         if bal_value < DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - MIN_TRANSFER_VALUE {
             let refill_value = DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - bal_value;
             let refill_amount = refill_value / price;
 
-            match self.send_eth_to_gas_sponsor(refill_amount).await {
+            match self.send_eth_to_gas_sponsor(refill_amount, gas_sponsor_address).await {
                 Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
-                    info!("Sent {refill_amount} ETH from hot wallet to gas sponsor in tx {tx:#x}");
+                    info!("Sent {refill_amount} ETH from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {tx:#x}");
                 },
                 Err(e) => {
-                    error!("Failed to send ETH to gas sponsor, skipping: {e}");
+                    error!("Failed to send ETH to gas sponsor ({gas_sponsor_address}), skipping: {e}");
                 },
             }
         }
@@ -114,6 +118,7 @@ impl CustodyClient {
         token: &Token,
         amount: f64,
         quoter_wallet: PrivateKeySigner,
+        gas_sponsor_address: &str,
     ) -> Result<(), FundsManagerError> {
         let ticker = token.get_ticker().unwrap_or(token.get_addr());
         let mint = &token.addr;
@@ -138,12 +143,11 @@ impl CustodyClient {
             )));
         }
 
-        let receipt = self
-            .erc20_transfer(mint, &self.gas_sponsor_address(), send_amount, quoter_wallet)
-            .await?;
+        let receipt =
+            self.erc20_transfer(mint, gas_sponsor_address, send_amount, quoter_wallet).await?;
 
         info!(
-            "Sent {send_amount} {ticker} from hot wallet to gas sponsor in tx {:#x}",
+            "Sent {send_amount} {ticker} from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {:#x}",
             receipt.transaction_hash
         );
 
@@ -154,6 +158,7 @@ impl CustodyClient {
     async fn send_eth_to_gas_sponsor(
         &self,
         amount: f64,
+        gas_sponsor_address: &str,
     ) -> Result<TransactionReceipt, FundsManagerError> {
         // Get the gas hot wallet's private key
         let source = DepositWithdrawSource::Gas.vault_name(self.chain);
@@ -169,7 +174,7 @@ impl CustodyClient {
         }
 
         // Invoke the `receiveEth` function on the gas sponsor contract
-        self.send_receive_eth_tx(amount, signer).await
+        self.send_receive_eth_tx(amount, signer, gas_sponsor_address).await
     }
 
     /// Send a transaction to the gas sponsor contract to invoke the
@@ -178,7 +183,11 @@ impl CustodyClient {
         &self,
         amount: f64,
         signer: PrivateKeySigner,
+        gas_sponsor_address: &str,
     ) -> Result<TransactionReceipt, FundsManagerError> {
+        let gas_sponsor_address: Address =
+            gas_sponsor_address.parse().map_err(FundsManagerError::parse)?;
+
         let client = self.get_signing_provider(signer);
         let calldata = self.get_eth_transfer_calldata();
         let amount_units = parse_ether(&amount.to_string()).map_err(FundsManagerError::parse)?;
@@ -197,7 +206,7 @@ impl CustodyClient {
 
         let tx = TransactionRequest::default()
             .with_input(calldata)
-            .with_to(self.gas_sponsor_address)
+            .with_to(gas_sponsor_address)
             .with_value(amount_units)
             .with_gas_price(latest_basefee * 2);
 
