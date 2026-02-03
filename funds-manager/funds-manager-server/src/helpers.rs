@@ -73,6 +73,19 @@ const BASE_MAINNET_GAS_SPONSOR_ADDRESS: Address =
 const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
     Address::new(hex!("0x2fDB4e70Db12599b04642b3d023E75f6439c5707"));
 
+/// The v2 gas sponsor address on Arbitrum One
+const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+/// The v2 gas sponsor address on Arbitrum Sepolia
+const ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("44183ad1d4ec082e9EEb7e9665211CC35De5123b"));
+/// The v2 gas sponsor address on Base Mainnet
+const BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+/// The v2 gas sponsor address on Base Sepolia
+const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("37f529F812d6D5ABa07BFcb9cB374f2450B782eE"));
+
 // ---------
 // | ERC20 |
 // ---------
@@ -383,6 +396,8 @@ pub fn to_chain_id(chain: Chain) -> u64 {
         Chain::ArbitrumSepolia => 421614,
         Chain::BaseMainnet => 8453,
         Chain::BaseSepolia => 84532,
+        Chain::EthereumMainnet => 1,
+        Chain::EthereumSepolia => 11155111,
         Chain::Devnet => 0,
     }
 }
@@ -417,6 +432,17 @@ pub fn get_gas_sponsor_address(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
         Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS,
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS,
+        _ => panic!("Invalid chain"),
+    }
+}
+
+/// Get the v2 gas sponsor address for a given chain
+pub fn get_gas_sponsor_address_v2(chain: Chain) -> Address {
+    match chain {
+        Chain::ArbitrumOne => ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2,
+        Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
+        Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2,
+        Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
         _ => panic!("Invalid chain"),
     }
 }

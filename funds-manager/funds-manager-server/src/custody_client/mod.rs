@@ -37,9 +37,7 @@ use tracing::{debug, info};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
-    helpers::{
-        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS,
-    },
+    helpers::{get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS},
 };
 use crate::{
     db::{DbConn, DbPool},
@@ -134,8 +132,10 @@ pub struct CustodyClient {
     db_pool: Arc<DbPool>,
     /// The AWS config
     aws_config: AwsConfig,
-    /// The gas sponsor contract address
+    /// The gas sponsor contract address (v1)
     gas_sponsor_address: Address,
+    /// The gas sponsor contract address (v2)
+    gas_sponsor_address_v2: Address,
     /// The price reporter client
     price_reporter: PriceReporterClient,
 }
@@ -153,6 +153,7 @@ impl CustodyClient {
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
+        gas_sponsor_address_v2: Address,
         price_reporter: PriceReporterClient,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_client =
@@ -166,6 +167,7 @@ impl CustodyClient {
             db_pool,
             aws_config,
             gas_sponsor_address,
+            gas_sponsor_address_v2,
             price_reporter,
         })
     }
@@ -175,9 +177,12 @@ impl CustodyClient {
         self.db_pool.get().await.map_err(|e| FundsManagerError::Db(e.to_string()))
     }
 
-    /// Get the gas sponsor contract address as a string
-    pub fn gas_sponsor_address(&self) -> String {
-        format!("{:#x}", self.gas_sponsor_address)
+    /// Get all gas sponsor contract addresses for this chain (v1 and v2)
+    pub fn gas_sponsor_addresses(&self) -> Vec<String> {
+        vec![
+            format!("{:#x}", self.gas_sponsor_address),
+            format!("{:#x}", self.gas_sponsor_address_v2),
+        ]
     }
 
     // --- Fireblocks --- //

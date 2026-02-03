@@ -18,7 +18,10 @@ use crate::{
     db::DbPool,
     error::FundsManagerError,
     execution_client::ExecutionClient,
-    helpers::{base_ws_provider, fetch_s3_object, get_darkpool_address, get_gas_sponsor_address},
+    helpers::{
+        base_ws_provider, fetch_s3_object, get_darkpool_address, get_gas_sponsor_address,
+        get_gas_sponsor_address_v2,
+    },
     metrics::MetricsRecorder,
     mux_darkpool_client::MuxDarkpoolClient,
     relayer_client::RelayerClient,
@@ -251,6 +254,7 @@ impl ChainConfig {
 
         // Build a custody client
         let gas_sponsor_address = get_gas_sponsor_address(chain);
+        let gas_sponsor_address_v2 = get_gas_sponsor_address_v2(chain);
 
         let custody_client = CustodyClient::new(
             chain,
@@ -261,6 +265,7 @@ impl ChainConfig {
             db_pool.clone(),
             aws_config.clone(),
             gas_sponsor_address,
+            gas_sponsor_address_v2,
             price_reporter.clone(),
         )?;
 
