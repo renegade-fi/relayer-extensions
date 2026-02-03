@@ -6,22 +6,22 @@
 [services.arbitrum-sepolia-auth-server]
 [services.arbitrum-sepolia-auth-server.build]
 dockerfile = "auth/Dockerfile"
-ecr_repo = "auth-server-arbitrum-sepolia"
+ecr_repo = "auth-server-arbitrum-sepolia-v2"
 cargo_features = "arbitrum"
 
 [services.arbitrum-sepolia-auth-server.deploy]
 environment = "arbitrum-sepolia"
-resource = "auth-server"
+resource = "auth-server-v2"
 
 [services.base-sepolia-auth-server]
 [services.base-sepolia-auth-server.build]
 dockerfile = "auth/Dockerfile"
-ecr_repo = "auth-server-base-sepolia"
+ecr_repo = "auth-server-base-sepolia-v2"
 cargo_features = "base"
 
 [services.base-sepolia-auth-server.deploy]
 environment = "base-sepolia"
-resource = "auth-server"
+resource = "auth-server-v2"
 
 [services.arbitrum-one-auth-server]
 [services.arbitrum-one-auth-server.build]

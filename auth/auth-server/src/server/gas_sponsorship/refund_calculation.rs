@@ -11,9 +11,8 @@ use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use tracing::info;
 
+use super::{CachedSponsorshipInfo, WETH_TICKER};
 use crate::{error::AuthServerError, server::Server};
-
-use super::WETH_TICKER;
 
 // -------------
 // | Constants |
@@ -94,18 +93,19 @@ impl Server {
 // -----------
 
 /// Revert the effect of gas sponsorship from the given quote
+///
+/// The `cached_info` contains both the gas sponsorship info and the original
+/// price from the relayer's signed quote, which must be restored exactly for
+/// signature verification.
 pub fn remove_gas_sponsorship_from_quote(
     quote: &mut ApiExternalQuote,
-    gas_sponsorship_info: &GasSponsorshipInfo,
+    cached_info: &CachedSponsorshipInfo,
 ) -> Result<(), AuthServerError> {
+    let gas_sponsorship_info = &cached_info.gas_sponsorship_info;
+
     quote.match_result.output_amount -= gas_sponsorship_info.refund_amount;
-
-    let input_amt_f64 = quote.match_result.input_amount as f64;
-    let output_amt_f64 = quote.match_result.output_amount as f64;
-    let price = output_amt_f64 / input_amt_f64;
-
-    quote.price.price = price;
     quote.receive.amount -= gas_sponsorship_info.refund_amount;
+    quote.price.price = cached_info.original_price;
 
     // Subtract the refund amount from the exact output amount requested in the
     // order, to match the order received & signed by the relayer
@@ -119,11 +119,18 @@ pub fn remove_gas_sponsorship_from_quote(
 /// Update a quote to reflect a gas sponsorship refund.
 /// This method assumes that the refund was in-kind, i.e. that the refund
 /// amount is in terms of the buy-side token.
+///
+/// Returns the original price from the quote before modification, which
+/// must be cached and restored during assembly to ensure signature
+/// verification succeeds.
 pub fn apply_gas_sponsorship_to_quote(
     quote: &mut ApiExternalQuote,
     gas_sponsorship_info: &GasSponsorshipInfo,
-) -> Result<(), AuthServerError> {
+) -> Result<f64, AuthServerError> {
     info!("Updating quote to reflect gas sponsorship");
+
+    // Capture the original price before modification
+    let original_price = quote.price.price;
 
     quote.match_result.output_amount += gas_sponsorship_info.refund_amount;
 
@@ -139,7 +146,7 @@ pub fn apply_gas_sponsorship_to_quote(
         remove_gas_sponsorship_from_exact_output_amount(&mut quote.order, gas_sponsorship_info)?;
     }
 
-    Ok(())
+    Ok(original_price)
 }
 
 /// Update a match bundle to reflect a gas sponsorship refund.
