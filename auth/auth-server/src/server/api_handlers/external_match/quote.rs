@@ -1,5 +1,6 @@
 //! Quote endpoint handler
 
+use crate::server::gas_sponsorship::CachedSponsorshipInfo;
 use auth_server_api::{GasSponsorshipInfo, SponsoredQuoteResponse};
 use bytes::Bytes;
 use http::StatusCode;
@@ -157,13 +158,13 @@ impl Server {
         }
 
         // Otherwise, apply gas sponsorship and post-process the quote
-        let sponsored_resp = self.sponsor_response(&ctx)?;
+        let (sponsored_resp, cached_info) = self.sponsor_response(&ctx)?;
         let should_stringify = ctx.should_stringify_body();
         overwrite_response_body(&mut resp, sponsored_resp.clone(), should_stringify)?;
 
         // Start a thread to record metrics and return
         let ctx = SponsoredQuoteResponseCtx::from_quote_response_ctx(sponsored_resp, ctx);
-        self.record_quote_metrics(ctx);
+        self.record_quote_metrics(ctx, cached_info);
         Ok(resp)
     }
 
@@ -210,20 +211,24 @@ impl Server {
     }
 
     /// Apply gas sponsorship to the given external quote response, returning
-    /// the resulting `SponsoredQuoteResponse`
+    /// the resulting `SponsoredQuoteResponse` and optional
+    /// `CachedSponsorshipInfo` for Redis caching.
     #[instrument(skip_all)]
     fn sponsor_response(
         &self,
         ctx: &QuoteResponseCtx,
-    ) -> Result<SponsoredQuoteResponse, AuthServerError> {
+    ) -> Result<(SponsoredQuoteResponse, Option<CachedSponsorshipInfo>), AuthServerError> {
         let resp = ctx.response();
         let sponsorship_info = match ctx.sponsorship_info() {
             Some(info) => info,
             None => {
-                return Ok(SponsoredQuoteResponse {
-                    signed_quote: resp.signed_quote,
-                    gas_sponsorship_info: None,
-                });
+                return Ok((
+                    SponsoredQuoteResponse {
+                        signed_quote: resp.signed_quote,
+                        gas_sponsorship_info: None,
+                    },
+                    None,
+                ));
             },
         };
 
@@ -235,13 +240,21 @@ impl Server {
     // -----------
 
     /// Run the post-processing metrics subroutines for the quote endpoint
-    fn record_quote_metrics(&self, ctx: SponsoredQuoteResponseCtx) {
+    fn record_quote_metrics(
+        &self,
+        ctx: SponsoredQuoteResponseCtx,
+        cached_info: Option<CachedSponsorshipInfo>,
+    ) {
         let server_clone = self.clone();
         tokio::spawn(async move {
             // Cache the gas sponsorship info for the quote in Redis if it exists
-            let resp = ctx.response();
-            if let Err(e) = server_clone.cache_quote_gas_sponsorship_info(&resp).await {
-                error!("Error caching quote gas sponsorship info: {e}");
+            if let Some(cached_info) = cached_info {
+                let resp = ctx.response();
+                if let Err(e) =
+                    server_clone.cache_quote_gas_sponsorship_info(&resp, cached_info).await
+                {
+                    error!("Error caching quote gas sponsorship info: {e}");
+                }
             }
 
             // Log the quote response & emit metrics

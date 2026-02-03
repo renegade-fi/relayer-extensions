@@ -210,23 +210,23 @@ impl Server {
         updated_order: &mut Option<ExternalOrder>,
     ) -> Result<GasSponsorshipInfo, AuthServerError> {
         let redis_key = generate_quote_uuid(signed_quote);
-        let gas_sponsorship_info = match self.read_gas_sponsorship_info_from_redis(redis_key).await
-        {
+        let cached_info = match self.read_sponsorship_info_from_redis(redis_key).await {
             Err(e) => {
                 error!("Error reading gas sponsorship info from Redis: {e}");
                 None
             },
-            Ok(gas_sponsorship_info) => gas_sponsorship_info,
+            Ok(cached_info) => cached_info,
         };
 
-        if let Some(ref gas_sponsorship_info) = gas_sponsorship_info {
-            // Reconstruct original signed quote
-            if gas_sponsorship_info.requires_match_result_update() {
+        if let Some(ref cached_info) = cached_info {
+            // Reconstruct original signed quote with the cached original price
+            if cached_info.gas_sponsorship_info.requires_match_result_update() {
                 let quote = &mut signed_quote.quote;
-                remove_gas_sponsorship_from_quote(quote, gas_sponsorship_info)?;
+                remove_gas_sponsorship_from_quote(quote, cached_info)?;
             }
 
             // Ensure that the exact output amount is respected on the updated order
+            let gas_sponsorship_info = &cached_info.gas_sponsorship_info;
             if let Some(updated_order) = updated_order
                 && requires_exact_output_amount_update(updated_order, gas_sponsorship_info)
             {
@@ -235,7 +235,8 @@ impl Server {
         }
 
         // Return a zerod gas refund if no info was found
-        let info = gas_sponsorship_info.unwrap_or_else(GasSponsorshipInfo::zero);
+        let info =
+            cached_info.map(|c| c.gas_sponsorship_info).unwrap_or_else(GasSponsorshipInfo::zero);
         Ok(info)
     }
 

@@ -13,6 +13,7 @@ use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_external_api::http::external_match::{ExternalMatchResponse, ExternalQuoteResponse};
 use renegade_external_api::types::ExternalOrder;
 use renegade_types_core::Token;
+use serde::{Deserialize, Serialize};
 
 use super::Server;
 use crate::error::AuthServerError;
@@ -27,6 +28,21 @@ pub mod refund_calculation;
 
 /// The ticker for WETH
 const WETH_TICKER: &str = "WETH";
+
+// ---------
+// | Types |
+// ---------
+
+/// Internal struct for caching gas sponsorship info along with
+/// the original price from the relayer's signed quote.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct CachedSponsorshipInfo {
+    /// The gas sponsorship info to return to clients
+    pub gas_sponsorship_info: GasSponsorshipInfo,
+    /// The original price from the relayer's signed quote,
+    /// needed to restore the quote for signature verification
+    pub original_price: f64,
+}
 
 // ---------------
 // | Server Impl |
@@ -101,37 +117,46 @@ impl Server {
     }
 
     /// Construct a sponsored quote response from an external quote response
+    ///
+    /// Returns a tuple of (SponsoredQuoteResponse,
+    /// Option<CachedSponsorshipInfo>).
+    ///
+    /// The `CachedSponsorshipInfo` contains the original price and should be
+    /// cached in Redis to restore the quote during assembly.
     pub(crate) fn construct_sponsored_quote_response(
         &self,
         mut external_quote_response: ExternalQuoteResponse,
         gas_sponsorship_info: GasSponsorshipInfo,
-    ) -> Result<SponsoredQuoteResponse, AuthServerError> {
+    ) -> Result<(SponsoredQuoteResponse, Option<CachedSponsorshipInfo>), AuthServerError> {
         let quote = &mut external_quote_response.signed_quote.quote;
 
         // Update quote price / receive amount to reflect sponsorship
-        if gas_sponsorship_info.requires_match_result_update() {
-            apply_gas_sponsorship_to_quote(quote, &gas_sponsorship_info)?;
-        }
+        // and capture the original price for caching
+        let cached_info = if gas_sponsorship_info.requires_match_result_update() {
+            let original_price = apply_gas_sponsorship_to_quote(quote, &gas_sponsorship_info)?;
+            Some(CachedSponsorshipInfo {
+                gas_sponsorship_info: gas_sponsorship_info.clone(),
+                original_price,
+            })
+        } else {
+            None
+        };
 
-        Ok(SponsoredQuoteResponse {
+        let response = SponsoredQuoteResponse {
             signed_quote: external_quote_response.signed_quote,
             gas_sponsorship_info: Some(gas_sponsorship_info),
-        })
+        };
+
+        Ok((response, cached_info))
     }
 
     /// Cache the gas sponsorship info for a given quote in Redis
-    /// if it exists
     pub async fn cache_quote_gas_sponsorship_info(
         &self,
-        quote_res: &SponsoredQuoteResponse,
+        res: &SponsoredQuoteResponse,
+        cached_info: CachedSponsorshipInfo,
     ) -> Result<(), AuthServerError> {
-        if quote_res.gas_sponsorship_info.is_none() {
-            return Ok(());
-        }
-
-        let redis_key = generate_quote_uuid(&quote_res.signed_quote);
-        let gas_sponsorship_info = quote_res.gas_sponsorship_info.as_ref().unwrap();
-
-        self.write_gas_sponsorship_info_to_redis(redis_key, gas_sponsorship_info).await
+        let redis_key = generate_quote_uuid(&res.signed_quote);
+        self.write_sponsorship_info_to_redis(redis_key, &cached_info).await
     }
 }
