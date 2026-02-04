@@ -40,35 +40,46 @@ CREATE TABLE "expected_state_objects"(
 
 -- PROCESSED NULLIFIERS --
 
--- Stores nullifiers which have already been processed
+-- Stores nullifiers which have already been processed (idempotency guard)
 CREATE TABLE "processed_nullifiers"(
-	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
-	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0)
 );
-
-CREATE INDEX "idx_processed_nullifiers_block_number" ON "processed_nullifiers" ("block_number");
 
 -- PROCESSED RECOVERY IDs --
 
--- Stores recovery IDs which have already been processed
+-- Stores recovery IDs which have already been processed (idempotency guard)
 CREATE TABLE "processed_recovery_ids"(
-	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
-	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0)
 );
-
-CREATE INDEX "idx_processed_recovery_ids_block_number" ON "processed_recovery_ids" ("block_number");
 
 -- PROCESSED PUBLIC INTENT UPDATES --
 
--- Stores public intent updates which have already been processed
+-- Stores public intent updates which have already been processed (idempotency guard)
 CREATE TABLE "processed_public_intent_updates"(
 	"intent_hash" TEXT NOT NULL,
 	"tx_hash" TEXT NOT NULL,
-	"block_number" BIGINT NOT NULL CHECK (block_number >= 0),
 	PRIMARY KEY ("intent_hash", "tx_hash")
 );
 
-CREATE INDEX "idx_processed_public_intent_updates_block_number" ON "processed_public_intent_updates" ("block_number");
+-- LAST INDEXED BLOCK TABLES --
+
+-- Tracks the last indexed block for nullifier spend events (single-row)
+CREATE TABLE "last_indexed_nullifier_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
+
+-- Tracks the last indexed block for recovery ID registration events (single-row)
+CREATE TABLE "last_indexed_recovery_id_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
+
+-- Tracks the last indexed block for public intent update events (single-row)
+CREATE TABLE "last_indexed_public_intent_update_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
 
 -- INTENTS --
 

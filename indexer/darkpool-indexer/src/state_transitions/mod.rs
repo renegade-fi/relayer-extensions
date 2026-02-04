@@ -115,30 +115,41 @@ impl StateApplicator {
     pub async fn apply_state_transition(
         &self,
         transition: StateTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         match transition {
-            StateTransition::CreateBalance(transition) => self.create_balance(transition).await,
+            StateTransition::CreateBalance(transition) => {
+                self.create_balance(transition, is_backfill).await
+            },
             StateTransition::RegisterMasterViewSeed(transition) => {
                 self.register_master_view_seed(transition).await
             },
-            StateTransition::Deposit(transition) => self.deposit(transition).await,
-            StateTransition::Withdraw(transition) => self.withdraw(transition).await,
-            StateTransition::PayProtocolFee(transition) => self.pay_protocol_fee(transition).await,
-            StateTransition::PayRelayerFee(transition) => self.pay_relayer_fee(transition).await,
-            StateTransition::SettleMatchIntoBalance(transition) => {
-                self.settle_match_into_balance(transition).await
+            StateTransition::Deposit(transition) => self.deposit(transition, is_backfill).await,
+            StateTransition::Withdraw(transition) => self.withdraw(transition, is_backfill).await,
+            StateTransition::PayProtocolFee(transition) => {
+                self.pay_protocol_fee(transition, is_backfill).await
             },
-            StateTransition::CreateIntent(transition) => self.create_intent(transition).await,
+            StateTransition::PayRelayerFee(transition) => {
+                self.pay_relayer_fee(transition, is_backfill).await
+            },
+            StateTransition::SettleMatchIntoBalance(transition) => {
+                self.settle_match_into_balance(transition, is_backfill).await
+            },
+            StateTransition::CreateIntent(transition) => {
+                self.create_intent(transition, is_backfill).await
+            },
             StateTransition::SettleMatchIntoIntent(transition) => {
-                self.settle_match_into_intent(transition).await
+                self.settle_match_into_intent(transition, is_backfill).await
             },
             StateTransition::SettlePublicIntent(transition) => {
-                self.settle_public_intent(transition).await
+                self.settle_public_intent(transition, is_backfill).await
             },
             StateTransition::UpdatePublicIntentMetadata(message) => {
                 self.update_public_intent_metadata(message).await
             },
-            StateTransition::CancelOrder(transition) => self.cancel_order(transition).await,
+            StateTransition::CancelOrder(transition) => {
+                self.cancel_order(transition, is_backfill).await
+            },
             StateTransition::CancelPublicIntent(message) => {
                 self.cancel_public_intent(message).await
             },

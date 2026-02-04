@@ -32,6 +32,7 @@ impl StateApplicator {
     pub async fn pay_relayer_fee(
         &self,
         transition: PayRelayerFeeTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let PayRelayerFeeTransition { nullifier, block_number, new_relayer_fee_public_share } =
             transition;
@@ -59,7 +60,9 @@ impl StateApplicator {
                 self.db_client.update_balance(balance, conn).await?;
 
                 // Mark the nullifier as processed
-                self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
+                self.db_client
+                    .mark_nullifier_processed(nullifier, block_number, is_backfill, conn)
+                    .await?;
 
                 Ok(())
             }.scope_boxed()
@@ -92,14 +95,18 @@ mod tests {
         let (create_balance_transition, initial_wrapped_balance) =
             gen_deposit_new_balance_transition(&expected_state_object);
 
-        test_applicator.create_balance(create_balance_transition.clone()).await?;
+        test_applicator
+            .create_balance(create_balance_transition.clone(), false /* is_backfill */)
+            .await?;
 
         // Generate the subsequent fee payment transition
         let (pay_fees_transition, updated_wrapped_balance) =
             gen_pay_relayer_fee_transition(&initial_wrapped_balance);
 
         // Index the fee payment
-        test_applicator.pay_relayer_fee(pay_fees_transition.clone()).await?;
+        test_applicator
+            .pay_relayer_fee(pay_fees_transition.clone(), false /* is_backfill */)
+            .await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 

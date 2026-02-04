@@ -69,6 +69,7 @@ impl StateApplicator {
     pub async fn settle_match_into_balance(
         &self,
         transition: SettleMatchIntoBalanceTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let SettleMatchIntoBalanceTransition { nullifier, block_number, balance_settlement_data } =
             transition;
@@ -96,7 +97,9 @@ impl StateApplicator {
                 self.db_client.update_balance(balance, conn).await?;
 
                 // Mark the nullifier as processed
-                self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
+                self.db_client
+                    .mark_nullifier_processed(nullifier, block_number, is_backfill, conn)
+                    .await?;
 
                 Ok(())
             }.scope_boxed()
@@ -176,7 +179,7 @@ mod tests {
         let (create_balance_transition, wrapped_balance) =
             gen_deposit_new_balance_transition(&expected_state_object);
 
-        test_applicator.create_balance(create_balance_transition).await?;
+        test_applicator.create_balance(create_balance_transition, false /* is_backfill */).await?;
 
         Ok(wrapped_balance)
     }
@@ -191,7 +194,7 @@ mod tests {
         let nullifier = transition.nullifier;
 
         // Index the match settlement
-        test_applicator.settle_match_into_balance(transition).await?;
+        test_applicator.settle_match_into_balance(transition, false /* is_backfill */).await?;
 
         validate_balance_indexing(db_client, updated_wrapped_balance).await?;
 

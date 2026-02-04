@@ -81,6 +81,7 @@ impl StateApplicator {
     pub async fn create_balance(
         &self,
         transition: CreateBalanceTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let CreateBalanceTransition { recovery_id, block_number, balance_creation_data } =
             transition;
@@ -110,7 +111,9 @@ impl StateApplicator {
                 }
 
                 // Mark the recovery ID as processed
-                self.db_client.mark_recovery_id_processed(recovery_id, block_number, conn).await?;
+                self.db_client
+                    .mark_recovery_id_processed(recovery_id, block_number, is_backfill, conn)
+                    .await?;
 
                 // Check if a balance record already exists for the recovery stream seed.
                 // This is possible in the case that we previously processed a metadata update message for the balance.
@@ -271,7 +274,7 @@ mod tests {
         let recovery_id = transition.recovery_id;
 
         // Index the balance creation
-        test_applicator.create_balance(transition).await?;
+        test_applicator.create_balance(transition, false /* is_backfill */).await?;
 
         validate_balance_indexing(db_client, wrapped_balance).await?;
 

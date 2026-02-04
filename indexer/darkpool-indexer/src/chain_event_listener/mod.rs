@@ -75,7 +75,11 @@ impl ChainEventListener {
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;
 
-            let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
+            let message = Message::NullifierSpend(NullifierSpendMessage {
+                nullifier,
+                tx_hash,
+                is_backfill: false,
+            });
 
             let nullifier_str = nullifier.to_string();
 
@@ -106,7 +110,11 @@ impl ChainEventListener {
                 "no tx hash for recovery ID {recovery_id} registration event"
             )))?;
 
-            let message = Message::RegisterRecoveryId(RecoveryIdMessage { recovery_id, tx_hash });
+            let message = Message::RegisterRecoveryId(RecoveryIdMessage {
+                recovery_id,
+                tx_hash,
+                is_backfill: false,
+            });
 
             let recovery_id_str = recovery_id.to_string();
 
@@ -139,8 +147,11 @@ impl ChainEventListener {
                 "no tx hash for public intent {intent_hash} update event"
             )))?;
 
-            let message =
-                Message::UpdatePublicIntent(UpdatePublicIntentMessage { intent_hash, tx_hash });
+            let message = Message::UpdatePublicIntent(UpdatePublicIntentMessage {
+                intent_hash,
+                tx_hash,
+                is_backfill: false,
+            });
 
             let intent_hash_str = intent_hash.to_string();
             let tx_hash_str = tx_hash.to_string();
@@ -172,8 +183,11 @@ impl ChainEventListener {
                 "no tx hash for public intent {intent_hash} cancellation event"
             )))?;
 
-            let message =
-                Message::CancelPublicIntent(CancelPublicIntentMessage { intent_hash, tx_hash });
+            let message = Message::CancelPublicIntent(CancelPublicIntentMessage {
+                intent_hash,
+                tx_hash,
+                is_backfill: false,
+            });
 
             let intent_hash_str = intent_hash.to_string();
             let tx_hash_str = tx_hash.to_string();

@@ -59,6 +59,7 @@ impl StateApplicator {
     pub async fn create_intent(
         &self,
         transition: CreateIntentTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let CreateIntentTransition { recovery_id, block_number, intent_creation_data } = transition;
 
@@ -88,7 +89,9 @@ impl StateApplicator {
                 }
 
                 // Mark the recovery ID as processed
-                self.db_client.mark_recovery_id_processed(recovery_id, block_number, conn).await?;
+                self.db_client
+                    .mark_recovery_id_processed(recovery_id, block_number, is_backfill, conn)
+                    .await?;
 
                 // Check if an intent record already exists for the recovery stream seed.
                 // This is possible in the case that we previously processed a metadata update message for the intent.
@@ -205,7 +208,7 @@ mod tests {
         let recovery_id = transition.recovery_id;
 
         // Index the intent creation
-        test_applicator.create_intent(transition).await?;
+        test_applicator.create_intent(transition, false /* is_backfill */).await?;
 
         validate_intent_indexing(db_client, wrapped_intent).await?;
 

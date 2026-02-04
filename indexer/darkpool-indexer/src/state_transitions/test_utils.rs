@@ -920,7 +920,7 @@ pub fn gen_public_intent_metadata_update_message_for_existing(
 
 /// Generate a cancel public intent message for testing
 pub fn gen_cancel_public_intent_message(intent_hash: B256) -> CancelPublicIntentMessage {
-    CancelPublicIntentMessage { intent_hash, tx_hash: TxHash::random() }
+    CancelPublicIntentMessage { intent_hash, tx_hash: TxHash::random(), is_backfill: false }
 }
 
 /// Generate the state transition which should result in the given

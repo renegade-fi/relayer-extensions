@@ -187,7 +187,11 @@ impl TestArgs {
         recovery_id: Scalar,
         tx_hash: TxHash,
     ) -> Result<()> {
-        let message = Message::RegisterRecoveryId(RecoveryIdMessage { recovery_id, tx_hash });
+        let message = Message::RegisterRecoveryId(RecoveryIdMessage {
+            recovery_id,
+            tx_hash,
+            is_backfill: false,
+        });
 
         let recovery_id_str = recovery_id.to_string();
         self.send_message(message, recovery_id_str.clone(), recovery_id_str).await
@@ -199,7 +203,11 @@ impl TestArgs {
         nullifier: Nullifier,
         tx_hash: TxHash,
     ) -> Result<()> {
-        let message = Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
+        let message = Message::NullifierSpend(NullifierSpendMessage {
+            nullifier,
+            tx_hash,
+            is_backfill: false,
+        });
 
         let nullifier_str = nullifier.to_string();
         self.send_message(message, nullifier_str.clone(), nullifier_str).await

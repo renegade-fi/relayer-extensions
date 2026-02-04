@@ -65,7 +65,9 @@ impl Indexer {
         let account_id = message.account_id;
         let state_transition = StateTransition::RegisterMasterViewSeed(message);
 
-        self.state_applicator.apply_state_transition(state_transition).await?;
+        self.state_applicator
+            .apply_state_transition(state_transition, false /* is_backfill */)
+            .await?;
 
         // Kick off a backfill for the user's state in the background, so that we can
         // delete the master view seed message from the queue immediately
@@ -82,7 +84,7 @@ impl Indexer {
         &self,
         message: RecoveryIdMessage,
     ) -> Result<(), IndexerError> {
-        let RecoveryIdMessage { recovery_id, tx_hash } = message;
+        let RecoveryIdMessage { recovery_id, tx_hash, is_backfill } = message;
         let state_transition =
             self.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;
 
@@ -92,7 +94,7 @@ impl Indexer {
                 state_transition.name()
             );
 
-            self.state_applicator.apply_state_transition(state_transition).await?;
+            self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
         }
 
         Ok(())
@@ -108,10 +110,10 @@ impl Indexer {
     ) -> Result<(), IndexerError> {
         info!("Handling nullifier spend message");
 
-        let NullifierSpendMessage { nullifier, tx_hash } = message;
+        let NullifierSpendMessage { nullifier, tx_hash, is_backfill } = message;
         let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
 
-        self.state_applicator.apply_state_transition(state_transition).await?;
+        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
 
         Ok(())
     }
@@ -123,11 +125,11 @@ impl Indexer {
         &self,
         message: UpdatePublicIntentMessage,
     ) -> Result<(), IndexerError> {
-        let UpdatePublicIntentMessage { intent_hash, tx_hash } = message;
+        let UpdatePublicIntentMessage { intent_hash, tx_hash, is_backfill } = message;
         let state_transition =
             self.get_state_transition_for_public_intent_update(intent_hash, tx_hash).await?;
 
-        self.state_applicator.apply_state_transition(state_transition).await?;
+        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
 
         Ok(())
     }
@@ -139,8 +141,10 @@ impl Indexer {
         &self,
         message: CancelPublicIntentMessage,
     ) -> Result<(), IndexerError> {
+        let is_backfill = message.is_backfill;
         let state_transition = StateTransition::CancelPublicIntent(message);
-        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
 
         Ok(())
     }
@@ -153,7 +157,10 @@ impl Indexer {
         message: PublicIntentMetadataUpdateMessage,
     ) -> Result<(), IndexerError> {
         let state_transition = StateTransition::UpdatePublicIntentMetadata(message);
-        self.state_applicator.apply_state_transition(state_transition).await?;
+
+        self.state_applicator
+            .apply_state_transition(state_transition, false /* is_backfill */)
+            .await?;
 
         Ok(())
     }

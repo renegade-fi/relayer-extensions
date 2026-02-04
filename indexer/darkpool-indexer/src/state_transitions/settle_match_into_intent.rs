@@ -48,6 +48,7 @@ impl StateApplicator {
     pub async fn settle_match_into_intent(
         &self,
         transition: SettleMatchIntoIntentTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let SettleMatchIntoIntentTransition { nullifier, block_number, intent_settlement_data } =
             transition;
@@ -75,7 +76,9 @@ impl StateApplicator {
                 self.db_client.update_intent(intent, conn).await?;
 
                 // Mark the nullifier as processed
-                self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
+                self.db_client
+                    .mark_nullifier_processed(nullifier, block_number, is_backfill, conn)
+                    .await?;
 
                 Ok(())
             }.scope_boxed()
@@ -130,7 +133,7 @@ mod tests {
         let (create_intent_transition, wrapped_intent) =
             gen_create_intent_from_private_fill_transition(&expected_state_object);
 
-        test_applicator.create_intent(create_intent_transition).await?;
+        test_applicator.create_intent(create_intent_transition, false /* is_backfill */).await?;
 
         Ok(wrapped_intent)
     }
@@ -145,7 +148,7 @@ mod tests {
         let nullifier = transition.nullifier;
 
         // Index the match settlement
-        test_applicator.settle_match_into_intent(transition).await?;
+        test_applicator.settle_match_into_intent(transition, false /* is_backfill */).await?;
 
         validate_intent_indexing(db_client, updated_wrapped_intent).await?;
 

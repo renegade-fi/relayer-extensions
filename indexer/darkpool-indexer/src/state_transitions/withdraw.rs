@@ -31,6 +31,7 @@ impl StateApplicator {
     pub async fn withdraw(
         &self,
         transition: WithdrawTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let WithdrawTransition { nullifier, block_number, new_amount_public_share } = transition;
 
@@ -57,7 +58,9 @@ impl StateApplicator {
                 self.db_client.update_balance(balance, conn).await?;
 
                 // Mark the nullifier as processed
-                self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
+                self.db_client
+                    .mark_nullifier_processed(nullifier, block_number, is_backfill, conn)
+                    .await?;
 
                 Ok(())
             }.scope_boxed()
@@ -90,14 +93,16 @@ mod tests {
         let (create_balance_transition, initial_wrapped_balance) =
             gen_deposit_new_balance_transition(&expected_state_object);
 
-        test_applicator.create_balance(create_balance_transition.clone()).await?;
+        test_applicator
+            .create_balance(create_balance_transition.clone(), false /* is_backfill */)
+            .await?;
 
         // Generate the subsequent withdrawal transition
         let (withdraw_transition, updated_wrapped_balance) =
             gen_withdraw_transition(&initial_wrapped_balance);
 
         // Index the withdrawal
-        test_applicator.withdraw(withdraw_transition.clone()).await?;
+        test_applicator.withdraw(withdraw_transition.clone(), false /* is_backfill */).await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 
