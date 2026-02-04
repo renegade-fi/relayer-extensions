@@ -84,14 +84,12 @@ diesel::table! {
 diesel::table! {
     processed_nullifiers (nullifier) {
         nullifier -> Numeric,
-        block_number -> BigInt,
     }
 }
 
 diesel::table! {
     processed_recovery_ids (recovery_id) {
         recovery_id -> Numeric,
-        block_number -> BigInt,
     }
 }
 
@@ -99,6 +97,26 @@ diesel::table! {
     processed_public_intent_updates (intent_hash, tx_hash) {
         intent_hash -> Text,
         tx_hash -> Text,
+    }
+}
+
+diesel::table! {
+    last_indexed_nullifier_block (id) {
+        id -> Integer,
+        block_number -> BigInt,
+    }
+}
+
+diesel::table! {
+    last_indexed_recovery_id_block (id) {
+        id -> Integer,
+        block_number -> BigInt,
+    }
+}
+
+diesel::table! {
+    last_indexed_public_intent_update_block (id) {
+        id -> Integer,
         block_number -> BigInt,
     }
 }
@@ -112,4 +130,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     processed_nullifiers,
     processed_recovery_ids,
     processed_public_intent_updates,
+    last_indexed_nullifier_block,
+    last_indexed_recovery_id_block,
+    last_indexed_public_intent_update_block,
 );

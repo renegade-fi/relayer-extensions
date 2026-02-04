@@ -80,6 +80,7 @@ impl StateApplicator {
     pub async fn settle_public_intent(
         &self,
         transition: SettlePublicIntentTransition,
+        is_backfill: bool,
     ) -> Result<(), StateTransitionError> {
         let SettlePublicIntentTransition {
             intent_hash,
@@ -139,7 +140,13 @@ impl StateApplicator {
 
                 // Mark the public intent update as processed
                 self.db_client
-                    .mark_public_intent_update_processed(intent_hash, tx_hash, block_number, conn)
+                    .mark_public_intent_update_processed(
+                        intent_hash,
+                        tx_hash,
+                        block_number,
+                        is_backfill,
+                        conn,
+                    )
                     .await?;
 
                 Ok(())
@@ -249,7 +256,7 @@ mod tests {
         expected_intent.amount_in -= amount_in;
 
         // Settle the public intent (should create since it doesn't exist)
-        test_applicator.settle_public_intent(transition).await?;
+        test_applicator.settle_public_intent(transition, false /* is_backfill */).await?;
 
         validate_public_intent_indexing(db_client, intent_hash, &expected_intent).await?;
 
@@ -299,7 +306,7 @@ mod tests {
         expected_intent.amount_in -= internal_amount_in;
 
         // Settle the public intent (should create since it doesn't exist)
-        test_applicator.settle_public_intent(transition).await?;
+        test_applicator.settle_public_intent(transition, false /* is_backfill */).await?;
 
         validate_public_intent_indexing(db_client, intent_hash, &expected_intent).await?;
 
@@ -340,7 +347,7 @@ mod tests {
         let initial_intent = initial_intent.clone();
         let creation_amount_in = *creation_amount_in;
 
-        test_applicator.settle_public_intent(create_transition).await?;
+        test_applicator.settle_public_intent(create_transition, false /* is_backfill */).await?;
 
         // Now generate a subsequent settlement transition
         let mut conn = db_client.get_db_conn().await?;
@@ -362,7 +369,7 @@ mod tests {
         expected_intent.amount_in -= settlement_amount_in;
 
         // Settle the public intent (should update since it exists)
-        test_applicator.settle_public_intent(update_transition).await?;
+        test_applicator.settle_public_intent(update_transition, false /* is_backfill */).await?;
 
         validate_public_intent_indexing(db_client, intent_hash, &expected_intent).await?;
 
@@ -402,7 +409,7 @@ mod tests {
         let initial_intent = initial_intent.clone();
         let creation_amount_in = *creation_amount_in;
 
-        test_applicator.settle_public_intent(create_transition).await?;
+        test_applicator.settle_public_intent(create_transition, false /* is_backfill */).await?;
 
         // Now generate a subsequent external match settlement transition
         let mut conn = db_client.get_db_conn().await?;
@@ -429,7 +436,7 @@ mod tests {
         expected_intent.amount_in -= settlement_amount_in;
 
         // Settle the public intent (should update since it exists)
-        test_applicator.settle_public_intent(update_transition).await?;
+        test_applicator.settle_public_intent(update_transition, false /* is_backfill */).await?;
 
         validate_public_intent_indexing(db_client, intent_hash, &expected_intent).await?;
 

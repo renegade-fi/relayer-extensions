@@ -143,7 +143,7 @@ mod tests {
         let mut expected_intent = initial_intent.clone();
         expected_intent.amount_in -= amount_in;
 
-        test_applicator.settle_public_intent(create_transition).await?;
+        test_applicator.settle_public_intent(create_transition, false /* is_backfill */).await?;
 
         // Get the existing public intent to generate an update message
         let mut conn = db_client.get_db_conn().await?;

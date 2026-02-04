@@ -46,6 +46,8 @@ pub struct RecoveryIdMessage {
     pub recovery_id: Scalar,
     /// The transaction hash of the recovery ID registration
     pub tx_hash: TxHash,
+    /// Whether this message originates from a backfill
+    pub is_backfill: bool,
 }
 
 /// A message representing the spending of a state object's nullifier onchain
@@ -55,6 +57,8 @@ pub struct NullifierSpendMessage {
     pub nullifier: Scalar,
     /// The transaction hash of the nullifier spend
     pub tx_hash: TxHash,
+    /// Whether this message originates from a backfill
+    pub is_backfill: bool,
 }
 
 /// A message representing the update of a public intent
@@ -64,6 +68,8 @@ pub struct UpdatePublicIntentMessage {
     pub intent_hash: B256,
     /// The transaction hash of the public intent update
     pub tx_hash: TxHash,
+    /// Whether this message originates from a backfill
+    pub is_backfill: bool,
 }
 
 /// A message representing the cancellation of a public intent
@@ -73,6 +79,8 @@ pub struct CancelPublicIntentMessage {
     pub intent_hash: B256,
     /// The transaction hash of the public intent cancellation
     pub tx_hash: TxHash,
+    /// Whether this message originates from a backfill
+    pub is_backfill: bool,
 }
 
 /// A message representing an update to a public intent's metadata

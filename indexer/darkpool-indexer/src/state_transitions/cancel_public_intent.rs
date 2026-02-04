@@ -60,7 +60,7 @@ mod tests {
         let create_transition = gen_settle_public_intent_transition(master_view_seed.owner_address);
         let intent_hash = create_transition.intent_hash;
 
-        test_applicator.settle_public_intent(create_transition).await?;
+        test_applicator.settle_public_intent(create_transition, false /* is_backfill */).await?;
 
         // Verify the public intent is active
         let mut conn = db_client.get_db_conn().await?;

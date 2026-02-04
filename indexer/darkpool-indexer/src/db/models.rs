@@ -186,33 +186,29 @@ impl From<ExpectedStateObjectModel> for ExpectedStateObject {
 
 // === Processed Nullifiers Table ===
 
-/// A processed nullifier record
+/// A processed nullifier record (idempotency guard)
 #[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::db::schema::processed_nullifiers)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ProcessedNullifierModel {
     /// The nullifier
     pub nullifier: BigDecimal,
-    /// The block number in which the nullifier was spent
-    pub block_number: i64,
 }
 
 // === Processed Recovery IDs Table ===
 
-/// A processed recovery ID record
+/// A processed recovery ID record (idempotency guard)
 #[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::db::schema::processed_recovery_ids)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ProcessedRecoveryIDModel {
     /// The recovery ID
     pub recovery_id: BigDecimal,
-    /// The block number in which the recovery ID was processed
-    pub block_number: i64,
 }
 
 // === Processed Public Intent Updates Table ===
 
-/// A processed public intent update record
+/// A processed public intent update record (idempotency guard)
 #[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::db::schema::processed_public_intent_updates)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -221,7 +217,40 @@ pub struct ProcessedPublicIntentUpdateModel {
     pub intent_hash: String,
     /// The transaction hash in which the public intent was updated
     pub tx_hash: String,
-    /// The block number in which the public intent was updated
+}
+
+// === Last Indexed Block Tables ===
+
+/// A last-indexed block record for nullifier spend events
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[diesel(table_name = crate::db::schema::last_indexed_nullifier_block)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct LastIndexedNullifierBlockModel {
+    /// The singleton row ID (always 1)
+    pub id: i32,
+    /// The last indexed block number
+    pub block_number: i64,
+}
+
+/// A last-indexed block record for recovery ID registration events
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[diesel(table_name = crate::db::schema::last_indexed_recovery_id_block)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct LastIndexedRecoveryIdBlockModel {
+    /// The singleton row ID (always 1)
+    pub id: i32,
+    /// The last indexed block number
+    pub block_number: i64,
+}
+
+/// A last-indexed block record for public intent update events
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[diesel(table_name = crate::db::schema::last_indexed_public_intent_update_block)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct LastIndexedPublicIntentUpdateBlockModel {
+    /// The singleton row ID (always 1)
+    pub id: i32,
+    /// The last indexed block number
     pub block_number: i64,
 }
 

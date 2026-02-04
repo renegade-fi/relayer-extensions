@@ -154,7 +154,7 @@ pub async fn register_test_master_view_seed(
         seed,
     });
 
-    indexer.state_applicator.apply_state_transition(transition).await?;
+    indexer.state_applicator.apply_state_transition(transition, false /* is_backfill */).await?;
 
     Ok(())
 }

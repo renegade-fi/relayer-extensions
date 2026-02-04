@@ -28,7 +28,11 @@ pub struct DepositTransition {
 
 impl StateApplicator {
     /// Deposit funds into an existing balance object
-    pub async fn deposit(&self, transition: DepositTransition) -> Result<(), StateTransitionError> {
+    pub async fn deposit(
+        &self,
+        transition: DepositTransition,
+        is_backfill: bool,
+    ) -> Result<(), StateTransitionError> {
         let DepositTransition { nullifier, block_number, new_amount_public_share } = transition;
 
         let mut conn = self.db_client.get_db_conn().await?;
@@ -54,7 +58,9 @@ impl StateApplicator {
                 self.db_client.update_balance(balance, conn).await?;
 
                 // Mark the nullifier as processed
-                self.db_client.mark_nullifier_processed(nullifier, block_number, conn).await?;
+                self.db_client
+                    .mark_nullifier_processed(nullifier, block_number, is_backfill, conn)
+                    .await?;
 
                 Ok(())
             }.scope_boxed()
@@ -87,14 +93,16 @@ mod tests {
         let (create_balance_transition, initial_wrapped_balance) =
             gen_deposit_new_balance_transition(&expected_state_object);
 
-        test_applicator.create_balance(create_balance_transition.clone()).await?;
+        test_applicator
+            .create_balance(create_balance_transition.clone(), false /* is_backfill */)
+            .await?;
 
         // Generate the subsequent deposit transition
         let (deposit_transition, updated_wrapped_balance) =
             gen_deposit_transition(&initial_wrapped_balance);
 
         // Index the deposit
-        test_applicator.deposit(deposit_transition.clone()).await?;
+        test_applicator.deposit(deposit_transition.clone(), false /* is_backfill */).await?;
 
         validate_balance_indexing(db_client, &updated_wrapped_balance).await?;
 

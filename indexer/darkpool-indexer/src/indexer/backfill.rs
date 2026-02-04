@@ -2,7 +2,8 @@
 
 use alloy::primitives::TxHash;
 use darkpool_indexer_api::types::message_queue::{
-    Message, NullifierSpendMessage, RecoveryIdMessage,
+    CancelPublicIntentMessage, Message, NullifierSpendMessage, RecoveryIdMessage,
+    UpdatePublicIntentMessage,
 };
 use renegade_constants::Scalar;
 use renegade_darkpool_types::csprng::PoseidonCSPRNG;
@@ -15,6 +16,7 @@ use crate::{
     darkpool_client::utils::scalar_to_b256,
     indexer::{Indexer, error::IndexerError},
     message_queue::MessageQueue,
+    types::MasterViewSeed,
 };
 
 impl Indexer {
@@ -27,6 +29,27 @@ impl Indexer {
         let master_view_seed =
             self.db_client.get_master_view_seed_by_account_id(account_id, &mut conn).await?;
 
+        // Run both backfills in parallel
+        let (state_result, public_result) = tokio::join!(
+            self.backfill_state_objects(&master_view_seed),
+            self.backfill_public_intents(&master_view_seed)
+        );
+
+        if let Err(e) = state_result {
+            error!("Error backfilling state objects for account {account_id}: {e}");
+        }
+        if let Err(e) = public_result {
+            error!("Error backfilling public intents for account {account_id}: {e}");
+        }
+
+        Ok(())
+    }
+
+    /// Backfill state objects (balances & intents) for a user
+    async fn backfill_state_objects(
+        &self,
+        master_view_seed: &MasterViewSeed,
+    ) -> Result<(), IndexerError> {
         // We restart our view of the master view seed's recovery seed CSPRNG so that we
         // can backfill from the very beginning of user state history
         let mut recovery_seed_csprng = master_view_seed.recovery_seed_csprng.clone();
@@ -86,7 +109,7 @@ impl Indexer {
         let results = object_backfill_tasks.join_all().await;
         for (recovery_stream_seed, result) in results {
             if let Err(e) = result {
-                final_result = Err(IndexerError::Backfill(account_id));
+                final_result = Err(IndexerError::Backfill(master_view_seed.account_id));
                 error!(
                     "Error backfilling state for object with recovery stream seed {recovery_stream_seed}: {e}"
                 );
@@ -94,6 +117,80 @@ impl Indexer {
         }
 
         final_result
+    }
+
+    /// Backfill public intents (updates + cancellations) for a user
+    async fn backfill_public_intents(
+        &self,
+        master_view_seed: &MasterViewSeed,
+    ) -> Result<(), IndexerError> {
+        let owner_address = master_view_seed.owner_address;
+        let owner_topic = owner_address.into_word();
+
+        // Query all PublicIntentUpdated events for this owner
+        let update_filter =
+            self.darkpool_client.darkpool.PublicIntentUpdated_filter().topic2(owner_topic);
+
+        let update_events = update_filter.query().await.map_err(IndexerError::rpc)?;
+
+        info!(
+            "Found {} public intent update events for owner {}",
+            update_events.len(),
+            owner_address
+        );
+
+        // Enqueue update messages in order
+        for (event, log) in &update_events {
+            let intent_hash = event.intentHash;
+            let tx_hash = log.transaction_hash.ok_or(IndexerError::rpc(format!(
+                "no tx hash for public intent {intent_hash} update event during backfill"
+            )))?;
+
+            let message = Message::UpdatePublicIntent(UpdatePublicIntentMessage {
+                intent_hash,
+                tx_hash,
+                is_backfill: true,
+            });
+
+            let intent_hash_str = intent_hash.to_string();
+            let tx_hash_str = tx_hash.to_string();
+
+            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+        }
+
+        // Query all PublicIntentCancelled events for this owner
+        let cancel_filter =
+            self.darkpool_client.darkpool.PublicIntentCancelled_filter().topic2(owner_topic);
+
+        let cancel_events = cancel_filter.query().await.map_err(IndexerError::rpc)?;
+
+        info!(
+            "Found {} public intent cancellation events for owner {}",
+            cancel_events.len(),
+            owner_address
+        );
+
+        // Enqueue cancellation messages (using same message group as updates so they
+        // process after updates for the same intent_hash)
+        for (event, log) in &cancel_events {
+            let intent_hash = event.intentHash;
+            let tx_hash = log.transaction_hash.ok_or(IndexerError::rpc(format!(
+                "no tx hash for public intent {intent_hash} cancellation event during backfill"
+            )))?;
+
+            let message = Message::CancelPublicIntent(CancelPublicIntentMessage {
+                intent_hash,
+                tx_hash,
+                is_backfill: true,
+            });
+
+            let intent_hash_str = intent_hash.to_string();
+            let tx_hash_str = tx_hash.to_string();
+
+            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+        }
+
+        Ok(())
     }
 
     /// Get the current nullifier of the state object associated with the given
@@ -165,8 +262,11 @@ impl Indexer {
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;
 
-            let nullifier_spend_message =
-                Message::NullifierSpend(NullifierSpendMessage { nullifier, tx_hash });
+            let nullifier_spend_message = Message::NullifierSpend(NullifierSpendMessage {
+                nullifier,
+                tx_hash,
+                is_backfill: true,
+            });
 
             // We use the object's recovery stream seed as a message group ID so that all
             // messages enqueued by this backfill task are processed sequentially
@@ -196,8 +296,11 @@ impl Indexer {
             recovery_stream.seed
         );
 
-        let recovery_id_message =
-            Message::RegisterRecoveryId(RecoveryIdMessage { recovery_id, tx_hash });
+        let recovery_id_message = Message::RegisterRecoveryId(RecoveryIdMessage {
+            recovery_id,
+            tx_hash,
+            is_backfill: true,
+        });
 
         // We use the object's recovery stream seed as a message group ID so that all
         // messages enqueued by this backfill task are processed sequentially

@@ -2,15 +2,15 @@
 //! canonical representations of data outside of the external API & DB layers.
 
 use alloy::primitives::{Address, B256};
-use base64::prelude::{Engine, BASE64_STANDARD_NO_PAD};
+use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine};
 use darkpool_indexer_api::types::{
     http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject},
     message_queue::PublicIntentMetadataUpdateMessage,
 };
 use renegade_circuit_types::{
+    Amount,
     fixed_point::FixedPoint,
     traits::{BaseType, SecretShareType},
-    Amount,
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::scalar_to_u128;
