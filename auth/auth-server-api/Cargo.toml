@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-uuid = "0.8.2"
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git"  }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git"  }
+uuid = "1"
+renegade-external-api = { workspace = true }
+renegade-circuit-types = { workspace = true }
 alloy-primitives = { version = "1.0.0" }
 num-bigint = "0.4"

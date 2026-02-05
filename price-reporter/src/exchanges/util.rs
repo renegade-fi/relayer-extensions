@@ -1,7 +1,7 @@
 //! Exchange connection utilities
 
 use itertools::Itertools;
-use renegade_common::types::{exchange::Exchange, token::Token};
+use renegade_types_core::{Exchange, Token};
 
 use crate::exchanges::error::ExchangeConnectionError;
 

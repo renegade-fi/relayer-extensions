@@ -7,8 +7,8 @@ use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use price_reporter_client::PriceReporterClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_common::types::{chain::Chain, hmac::HmacKey};
-use renegade_darkpool_client::client::DarkpoolClientConfig;
+use renegade_darkpool_client::{client::DarkpoolClientConfig, DarkpoolClient};
+use renegade_types_core::{Chain, HmacKey};
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 use serde::Deserialize;
 use tokio::fs::read_to_string;
@@ -23,7 +23,6 @@ use crate::{
         get_gas_sponsor_address_v2,
     },
     metrics::MetricsRecorder,
-    mux_darkpool_client::MuxDarkpoolClient,
     relayer_client::RelayerClient,
 };
 
@@ -239,14 +238,14 @@ impl ChainConfig {
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
         let conf = DarkpoolClientConfig {
-            darkpool_addr: darkpool_address.to_string(),
+            permit2_addr: chain.permit2_addr(),
+            darkpool_addr: darkpool_address,
             chain,
             rpc_url: self.rpc_url.clone(),
             private_key,
             block_polling_interval: BLOCK_POLLING_INTERVAL,
         };
-        let darkpool_client =
-            MuxDarkpoolClient::new(chain, conf).map_err(FundsManagerError::custom)?;
+        let darkpool_client = DarkpoolClient::new(conf).map_err(FundsManagerError::custom)?;
         let chain_id = darkpool_client.chain_id().await.map_err(FundsManagerError::on_chain)?;
 
         // Build a base provider w/ a websocket connection to the RPC URL

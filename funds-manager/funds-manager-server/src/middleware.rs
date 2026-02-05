@@ -7,7 +7,7 @@ use bytes::Bytes;
 use funds_manager_api::auth::{get_request_bytes, X_SIGNATURE_HEADER};
 use http::{HeaderMap, Method};
 use renegade_api::auth::validate_expiring_auth;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use warp::filters::path::FullPath;

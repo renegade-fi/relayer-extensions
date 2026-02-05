@@ -5,7 +5,7 @@ pub mod levels;
 pub mod quote;
 
 use crate::server::api_handlers::external_match::RequestContext;
-use renegade_api::http::external_match::{
+use renegade_external_api::http::external_match::{
     AtomicMatchApiBundle, ExternalMatchRequest, ExternalQuoteRequest, MalleableAtomicMatchApiBundle,
 };
 

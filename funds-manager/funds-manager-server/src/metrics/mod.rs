@@ -2,7 +2,7 @@
 
 use alloy::providers::DynProvider;
 use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 
 use crate::helpers::build_provider;
 

@@ -6,26 +6,22 @@ use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use futures_util::StreamExt;
-use futures_util::{stream::SplitSink, Stream};
+use futures_util::{Stream, stream::SplitSink};
 use itertools::Itertools;
 use matchit::Router;
-use renegade_common::types::token::USDC_TICKER;
-use renegade_common::types::{
-    chain::Chain,
-    exchange::Exchange,
-    hmac::HmacKey,
-    price::Price,
-    token::{default_exchange_stable as _default_exchange_stable, read_token_remaps, Token},
-};
 use renegade_config::setup_token_remaps;
+use renegade_types_core::{
+    Chain, Exchange, HmacKey, Price, Token, USDC_TICKER,
+    default_exchange_stable as _default_exchange_stable, read_token_remaps,
+};
 use renegade_util::err_str;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
     sync::watch::{Receiver as WatchReceiver, Sender as WatchSender},
-    sync::{mpsc::UnboundedSender, RwLock},
+    sync::{RwLock, mpsc::UnboundedSender},
 };
-use tokio_stream::{wrappers::WatchStream, StreamMap};
+use tokio_stream::{StreamMap, wrappers::WatchStream};
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
 

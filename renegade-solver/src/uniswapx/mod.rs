@@ -8,7 +8,7 @@ use bimap::BiMap;
 use executor_client::ExecutorClient;
 use lru::LruCache;
 use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use renegade_sdk::ExternalMatchClient;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::RwLock;

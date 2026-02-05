@@ -1,6 +1,6 @@
 //! API types for managing and redeeming fees
 
-use renegade_api::types::ApiWallet;
+use renegade_api::types::ApiAccount;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -25,11 +25,11 @@ pub const GET_UNREDEEMED_FEE_TOTALS_ROUTE: &str = "get-unredeemed-fee-totals";
 // | Api Types |
 // -------------
 
-/// The response containing fee wallets
+/// The response containing fee accounts
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FeeWalletsResponse {
-    /// The wallets managed by the funds manager
-    pub wallets: Vec<ApiWallet>,
+    /// The accounts managed by the funds manager
+    pub wallets: Vec<ApiAccount>,
 }
 
 /// The request body for withdrawing a fee balance

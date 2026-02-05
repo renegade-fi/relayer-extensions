@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 use warp::reject::Rejection;
 
-use renegade_api::http::external_match::{
+use renegade_external_api::http::external_match::{
     AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse,
     ExternalQuoteRequest, MalleableExternalMatchResponse, REQUEST_EXTERNAL_MATCH_ROUTE,
     REQUEST_EXTERNAL_QUOTE_ROUTE,

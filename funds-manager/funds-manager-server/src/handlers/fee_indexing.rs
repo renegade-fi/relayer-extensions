@@ -5,13 +5,13 @@ use std::sync::Arc;
 use bytes::Bytes;
 use funds_manager_api::{
     fees::{
-        FeeWalletsResponse, UnredeemedFeeTotal, UnredeemedFeeTotalsResponse,
+        // FeeWalletsResponse, UnredeemedFeeTotal, UnredeemedFeeTotalsResponse,
         WithdrawFeeBalanceRequest,
     },
     quoters::DepositAddressResponse,
 };
-use renegade_common::types::chain::Chain;
-use tracing::error;
+use renegade_types_core::Chain;
+// use tracing::error;
 use warp::reply::Json;
 
 use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};

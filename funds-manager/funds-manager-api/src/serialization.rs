@@ -3,7 +3,7 @@
 /// A module for serializing and deserializing U256 as strings
 pub mod u256_string_serialization {
     use alloy_primitives::U256;
-    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
     /// Serialize a U256 to a string
     pub fn serialize<S: Serializer>(value: &U256, s: S) -> Result<S::Ok, S::Error> {
@@ -19,7 +19,7 @@ pub mod u256_string_serialization {
 
 /// A module for serializing and deserializing f64 as strings
 pub(crate) mod f64_string_serialization {
-    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
     /// Serialize an f64 to a string
     pub fn serialize<S: Serializer>(value: &f64, s: S) -> Result<S::Ok, S::Error> {
@@ -37,7 +37,7 @@ pub(crate) mod f64_string_serialization {
 mod tests {
     use super::u256_string_serialization;
     use alloy_primitives::U256;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]

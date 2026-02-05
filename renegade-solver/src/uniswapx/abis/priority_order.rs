@@ -2,7 +2,7 @@
 //!
 //! Scaling logic is copied from UniswapX's [`PriorityFeeLib.sol` library](https://github.com/Uniswap/UniswapX/blob/4c01ff07cb16df7ad7f5c2b8e9253005c1259275/src/lib/PriorityFeeLib.sol).
 use alloy_primitives::U256;
-use renegade_common::types::token::Token;
+use renegade_types_core::Token;
 
 use super::{conversion::u256_to_u128, uniswapx::PriorityOrderReactor::PriorityOrder};
 

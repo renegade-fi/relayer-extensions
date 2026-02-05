@@ -17,7 +17,6 @@ pub mod handlers;
 pub mod helpers;
 pub mod metrics;
 pub mod middleware;
-pub mod mux_darkpool_client;
 pub mod relayer_client;
 pub mod server;
 
@@ -48,7 +47,7 @@ use funds_manager_api::quoters::{
 use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
 use funds_manager_api::PING_ROUTE;
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use server::Server;
 
 use std::{collections::HashMap, error::Error, sync::Arc};

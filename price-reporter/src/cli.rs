@@ -1,7 +1,7 @@
 //! Defines the command-line arguments & parsing helpers for the price reporter
 
 use clap::Parser;
-use renegade_common::types::{chain::Chain, exchange::Exchange, hmac::HmacKey};
+use renegade_types_core::{Chain, Exchange, HmacKey};
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
 use crate::{

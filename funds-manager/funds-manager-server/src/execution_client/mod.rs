@@ -6,15 +6,12 @@ pub mod venues;
 use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
 use alloy_primitives::{Address, U256};
 use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 
 use crate::{
     cli::MaxPriceDeviations,
     execution_client::venues::{
-        bebop::BebopClient,
-        cowswap::CowswapClient,
-        lifi::LifiClient,
-        AllExecutionVenues,
+        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
     },
     helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
 };

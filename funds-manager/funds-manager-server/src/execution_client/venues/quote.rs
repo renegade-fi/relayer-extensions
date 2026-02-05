@@ -4,10 +4,7 @@ use std::fmt::Display;
 
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use renegade_types_core::{Chain, Token, USDC_TICKER};
 use tracing::warn;
 
 use crate::{

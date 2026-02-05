@@ -29,7 +29,7 @@ use fireblocks_sdk::{
     models::TransactionResponse,
 };
 use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str::FromStr, time::Instant};
@@ -37,7 +37,9 @@ use tracing::{debug, info};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
-    helpers::{get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS},
+    helpers::{
+        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS,
+    },
 };
 use crate::{
     db::{DbConn, DbPool},

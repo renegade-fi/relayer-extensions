@@ -7,10 +7,10 @@ use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use funds_manager_api::gas::GasWalletEntry;
 use num_bigint::BigInt;
-use renegade_circuit_types::note::Note;
-use renegade_common::types::chain::Chain;
 use renegade_crypto::fields::scalar_to_bigint;
-use renegade_util::hex::{biguint_to_hex_addr, jubjub_to_hex_string};
+use renegade_darkpool_types::note::Note;
+use renegade_types_core::Chain;
+use renegade_util::hex::address_to_hex_string;
 use uuid::Uuid;
 
 use crate::helpers::to_env_agnostic_name;
@@ -46,10 +46,10 @@ pub struct NewFee {
 impl NewFee {
     /// Construct a fee from a note
     pub fn new_from_note(note: &Note, tx_hash: String, chain: Chain) -> Self {
-        let mint = biguint_to_hex_addr(&note.mint);
+        let mint = address_to_hex_string(&note.mint);
         let amount = BigInt::from(note.amount).into();
         let blinder = scalar_to_bigint(&note.blinder).into();
-        let receiver = jubjub_to_hex_string(&note.receiver);
+        let receiver = address_to_hex_string(&note.receiver);
 
         let chain = to_env_agnostic_name(chain);
 

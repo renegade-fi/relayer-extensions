@@ -1,7 +1,7 @@
 //! The CLI for the renegade solver
 
 use clap::Parser;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 
 /// The default metrics prefix

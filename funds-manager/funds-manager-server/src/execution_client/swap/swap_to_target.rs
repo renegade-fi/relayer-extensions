@@ -7,7 +7,7 @@ use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
-use renegade_common::types::token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
+use renegade_types_core::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
 use tracing::{info, warn};
 
 use crate::execution_client::{

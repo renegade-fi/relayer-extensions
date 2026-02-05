@@ -14,7 +14,7 @@ use alloy_primitives::{Address, FixedBytes, TxHash, U256};
 use alloy_sol_types::{eip712_domain, SolStruct};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};

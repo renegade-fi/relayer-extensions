@@ -7,7 +7,7 @@ pub mod serialization;
 mod types;
 pub use types::*;
 
-use alloy_primitives::{ruint::FromUintError, U256};
+use alloy_primitives::{U256, ruint::FromUintError};
 
 /// Helper to attempt to convert a U256 to a u128, returning a String error
 /// if it fails

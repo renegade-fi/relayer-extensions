@@ -5,8 +5,8 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 
 use aws_config::{BehaviorVersion, Region};
 use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
-use renegade_common::types::{chain::Chain, hmac::HmacKey};
 use renegade_config::setup_token_remaps;
+use renegade_types_core::{Chain, HmacKey};
 
 use crate::{
     cli::{ChainClients, Cli, Environment},

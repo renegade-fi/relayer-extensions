@@ -9,10 +9,7 @@ use alloy::{
 };
 use alloy_primitives::{utils::parse_ether, Address};
 use alloy_sol_types::SolCall;
-use renegade_common::types::{
-    chain::Chain,
-    token::{get_all_tokens, Token, USD_TICKER},
-};
+use renegade_types_core::{get_all_tokens, Chain, Token, USD_TICKER};
 use tracing::{error, info};
 
 use crate::error::FundsManagerError;
@@ -104,7 +101,9 @@ impl CustodyClient {
                     info!("Sent {refill_amount} ETH from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {tx:#x}");
                 },
                 Err(e) => {
-                    error!("Failed to send ETH to gas sponsor ({gas_sponsor_address}), skipping: {e}");
+                    error!(
+                        "Failed to send ETH to gas sponsor ({gas_sponsor_address}), skipping: {e}"
+                    );
                 },
             }
         }

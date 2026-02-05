@@ -3,7 +3,7 @@
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::QuoteParams, u256_try_into_u128};
 use futures::future::join_all;
-use renegade_common::types::token::Token;
+use renegade_types_core::Token;
 use tracing::{info, instrument, warn};
 
 use crate::{

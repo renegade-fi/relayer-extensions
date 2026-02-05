@@ -1,7 +1,7 @@
 //! Lifi API type definitions
 
 use alloy_primitives::{Address, Bytes, U256};
-use renegade_common::types::{chain::Chain, token::Token};
+use renegade_types_core::{Chain, Token};
 use serde::{Deserialize, Serialize};
 
 use funds_manager_api::serialization::u256_string_serialization;

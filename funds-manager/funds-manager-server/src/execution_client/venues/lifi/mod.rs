@@ -14,7 +14,7 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::Deserialize;
 use tracing::{error, info, instrument, warn};

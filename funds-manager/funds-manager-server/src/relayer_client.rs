@@ -5,10 +5,11 @@ use std::time::Duration;
 use base64::engine::{general_purpose as b64_general_purpose, Engine};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
-    auth::create_request_signature, http::wallet::RedeemNoteRequest, RENEGADE_AUTH_HEADER_NAME,
-    RENEGADE_SIG_EXPIRATION_HEADER_NAME,
+    auth::create_request_signature,
+    // http::wallet::RedeemNoteRequest,
+    RENEGADE_AUTH_HEADER_NAME, RENEGADE_SIG_EXPIRATION_HEADER_NAME,
 };
-use renegade_common::types::{chain::Chain, hmac::HmacKey};
+use renegade_types_core::{Chain, HmacKey};
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -33,14 +34,14 @@ impl RelayerClient {
         Self { base_url: base_url.to_string(), chain }
     }
 
-    /// Redeem a note into a wallet
-    pub(crate) async fn redeem_note(
-        &self,
-        req: RedeemNoteRequest,
-        wallet_key: &HmacKey,
-    ) -> Result<(), FundsManagerError> {
-        todo!("Implement redeem note")
-    }
+    ///// Redeem a note into a wallet
+    // pub(crate) async fn redeem_note(
+    //&self,
+    // req: RedeemNoteRequest,
+    // wallet_key: &HmacKey,
+    //) -> Result<(), FundsManagerError> {
+    // todo!("Implement redeem note")
+    //}
 
     // -----------
     // | Helpers |

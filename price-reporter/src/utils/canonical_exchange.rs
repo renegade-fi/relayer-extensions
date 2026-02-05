@@ -10,8 +10,8 @@ use std::{
     sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use renegade_common::types::{chain::Chain, exchange::Exchange};
 use renegade_config::{fetch_remap_from_repo, parse_remap_from_file};
+use renegade_types_core::{Chain, Exchange};
 use renegade_util::{concurrency::RwStatic, err_str};
 
 use crate::{errors::ServerError, utils::get_token_and_chain};

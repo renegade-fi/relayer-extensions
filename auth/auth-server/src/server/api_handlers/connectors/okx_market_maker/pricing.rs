@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use http::Method;
-use renegade_api::http::order_book::{GET_DEPTH_FOR_ALL_PAIRS_ROUTE, GetDepthForAllPairsResponse};
+use renegade_external_api::http::order_book::{GET_DEPTH_FOR_ALL_PAIRS_ROUTE, GetDepthForAllPairsResponse};
 use renegade_common::types::token::Token;
 use warp::{reject::Rejection, reply::Json};
 

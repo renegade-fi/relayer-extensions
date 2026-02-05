@@ -21,7 +21,7 @@ use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use rand::Rng;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
 use reqwest::Response;
 use serde::Deserialize;
@@ -130,7 +130,7 @@ pub fn build_provider(base_provider: DynProvider, wallet: Option<PrivateKeySigne
         .with_simple_nonce_management()
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
-        .filler(BlobGasFiller);
+        .filler(BlobGasFiller::default());
 
     if let Some(wallet) = wallet {
         builder.wallet(wallet).connect_provider(base_provider).erased()
@@ -279,6 +279,8 @@ pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
         Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia".to_string()),
         Chain::BaseMainnet => Ok("/base/mainnet".to_string()),
         Chain::BaseSepolia => Ok("/base/mainnet".to_string()),
+        Chain::EthereumMainnet => Ok("/ethereum/mainnet".to_string()),
+        Chain::EthereumSepolia => Ok("/ethereum/mainnet".to_string()),
         _ => Err(FundsManagerError::custom("Unsupported chain")),
     }
 }
@@ -367,6 +369,7 @@ pub fn to_env_agnostic_name(chain: Chain) -> String {
     match chain {
         Chain::ArbitrumOne | Chain::ArbitrumSepolia => "arbitrum".to_string(),
         Chain::BaseMainnet | Chain::BaseSepolia => "base".to_string(),
+        Chain::EthereumMainnet | Chain::EthereumSepolia => "ethereum".to_string(),
         _ => chain.to_string(),
     }
 }
@@ -381,10 +384,15 @@ pub fn from_env_agnostic_name(chain: &str, environment: &Environment) -> Chain {
         Environment::Mainnet => Chain::BaseMainnet,
         Environment::Testnet => Chain::BaseSepolia,
     };
+    let ethereum_chain = match environment {
+        Environment::Mainnet => Chain::EthereumMainnet,
+        Environment::Testnet => Chain::EthereumSepolia,
+    };
 
     match chain {
         "arbitrum" => arb_chain,
         "base" => base_chain,
+        "ethereum" => ethereum_chain,
         _ => Chain::from_str(chain).unwrap(),
     }
 }

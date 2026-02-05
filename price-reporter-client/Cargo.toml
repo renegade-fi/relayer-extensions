@@ -10,8 +10,10 @@ reqwest = { version = "0.11", features = ["json"] }
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 
 # === Renegade Dependencies === #
-renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", default-features = false }
+renegade-types-core = { package = "renegade-types-core", workspace = true }
+#renegade-external-api = { package = "renegade-api", workspace = true, default-features = false, features = [ "websocket"] }
+#renegade-api = { workspace = true }
+renegade-api = { workspace = true, features = [ "websocket"] }
 
 # === Misc Dependencies === #
 serde = { version = "1.0.218", features = ["derive"] }
