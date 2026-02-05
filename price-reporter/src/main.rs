@@ -16,12 +16,12 @@ use http_server::HttpServer;
 use itertools::Itertools;
 use renegade_common::types::{
     exchange::Exchange,
-    token::{default_exchange_stable, get_all_base_tokens, Token},
+    token::{Token, default_exchange_stable, get_all_base_tokens},
 };
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tracing::{error, info};
-use utils::{setup_all_token_remaps, PairInfo};
+use utils::{PairInfo, setup_all_token_remaps};
 use ws_server::handle_connection;
 
 use crate::{

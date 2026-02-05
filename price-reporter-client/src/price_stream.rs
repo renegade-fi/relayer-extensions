@@ -3,21 +3,21 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 
 use atomic_float::AtomicF64;
 use futures_util::{
-    stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
+    stream::{SplitSink, SplitStream},
 };
 use renegade_external_api::websocket::WebsocketMessage;
 use serde::Deserialize;
 use tokio::{net::TcpStream, sync::RwLock, task::JoinHandle};
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use tracing::{debug, error, warn};
 
 use super::{construct_price_topic, error::PriceReporterClientError, get_base_mint_from_topic};

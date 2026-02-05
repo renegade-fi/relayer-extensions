@@ -16,7 +16,10 @@ use serde_json::json;
 use tracing::{error, info, warn};
 use warp::reply::Json;
 
-use crate::{custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError, server::Server};
+use crate::{
+    custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError,
+    server::Server,
+};
 
 // -------------
 // | Constants |

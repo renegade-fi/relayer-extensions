@@ -104,7 +104,9 @@ impl CustodyClient {
                     info!("Sent {refill_amount} ETH from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {tx:#x}");
                 },
                 Err(e) => {
-                    error!("Failed to send ETH to gas sponsor ({gas_sponsor_address}), skipping: {e}");
+                    error!(
+                        "Failed to send ETH to gas sponsor ({gas_sponsor_address}), skipping: {e}"
+                    );
                 },
             }
         }
