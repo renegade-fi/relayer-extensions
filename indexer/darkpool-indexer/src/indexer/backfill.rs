@@ -152,10 +152,10 @@ impl Indexer {
                 is_backfill: true,
             });
 
-            let intent_hash_str = intent_hash.to_string();
-            let tx_hash_str = tx_hash.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         // Query all PublicIntentCancelled events for this owner
@@ -184,10 +184,10 @@ impl Indexer {
                 is_backfill: true,
             });
 
-            let intent_hash_str = intent_hash.to_string();
-            let tx_hash_str = tx_hash.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         Ok(())

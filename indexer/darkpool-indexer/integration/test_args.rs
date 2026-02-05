@@ -165,17 +165,15 @@ impl TestArgs {
     }
 
     /// Send a message directly to the indexer's message queue
-    pub async fn send_message(
-        &self,
-        message: Message,
-        deduplication_id: String,
-        message_group: String,
-    ) -> Result<()> {
+    pub async fn send_message(&self, message: Message) -> Result<()> {
+        let dedup_id = message.dedup_id();
+        let message_group = message.message_group();
+
         let indexer_context = self.expect_indexer_context();
         indexer_context
             .indexer
             .message_queue
-            .send_message(message, deduplication_id, message_group)
+            .send_message(message, dedup_id, message_group)
             .await?;
 
         Ok(())
@@ -193,8 +191,7 @@ impl TestArgs {
             is_backfill: false,
         });
 
-        let recovery_id_str = recovery_id.to_string();
-        self.send_message(message, recovery_id_str.clone(), recovery_id_str).await
+        self.send_message(message).await
     }
 
     /// Send a nullifier spend message to the indexer's message queue
@@ -209,8 +206,7 @@ impl TestArgs {
             is_backfill: false,
         });
 
-        let nullifier_str = nullifier.to_string();
-        self.send_message(message, nullifier_str.clone(), nullifier_str).await
+        self.send_message(message).await
     }
 
     // --- DB Helpers --- //

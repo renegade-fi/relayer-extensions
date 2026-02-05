@@ -3,15 +3,15 @@
 use std::sync::Arc;
 
 use darkpool_indexer_api::{
-    routes::{BACKFILL_PATH, GET_USER_STATE_PATH, HEALTHCHECK_PATH},
-    types::http::BackfillRequest,
+    routes::{BACKFILL_PATH, GET_USER_STATE_PATH, HEALTHCHECK_PATH, SUBMIT_MESSAGE_PATH},
+    types::{http::BackfillRequest, message_queue::Message},
 };
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply, filters::BoxedFilter, http::StatusCode};
 
 use crate::{
     api::http::{
-        handlers::{handle_backfill_request, handle_get_user_state_request},
+        handlers::{handle_backfill_request, handle_get_user_state_request, handle_submit_message},
         middleware::{handle_rejection, identity, with_hmac_auth, with_indexer, with_json_body},
     },
     indexer::Indexer,
@@ -32,6 +32,14 @@ pub fn http_routes(indexer: Arc<Indexer>) -> BoxedFilter<(impl Reply,)> {
         .and(with_indexer(indexer.clone()))
         .and_then(handle_backfill_request);
 
+    let submit_message_route = warp::post()
+        .and(warp::path(SUBMIT_MESSAGE_PATH))
+        .and(with_hmac_auth(indexer.clone()))
+        .map(with_json_body::<Message>)
+        .and_then(identity)
+        .and(with_indexer(indexer.clone()))
+        .and_then(handle_submit_message);
+
     let user_state_route = warp::get()
         .and(warp::path(GET_USER_STATE_PATH))
         .and(warp::path::param::<Uuid>())
@@ -45,6 +53,7 @@ pub fn http_routes(indexer: Arc<Indexer>) -> BoxedFilter<(impl Reply,)> {
 
     healthcheck_route
         .or(backfill_route)
+        .or(submit_message_route)
         .or(user_state_route)
         .or(not_found_fallback)
         .recover(handle_rejection)
