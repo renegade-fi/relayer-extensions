@@ -22,6 +22,10 @@ use tracing::{error, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), IndexerError> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let cli = Cli::parse();
 
     let indexer = Indexer::build_from_cli(&cli).await?;
