@@ -28,6 +28,32 @@ pub enum Message {
     UpdatePublicIntentMetadata(PublicIntentMetadataUpdateMessage),
 }
 
+impl Message {
+    /// Derive the SQS deduplication ID for this message
+    pub fn dedup_id(&self) -> String {
+        match self {
+            Message::RegisterMasterViewSeed(_) => Uuid::new_v4().to_string(),
+            Message::RegisterRecoveryId(m) => m.recovery_id.to_string(),
+            Message::NullifierSpend(m) => m.nullifier.to_string(),
+            Message::UpdatePublicIntent(m) => m.tx_hash.to_string(),
+            Message::CancelPublicIntent(m) => m.tx_hash.to_string(),
+            Message::UpdatePublicIntentMetadata(_) => Uuid::new_v4().to_string(),
+        }
+    }
+
+    /// Derive the SQS message group ID for this message
+    pub fn message_group(&self) -> String {
+        match self {
+            Message::RegisterMasterViewSeed(m) => m.account_id.to_string(),
+            Message::RegisterRecoveryId(m) => m.recovery_id.to_string(),
+            Message::NullifierSpend(m) => m.nullifier.to_string(),
+            Message::UpdatePublicIntent(m) => m.intent_hash.to_string(),
+            Message::CancelPublicIntent(m) => m.intent_hash.to_string(),
+            Message::UpdatePublicIntentMetadata(m) => m.intent_hash.to_string(),
+        }
+    }
+}
+
 /// A message representing the registration of a new master view seed
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MasterViewSeedMessage {

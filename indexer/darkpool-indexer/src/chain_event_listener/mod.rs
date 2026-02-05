@@ -81,9 +81,10 @@ impl ChainEventListener {
                 is_backfill: false,
             });
 
-            let nullifier_str = nullifier.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue.send_message(message, nullifier_str.clone(), nullifier_str).await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         Ok(())
@@ -116,11 +117,10 @@ impl ChainEventListener {
                 is_backfill: false,
             });
 
-            let recovery_id_str = recovery_id.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue
-                .send_message(message, recovery_id_str.clone(), recovery_id_str)
-                .await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         Ok(())
@@ -153,10 +153,10 @@ impl ChainEventListener {
                 is_backfill: false,
             });
 
-            let intent_hash_str = intent_hash.to_string();
-            let tx_hash_str = tx_hash.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         Ok(())
@@ -189,10 +189,10 @@ impl ChainEventListener {
                 is_backfill: false,
             });
 
-            let intent_hash_str = intent_hash.to_string();
-            let tx_hash_str = tx_hash.to_string();
+            let dedup_id = message.dedup_id();
+            let message_group = message.message_group();
 
-            self.message_queue.send_message(message, tx_hash_str, intent_hash_str).await?;
+            self.message_queue.send_message(message, dedup_id, message_group).await?;
         }
 
         Ok(())

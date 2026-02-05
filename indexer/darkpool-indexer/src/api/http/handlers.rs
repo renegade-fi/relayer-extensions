@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use darkpool_indexer_api::types::http::{ApiStateObject, BackfillRequest, GetUserStateResponse};
+use darkpool_indexer_api::types::{
+    http::{ApiStateObject, BackfillRequest, GetUserStateResponse},
+    message_queue::Message,
+};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use tracing::error;
 use uuid::Uuid;
@@ -12,6 +15,7 @@ use crate::{
     api::http::error::ApiError,
     db::{client::DbClient, error::DbError},
     indexer::{Indexer, error::IndexerError},
+    message_queue::MessageQueue,
 };
 
 // --------------------
@@ -32,6 +36,27 @@ pub async fn handle_backfill_request(
             error!("Error backfilling state for account {account_id}: {e}");
         }
     });
+
+    Ok(warp::reply::with_status("OK", StatusCode::OK))
+}
+
+// ----------------------------
+// | Submit Message Handler |
+// ----------------------------
+
+/// Handle a request to submit a message to the queue
+pub async fn handle_submit_message(
+    message: Message,
+    indexer: Arc<Indexer>,
+) -> Result<impl Reply, Rejection> {
+    let dedup_id = message.dedup_id();
+    let message_group = message.message_group();
+
+    indexer
+        .message_queue
+        .send_message(message, dedup_id, message_group)
+        .await
+        .map_err(ApiError::internal_server_error)?;
 
     Ok(warp::reply::with_status("OK", StatusCode::OK))
 }
