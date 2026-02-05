@@ -62,6 +62,7 @@ alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "pr
 renegade-solidity-abi = { workspace = true, default-features = true }
 
 # === Misc === #
+rustls = { version = "0.23", default-features = false }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 itertools = "0.10"

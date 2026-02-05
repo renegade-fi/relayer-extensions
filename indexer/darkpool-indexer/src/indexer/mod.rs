@@ -36,13 +36,13 @@ const ARBITRUM_ONE_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x0000000000000000000000000000000000000000"));
 /// The address of the darkpool contract deployed on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0x57dF3a4449aaBf72f61e4A5DFe83d4A45DcC8537"));
 /// The address of the darkpool contract deployed on Base mainnet
 const BASE_MAINNET_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x0000000000000000000000000000000000000000"));
 /// The address of the darkpool contract deployed on Base Sepolia
 const BASE_SEPOLIA_DARKPOOL_ADDRESS: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0xDE9BfD62B2187d4c14FBcC7D869920d34e4DB3Da"));
 /// The address of the darkpool contract deployed on devnet
 const DEVNET_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x0000000000000000000000000000000000000000"));
@@ -52,13 +52,13 @@ const DEVNET_DARKPOOL_ADDRESS: Address =
 const ARBITRUM_ONE_NULLIFIER_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for nullifier spend events
 /// on Arbitrum Sepolia
-const ARBITRUM_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 0;
+const ARBITRUM_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 239828845;
 /// The block number from which to start listening for nullifier spend events
 /// on Base mainnet
 const BASE_MAINNET_NULLIFIER_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for nullifier spend events
 /// on Base Sepolia
-const BASE_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 0;
+const BASE_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 37243659;
 /// The block number from which to start listening for nullifier spend events
 /// on devnet
 const DEVNET_NULLIFIER_START_BLOCK: u64 = 0;
@@ -68,13 +68,13 @@ const DEVNET_NULLIFIER_START_BLOCK: u64 = 0;
 const ARBITRUM_ONE_RECOVERY_ID_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for recovery ID registration
 /// events on Arbitrum Sepolia
-const ARBITRUM_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 0;
+const ARBITRUM_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 239828845;
 /// The block number from which to start listening for recovery ID registration
 /// events on Base mainnet
 const BASE_MAINNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for recovery ID registration
 /// events on Base Sepolia
-const BASE_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 0;
+const BASE_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 37243659;
 /// The block number from which to start listening for recovery ID registration
 /// events on devnet
 const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
@@ -84,13 +84,13 @@ const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 const ARBITRUM_ONE_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent update
 /// events on Arbitrum Sepolia
-const ARBITRUM_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
+const ARBITRUM_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 239828845;
 /// The block number from which to start listening for public intent update
 /// events on Base mainnet
 const BASE_MAINNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent update
 /// events on Base Sepolia
-const BASE_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
+const BASE_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 37243659;
 /// The block number from which to start listening for public intent update
 /// events on devnet
 const DEVNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
@@ -100,13 +100,13 @@ const DEVNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
 const ARBITRUM_ONE_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent
 /// cancellation events on Arbitrum Sepolia
-const ARBITRUM_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
+const ARBITRUM_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 239828845;
 /// The block number from which to start listening for public intent
 /// cancellation events on Base mainnet
 const BASE_MAINNET_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent
 /// cancellation events on Base Sepolia
-const BASE_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
+const BASE_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 37243659;
 /// The block number from which to start listening for public intent
 /// cancellation events on devnet
 const DEVNET_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
