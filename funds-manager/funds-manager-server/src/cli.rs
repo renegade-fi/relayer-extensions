@@ -2,10 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use alloy::{
-    primitives::Address,
-    signers::local::PrivateKeySigner,
-};
+use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use price_reporter_client::PriceReporterClient;
