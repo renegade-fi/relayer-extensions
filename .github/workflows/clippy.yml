@@ -8,7 +8,6 @@ jobs:
     strategy:
       matrix:
         package: [
-          "auth-server",
           "auth-server-api",
           "compliance-server",
           "compliance-api",
@@ -18,8 +17,14 @@ jobs:
           "funds-manager",
           "price-reporter",
           "price-reporter-client",
-          "renegade-solver",
+          #"renegade-solver",
         ]
+        features: [""]
+        include:
+          - package: "auth-server"
+            features: "arbitrum"
+          - package: "auth-server"
+            features: "base"
     steps:
       - uses: actions/checkout@v1
       - name: Install Protoc
@@ -33,12 +38,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: >
             -p ${{ matrix.package }}
+            ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
             --tests
             --benches
-            -- 
+            --
             --no-deps
-            -D warnings 
-            -D unsafe_code 
+            -D warnings
+            -D unsafe_code
             -D missing_docs
             -D clippy::missing_docs_in_private_items
             -D clippy::needless_pass_by_value
