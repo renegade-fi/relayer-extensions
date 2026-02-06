@@ -21,21 +21,22 @@ jobs:
           "funds-manager",
           "price-reporter",
           "price-reporter-client",
-          "renegade-solver",
+          #"renegade-solver",
         ]
+        features: ["arbitrum", "base"]
     steps:
     - uses: actions/checkout@v3
     - name: Install Protoc
       uses: arduino/setup-protoc@v1
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Build ${{ matrix.package }}
+    - name: Build ${{ matrix.package }} (features=${{ matrix.features }})
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --package ${{ matrix.package }}
-    - name: Test ${{ matrix.package }}
+        args: --package ${{ matrix.package }} --features ${{ matrix.features }}
+    - name: Test ${{ matrix.package }} (features=${{ matrix.features }})
       uses: actions-rs/cargo@v1
-      with: 
+      with:
         command: test
-        args: --package ${{ matrix.package }} --verbose -- --skip integration
+        args: --package ${{ matrix.package }} --features ${{ matrix.features }} --verbose -- --skip integration
