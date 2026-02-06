@@ -3,6 +3,10 @@ name = "auth-server"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+arbitrum = []
+base = []
+
 [dependencies]
 # === HTTP Server === #
 clap = { version = "4.0", features = ["derive", "env"] }
