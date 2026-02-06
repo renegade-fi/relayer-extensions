@@ -26,21 +26,22 @@ lto = true
 
 [workspace.dependencies]
 # === Renegade Dependencies === #
-renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
+renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git" }
 contracts-common = { git = "https://github.com/renegade-fi/renegade-stylus-contracts.git" }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2", default-features = false }
-renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2", features = ["hmac"] }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2", features = [
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", default-features = false }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = ["hmac"] }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuits-core = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = [
     "channels",
 ] }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/chain-permit2" }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
 #renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts", default-features = false }
 renegade-solidity-abi = { package = "abi", path = "../renegade-contracts/abi", default-features = false }
 uuid = { version = "1", features = ["serde", "v4"] }
@@ -64,6 +65,3 @@ tokio-postgres = "0.7"
 # === Misc Dependencies === #
 thiserror = "2.0"
 tracing = "0.1"
-
-[patch."https://github.com/renegade-fi/renegade-contracts.git"]
-abi = { path = "../renegade-contracts/abi" }

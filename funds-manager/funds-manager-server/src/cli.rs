@@ -2,7 +2,10 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use alloy::signers::local::PrivateKeySigner;
+use alloy::{
+    primitives::Address,
+    signers::local::PrivateKeySigner,
+};
 use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use price_reporter_client::PriceReporterClient;
@@ -217,6 +220,10 @@ pub struct ChainConfig {
     /// quote for that token
     #[serde(default)]
     pub max_price_deviations: MaxPriceDeviations,
+
+    // --- Contract Addresses --- //
+    /// The Permit2 contract address for the chain
+    pub permit2_addr: Address,
 }
 
 impl ChainConfig {
@@ -238,9 +245,9 @@ impl ChainConfig {
         // Build a darkpool client
         let private_key = PrivateKeySigner::random();
         let conf = DarkpoolClientConfig {
-            permit2_addr: chain.permit2_addr(),
             darkpool_addr: darkpool_address,
             chain,
+            permit2_addr: self.permit2_addr,
             rpc_url: self.rpc_url.clone(),
             private_key,
             block_polling_interval: BLOCK_POLLING_INTERVAL,

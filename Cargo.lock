@@ -31,6 +31,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "abi"
+version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade-contracts#84efa7110332ab4f3e001c2d19c8782271b5800e"
+dependencies = [
+ "alloy",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "circuit-types",
+ "circuits-core",
+ "constants",
+ "crypto",
+ "darkpool-types",
+ "jf-primitives",
+ "num-bigint",
+ "serde",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1369,7 +1388,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auth-server"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0",
  "aes-gcm",
  "alloy",
  "alloy-primitives",
@@ -2493,7 +2512,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2504,7 +2523,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -2537,7 +2556,7 @@ dependencies = [
 [[package]]
 name = "circuits-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy-primitives",
  "ark-crypto-primitives",
@@ -2735,7 +2754,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy",
  "base64 0.13.1",
@@ -2814,7 +2833,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3004,7 +3023,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy-primitives",
  "ark-ec",
@@ -3117,9 +3136,9 @@ dependencies = [
 [[package]]
 name = "darkpool-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "alloy-contract",
  "alloy-primitives",
@@ -3151,7 +3170,7 @@ dependencies = [
 [[package]]
 name = "darkpool-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy-primitives",
  "circuit-macros",
@@ -4078,9 +4097,9 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "base64 0.22.1",
  "circuit-types",
@@ -4300,7 +4319,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 name = "funds-manager"
 version = "0.1.0"
 dependencies = [
- "abi",
+ "abi 0.1.0",
  "alloy",
  "alloy-dyn-abi",
  "alloy-json-rpc",
@@ -5729,7 +5748,7 @@ dependencies = [
 [[package]]
 name = "matching-engine-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "circuit-types",
  "crypto",
@@ -8893,7 +8912,7 @@ dependencies = [
 [[package]]
 name = "system-clock"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "tokio",
  "tokio-cron-scheduler",
@@ -9705,9 +9724,9 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 [[package]]
 name = "types-account"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
- "abi",
+ "abi 0.1.0 (git+https://github.com/renegade-fi/renegade-contracts)",
  "alloy",
  "circuit-types",
  "constants",
@@ -9729,7 +9748,7 @@ dependencies = [
 [[package]]
 name = "types-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy",
  "base64 0.22.1",
@@ -9749,7 +9768,7 @@ dependencies = [
 [[package]]
 name = "types-gossip"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "base64 0.22.1",
  "circuit-types",
@@ -9767,7 +9786,7 @@ dependencies = [
 [[package]]
 name = "types-proofs"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "circuit-types",
  "circuits-core",
@@ -9779,7 +9798,7 @@ dependencies = [
 [[package]]
 name = "types-runtime"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "async-trait",
  "tokio",
@@ -9923,7 +9942,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fchain-permit2#91225ddf64e23628c0bf1c936359341dd9d2e41a"
+source = "git+https://github.com/renegade-fi/renegade.git#c5f648ac8ce88685a56b848f2ef22a6eb6518238"
 dependencies = [
  "alloy",
  "ark-ec",
