@@ -1,6 +1,6 @@
 //! Message type definitions for the darkpool indexer
 
-use alloy_primitives::{Address, B256, TxHash};
+use alloy_primitives::{Address, B256, TxHash, U256};
 use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
 use renegade_darkpool_types::intent::Intent;
@@ -29,6 +29,18 @@ pub enum Message {
 }
 
 impl Message {
+    /// Get a human-readable name for the message
+    pub fn display_name(&self) -> String {
+        match self {
+            Message::RegisterMasterViewSeed(_) => "RegisterMasterViewSeed".to_string(),
+            Message::RegisterRecoveryId(_) => "RegisterRecoveryId".to_string(),
+            Message::NullifierSpend(_) => "NullifierSpend".to_string(),
+            Message::UpdatePublicIntent(_) => "UpdatePublicIntent".to_string(),
+            Message::CancelPublicIntent(_) => "CancelPublicIntent".to_string(),
+            Message::UpdatePublicIntentMetadata(_) => "UpdatePublicIntentMetadata".to_string(),
+        }
+    }
+
     /// Derive the SQS deduplication ID for this message
     pub fn dedup_id(&self) -> String {
         match self {
@@ -80,7 +92,7 @@ pub struct RecoveryIdMessage {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NullifierSpendMessage {
     /// The nullifier that was spent
-    pub nullifier: Scalar,
+    pub nullifier: U256,
     /// The transaction hash of the nullifier spend
     pub tx_hash: TxHash,
     /// Whether this message originates from a backfill

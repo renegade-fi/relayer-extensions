@@ -111,9 +111,11 @@ impl Indexer {
         info!("Handling nullifier spend message");
 
         let NullifierSpendMessage { nullifier, tx_hash, is_backfill } = message;
-        let state_transition = self.get_state_transition_for_nullifier(nullifier, tx_hash).await?;
-
-        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+        if let Some(state_transition) =
+            self.get_state_transition_for_nullifier(nullifier, tx_hash).await?
+        {
+            self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+        }
 
         Ok(())
     }
@@ -126,6 +128,11 @@ impl Indexer {
         message: UpdatePublicIntentMessage,
     ) -> Result<(), IndexerError> {
         let UpdatePublicIntentMessage { intent_hash, tx_hash, is_backfill } = message;
+
+        info!(
+            "Handling public intent update message for intent hash {intent_hash:#x} in tx {tx_hash:#x}"
+        );
+
         let state_transition =
             self.get_state_transition_for_public_intent_update(intent_hash, tx_hash).await?;
 
@@ -141,6 +148,12 @@ impl Indexer {
         &self,
         message: CancelPublicIntentMessage,
     ) -> Result<(), IndexerError> {
+        info!(
+            "Handling public intent cancellation message for intent hash {intent_hash:#x} in tx {tx_hash:#x}",
+            intent_hash = message.intent_hash,
+            tx_hash = message.tx_hash
+        );
+
         let is_backfill = message.is_backfill;
         let state_transition = StateTransition::CancelPublicIntent(message);
 
@@ -156,6 +169,12 @@ impl Indexer {
         &self,
         message: PublicIntentMetadataUpdateMessage,
     ) -> Result<(), IndexerError> {
+        info!(
+            "Handling public intent metadata update message for intent hash {intent_hash:#x} (order ID {order_id})",
+            intent_hash = message.intent_hash,
+            order_id = message.order_id
+        );
+
         let state_transition = StateTransition::UpdatePublicIntentMetadata(message);
 
         self.state_applicator

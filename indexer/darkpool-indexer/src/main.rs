@@ -14,7 +14,7 @@ use darkpool_indexer::{
     },
 };
 use tokio::task::JoinSet;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 // --------
 // | Main |
@@ -55,6 +55,7 @@ async fn main() -> Result<(), IndexerError> {
 
 /// Run the HTTP API server
 async fn run_http_server(indexer: Arc<Indexer>, port: u16) -> Result<(), IndexerError> {
+    info!("Starting HTTP server on port {port}");
     warp::serve(http_routes(indexer)).run(([0, 0, 0, 0], port)).await;
     Ok(())
 }

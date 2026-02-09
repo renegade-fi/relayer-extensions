@@ -168,7 +168,7 @@ fn apply_settlement(
 ) {
     match public_intent_settlement_data {
         PublicIntentSettlementData::InternalMatch { amount_in, .. } => {
-            public_intent.order.intent.inner.amount_in -= amount_in;
+            public_intent.order.decrement_amount_in(*amount_in);
         },
         PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in, .. } => {
             public_intent.update_from_external_match(*price, *external_party_amount_in);
@@ -184,13 +184,20 @@ fn construct_new_public_intent(
 ) -> PublicIntentStateObject {
     match public_intent_settlement_data {
         PublicIntentSettlementData::InternalMatch {
-            mut intent,
+            intent,
             intent_signature,
             permit,
             amount_in,
         } => {
-            intent.amount_in -= amount_in;
-            PublicIntentStateObject::new(intent_hash, intent, intent_signature, permit, account_id)
+            let mut public_intent = PublicIntentStateObject::new(
+                intent_hash,
+                intent,
+                intent_signature,
+                permit,
+                account_id,
+            );
+            public_intent.order.decrement_amount_in(amount_in);
+            public_intent
         },
         PublicIntentSettlementData::ExternalMatch {
             intent,
