@@ -4,18 +4,18 @@ use std::collections::VecDeque;
 
 use alloy::{
     eips::BlockId,
-    primitives::{Address, B256, TxHash},
+    primitives::{Address, B256, TxHash, U256},
     providers::{Provider, ext::DebugApi},
     rpc::types::trace::geth::{
-        CallFrame, GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingOptions,
-        GethTrace,
+        CallConfig, CallFrame, CallLogFrame, GethDebugBuiltInTracerType, GethDebugTracerType,
+        GethDebugTracingOptions, GethTrace,
     },
     sol_types::SolEvent,
 };
-use renegade_circuit_types::{Nullifier, fixed_point::FixedPoint};
+use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::Scalar;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    NullifierSpent, PublicIntentCreated, PublicIntentUpdated, RecoveryIdRegistered,
+    NullifierSpent, PublicIntentUpdated, RecoveryIdRegistered,
 };
 
 use crate::darkpool_client::{DarkpoolClient, error::DarkpoolClientError, utils::scalar_to_b256};
@@ -29,19 +29,27 @@ impl DarkpoolClient {
     /// transaction
     pub async fn find_nullifying_call(
         &self,
-        nullifier: Nullifier,
+        nullifier: U256,
         tx_hash: TxHash,
     ) -> Result<CallFrame, DarkpoolClientError> {
         let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
-        let nullifier_topic = scalar_to_b256(nullifier);
 
         calls
             .into_iter()
             .find(|call| {
                 call.logs.iter().any(|log| {
                     let topics = log.topics.clone().unwrap_or_default();
-                    topics.first() == Some(&NullifierSpent::SIGNATURE_HASH)
-                        && topics.contains(&nullifier_topic)
+                    if topics.first() == Some(&NullifierSpent::SIGNATURE_HASH)
+                        && let Some(data) = &log.data
+                    {
+                        // The nullifier is not an indexed field, so we need to ABI-decode it from
+                        // the log data
+                        return NullifierSpent::abi_decode_data(data)
+                            .map(|(log_nullifier,)| log_nullifier == nullifier)
+                            .unwrap_or(false);
+                    }
+
+                    false
                 })
             })
             .ok_or(DarkpoolClientError::NullifierNotFound)
@@ -67,27 +75,6 @@ impl DarkpoolClient {
                 })
             })
             .ok_or(DarkpoolClientError::RecoveryIdNotFound)
-    }
-
-    /// Find the call that created the given public intent in the given
-    /// transaction
-    pub async fn find_public_intent_creation_call(
-        &self,
-        intent_hash: B256,
-        tx_hash: TxHash,
-    ) -> Result<CallFrame, DarkpoolClientError> {
-        let calls = self.fetch_darkpool_calls_in_tx(tx_hash).await?;
-
-        calls
-            .into_iter()
-            .find(|call| {
-                call.logs.iter().any(|log| {
-                    let topics = log.topics.clone().unwrap_or_default();
-                    topics.first() == Some(&PublicIntentCreated::SIGNATURE_HASH)
-                        && topics.contains(&intent_hash)
-                })
-            })
-            .ok_or(DarkpoolClientError::PublicIntentHashNotFound)
     }
 
     /// Find the call that updated the given public intent in the given
@@ -168,6 +155,7 @@ impl DarkpoolClient {
             tracer: Some(GethDebugTracerType::BuiltInTracer(
                 GethDebugBuiltInTracerType::CallTracer,
             )),
+            tracer_config: CallConfig::default().with_log().into(),
             ..Default::default()
         };
 
@@ -178,6 +166,13 @@ impl DarkpoolClient {
     }
 
     /// Find all darkpool calls in a call trace
+    ///
+    /// The darkpool contract is a proxy, so the top-level CALL to the
+    /// darkpool address will DELEGATECALL into implementation contracts.
+    /// Logs emitted via DELEGATECALL are attributed to the proxy address
+    /// but attached to the DELEGATECALL sub-frame in the trace, not the
+    /// parent frame. We collect all logs from each darkpool call's subtree
+    /// to account for this.
     fn find_darkpool_calls(&self, trace: &GethTrace) -> Vec<CallFrame> {
         let darkpool = self.darkpool_address();
         let global_call_frame = match trace {
@@ -192,7 +187,9 @@ impl DarkpoolClient {
             if let Some(to) = call.to
                 && to == darkpool
             {
-                darkpool_calls.push(call.clone());
+                let mut hydrated = call.clone();
+                hydrated.logs = collect_subtree_logs(&call, darkpool);
+                darkpool_calls.push(hydrated);
             }
 
             // Add the sub-calls to the queue
@@ -201,4 +198,16 @@ impl DarkpoolClient {
 
         darkpool_calls
     }
+}
+
+/// Recursively collect all logs emitted by `address` from a call frame
+/// and its sub-calls
+fn collect_subtree_logs(frame: &CallFrame, address: Address) -> Vec<CallLogFrame> {
+    let mut logs: Vec<CallLogFrame> =
+        frame.logs.iter().filter(|log| log.address == Some(address)).cloned().collect();
+
+    for sub_call in &frame.calls {
+        logs.extend(collect_subtree_logs(sub_call, address));
+    }
+    logs
 }

@@ -1,16 +1,16 @@
 //! Indexer-specific logic for indexing onchain events
 
 use alloy::{
-    primitives::{B256, TxHash},
+    primitives::{B256, TxHash, U256},
     sol_types::SolCall,
 };
 use renegade_constants::Scalar;
 use renegade_crypto::fields::u256_to_scalar;
 use renegade_darkpool_types::balance::DarkpoolBalanceShare;
 use renegade_solidity_abi::v2::IDarkpoolV2::{
-    cancelPrivateOrderCall, depositCall, depositNewBalanceCall, payPrivateProtocolFeeCall,
-    payPrivateRelayerFeeCall, payPublicProtocolFeeCall, payPublicRelayerFeeCall,
-    settleExternalMatchCall, settleMatchCall, withdrawCall,
+    cancelPrivateOrderCall, cancelPublicOrderCall, depositCall, depositNewBalanceCall,
+    payPrivateProtocolFeeCall, payPrivateRelayerFeeCall, payPublicProtocolFeeCall,
+    payPublicRelayerFeeCall, settleExternalMatchCall, settleMatchCall, withdrawCall,
 };
 
 use crate::{
@@ -40,57 +40,90 @@ impl Indexer {
     /// nullifier in the given transaction
     pub async fn get_state_transition_for_nullifier(
         &self,
-        nullifier: Scalar,
+        nullifier: U256,
         tx_hash: TxHash,
-    ) -> Result<StateTransition, IndexerError> {
+    ) -> Result<Option<StateTransition>, IndexerError> {
         let nullifying_call = self.darkpool_client.find_nullifying_call(nullifier, tx_hash).await?;
 
         let calldata = nullifying_call.input;
         let selector = get_selector(&calldata);
+        let nullifier_scalar = u256_to_scalar(nullifier);
 
-        match selector {
+        let transition = match selector {
             depositCall::SELECTOR => {
-                self.compute_deposit_transition(nullifier, tx_hash, &calldata).await
+                self.compute_deposit_transition(nullifier_scalar, tx_hash, &calldata).await
             },
             withdrawCall::SELECTOR => {
-                self.compute_withdraw_transition(nullifier, tx_hash, &calldata).await
+                self.compute_withdraw_transition(nullifier_scalar, tx_hash, &calldata).await
             },
             payPublicProtocolFeeCall::SELECTOR => {
-                self.compute_pay_public_protocol_fee_transition(nullifier, tx_hash, &calldata).await
+                self.compute_pay_public_protocol_fee_transition(
+                    nullifier_scalar,
+                    tx_hash,
+                    &calldata,
+                )
+                .await
             },
             payPrivateProtocolFeeCall::SELECTOR => {
-                self.compute_pay_private_protocol_fee_transition(nullifier, tx_hash, &calldata)
-                    .await
+                self.compute_pay_private_protocol_fee_transition(
+                    nullifier_scalar,
+                    tx_hash,
+                    &calldata,
+                )
+                .await
             },
             payPublicRelayerFeeCall::SELECTOR => {
-                self.compute_pay_public_relayer_fee_transition(nullifier, tx_hash, &calldata).await
+                self.compute_pay_public_relayer_fee_transition(nullifier_scalar, tx_hash, &calldata)
+                    .await
             },
             payPrivateRelayerFeeCall::SELECTOR => {
-                self.compute_pay_private_relayer_fee_transition(nullifier, tx_hash, &calldata).await
+                self.compute_pay_private_relayer_fee_transition(
+                    nullifier_scalar,
+                    tx_hash,
+                    &calldata,
+                )
+                .await
             },
             settleMatchCall::SELECTOR => {
                 let (party0_settlement_data, party1_settlement_data) =
                     PartySettlementData::pair_from_settle_match_calldata(&calldata)?;
 
                 let maybe_party0_state_transition = party0_settlement_data
-                    .get_state_transition_for_nullifier(&self.darkpool_client, nullifier, tx_hash)
+                    .get_state_transition_for_nullifier(
+                        &self.darkpool_client,
+                        nullifier_scalar,
+                        tx_hash,
+                    )
                     .await?;
 
                 let maybe_party1_state_transition = party1_settlement_data
-                    .get_state_transition_for_nullifier(&self.darkpool_client, nullifier, tx_hash)
+                    .get_state_transition_for_nullifier(
+                        &self.darkpool_client,
+                        nullifier_scalar,
+                        tx_hash,
+                    )
                     .await?;
 
                 maybe_party0_state_transition.or(maybe_party1_state_transition).ok_or(
                     IndexerError::invalid_party_settlement_data(format!(
-                        "nullifier {nullifier} not spent by either party in match tx {tx_hash:#x}"
+                        "nullifier {nullifier_scalar} not spent by either party in match tx {tx_hash:#x}"
                     )),
                 )
             },
             cancelPrivateOrderCall::SELECTOR => {
-                self.compute_cancel_order_transition(nullifier, tx_hash).await
+                self.compute_cancel_order_transition(nullifier_scalar, tx_hash).await
+            },
+            cancelPublicOrderCall::SELECTOR => {
+                // This events a `NullifierSpent` event, but we don't handle it here.
+                // Rather, we handle public intent cancellation in
+                // `get_state_transition_for_public_intent_cancellation`
+                // by listening for `PublicIntentCancellations` events.
+                return Ok(None);
             },
             _ => Err(IndexerError::invalid_selector(selector)),
-        }
+        }?;
+
+        Ok(Some(transition))
     }
 
     /// Get the state transition associated with the registration of the given

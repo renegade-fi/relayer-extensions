@@ -6,6 +6,7 @@ use darkpool_indexer_api::types::message_queue::{
     UpdatePublicIntentMessage,
 };
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u256;
 use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 use tokio::task::JoinSet;
 use tracing::{error, info, instrument};
@@ -245,9 +246,9 @@ impl Indexer {
         );
 
         loop {
-            let nullifier_topic = scalar_to_b256(nullifier);
+            let nullifier_u256 = scalar_to_u256(&nullifier);
             let nullifier_spend_filter =
-                self.darkpool_client.darkpool.NullifierSpent_filter().topic1(nullifier_topic);
+                self.darkpool_client.darkpool.NullifierSpent_filter().topic1(nullifier_u256);
 
             let maybe_spend_event = nullifier_spend_filter.query_raw().await?.first().cloned();
 
@@ -263,7 +264,7 @@ impl Indexer {
             )))?;
 
             let nullifier_spend_message = Message::NullifierSpend(NullifierSpendMessage {
-                nullifier,
+                nullifier: nullifier_u256,
                 tx_hash,
                 is_backfill: true,
             });

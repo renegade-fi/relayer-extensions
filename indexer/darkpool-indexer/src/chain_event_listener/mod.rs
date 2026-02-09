@@ -70,7 +70,7 @@ impl ChainEventListener {
         let mut stream = filter.subscribe().await?.into_stream();
 
         while let Some(Ok((event, log))) = stream.next().await {
-            let nullifier = u256_to_scalar(event.nullifier);
+            let nullifier = event.nullifier;
             let tx_hash = log.transaction_hash.ok_or(ChainEventListenerError::rpc(format!(
                 "no tx hash for nullifier {nullifier} spend event"
             )))?;

@@ -7,7 +7,7 @@ use darkpool_indexer_api::types::{
     message_queue::Message,
 };
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use tracing::error;
+use tracing::{error, info};
 use uuid::Uuid;
 use warp::{http::StatusCode, reject::Rejection, reply::Reply};
 
@@ -51,6 +51,8 @@ pub async fn handle_submit_message(
 ) -> Result<impl Reply, Rejection> {
     let dedup_id = message.dedup_id();
     let message_group = message.message_group();
+
+    info!("Enqueuing manually-submitted message: {}", message.display_name());
 
     indexer
         .message_queue

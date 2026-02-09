@@ -29,6 +29,7 @@ use eyre::{OptionExt, Result};
 use postgresql_embedded::PostgreSQL;
 use renegade_circuit_types::Nullifier;
 use renegade_constants::Scalar;
+use renegade_crypto::fields::scalar_to_u256;
 use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 use renegade_solidity_abi::v2::IDarkpoolV2::IDarkpoolV2Instance;
 use test_helpers::types::TestVerbosity;
@@ -200,8 +201,9 @@ impl TestArgs {
         nullifier: Nullifier,
         tx_hash: TxHash,
     ) -> Result<()> {
+        let nullifier_u256 = scalar_to_u256(&nullifier);
         let message = Message::NullifierSpend(NullifierSpendMessage {
-            nullifier,
+            nullifier: nullifier_u256,
             tx_hash,
             is_backfill: false,
         });

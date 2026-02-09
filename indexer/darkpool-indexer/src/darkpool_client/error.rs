@@ -15,6 +15,9 @@ pub enum DarkpoolClientError {
     /// A public intent hash was not found in a call trace
     #[error("public intent hash not found")]
     PublicIntentHashNotFound,
+    /// An error ABI-decoding a value
+    #[error("ABI decoding error: {0}")]
+    AbiDecoding(String),
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -22,5 +25,10 @@ impl DarkpoolClientError {
     /// Create a new RPC error
     pub fn rpc<T: ToString>(msg: T) -> Self {
         Self::Rpc(msg.to_string())
+    }
+
+    /// Create a new ABI decoding error
+    pub fn abi_decoding<T: ToString>(msg: T) -> Self {
+        Self::AbiDecoding(msg.to_string())
     }
 }
