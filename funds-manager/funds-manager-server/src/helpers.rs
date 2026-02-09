@@ -451,7 +451,7 @@ pub fn get_darkpool_address(chain: Chain) -> Address {
         Chain::BaseSepolia => BASE_SEPOLIA_DARKPOOL_ADDRESS,
         Chain::EthereumMainnet => ETHEREUM_MAINNET_DARKPOOL_ADDRESS,
         Chain::EthereumSepolia => ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS,
-        _ => panic!("Invalid chain"),
+        _ => panic!("{}", format!("get_darkpool_address: Invalid chain {}", chain)),
     }
 }
 
@@ -464,7 +464,7 @@ pub fn get_gas_sponsor_address(chain: Chain) -> Address {
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS,
         Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS,
         Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
-        _ => panic!("Invalid chain"),
+        _ => panic!("{}", format!("get_gas_sponsor_address: Invalid chain {}", chain)),
     }
 }
 
@@ -477,7 +477,7 @@ pub fn get_gas_sponsor_address_v2(chain: Chain) -> Address {
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
         Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS_V2,
         Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
-        _ => panic!("Invalid chain"),
+        _ => panic!("{}", format!("get_gas_sponsor_address_v2: Invalid chain {}", chain)),
     }
 }
 
