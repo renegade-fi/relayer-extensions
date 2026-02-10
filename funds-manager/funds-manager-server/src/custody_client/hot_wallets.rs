@@ -131,7 +131,7 @@ impl CustodyClient {
 
     /// The secret name for a hot wallet
     pub(crate) fn hot_wallet_secret_name(address: &str) -> String {
-        format!("hot-wallet-{address}")
+        format!("hot-wallet-{}", address.to_lowercase())
     }
 
     /// Get the hot wallet private key for a vault

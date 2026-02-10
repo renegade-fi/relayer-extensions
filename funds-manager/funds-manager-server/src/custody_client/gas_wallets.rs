@@ -120,7 +120,7 @@ impl CustodyClient {
 
     /// Get the secret name for a gas wallet's private key
     fn gas_wallet_secret_name(address: &str) -> String {
-        format!("gas-wallet-{}", address)
+        format!("gas-wallet-{}", address.to_lowercase())
     }
 
     /// Refill gas for a set of wallets
