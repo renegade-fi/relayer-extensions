@@ -268,11 +268,10 @@ impl CustodyClient {
         for wallet in whitelisted_wallets {
             let wallet_id = wallet.id;
             for asset in wallet.assets {
-                if let Some(address) = asset.address {
-                    if address.to_lowercase() == bridge_address.to_lowercase() {
+                if let Some(address) = asset.address
+                    && address.to_lowercase() == bridge_address.to_lowercase() {
                         return Ok(wallet_id);
                     }
-                }
             }
         }
 

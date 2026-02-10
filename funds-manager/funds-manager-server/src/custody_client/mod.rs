@@ -211,8 +211,8 @@ impl CustodyClient {
             .await?;
 
         for asset in arb_assets.data {
-            if let Some(contract_address) = asset.onchain.and_then(|o| o.address) {
-                if contract_address.to_lowercase() == address.to_lowercase() {
+            if let Some(contract_address) = asset.onchain.and_then(|o| o.address)
+                && contract_address.to_lowercase() == address.to_lowercase() {
                     let asset_id = asset.legacy_id;
 
                     self.fireblocks_client
@@ -221,7 +221,6 @@ impl CustodyClient {
 
                     return Ok(Some(asset_id));
                 }
-            }
         }
 
         Ok(None)
