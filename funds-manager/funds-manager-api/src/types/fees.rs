@@ -26,6 +26,8 @@ pub const GET_UNREDEEMED_FEE_TOTALS_ROUTE: &str = "get-unredeemed-fee-totals";
 // -------------
 
 /// The response containing fee accounts
+/// TODO: remove this since v2 doesn't have fee-collection accounts; rather, notes are redeemed
+/// directly to an EOA
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FeeWalletsResponse {
     /// The accounts managed by the funds manager

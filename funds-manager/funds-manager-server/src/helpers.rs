@@ -296,9 +296,9 @@ pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
         Chain::ArbitrumOne => Ok("/arbitrum/one".to_string()),
         Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia".to_string()),
         Chain::BaseMainnet => Ok("/base/mainnet".to_string()),
-        Chain::BaseSepolia => Ok("/base/mainnet".to_string()),
+        Chain::BaseSepolia => Ok("/base/sepolia".to_string()),
         Chain::EthereumMainnet => Ok("/ethereum/mainnet".to_string()),
-        Chain::EthereumSepolia => Ok("/ethereum/mainnet".to_string()),
+        Chain::EthereumSepolia => Ok("/ethereum/sepolia".to_string()),
         _ => Err(FundsManagerError::custom("Unsupported chain")),
     }
 }
