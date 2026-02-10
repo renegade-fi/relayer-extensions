@@ -7,7 +7,7 @@ use aws_config::SdkConfig;
 use clap::{Parser, ValueEnum};
 use price_reporter_client::PriceReporterClient;
 use renegade_circuit_types::elgamal::DecryptionKey;
-use renegade_darkpool_client::{client::DarkpoolClientConfig, DarkpoolClient};
+use renegade_darkpool_client::{DarkpoolClient, client::DarkpoolClientConfig};
 use renegade_types_core::{Chain, HmacKey};
 use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
 use serde::Deserialize;
@@ -234,7 +234,7 @@ impl ChainConfig {
         price_reporter: PriceReporterClient,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
-        //let relayer_client = RelayerClient::new(&self.relayer_url, chain);
+        // let relayer_client = RelayerClient::new(&self.relayer_url, chain);
 
         let darkpool_address = get_darkpool_address(chain);
 
@@ -295,8 +295,10 @@ impl ChainConfig {
         let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), base_provider, chain);
 
         // Build a fee indexer
-        let mut decryption_keys = vec![DecryptionKey::from_hex_str(&self.relayer_decryption_key)
-            .map_err(FundsManagerError::parse)?];
+        let mut decryption_keys = vec![
+            DecryptionKey::from_hex_str(&self.relayer_decryption_key)
+                .map_err(FundsManagerError::parse)?,
+        ];
 
         if let Some(protocol_key) = &self.protocol_decryption_key {
             decryption_keys

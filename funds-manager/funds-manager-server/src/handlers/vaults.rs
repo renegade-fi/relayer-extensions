@@ -6,7 +6,7 @@ use funds_manager_api::{
     hot_wallets::{TransferToVaultRequest, WithdrawToHotWalletRequest},
     vaults::{GetVaultBalancesRequest, VaultBalancesResponse},
 };
-use renegade_types_core::{default_chain, Chain};
+use renegade_types_core::{Chain, default_chain};
 use warp::reply::Json;
 
 use crate::{error::ApiError, server::Server};

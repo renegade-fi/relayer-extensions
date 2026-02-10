@@ -5,7 +5,7 @@ use std::{error::Error, fmt::Display};
 use price_reporter_client::error::PriceReporterClientError;
 use warp::reject::Reject;
 
-use fireblocks_sdk::{apis::Error as FireblocksApiError, FireblocksError};
+use fireblocks_sdk::{FireblocksError, apis::Error as FireblocksApiError};
 
 use crate::execution_client::error::ExecutionClientError;
 

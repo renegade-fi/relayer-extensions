@@ -8,10 +8,10 @@ use std::{
 use alloy::{
     hex,
     providers::DynProvider,
-    signers::{local::PrivateKeySigner, SignerSync},
+    signers::{SignerSync, local::PrivateKeySigner},
 };
 use alloy_primitives::{Address, FixedBytes, TxHash, U256};
-use alloy_sol_types::{eip712_domain, SolStruct};
+use alloy_sol_types::{SolStruct, eip712_domain};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
 use renegade_types_core::Chain;
@@ -23,6 +23,7 @@ use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
+            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
             cowswap::{
                 abi::Order,
                 api_types::{
@@ -31,7 +32,6 @@ use crate::{
                 },
             },
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
     helpers::{approve_erc20_allowance, build_provider, handle_http_response, to_chain_id},

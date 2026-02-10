@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use fireblocks_sdk::{models::AssetOnchainBeta, Client, ClientBuilder};
+use fireblocks_sdk::{Client, ClientBuilder, models::AssetOnchainBeta};
 use tokio::sync::RwLock;
 
 use crate::error::FundsManagerError;

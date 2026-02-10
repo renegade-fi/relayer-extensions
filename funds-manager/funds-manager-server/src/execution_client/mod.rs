@@ -11,7 +11,7 @@ use renegade_types_core::Chain;
 use crate::{
     cli::MaxPriceDeviations,
     execution_client::venues::{
-        bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient, AllExecutionVenues,
+        AllExecutionVenues, bebop::BebopClient, cowswap::CowswapClient, lifi::LifiClient,
     },
     helpers::{build_provider, get_erc20_balance, get_erc20_balance_raw},
 };

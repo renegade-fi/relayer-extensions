@@ -19,7 +19,7 @@ use error::ComplianceServerError;
 use renegade_util::err_str;
 use renegade_util::telemetry::configure_telemetry;
 use tracing::info;
-use warp::{reply::Json, Filter};
+use warp::{Filter, reply::Json};
 
 use crate::db::get_compliance_entry;
 

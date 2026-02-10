@@ -24,14 +24,14 @@ use crate::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
+            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
             lifi::api_types::{LifiQuote, LifiQuoteParams},
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
     helpers::{
-        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
-        handle_http_response, send_tx_with_retry, to_chain_id, TWO_CONFIRMATIONS,
+        TWO_CONFIRMATIONS, approve_erc20_allowance, build_provider, get_gas_cost,
+        get_received_amount, handle_http_response, send_tx_with_retry, to_chain_id,
     },
 };
 

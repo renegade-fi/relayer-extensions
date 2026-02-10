@@ -16,15 +16,15 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use alloy_primitives::{
-    utils::{format_units, parse_units},
     Address, TxHash,
+    utils::{format_units, parse_units},
 };
 use aws_config::SdkConfig as AwsConfig;
 use fireblocks_sdk::{
     apis::{
+        Api,
         blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams},
         transactions_api::GetTransactionsParams,
-        Api,
     },
     models::TransactionResponse,
 };
@@ -38,7 +38,7 @@ use tracing::{debug, info};
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
     helpers::{
-        get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS,
+        IERC20, TWO_CONFIRMATIONS, get_erc20_balance, send_tx_with_retry, to_env_agnostic_name,
     },
 };
 use crate::{

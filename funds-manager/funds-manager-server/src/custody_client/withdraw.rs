@@ -7,7 +7,7 @@ use crate::{
 };
 use alloy::signers::local::PrivateKeySigner;
 use fireblocks_sdk::{
-    apis::{transactions_api::CreateTransactionParams, Api},
+    apis::{Api, transactions_api::CreateTransactionParams},
     models::{
         DestinationTransferPeerPath, SourceTransferPeerPath, TransactionOperation,
         TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,

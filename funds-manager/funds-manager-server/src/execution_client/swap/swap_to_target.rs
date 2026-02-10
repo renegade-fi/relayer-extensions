@@ -7,13 +7,13 @@ use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
-use renegade_types_core::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
+use renegade_types_core::{Token, USD_TICKER, USDC_TICKER, get_all_tokens};
 use tracing::{info, warn};
 
 use crate::execution_client::{
+    ExecutionClient,
     error::ExecutionClientError,
     swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
-    ExecutionClient,
 };
 
 // -------------
@@ -68,7 +68,9 @@ impl ExecutionClient {
 
         if current_balance >= target_amount {
             let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
-            info!("Current {ticker} balance ({current_balance}) is greater than target amount ({target_amount}), skipping swaps");
+            info!(
+                "Current {ticker} balance ({current_balance}) is greater than target amount ({target_amount}), skipping swaps"
+            );
             return Ok(vec![]);
         }
 
@@ -78,7 +80,9 @@ impl ExecutionClient {
 
         // Check that the amount to cover is greater than the minimum swap amount
         if amount_to_cover_usdc < MIN_SWAP_QUOTE_AMOUNT {
-            info!("Target token value to cover (${amount_to_cover_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), skipping swaps");
+            info!(
+                "Target token value to cover (${amount_to_cover_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), skipping swaps"
+            );
             return Ok(vec![]);
         }
 
@@ -157,12 +161,16 @@ impl ExecutionClient {
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
         let mut remaining_amount_usdc = amount_to_cover_usdc * SWAP_TO_COVER_BUFFER;
-        info!("Need to cover ${amount_to_cover_usdc} {target_ticker}, purchasing ${remaining_amount_usdc}");
+        info!(
+            "Need to cover ${amount_to_cover_usdc} {target_ticker}, purchasing ${remaining_amount_usdc}"
+        );
 
         let mut outcomes = vec![];
         for candidate in swap_candidates {
             if remaining_amount_usdc < MIN_SWAP_QUOTE_AMOUNT {
-                info!("Remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps");
+                info!(
+                    "Remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps"
+                );
                 break;
             }
 

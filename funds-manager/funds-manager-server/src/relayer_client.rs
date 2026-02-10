@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 
-use base64::engine::{general_purpose as b64_general_purpose, Engine};
+use base64::engine::{Engine, general_purpose as b64_general_purpose};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
-    auth::create_request_signature,
     // http::wallet::RedeemNoteRequest,
     RENEGADE_AUTH_HEADER_NAME,
     RENEGADE_SIG_EXPIRATION_HEADER_NAME,
+    auth::create_request_signature,
 };
 use renegade_types_core::{Chain, HmacKey};
 use renegade_util::{err_str, get_current_time_millis};

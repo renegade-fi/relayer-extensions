@@ -22,14 +22,14 @@ use crate::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
+            ExecutionResult, ExecutionVenue,
             bebop::api_types::{ApprovalType, BebopQuoteParams, BebopQuoteResponse},
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-            ExecutionResult, ExecutionVenue,
         },
     },
     helpers::{
-        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
-        handle_http_response, send_tx_with_retry, TWO_CONFIRMATIONS,
+        TWO_CONFIRMATIONS, approve_erc20_allowance, build_provider, get_gas_cost,
+        get_received_amount, handle_http_response, send_tx_with_retry,
     },
 };
 

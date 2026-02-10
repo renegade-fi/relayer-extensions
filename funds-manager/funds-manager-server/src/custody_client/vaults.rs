@@ -3,9 +3,9 @@
 use alloy_primitives::Address;
 use fireblocks_sdk::{
     apis::{
+        Api,
         blockchains_assets_beta_api::GetAssetByIdParams,
         vaults_api::{GetPagedVaultAccountsParams, GetVaultAccountAssetParams},
-        Api,
     },
     models::{AssetOnchainBeta, VaultAccount, VaultAsset},
 };

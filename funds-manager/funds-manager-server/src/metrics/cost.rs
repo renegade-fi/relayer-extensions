@@ -12,7 +12,7 @@ use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
     execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
-    helpers::{get_darkpool_address, to_env_agnostic_name, IERC20::Transfer},
+    helpers::{IERC20::Transfer, get_darkpool_address, to_env_agnostic_name},
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, SELF_TRADE_VOLUME_USDC_METRIC_NAME, SWAP_EXECUTION_COST_METRIC_NAME,
         SWAP_GAS_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,

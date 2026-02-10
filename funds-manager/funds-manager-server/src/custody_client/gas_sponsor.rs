@@ -7,9 +7,9 @@ use alloy::{
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
 };
-use alloy_primitives::{utils::parse_ether, Address};
+use alloy_primitives::{Address, utils::parse_ether};
 use alloy_sol_types::SolCall;
-use renegade_types_core::{get_all_tokens, Chain, Token, USD_TICKER};
+use renegade_types_core::{Chain, Token, USD_TICKER, get_all_tokens};
 use tracing::{error, info};
 
 use crate::error::FundsManagerError;
@@ -98,7 +98,9 @@ impl CustodyClient {
 
             match self.send_eth_to_gas_sponsor(refill_amount, gas_sponsor_address).await {
                 Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
-                    info!("Sent {refill_amount} ETH from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {tx:#x}");
+                    info!(
+                        "Sent {refill_amount} ETH from hot wallet to gas sponsor ({gas_sponsor_address}) in tx {tx:#x}"
+                    );
                 },
                 Err(e) => {
                     error!(
@@ -127,7 +129,9 @@ impl CustodyClient {
 
         let send_amount = if bal <= amount {
             let send_amount = bal * MAX_REFILL_REDUCTION_FACTOR;
-            info!("Hot wallet has less than the desired balance of {ticker}, sending {send_amount} {ticker}");
+            info!(
+                "Hot wallet has less than the desired balance of {ticker}, sending {send_amount} {ticker}"
+            );
             send_amount
         } else {
             amount

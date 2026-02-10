@@ -6,15 +6,15 @@ use std::{str::FromStr, time::Duration};
 use alloy::{
     hex,
     providers::{
-        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
         DynProvider, Provider, ProviderBuilder, WsConnect,
+        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
     },
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
-use alloy_primitives::{utils::format_units, Address, U256};
+use alloy_primitives::{Address, U256, utils::format_units};
 use alloy_sol_types::SolEvent;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
