@@ -134,9 +134,9 @@ resource = "prover-service-v2"
 [services.mainnet-prover-service]
 [services.mainnet-prover-service.build]
 dockerfile = "prover-service/Dockerfile"
-ecr_repo = "prover-service-mainnet"
+ecr_repo = "prover-service-mainnet-v2"
 cargo_features = "log-invalid-bundles"
 
 [services.mainnet-prover-service.deploy]
 environment = "mainnet"
-resource = "prover-service"
+resource = "prover-service-v2"
