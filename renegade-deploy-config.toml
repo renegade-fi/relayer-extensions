@@ -26,22 +26,22 @@ resource = "auth-server-v2"
 [services.arbitrum-one-auth-server]
 [services.arbitrum-one-auth-server.build]
 dockerfile = "auth/Dockerfile"
-ecr_repo = "auth-server-arbitrum-one"
+ecr_repo = "auth-server-arbitrum-one-v2"
 cargo_features = "arbitrum"
 
 [services.arbitrum-one-auth-server.deploy]
 environment = "arbitrum-one"
-resource = "auth-server"
+resource = "auth-server-v2"
 
 [services.base-mainnet-auth-server]
 [services.base-mainnet-auth-server.build]
 dockerfile = "auth/Dockerfile"
-ecr_repo = "auth-server-base-mainnet"
+ecr_repo = "auth-server-base-mainnet-v2"
 cargo_features = "base"
 
 [services.base-mainnet-auth-server.deploy]
 environment = "base-mainnet"
-resource = "auth-server"
+resource = "auth-server-v2"
 
 #####################
 ### Funds Manager ###
@@ -134,9 +134,9 @@ resource = "prover-service-v2"
 [services.mainnet-prover-service]
 [services.mainnet-prover-service.build]
 dockerfile = "prover-service/Dockerfile"
-ecr_repo = "prover-service-mainnet"
+ecr_repo = "prover-service-mainnet-v2"
 cargo_features = "log-invalid-bundles"
 
 [services.mainnet-prover-service.deploy]
 environment = "mainnet"
-resource = "prover-service"
+resource = "prover-service-v2"
