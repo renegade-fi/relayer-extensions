@@ -5,7 +5,7 @@ use darkpool_indexer_api::types::message_queue::{
     CancelPublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
     PublicIntentMetadataUpdateMessage, RecoveryIdMessage, UpdatePublicIntentMessage,
 };
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::{
     indexer::{Indexer, error::IndexerError},
@@ -20,6 +20,7 @@ impl Indexer {
 
     /// Handle a message polled from the message queue, parsing it into the API
     /// message type and applying the appropriate handler logic
+    #[instrument(skip_all, fields(message = %message.display_name()))]
     pub async fn handle_message(
         &self,
         message: Message,
@@ -58,6 +59,7 @@ impl Indexer {
     // === Master View Seed Message Handler ===
 
     /// Handle a message representing the registration of a new master view seed
+    #[instrument(skip_all, fields(account_id = %message.account_id))]
     pub async fn handle_master_view_seed_message(
         &self,
         message: MasterViewSeedMessage,
@@ -80,6 +82,7 @@ impl Indexer {
     // === Recovery ID Message Handler ===
 
     /// Handle a message representing the registration of a new recovery ID
+    #[instrument(skip_all, fields(recovery_id = %message.recovery_id))]
     pub async fn handle_recovery_id_message(
         &self,
         message: RecoveryIdMessage,
@@ -104,6 +107,7 @@ impl Indexer {
 
     /// Handle a message representing the spending of a state object's nullifier
     /// onchain
+    #[instrument(skip_all, fields(nullifier = %message.nullifier))]
     pub async fn handle_nullifier_spend_message(
         &self,
         message: NullifierSpendMessage,
@@ -123,6 +127,7 @@ impl Indexer {
     // === Public Intent Update Message Handler ===
 
     /// Handle a message representing the update of a public intent
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
     pub async fn handle_update_public_intent_message(
         &self,
         message: UpdatePublicIntentMessage,
@@ -144,6 +149,7 @@ impl Indexer {
     // === Public Intent Cancellation Message Handler ===
 
     /// Handle a message representing the cancellation of a public intent
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
     pub async fn handle_cancel_public_intent_message(
         &self,
         message: CancelPublicIntentMessage,
@@ -165,6 +171,7 @@ impl Indexer {
     // === Public Intent Metadata Update Message Handler ===
 
     /// Handle a message representing an update to a public intent's metadata
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
     pub async fn handle_public_intent_metadata_update_message(
         &self,
         message: PublicIntentMetadataUpdateMessage,

@@ -7,7 +7,7 @@ use darkpool_indexer_api::types::{
     message_queue::Message,
 };
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
 use warp::{http::StatusCode, reject::Rejection, reply::Reply};
 
@@ -23,6 +23,7 @@ use crate::{
 // --------------------
 
 /// Handle a request to backfill a user's state
+#[instrument(skip_all, fields(account_id = %req.account_id))]
 pub async fn handle_backfill_request(
     req: BackfillRequest,
     indexer: Arc<Indexer>,
@@ -45,6 +46,7 @@ pub async fn handle_backfill_request(
 // ----------------------------
 
 /// Handle a request to submit a message to the queue
+#[instrument(skip_all)]
 pub async fn handle_submit_message(
     message: Message,
     indexer: Arc<Indexer>,
@@ -68,6 +70,7 @@ pub async fn handle_submit_message(
 // --------------------------
 
 /// Handle a request to get a user's state
+#[instrument(skip(indexer))]
 pub async fn handle_get_user_state_request(
     account_id: Uuid,
     indexer: Arc<Indexer>,
@@ -80,6 +83,7 @@ pub async fn handle_get_user_state_request(
 }
 
 /// Get all of a user's active state objects
+#[instrument(skip(db_client))]
 pub async fn get_all_active_user_state_objects(
     account_id: Uuid,
     db_client: &DbClient,

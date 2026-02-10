@@ -3,6 +3,7 @@
 
 use darkpool_indexer_api::types::message_queue::PublicIntentMetadataUpdateMessage;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use tracing::instrument;
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
@@ -16,6 +17,7 @@ use crate::{
 impl StateApplicator {
     /// Update a public intent's metadata (creates if not exists, updates if
     /// exists)
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
     pub async fn update_public_intent_metadata(
         &self,
         message: PublicIntentMetadataUpdateMessage,
