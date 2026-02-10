@@ -115,7 +115,9 @@ impl DepositWithdrawSource {
         let full_name = format!("{env_name} {name}").to_lowercase();
         match full_name.to_lowercase().as_str() {
             "arbitrum quoters" | "base quoters" | "ethereum quoters" => Ok(Self::Quoter),
-            "arbitrum fee collection" | "base fee collection" | "ethereum fee collection" => Ok(Self::FeeRedemption),
+            "arbitrum fee collection" | "base fee collection" | "ethereum fee collection" => {
+                Ok(Self::FeeRedemption)
+            },
             "arbitrum gas" | "base gas" | "ethereum gas" => Ok(Self::Gas),
             _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
         }
@@ -246,8 +248,12 @@ impl CustodyClient {
     /// Get the Fireblocks asset IDs for native assets on the current chain
     pub(crate) fn get_current_env_native_asset_ids(&self) -> Result<&[&str], FundsManagerError> {
         match self.chain {
-            Chain::ArbitrumOne | Chain::BaseMainnet | Chain::EthereumMainnet => Ok(MAINNET_NATIVE_ASSET_IDS),
-            Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia => Ok(TESTNET_NATIVE_ASSET_IDS),
+            Chain::ArbitrumOne | Chain::BaseMainnet | Chain::EthereumMainnet => {
+                Ok(MAINNET_NATIVE_ASSET_IDS)
+            },
+            Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia => {
+                Ok(TESTNET_NATIVE_ASSET_IDS)
+            },
             _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }
@@ -255,7 +261,10 @@ impl CustodyClient {
     /// Get the Fireblocks blockchain ID for the current chain
     async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
         let list_blockchains_params = ListBlockchainsParams::builder()
-            .test(matches!(self.chain, Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia))
+            .test(matches!(
+                self.chain,
+                Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia
+            ))
             .deprecated(false)
             .build();
 
