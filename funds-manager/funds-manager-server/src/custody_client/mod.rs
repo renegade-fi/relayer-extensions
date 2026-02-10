@@ -110,9 +110,9 @@ impl DepositWithdrawSource {
         let env_name = to_env_agnostic_name(chain);
         let full_name = format!("{env_name} {name}").to_lowercase();
         match full_name.to_lowercase().as_str() {
-            "arbitrum quoters" | "base quoters" => Ok(Self::Quoter),
+            "arbitrum quoters" | "base quoters" | "ethereum quoters" => Ok(Self::Quoter),
             "arbitrum fee collection" | "base fee collection" => Ok(Self::FeeRedemption),
-            "arbitrum gas" | "base gas" => Ok(Self::Gas),
+            "arbitrum gas" | "base gas" | "ethereum gas" => Ok(Self::Gas),
             _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
         }
     }
