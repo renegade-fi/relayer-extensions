@@ -212,15 +212,14 @@ impl CustodyClient {
 
         for asset in arb_assets.data {
             if let Some(contract_address) = asset.onchain.and_then(|o| o.address)
-                && contract_address.to_lowercase() == address.to_lowercase() {
-                    let asset_id = asset.legacy_id;
+                && contract_address.to_lowercase() == address.to_lowercase()
+            {
+                let asset_id = asset.legacy_id;
 
-                    self.fireblocks_client
-                        .cache_asset_id(address.to_string(), asset_id.clone())
-                        .await;
+                self.fireblocks_client.cache_asset_id(address.to_string(), asset_id.clone()).await;
 
-                    return Ok(Some(asset_id));
-                }
+                return Ok(Some(asset_id));
+            }
         }
 
         Ok(None)
