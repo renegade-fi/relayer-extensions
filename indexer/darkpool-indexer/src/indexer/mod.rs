@@ -33,7 +33,7 @@ pub mod event_indexing;
 
 /// The address of the darkpool contract deployed on Arbitrum One
 const ARBITRUM_ONE_DARKPOOL_ADDRESS: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0xC5D1B8096BbdEC83Bc6049e42822c7483BBA6500"));
 /// The address of the darkpool contract deployed on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x57dF3a4449aaBf72f61e4A5DFe83d4A45DcC8537"));
@@ -49,7 +49,7 @@ const DEVNET_DARKPOOL_ADDRESS: Address =
 
 /// The block number from which to start listening for nullifier spend events
 /// on Arbitrum One
-const ARBITRUM_ONE_NULLIFIER_START_BLOCK: u64 = 0;
+const ARBITRUM_ONE_NULLIFIER_START_BLOCK: u64 = 430434628;
 /// The block number from which to start listening for nullifier spend events
 /// on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 239828845;
@@ -65,7 +65,7 @@ const DEVNET_NULLIFIER_START_BLOCK: u64 = 0;
 
 /// The block number from which to start listening for recovery ID registration
 /// events on Arbitrum One
-const ARBITRUM_ONE_RECOVERY_ID_START_BLOCK: u64 = 0;
+const ARBITRUM_ONE_RECOVERY_ID_START_BLOCK: u64 = 430434628;
 /// The block number from which to start listening for recovery ID registration
 /// events on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 239828845;
@@ -81,7 +81,7 @@ const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 
 /// The block number from which to start listening for public intent update
 /// events on Arbitrum One
-const ARBITRUM_ONE_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
+const ARBITRUM_ONE_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 430434628;
 /// The block number from which to start listening for public intent update
 /// events on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 239828845;
@@ -97,7 +97,7 @@ const DEVNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
 
 /// The block number from which to start listening for public intent
 /// cancellation events on Arbitrum One
-const ARBITRUM_ONE_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
+const ARBITRUM_ONE_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 430434628;
 /// The block number from which to start listening for public intent
 /// cancellation events on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 239828845;
