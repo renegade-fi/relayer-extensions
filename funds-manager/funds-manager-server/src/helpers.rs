@@ -75,16 +75,16 @@ const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
 
 /// The v2 gas sponsor address on Arbitrum One
 const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0xcE7a8D45daa9a5B29f6d255552F577d53fF9EBcf"));
 /// The v2 gas sponsor address on Arbitrum Sepolia
 const ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
-    Address::new(hex!("44183ad1d4ec082e9EEb7e9665211CC35De5123b"));
+    Address::new(hex!("0x44183ad1d4ec082e9EEb7e9665211CC35De5123b"));
 /// The v2 gas sponsor address on Base Mainnet
 const BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0xD9E0507D706408D0f14E22e50880189Fd915be80"));
 /// The v2 gas sponsor address on Base Sepolia
 const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
-    Address::new(hex!("37f529F812d6D5ABa07BFcb9cB374f2450B782eE"));
+    Address::new(hex!("0x37f529F812d6D5ABa07BFcb9cB374f2450B782eE"));
 
 // ---------
 // | ERC20 |
