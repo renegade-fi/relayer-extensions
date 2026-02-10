@@ -3,7 +3,7 @@
 
 use darkpool_indexer_api::types::message_queue::MasterViewSeedMessage;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
@@ -12,6 +12,7 @@ use crate::{
 
 impl StateApplicator {
     /// Register a new master view seed
+    #[instrument(skip_all, fields(account_id = %transition.account_id))]
     pub async fn register_master_view_seed(
         &self,
         transition: MasterViewSeedMessage,

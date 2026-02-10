@@ -2,6 +2,7 @@
 
 use darkpool_indexer_api::types::message_queue::CancelPublicIntentMessage;
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
+use tracing::instrument;
 
 use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 
@@ -11,6 +12,7 @@ use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 
 impl StateApplicator {
     /// Cancel a public intent
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
     pub async fn cancel_public_intent(
         &self,
         message: CancelPublicIntentMessage,

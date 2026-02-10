@@ -4,7 +4,7 @@
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
 use renegade_darkpool_types::settlement_obligation::SettlementObligation;
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
@@ -45,6 +45,7 @@ pub enum IntentSettlementData {
 
 impl StateApplicator {
     /// Settle a match into an intent object
+    #[instrument(skip_all, fields(nullifier = %transition.nullifier))]
     pub async fn settle_match_into_intent(
         &self,
         transition: SettleMatchIntoIntentTransition,

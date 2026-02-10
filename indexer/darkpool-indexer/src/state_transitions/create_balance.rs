@@ -9,7 +9,7 @@ use renegade_darkpool_types::{
     fee::FeeTake,
     settlement_obligation::SettlementObligation,
 };
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
@@ -78,6 +78,7 @@ struct BalanceCreationPrestate {
 
 impl StateApplicator {
     /// Create a new balance object
+    #[instrument(skip_all, fields(recovery_id = %transition.recovery_id))]
     pub async fn create_balance(
         &self,
         transition: CreateBalanceTransition,

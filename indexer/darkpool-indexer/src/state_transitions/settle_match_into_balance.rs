@@ -8,7 +8,7 @@ use renegade_crypto::fields::scalar_to_u128;
 use renegade_darkpool_types::{
     balance::PostMatchBalanceShare, fee::FeeTake, settlement_obligation::SettlementObligation,
 };
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::{
     state_transitions::{StateApplicator, error::StateTransitionError},
@@ -66,6 +66,7 @@ pub enum BalanceSettlementData {
 
 impl StateApplicator {
     /// Settle a match into a balance object
+    #[instrument(skip_all, fields(nullifier = %transition.nullifier))]
     pub async fn settle_match_into_balance(
         &self,
         transition: SettleMatchIntoBalanceTransition,

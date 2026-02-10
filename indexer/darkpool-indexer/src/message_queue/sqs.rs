@@ -104,7 +104,14 @@ impl<M: Serialize + for<'de> Deserialize<'de> + Send + Sync> MessageQueue for Sq
                 message_group_id.zip(sqs_message.body).zip(sqs_message.receipt_handle);
 
             if let Some(((message_group_id, message_body), receipt_handle)) = message_data {
-                let message: Self::Message = serde_json::from_str(&message_body)?;
+                let message = match serde_json::from_str::<Self::Message>(&message_body) {
+                    Ok(message) => message,
+                    Err(e) => {
+                        // Skip messages which we fail to deserialize
+                        warn!("Failed to deserialize message: {e}");
+                        continue;
+                    },
+                };
 
                 message_groups.entry(message_group_id).or_default().push((message, receipt_handle));
             }

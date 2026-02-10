@@ -3,7 +3,7 @@
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 
@@ -28,6 +28,7 @@ pub struct DepositTransition {
 
 impl StateApplicator {
     /// Deposit funds into an existing balance object
+    #[instrument(skip_all, fields(nullifier = %transition.nullifier))]
     pub async fn deposit(
         &self,
         transition: DepositTransition,

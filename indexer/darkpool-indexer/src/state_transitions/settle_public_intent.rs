@@ -6,7 +6,7 @@ use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_darkpool_types::intent::Intent;
 use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
-use tracing::warn;
+use tracing::{instrument, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -77,6 +77,7 @@ impl PublicIntentSettlementData {
 impl StateApplicator {
     /// Settle a match into a public intent (creates if not exists, updates if
     /// exists)
+    #[instrument(skip_all, fields(intent_hash = %transition.intent_hash))]
     pub async fn settle_public_intent(
         &self,
         transition: SettlePublicIntentTransition,

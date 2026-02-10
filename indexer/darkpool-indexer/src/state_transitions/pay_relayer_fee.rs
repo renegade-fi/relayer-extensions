@@ -3,7 +3,7 @@
 
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::state_transitions::{StateApplicator, error::StateTransitionError};
 
@@ -29,6 +29,7 @@ pub struct PayRelayerFeeTransition {
 
 impl StateApplicator {
     /// Pay the relayer fee accrued on a balance object
+    #[instrument(skip_all, fields(nullifier = %transition.nullifier))]
     pub async fn pay_relayer_fee(
         &self,
         transition: PayRelayerFeeTransition,
