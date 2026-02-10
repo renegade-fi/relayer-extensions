@@ -23,7 +23,6 @@ use crate::{
         get_gas_sponsor_address_v2,
     },
     metrics::MetricsRecorder,
-    relayer_client::RelayerClient,
 };
 
 // -------------
@@ -235,7 +234,7 @@ impl ChainConfig {
         price_reporter: PriceReporterClient,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
-        let relayer_client = RelayerClient::new(&self.relayer_url, chain);
+        //let relayer_client = RelayerClient::new(&self.relayer_url, chain);
 
         let darkpool_address = get_darkpool_address(chain);
 

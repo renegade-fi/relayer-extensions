@@ -2,7 +2,7 @@
 name = "funds-manager"
 description = "Manages custody of funds for protocol operator"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # === CLI + Server === #

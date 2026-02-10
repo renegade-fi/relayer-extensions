@@ -179,6 +179,7 @@ impl RateLimitMethod {
     }
 }
 
+#[allow(unused)]
 #[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = rate_limits)]
 #[diesel(check_for_backend(diesel::pg::Pg))]

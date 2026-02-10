@@ -175,7 +175,7 @@ impl CustodyClient {
     }
 
     /// Get a database connection from the pool
-    pub async fn get_db_conn(&self) -> Result<DbConn, FundsManagerError> {
+    pub async fn get_db_conn(&self) -> Result<DbConn<'_>, FundsManagerError> {
         self.db_pool.get().await.map_err(|e| FundsManagerError::Db(e.to_string()))
     }
 

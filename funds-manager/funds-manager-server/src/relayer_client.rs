@@ -18,13 +18,13 @@ use serde::{Deserialize, Serialize};
 use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The amount of time (ms) to declare a wallet signature value for
-const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
+pub const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
 
 /// A client for interacting with a configured relayer
 #[derive(Clone)]
 pub struct RelayerClient {
     /// The base URL of the relayer
-    base_url: String,
+    pub base_url: String,
     /// The chain the relayer is targeting
     pub chain: Chain,
 }
@@ -48,6 +48,7 @@ impl RelayerClient {
     // | Helpers |
     // -----------
 
+    #[allow(unused)]
     /// Post to the relayer URL
     async fn post_relayer<Req, Resp>(
         &self,
@@ -61,6 +62,7 @@ impl RelayerClient {
         self.post_relayer_with_headers(path, body, &HeaderMap::new()).await
     }
 
+    #[allow(unused)]
     /// Post to the relayer with wallet auth
     async fn post_relayer_with_auth<Req, Resp>(
         &self,
@@ -81,6 +83,7 @@ impl RelayerClient {
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
+    #[allow(unused)]
     /// Post to the relayer with given headers
     async fn post_relayer_with_headers<Req, Resp>(
         &self,
@@ -116,6 +119,7 @@ impl RelayerClient {
         resp.json::<Resp>().await.map_err(err_str!(FundsManagerError::Parse))
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL
     async fn get_relayer<Resp>(&self, path: &str) -> Result<Resp, FundsManagerError>
     where
@@ -124,6 +128,7 @@ impl RelayerClient {
         self.get_relayer_with_headers(path, &HeaderMap::new()).await
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL with wallet auth
     async fn get_relayer_with_auth<Resp>(
         &self,
@@ -146,6 +151,7 @@ impl RelayerClient {
         self.get_relayer_with_headers(path, &headers).await
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL with given headers
     async fn get_relayer_with_headers<Resp>(
         &self,
