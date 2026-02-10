@@ -4,11 +4,7 @@ use alloy::providers::Provider;
 use alloy_primitives::{Address, TxHash, U256};
 use alloy_sol_types::SolEvent;
 use funds_manager_api::u256_try_into_u128;
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
-use renegade_darkpool_client::conversion::u256_to_amount;
+use renegade_types_core::{Chain, Token, USDC_TICKER};
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -16,7 +12,7 @@ use super::MetricsRecorder;
 use crate::{
     error::FundsManagerError,
     execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
-    helpers::{get_darkpool_address, to_env_agnostic_name, IERC20::Transfer},
+    helpers::{IERC20::Transfer, get_darkpool_address, to_env_agnostic_name},
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, SELF_TRADE_VOLUME_USDC_METRIC_NAME, SWAP_EXECUTION_COST_METRIC_NAME,
         SWAP_GAS_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
@@ -216,7 +212,7 @@ impl MetricsRecorder {
         let price = self.get_price(&weth.get_alloy_address(), Chain::ArbitrumOne).await?;
 
         // Convert the wei to weth then to usdc
-        let wei_u128 = u256_to_amount(wei).map_err(FundsManagerError::parse)?;
+        let wei_u128 = u256_try_into_u128(wei).map_err(FundsManagerError::parse)?;
         let weth_input = weth.convert_to_decimal(wei_u128);
         let cost = weth_input * price;
         Ok(cost)

@@ -8,13 +8,13 @@
 
 use ark_mpc::network::PartyId;
 use itertools::Itertools;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender,
+    UnboundedReceiver as Receiver, UnboundedSender as Sender, unbounded_channel,
 };
 
 use renegade_dealer_api::{DealerRequest, DealerResponse, RequestId};
@@ -299,15 +299,15 @@ impl Dealer {
 #[cfg(test)]
 mod test {
     use ark_mpc::{PARTY0, PARTY1};
-    use itertools::{izip, Itertools};
+    use itertools::{Itertools, izip};
     use k256::SecretKey;
     use rand::thread_rng;
     use renegade_dealer_api::{DealerRequest, DealerResponse};
     use uuid::Uuid;
 
     use super::{
-        create_dealer_sender_receiver, create_response_sender_receiver, Dealer, DealerJob, Scalar,
-        ScalarShare,
+        Dealer, DealerJob, Scalar, ScalarShare, create_dealer_sender_receiver,
+        create_response_sender_receiver,
     };
 
     // -----------

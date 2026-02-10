@@ -7,7 +7,7 @@ use funds_manager_api::hot_wallets::{
     CreateHotWalletRequest, CreateHotWalletResponse, HotWalletBalancesResponse,
 };
 use itertools::Itertools;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use warp::reply::Json;
 
 use crate::{error::ApiError, server::Server};

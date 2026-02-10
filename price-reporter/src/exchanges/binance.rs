@@ -7,11 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
-use renegade_common::types::{
-    exchange::{Exchange, PriceReport},
-    price::Price,
-    token::Token,
-};
+use renegade_types_core::{Exchange, Price, PriceReport, Token};
 use renegade_util::{err_str, get_current_time_millis};
 use serde_json::Value;
 use tracing::error;
@@ -19,17 +15,17 @@ use tungstenite::Message;
 use url::Url;
 
 use crate::{
+    PairInfo,
     exchanges::{
+        ExchangeConnectionsConfig,
         connection::{BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType},
         error::ExchangeConnectionError,
         util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
-        ExchangeConnectionsConfig,
     },
-    PairInfo,
 };
 
 use super::connection::{
-    parse_json_field, parse_json_from_message, ws_connect, ws_ping, ExchangeConnection,
+    ExchangeConnection, parse_json_field, parse_json_from_message, ws_connect, ws_ping,
 };
 
 // -------------

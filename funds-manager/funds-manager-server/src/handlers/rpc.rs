@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use warp::reply::Json;
 
 use crate::{cli::Environment, custody_client::rpc_shim::JsonRpcRequest, server::Server};

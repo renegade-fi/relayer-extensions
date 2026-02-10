@@ -14,9 +14,9 @@ tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 
 # === Renegade Dependencies === #
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-circuits-core = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "joey/relayer-v2", features = ["telemetry"] }
+renegade-circuit-types = { workspace = true }
+renegade-circuits-core = { workspace = true }
+renegade-util = { workspace = true, features = ["telemetry"] }
 prover-service-api = { path = "../api" }
 mpc-plonk = { git = "https://github.com/renegade-fi/mpc-jellyfish.git", optional = true }
 

@@ -17,8 +17,8 @@ use crate::{
     exchanges::ExchangeConnectionsConfig,
     price_stream_manager::GlobalPriceStreams,
     utils::{
-        get_price_topic_str, get_subscribed_topics, PairInfo, PriceMessage, PriceStreamMap,
-        WsWriteStream,
+        PairInfo, PriceMessage, PriceStreamMap, WsWriteStream, get_price_topic_str,
+        get_subscribed_topics,
     },
 };
 

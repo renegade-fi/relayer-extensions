@@ -18,15 +18,15 @@
 mod dealer;
 
 use ark_mpc::PARTY0;
-use ark_mpc::{network::PartyId, PARTY1};
+use ark_mpc::{PARTY1, network::PartyId};
 use base64::prelude::*;
 use clap::Parser;
 use dealer::{
-    create_dealer_sender_receiver, create_response_sender_receiver, Dealer, DealerJob, DealerSender,
+    Dealer, DealerJob, DealerSender, create_dealer_sender_receiver, create_response_sender_receiver,
 };
-use k256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+use k256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use renegade_dealer_api::{
-    DealerRequest, DealerResponse, ErrorResponse, RequestId, PARTY_ID_HEADER, SIGNATURE_HEADER,
+    DealerRequest, DealerResponse, ErrorResponse, PARTY_ID_HEADER, RequestId, SIGNATURE_HEADER,
 };
 use uuid::Uuid;
 use warp::Filter;

@@ -1,7 +1,7 @@
 //! Defines `ExecutorClient` helpers that allow for interacting with the
 //! executor contract
 use alloy::rpc::types::TransactionReceipt;
-use renegade_solidity_abi::IDarkpool::{
+use renegade_solidity_abi::v2::IDarkpoolV2::{
     MatchAtomicLinkingProofs, MatchAtomicProofs, PartyMatchPayload, SignedOrder,
     ValidMatchSettleAtomicStatement,
 };

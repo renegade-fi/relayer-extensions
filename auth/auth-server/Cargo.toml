@@ -53,28 +53,28 @@ ruint = { version = "1.16", default-features = false, features = [
 # === Renegade Dependencies === #
 auth-server-api = { path = "../auth-server-api" }
 price-reporter-client = { path = "../../price-reporter-client" }
-renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = [
+renegade-darkpool-client = { workspace = true }
+renegade-types-core = { workspace = true, features = [
     "hmac",
 ] }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = [
+renegade-config = { workspace = true }
+renegade-constants = { workspace = true }
+renegade-circuit-types = { workspace = true }
+renegade-crypto = { workspace = true }
+renegade-util = { workspace = true, features = [
     "blockchain",
     "telemetry",
 ] }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
-renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts.git", features = [
+renegade-system-clock = { workspace = true }
+renegade-solidity-abi = { workspace = true, features = [
     "v2",
     "v2-relayer-types",
 ] }
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", default-features = false, features = [
+renegade-external-api = { workspace = true, features = [
     "auth",
     "full-api",
 ] }
-renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-darkpool-types = { workspace = true }
 
 # === Misc Dependencies === #
 async-trait = "0.1"
@@ -94,7 +94,7 @@ serde_json = { version = "1.0.139", features = ["arbitrary_precision"] }
 serde_urlencoded = "0.7"
 thiserror = "1.0"
 tracing = "0.1"
-uuid = { version = "0.8.2", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 
 [dev-dependencies]
 eyre = "0.6"

@@ -18,7 +18,7 @@ use super::CustodyClient;
 use crate::{
     custody_client::DepositWithdrawSource,
     error::FundsManagerError,
-    helpers::{create_secrets_manager_entry_with_description, get_secret, IERC20},
+    helpers::{IERC20, create_secrets_manager_entry_with_description, get_secret},
 };
 
 /// The desired gas balance on the quoter hot wallet

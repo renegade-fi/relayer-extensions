@@ -16,20 +16,20 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use alloy_primitives::{
-    utils::{format_units, parse_units},
     Address, TxHash,
+    utils::{format_units, parse_units},
 };
 use aws_config::SdkConfig as AwsConfig;
 use fireblocks_sdk::{
     apis::{
+        Api,
         blockchains_assets_beta_api::{ListAssetsParams, ListBlockchainsParams},
         transactions_api::GetTransactionsParams,
-        Api,
     },
     models::TransactionResponse,
 };
 use price_reporter_client::PriceReporterClient;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str::FromStr, time::Instant};
@@ -37,7 +37,9 @@ use tracing::{debug, info};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
-    helpers::{get_erc20_balance, send_tx_with_retry, to_env_agnostic_name, IERC20, TWO_CONFIRMATIONS},
+    helpers::{
+        IERC20, TWO_CONFIRMATIONS, get_erc20_balance, send_tx_with_retry, to_env_agnostic_name,
+    },
 };
 use crate::{
     db::{DbConn, DbPool},
@@ -108,9 +110,9 @@ impl DepositWithdrawSource {
         let env_name = to_env_agnostic_name(chain);
         let full_name = format!("{env_name} {name}").to_lowercase();
         match full_name.to_lowercase().as_str() {
-            "arbitrum quoters" | "base quoters" => Ok(Self::Quoter),
+            "arbitrum quoters" | "base quoters" | "ethereum quoters" => Ok(Self::Quoter),
             "arbitrum fee collection" | "base fee collection" => Ok(Self::FeeRedemption),
-            "arbitrum gas" | "base gas" => Ok(Self::Gas),
+            "arbitrum gas" | "base gas" | "ethereum gas" => Ok(Self::Gas),
             _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
         }
     }
@@ -173,7 +175,7 @@ impl CustodyClient {
     }
 
     /// Get a database connection from the pool
-    pub async fn get_db_conn(&self) -> Result<DbConn, FundsManagerError> {
+    pub async fn get_db_conn(&self) -> Result<DbConn<'_>, FundsManagerError> {
         self.db_pool.get().await.map_err(|e| FundsManagerError::Db(e.to_string()))
     }
 
@@ -209,16 +211,14 @@ impl CustodyClient {
             .await?;
 
         for asset in arb_assets.data {
-            if let Some(contract_address) = asset.onchain.and_then(|o| o.address) {
-                if contract_address.to_lowercase() == address.to_lowercase() {
-                    let asset_id = asset.legacy_id;
+            if let Some(contract_address) = asset.onchain.and_then(|o| o.address)
+                && contract_address.to_lowercase() == address.to_lowercase()
+            {
+                let asset_id = asset.legacy_id;
 
-                    self.fireblocks_client
-                        .cache_asset_id(address.to_string(), asset_id.clone())
-                        .await;
+                self.fireblocks_client.cache_asset_id(address.to_string(), asset_id.clone()).await;
 
-                    return Ok(Some(asset_id));
-                }
+                return Ok(Some(asset_id));
             }
         }
 

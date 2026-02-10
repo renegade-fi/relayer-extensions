@@ -6,22 +6,22 @@ use std::{str::FromStr, time::Duration};
 use alloy::{
     hex,
     providers::{
-        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
         DynProvider, Provider, ProviderBuilder, WsConnect,
+        fillers::{BlobGasFiller, ChainIdFiller, GasFiller},
     },
     rpc::types::{TransactionReceipt, TransactionRequest},
     signers::local::PrivateKeySigner,
     sol,
 };
 use alloy_json_rpc::{ErrorPayload, RpcError};
-use alloy_primitives::{utils::format_units, Address, U256};
+use alloy_primitives::{Address, U256, utils::format_units};
 use alloy_sol_types::SolEvent;
 use aws_config::SdkConfig;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_secretsmanager::client::Client as SecretsManagerClient;
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive};
 use rand::Rng;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
 use reqwest::Response;
 use serde::Deserialize;
@@ -59,6 +59,12 @@ const BASE_MAINNET_DARKPOOL_ADDRESS: Address =
 /// The darkpool address on Base Sepolia
 const BASE_SEPOLIA_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x653C95391644EEE16E4975a7ef1f46e0B8276695"));
+/// The darkpool address on Ethereum Mainnet
+const ETHEREUM_MAINNET_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000")); // Placeholder
+/// The darkpool address on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x45537c28F245645CC1E7F7258FCC18A189CE16e3"));
 
 /// The gas sponsor address on Arbitrum One
 const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS: Address =
@@ -72,6 +78,12 @@ const BASE_MAINNET_GAS_SPONSOR_ADDRESS: Address =
 /// The gas sponsor address on Base Sepolia
 const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
     Address::new(hex!("0x2fDB4e70Db12599b04642b3d023E75f6439c5707"));
+/// The gas sponsor address on Ethereum Mainnet
+const ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000")); // Placeholder
+/// The gas sponsor address on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0x8E330790c68b9462123848e418BaDB3399c7D26F"));
 
 /// The v2 gas sponsor address on Arbitrum One
 const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2: Address =
@@ -85,6 +97,12 @@ const BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2: Address =
 /// The v2 gas sponsor address on Base Sepolia
 const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
     Address::new(hex!("0x37f529F812d6D5ABa07BFcb9cB374f2450B782eE"));
+/// The v2 gas sponsor address on Ethereum Mainnet
+const ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000")); // Placeholder
+/// The v2 gas sponsor address on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0x2fDB4e70Db12599b04642b3d023E75f6439c5707"));
 
 // ---------
 // | ERC20 |
@@ -130,7 +148,7 @@ pub fn build_provider(base_provider: DynProvider, wallet: Option<PrivateKeySigne
         .with_simple_nonce_management()
         .filler(ChainIdFiller::default())
         .filler(GasFiller)
-        .filler(BlobGasFiller);
+        .filler(BlobGasFiller::default());
 
     if let Some(wallet) = wallet {
         builder.wallet(wallet).connect_provider(base_provider).erased()
@@ -278,7 +296,9 @@ pub fn get_secret_prefix(chain: Chain) -> Result<String, FundsManagerError> {
         Chain::ArbitrumOne => Ok("/arbitrum/one".to_string()),
         Chain::ArbitrumSepolia => Ok("/arbitrum/sepolia".to_string()),
         Chain::BaseMainnet => Ok("/base/mainnet".to_string()),
-        Chain::BaseSepolia => Ok("/base/mainnet".to_string()),
+        Chain::BaseSepolia => Ok("/base/sepolia".to_string()),
+        Chain::EthereumMainnet => Ok("/ethereum/mainnet".to_string()),
+        Chain::EthereumSepolia => Ok("/ethereum/sepolia".to_string()),
         _ => Err(FundsManagerError::custom("Unsupported chain")),
     }
 }
@@ -367,6 +387,7 @@ pub fn to_env_agnostic_name(chain: Chain) -> String {
     match chain {
         Chain::ArbitrumOne | Chain::ArbitrumSepolia => "arbitrum".to_string(),
         Chain::BaseMainnet | Chain::BaseSepolia => "base".to_string(),
+        Chain::EthereumMainnet | Chain::EthereumSepolia => "ethereum".to_string(),
         _ => chain.to_string(),
     }
 }
@@ -381,10 +402,15 @@ pub fn from_env_agnostic_name(chain: &str, environment: &Environment) -> Chain {
         Environment::Mainnet => Chain::BaseMainnet,
         Environment::Testnet => Chain::BaseSepolia,
     };
+    let ethereum_chain = match environment {
+        Environment::Mainnet => Chain::EthereumMainnet,
+        Environment::Testnet => Chain::EthereumSepolia,
+    };
 
     match chain {
         "arbitrum" => arb_chain,
         "base" => base_chain,
+        "ethereum" => ethereum_chain,
         _ => Chain::from_str(chain).unwrap(),
     }
 }
@@ -409,6 +435,8 @@ pub fn from_chain_id(chain_id: u64) -> Result<Chain, String> {
         421614 => Ok(Chain::ArbitrumSepolia),
         8453 => Ok(Chain::BaseMainnet),
         84532 => Ok(Chain::BaseSepolia),
+        1 => Ok(Chain::EthereumMainnet),
+        11155111 => Ok(Chain::EthereumSepolia),
         0 => Ok(Chain::Devnet),
         _ => Err("Invalid chain ID".to_string()),
     }
@@ -421,7 +449,9 @@ pub fn get_darkpool_address(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS,
         Chain::BaseMainnet => BASE_MAINNET_DARKPOOL_ADDRESS,
         Chain::BaseSepolia => BASE_SEPOLIA_DARKPOOL_ADDRESS,
-        _ => panic!("Invalid chain"),
+        Chain::EthereumMainnet => ETHEREUM_MAINNET_DARKPOOL_ADDRESS,
+        Chain::EthereumSepolia => ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS,
+        _ => panic!("{}", format!("get_darkpool_address: Invalid chain {}", chain)),
     }
 }
 
@@ -432,7 +462,9 @@ pub fn get_gas_sponsor_address(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
         Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS,
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS,
-        _ => panic!("Invalid chain"),
+        Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS,
+        Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
+        _ => panic!("{}", format!("get_gas_sponsor_address: Invalid chain {}", chain)),
     }
 }
 
@@ -443,7 +475,9 @@ pub fn get_gas_sponsor_address_v2(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
         Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2,
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
-        _ => panic!("Invalid chain"),
+        Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS_V2,
+        Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS_V2,
+        _ => panic!("{}", format!("get_gas_sponsor_address_v2: Invalid chain {}", chain)),
     }
 }
 

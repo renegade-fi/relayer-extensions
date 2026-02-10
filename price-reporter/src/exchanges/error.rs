@@ -1,6 +1,6 @@
 //! The error types used by the ExchangeConnection
 
-use renegade_common::types::{exchange::Exchange, token::Token};
+use renegade_types_core::{Exchange, Token};
 use thiserror::Error;
 
 /// The core error type used by the ExchangeConnection. All thrown errors are

@@ -2,13 +2,15 @@
 
 use std::time::Duration;
 
-use base64::engine::{general_purpose as b64_general_purpose, Engine};
+use base64::engine::{Engine, general_purpose as b64_general_purpose};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
-    auth::create_request_signature, http::wallet::RedeemNoteRequest, RENEGADE_AUTH_HEADER_NAME,
+    // http::wallet::RedeemNoteRequest,
+    RENEGADE_AUTH_HEADER_NAME,
     RENEGADE_SIG_EXPIRATION_HEADER_NAME,
+    auth::create_request_signature,
 };
-use renegade_common::types::{chain::Chain, hmac::HmacKey};
+use renegade_types_core::{Chain, HmacKey};
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -16,13 +18,13 @@ use serde::{Deserialize, Serialize};
 use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The amount of time (ms) to declare a wallet signature value for
-const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
+pub const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
 
 /// A client for interacting with a configured relayer
 #[derive(Clone)]
 pub struct RelayerClient {
     /// The base URL of the relayer
-    base_url: String,
+    pub base_url: String,
     /// The chain the relayer is targeting
     pub chain: Chain,
 }
@@ -33,19 +35,20 @@ impl RelayerClient {
         Self { base_url: base_url.to_string(), chain }
     }
 
-    /// Redeem a note into a wallet
-    pub(crate) async fn redeem_note(
-        &self,
-        req: RedeemNoteRequest,
-        wallet_key: &HmacKey,
-    ) -> Result<(), FundsManagerError> {
-        todo!("Implement redeem note")
-    }
+    ///// Redeem a note into a wallet
+    // pub(crate) async fn redeem_note(
+    //&self,
+    // req: RedeemNoteRequest,
+    // wallet_key: &HmacKey,
+    //) -> Result<(), FundsManagerError> {
+    // todo!("Implement redeem note")
+    //}
 
     // -----------
     // | Helpers |
     // -----------
 
+    #[allow(unused)]
     /// Post to the relayer URL
     async fn post_relayer<Req, Resp>(
         &self,
@@ -59,6 +62,7 @@ impl RelayerClient {
         self.post_relayer_with_headers(path, body, &HeaderMap::new()).await
     }
 
+    #[allow(unused)]
     /// Post to the relayer with wallet auth
     async fn post_relayer_with_auth<Req, Resp>(
         &self,
@@ -79,6 +83,7 @@ impl RelayerClient {
         self.post_relayer_with_headers(path, body, &headers).await
     }
 
+    #[allow(unused)]
     /// Post to the relayer with given headers
     async fn post_relayer_with_headers<Req, Resp>(
         &self,
@@ -114,6 +119,7 @@ impl RelayerClient {
         resp.json::<Resp>().await.map_err(err_str!(FundsManagerError::Parse))
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL
     async fn get_relayer<Resp>(&self, path: &str) -> Result<Resp, FundsManagerError>
     where
@@ -122,6 +128,7 @@ impl RelayerClient {
         self.get_relayer_with_headers(path, &HeaderMap::new()).await
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL with wallet auth
     async fn get_relayer_with_auth<Resp>(
         &self,
@@ -144,6 +151,7 @@ impl RelayerClient {
         self.get_relayer_with_headers(path, &headers).await
     }
 
+    #[allow(unused)]
     /// Get from the relayer URL with given headers
     async fn get_relayer_with_headers<Resp>(
         &self,

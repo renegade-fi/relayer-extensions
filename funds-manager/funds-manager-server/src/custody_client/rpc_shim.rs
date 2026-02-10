@@ -7,9 +7,9 @@ use alloy_json_rpc::{
 use fireblocks_sdk::{
     apis::transactions_api::CreateTransactionParams,
     models::{
-        unsigned_message::Type as MessageType, CreateTransactionResponse, ExtraParameters,
-        ExtraParametersRawMessageData, SourceTransferPeerPath, TransactionOperation,
-        TransactionRequest, TransactionStatus, UnsignedMessage,
+        CreateTransactionResponse, ExtraParameters, ExtraParametersRawMessageData,
+        SourceTransferPeerPath, TransactionOperation, TransactionRequest, TransactionStatus,
+        UnsignedMessage, unsigned_message::Type as MessageType,
     },
 };
 use serde_json::Value;
@@ -22,8 +22,8 @@ use tracing::error;
 // identifier `HyperliquidTransaction:Withdraw`. Due to the usage of the `:`
 // character, Alloy will fail to deserialize the TypedData.
 use ethers::types::{
-    transaction::eip712::{EIP712Domain, TypedData},
     U256,
+    transaction::eip712::{EIP712Domain, TypedData},
 };
 
 use crate::error::FundsManagerError;

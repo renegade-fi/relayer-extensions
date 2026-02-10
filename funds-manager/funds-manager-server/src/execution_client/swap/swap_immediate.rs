@@ -3,18 +3,18 @@
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::QuoteParams, u256_try_into_u128};
 use futures::future::join_all;
-use renegade_common::types::token::Token;
+use renegade_types_core::Token;
 use tracing::{info, instrument, warn};
 
 use crate::{
     execution_client::{
+        ExecutionClient,
         error::ExecutionClientError,
         swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
         venues::{
-            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
             ExecutionResult, ExecutionVenue,
+            quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
         },
-        ExecutionClient,
     },
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, QUOTE_PRICE_DEVIATION, TRADE_SIDE_FACTOR_TAG, VENUE_TAG,
@@ -125,7 +125,9 @@ impl ExecutionClient {
                     );
 
                     if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
-                        warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
+                        warn!(
+                            "Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)"
+                        );
                         return Ok(None);
                     }
                 },
@@ -213,7 +215,9 @@ impl ExecutionClient {
 
         let expected_quote_amount = self.get_expected_quote_amount(params).await?;
         if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            warn!(
+                "Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
+            );
             return Ok(false);
         }
 

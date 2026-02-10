@@ -12,7 +12,7 @@ use k256::PublicKey;
 use serde::{Deserialize, Serialize};
 
 /// Serialize a public key
-use serde::{de::Error as DeError, Deserializer, Serializer};
+use serde::{Deserializer, Serializer, de::Error as DeError};
 
 /// Custom serialization for `PublicKey`
 fn serialize_key<S>(key: &PublicKey, serializer: S) -> Result<S::Ok, S::Error>

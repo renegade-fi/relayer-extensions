@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use atomic_float::AtomicF64;
 use futures::stream::StreamExt;
 use futures_util::{
-    stream::{SplitSink, SplitStream},
     Sink, SinkExt, Stream,
+    stream::{SplitSink, SplitStream},
 };
-use renegade_common::types::{price::Price, token::Token};
+use renegade_types_core::{Price, Token};
 use serde_json::Value;
 use std::{
     pin::Pin,
@@ -16,13 +16,13 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use tracing::{error, warn};
-use tungstenite::{http::StatusCode, Error as WsError};
+use tungstenite::{Error as WsError, http::StatusCode};
 use url::Url;
 
 use crate::{
-    exchanges::{error::ExchangeConnectionError, ExchangeConnectionsConfig},
+    exchanges::{ExchangeConnectionsConfig, error::ExchangeConnectionError},
     utils::PairInfo,
 };
 

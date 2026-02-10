@@ -7,16 +7,13 @@ use crate::{
 };
 use alloy::signers::local::PrivateKeySigner;
 use fireblocks_sdk::{
-    apis::{transactions_api::CreateTransactionParams, Api},
+    apis::{Api, transactions_api::CreateTransactionParams},
     models::{
         DestinationTransferPeerPath, SourceTransferPeerPath, TransactionOperation,
         TransactionRequest, TransactionRequestAmount, TransactionStatus, TransferPeerPathType,
     },
 };
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use renegade_types_core::{Chain, Token, USDC_TICKER};
 use tracing::info;
 
 use super::{CustodyClient, DepositWithdrawSource};
@@ -271,10 +268,10 @@ impl CustodyClient {
         for wallet in whitelisted_wallets {
             let wallet_id = wallet.id;
             for asset in wallet.assets {
-                if let Some(address) = asset.address {
-                    if address.to_lowercase() == bridge_address.to_lowercase() {
-                        return Ok(wallet_id);
-                    }
+                if let Some(address) = asset.address
+                    && address.to_lowercase() == bridge_address.to_lowercase()
+                {
+                    return Ok(wallet_id);
                 }
             }
         }

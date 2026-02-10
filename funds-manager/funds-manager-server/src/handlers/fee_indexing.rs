@@ -5,21 +5,21 @@ use std::sync::Arc;
 use bytes::Bytes;
 use funds_manager_api::{
     fees::{
-        FeeWalletsResponse, UnredeemedFeeTotal, UnredeemedFeeTotalsResponse,
+        // FeeWalletsResponse, UnredeemedFeeTotal, UnredeemedFeeTotalsResponse,
         WithdrawFeeBalanceRequest,
     },
     quoters::DepositAddressResponse,
 };
-use renegade_common::types::chain::Chain;
-use tracing::error;
+use renegade_types_core::Chain;
+// use tracing::error;
 use warp::reply::Json;
 
 use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};
 
 /// Handler for indexing fees
 pub(crate) async fn index_fees_handler(
-    chain: Chain,
-    server: Arc<Server>,
+    _chain: Chain,
+    _server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // let indexer = server.get_fee_indexer(&chain)?;
     // tokio::task::spawn(async move {
@@ -33,8 +33,8 @@ pub(crate) async fn index_fees_handler(
 
 /// Handler for redeeming fees
 pub(crate) async fn redeem_fees_handler(
-    chain: Chain,
-    server: Arc<Server>,
+    _chain: Chain,
+    _server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // let indexer = server.get_fee_indexer(&chain)?;
     // tokio::task::spawn(async move {
@@ -48,9 +48,9 @@ pub(crate) async fn redeem_fees_handler(
 
 /// Handler for getting fee wallets
 pub(crate) async fn get_fee_wallets_handler(
-    chain: Chain,
+    _chain: Chain,
     _body: Bytes, // no body
-    server: Arc<Server>,
+    _server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // let indexer = server.get_fee_indexer(&chain)?;
     // let wallets = indexer.fetch_fee_wallets().await?;
@@ -61,9 +61,9 @@ pub(crate) async fn get_fee_wallets_handler(
 
 /// Handler for withdrawing a fee balance
 pub(crate) async fn withdraw_fee_balance_handler(
-    chain: Chain,
-    req: WithdrawFeeBalanceRequest,
-    server: Arc<Server>,
+    _chain: Chain,
+    _req: WithdrawFeeBalanceRequest,
+    _server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // let indexer = server.get_fee_indexer(&chain)?;
     // tokio::task::spawn(async move {
@@ -92,8 +92,8 @@ pub(crate) async fn get_fee_hot_wallet_address_handler(
 
 /// Handler for querying the total amount of unredeemed fees for each mint
 pub(crate) async fn get_unredeemed_fee_totals_handler(
-    chain: Chain,
-    server: Arc<Server>,
+    _chain: Chain,
+    _server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     // let indexer = server.get_fee_indexer(&chain)?;
     // let totals_vec = indexer.get_unredeemed_fee_totals().await?;

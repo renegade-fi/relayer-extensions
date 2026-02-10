@@ -3,8 +3,8 @@
 use bb8::{Pool, PooledConnection};
 use diesel::ConnectionError;
 use diesel_async::{
-    pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
     AsyncPgConnection,
+    pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
 };
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;

@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use http::{HeaderMap, Method};
-use renegade_api::http::order_book::GET_DEPTH_FOR_ALL_PAIRS_ROUTE;
+use renegade_external_api::http::order_book::GET_DEPTH_FOR_ALL_PAIRS_ROUTE;
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 

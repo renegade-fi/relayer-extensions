@@ -12,7 +12,7 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::Deserialize;
 use tracing::{info, instrument, warn};
@@ -22,14 +22,14 @@ use crate::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
+            ExecutionResult, ExecutionVenue,
             bebop::api_types::{ApprovalType, BebopQuoteParams, BebopQuoteResponse},
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-            ExecutionResult, ExecutionVenue,
         },
     },
     helpers::{
-        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
-        handle_http_response, send_tx_with_retry, TWO_CONFIRMATIONS,
+        TWO_CONFIRMATIONS, approve_erc20_allowance, build_provider, get_gas_cost,
+        get_received_amount, handle_http_response, send_tx_with_retry,
     },
 };
 

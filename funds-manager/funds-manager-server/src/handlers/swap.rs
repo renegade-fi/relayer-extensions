@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use funds_manager_api::quoters::{QuoteParams, SwapImmediateResponse, SwapIntoTargetTokenRequest};
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use tracing::{instrument, warn};
 use warp::reply::Json;
 

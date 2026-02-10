@@ -26,11 +26,7 @@ fn get_header_bytes(headers: &HeaderMap) -> Vec<u8> {
         .iter()
         .filter_map(|(k, v)| {
             let key = k.to_string().to_lowercase();
-            if key.starts_with(RENEGADE_HEADER_PREFIX) {
-                Some((key, v))
-            } else {
-                None
-            }
+            if key.starts_with(RENEGADE_HEADER_PREFIX) { Some((key, v)) } else { None }
         })
         .collect_vec();
     renegade_headers.sort_by(|a, b| a.0.cmp(&b.0));

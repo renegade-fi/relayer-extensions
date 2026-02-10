@@ -7,7 +7,7 @@ use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
 };
-use renegade_api::http::{
+use renegade_external_api::http::{
     external_match::{
         ASSEMBLE_MALLEABLE_EXTERNAL_MATCH_ROUTE, AssembleExternalMatchRequest,
         AtomicMatchApiBundle, ExternalMatchRequest, ExternalOrder, ExternalQuoteRequest,

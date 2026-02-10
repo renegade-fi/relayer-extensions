@@ -17,7 +17,6 @@ pub mod handlers;
 pub mod helpers;
 pub mod metrics;
 pub mod middleware;
-pub mod mux_darkpool_client;
 pub mod relayer_client;
 pub mod server;
 
@@ -25,30 +24,29 @@ use clap::Parser;
 use cli::Cli;
 use custody_client::rpc_shim::JsonRpcRequest;
 // use fee_indexer::Indexer;
+use funds_manager_api::PING_ROUTE;
 use funds_manager_api::fees::{
-    WithdrawFeeBalanceRequest, GET_FEE_HOT_WALLET_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE,
-    GET_UNREDEEMED_FEE_TOTALS_ROUTE, INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE,
-    WITHDRAW_FEE_BALANCE_ROUTE,
+    GET_FEE_HOT_WALLET_ADDRESS_ROUTE, GET_FEE_WALLETS_ROUTE, GET_UNREDEEMED_FEE_TOTALS_ROUTE,
+    INDEX_FEES_ROUTE, REDEEM_FEES_ROUTE, WITHDRAW_FEE_BALANCE_ROUTE, WithdrawFeeBalanceRequest,
 };
 use funds_manager_api::gas::{
-    RefillGasRequest, RegisterGasWalletRequest, ReportActivePeersRequest,
-    SetGasWalletStatusRequest, WithdrawGasRequest, GET_GAS_HOT_WALLET_ADDRESS_ROUTE,
-    REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE, REGISTER_GAS_WALLET_ROUTE,
-    REPORT_ACTIVE_PEERS_ROUTE, SET_GAS_WALLET_STATUS_ROUTE, WITHDRAW_GAS_ROUTE,
+    GET_GAS_HOT_WALLET_ADDRESS_ROUTE, REFILL_GAS_ROUTE, REFILL_GAS_SPONSOR_ROUTE,
+    REGISTER_GAS_WALLET_ROUTE, REPORT_ACTIVE_PEERS_ROUTE, RefillGasRequest,
+    RegisterGasWalletRequest, ReportActivePeersRequest, SET_GAS_WALLET_STATUS_ROUTE,
+    SetGasWalletStatusRequest, WITHDRAW_GAS_ROUTE, WithdrawGasRequest,
 };
 use funds_manager_api::hot_wallets::{
-    CreateHotWalletRequest, TransferToVaultRequest, WithdrawToHotWalletRequest,
-    TRANSFER_TO_VAULT_ROUTE, WITHDRAW_TO_HOT_WALLET_ROUTE,
+    CreateHotWalletRequest, TRANSFER_TO_VAULT_ROUTE, TransferToVaultRequest,
+    WITHDRAW_TO_HOT_WALLET_ROUTE, WithdrawToHotWalletRequest,
 };
 use funds_manager_api::quoters::{
-    QuoteParams, SwapIntoTargetTokenRequest, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
-    GET_DEPOSIT_ADDRESS_ROUTE, SWAP_IMMEDIATE_ROUTE, SWAP_INTO_TARGET_TOKEN_ROUTE,
-    WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    GET_DEPOSIT_ADDRESS_ROUTE, QuoteParams, SWAP_IMMEDIATE_ROUTE, SWAP_INTO_TARGET_TOKEN_ROUTE,
+    SwapIntoTargetTokenRequest, WITHDRAW_CUSTODY_ROUTE, WITHDRAW_TO_HYPERLIQUID_ROUTE,
+    WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
-use funds_manager_api::vaults::{GetVaultBalancesRequest, GET_VAULT_BALANCES_ROUTE};
-use funds_manager_api::PING_ROUTE;
+use funds_manager_api::vaults::{GET_VAULT_BALANCES_ROUTE, GetVaultBalancesRequest};
 use middleware::{identity, with_chain_and_json_body, with_hmac_auth, with_json_body};
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use server::Server;
 
 use std::{collections::HashMap, error::Error, sync::Arc};

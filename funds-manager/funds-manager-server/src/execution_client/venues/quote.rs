@@ -4,18 +4,15 @@ use std::fmt::Display;
 
 use alloy_primitives::U256;
 use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
+use renegade_types_core::{Chain, Token, USDC_TICKER};
 use tracing::warn;
 
 use crate::{
     execution_client::{
         error::ExecutionClientError,
         venues::{
-            bebop::BebopQuoteExecutionData, cowswap::CowswapQuoteExecutionData,
-            lifi::LifiQuoteExecutionData, SupportedExecutionVenue,
+            SupportedExecutionVenue, bebop::BebopQuoteExecutionData,
+            cowswap::CowswapQuoteExecutionData, lifi::LifiQuoteExecutionData,
         },
     },
     helpers::{contains_byte_subslice, get_darkpool_address, to_chain_id},
@@ -49,11 +46,7 @@ impl ExecutionQuote {
 
     /// Get the base token
     pub fn base_token(&self) -> Token {
-        if self.is_sell() {
-            self.sell_token.clone()
-        } else {
-            self.buy_token.clone()
-        }
+        if self.is_sell() { self.sell_token.clone() } else { self.buy_token.clone() }
     }
 
     /// Get the base amount
@@ -64,11 +57,7 @@ impl ExecutionQuote {
 
     /// Get the quote token
     pub fn quote_token(&self) -> Token {
-        if self.is_sell() {
-            self.buy_token.clone()
-        } else {
-            self.sell_token.clone()
-        }
+        if self.is_sell() { self.buy_token.clone() } else { self.sell_token.clone() }
     }
 
     /// Get the quote amount
@@ -109,11 +98,7 @@ impl ExecutionQuote {
         let decimal_sell_amount = self.sell_amount_decimal();
 
         let buy_per_sell = decimal_buy_amount / decimal_sell_amount;
-        if self.is_sell() {
-            buy_per_sell
-        } else {
-            1.0 / buy_per_sell
-        }
+        if self.is_sell() { buy_per_sell } else { 1.0 / buy_per_sell }
     }
 
     /// Returns the notional volume in USDC, taking into account the actual

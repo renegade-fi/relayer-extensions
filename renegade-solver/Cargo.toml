@@ -1,7 +1,7 @@
 [package]
 name = "renegade-solver"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Renegade Team <hello@renegade.fi>"]
 description = "An orderflow auction solver which routes through the Renegade darkpool"
 license = "MIT"
@@ -25,7 +25,7 @@ alloy-sol-types = { workspace = true }
 alloy-contract = { workspace = true }
 
 # === Renegade Dependencies === #
-renegade-common = { workspace = true }
+renegade-types-core = { workspace = true }
 renegade-config = { workspace = true }
 renegade-constants = { workspace = true }
 renegade-solidity-abi = { workspace = true }

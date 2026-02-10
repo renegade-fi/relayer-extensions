@@ -1,6 +1,6 @@
 //! Exchange connection shims
 
-use renegade_common::types::exchange::Exchange;
+use renegade_types_core::Exchange;
 
 use crate::{
     exchanges::{

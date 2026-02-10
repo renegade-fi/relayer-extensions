@@ -6,7 +6,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use alloy_primitives::{Address, Bytes, U256};
-use renegade_common::types::{chain::Chain, token::Token};
+use renegade_types_core::{Chain, Token};
 use serde::{Deserialize, Serialize};
 
 use crate::execution_client::{error::ExecutionClientError, venues::quote::CrossVenueQuoteSource};

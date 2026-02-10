@@ -14,7 +14,7 @@ use alloy::{
 use alloy_primitives::{Address, Bytes, U256};
 use async_trait::async_trait;
 use funds_manager_api::quoters::QuoteParams;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::Deserialize;
 use tracing::{error, info, instrument, warn};
@@ -24,14 +24,14 @@ use crate::{
         error::ExecutionClientError,
         swap::DEFAULT_SLIPPAGE_TOLERANCE,
         venues::{
+            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
             lifi::api_types::{LifiQuote, LifiQuoteParams},
             quote::{CrossVenueQuoteSource, ExecutableQuote, ExecutionQuote, QuoteExecutionData},
-            ExecutionResult, ExecutionVenue, SupportedExecutionVenue,
         },
     },
     helpers::{
-        approve_erc20_allowance, build_provider, get_gas_cost, get_received_amount,
-        handle_http_response, send_tx_with_retry, to_chain_id, TWO_CONFIRMATIONS,
+        TWO_CONFIRMATIONS, approve_erc20_allowance, build_provider, get_gas_cost,
+        get_received_amount, handle_http_response, send_tx_with_retry, to_chain_id,
     },
 };
 

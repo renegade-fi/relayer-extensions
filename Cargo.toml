@@ -1,10 +1,11 @@
 [workspace]
+resolver = "3"
 members = [
     "auth/auth-server",
     "auth/auth-server-api",
     "compliance/compliance-server",
     "compliance/compliance-api",
-    "renegade-solver",
+    #"renegade-solver", # ignore for now
     "dealer/renegade-dealer",
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
@@ -26,24 +27,24 @@ lto = true
 
 [workspace.dependencies]
 # === Renegade Dependencies === #
-renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
+renegade-darkpool-client = { package = "darkpool-client", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git" }
 contracts-common = { git = "https://github.com/renegade-fi/renegade-stylus-contracts.git" }
-renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "v1", features = [
-    "auth",
-] }
-renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", branch = "v1", features = [
+renegade-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", default-features = false }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = ["hmac"] }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuits-core = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = [
     "channels",
 ] }
-renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
-renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git", branch = "v1" }
+renegade-price-reporter = { package = "price-reporter", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-system-clock = { package = "system-clock", git = "https://github.com/renegade-fi/renegade.git" }
 renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi/renegade-contracts", default-features = false }
-
+uuid = { version = "1", features = ["serde", "v4"] }
 
 # === Blockchain Dependencies === #
 alloy-contract = "1.0.32"
