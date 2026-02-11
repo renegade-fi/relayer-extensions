@@ -27,7 +27,7 @@ impl StateApplicator {
         // becomes necessary in the future, a deduplication mechanism should be
         // added here.
         let intent_hash = message.intent_hash;
-        let owner = message.intent.owner;
+        let owner = message.order.intent.inner.owner;
 
         let mut conn = self.db_client.get_db_conn().await?;
 
@@ -94,11 +94,11 @@ mod tests {
         let message = gen_public_intent_metadata_update_message(master_view_seed.owner_address);
 
         let intent_hash = message.intent_hash;
-        let expected_intent = message.intent.clone();
-        let expected_order_id = message.order_id;
+        let expected_intent = message.order.intent.inner.clone();
+        let expected_order_id = message.order.id;
         let expected_matching_pool = message.matching_pool.clone();
-        let expected_allow_external_matches = message.allow_external_matches;
-        let expected_min_fill_size = message.min_fill_size;
+        let expected_allow_external_matches = message.order.metadata.allow_external_matches;
+        let expected_min_fill_size = message.order.metadata.min_fill_size;
 
         // Apply the metadata update (should create since intent doesn't exist)
         test_applicator.update_public_intent_metadata(message).await?;
@@ -156,10 +156,10 @@ mod tests {
         let update_message =
             gen_public_intent_metadata_update_message_for_existing(&existing_public_intent);
 
-        let expected_order_id = update_message.order_id;
+        let expected_order_id = update_message.order.id;
         let expected_matching_pool = update_message.matching_pool.clone();
-        let expected_allow_external_matches = update_message.allow_external_matches;
-        let expected_min_fill_size = update_message.min_fill_size;
+        let expected_allow_external_matches = update_message.order.metadata.allow_external_matches;
+        let expected_min_fill_size = update_message.order.metadata.min_fill_size;
 
         // Apply the metadata update (should update existing)
         test_applicator.update_public_intent_metadata(update_message).await?;

@@ -1,11 +1,10 @@
 //! Message type definitions for the darkpool indexer
 
 use alloy_primitives::{Address, B256, TxHash, U256};
-use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
-use renegade_darkpool_types::intent::Intent;
 use renegade_external_api::types::SignatureWithNonce;
 use renegade_solidity_abi::v2::IDarkpoolV2::PublicIntentPermit;
+use renegade_types_account::order::Order;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -126,20 +125,12 @@ pub struct CancelPublicIntentMessage {
 pub struct PublicIntentMetadataUpdateMessage {
     /// The intent hash
     pub intent_hash: B256,
-    /// The public intent
-    pub intent: Intent,
+    /// The order
+    pub order: Order,
     /// The intent signature
     pub intent_signature: SignatureWithNonce,
     /// The permit for the intent
     pub permit: PublicIntentPermit,
-    /// The order ID
-    pub order_id: Uuid,
     /// The matching pool to which the intent is allocated
     pub matching_pool: String,
-    /// Whether the intent allows external matches
-    pub allow_external_matches: bool,
-    /// The minimum fill size allowed for the intent
-    pub min_fill_size: Amount,
-    /// Whether the intent has received at least one fill
-    pub has_been_filled: bool,
 }
