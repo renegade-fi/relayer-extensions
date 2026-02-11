@@ -179,7 +179,7 @@ impl Indexer {
         info!(
             "Handling public intent metadata update message for intent hash {intent_hash:#x} (order ID {order_id})",
             intent_hash = message.intent_hash,
-            order_id = message.order_id
+            order_id = message.order.id
         );
 
         let state_transition = StateTransition::UpdatePublicIntentMetadata(message);

@@ -502,28 +502,12 @@ impl PublicIntentStateObject {
         message: &PublicIntentMetadataUpdateMessage,
         account_id: Uuid,
     ) -> Result<Self, String> {
-        // Create a Ring0 state wrapper with zero seeds (public intents don't use
-        // secret shares or recovery streams)
-        let state_intent =
-            StateWrapper::new(message.intent.clone(), Scalar::zero(), Scalar::zero());
-
-        // Build the order metadata from the message fields (not defaults)
-        let metadata = OrderMetadata {
-            min_fill_size: message.min_fill_size,
-            allow_external_matches: message.allow_external_matches,
-            has_been_filled: message.has_been_filled,
-        };
-
-        // Build the order with the provided order_id
-        let order =
-            Order::new_with_ring(message.order_id, state_intent, metadata, PrivacyRing::Ring0);
-
         // Convert API signature type to contract signature type
         let intent_signature: SignatureWithNonce = message.intent_signature.clone().into();
 
         Ok(Self {
             intent_hash: message.intent_hash,
-            order,
+            order: message.order.clone(),
             intent_signature,
             permit: message.permit.clone(),
             account_id,
@@ -535,11 +519,9 @@ impl PublicIntentStateObject {
     /// Update the public intent's metadata fields from a metadata update
     /// message
     pub fn update_metadata(&mut self, message: &PublicIntentMetadataUpdateMessage) {
-        self.order.id = message.order_id;
+        self.order.id = message.order.id;
         self.matching_pool = message.matching_pool.clone();
-        self.order.metadata.allow_external_matches = message.allow_external_matches;
-        self.order.metadata.min_fill_size = message.min_fill_size;
-        self.order.metadata.has_been_filled = message.has_been_filled;
+        self.order.metadata = message.order.metadata.clone();
     }
 
     /// Cancel the public intent

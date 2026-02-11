@@ -45,6 +45,7 @@ mod test_utils;
 // ---------
 
 /// The type of a state transition
+#[allow(clippy::large_enum_variant)]
 pub enum StateTransition {
     /// The registration of a new master view seed
     RegisterMasterViewSeed(MasterViewSeedMessage),

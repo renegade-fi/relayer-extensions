@@ -18,10 +18,14 @@ use renegade_darkpool_types::{
     fee::FeeTake,
     intent::{DarkpoolStateIntent, Intent},
     settlement_obligation::SettlementObligation,
+    state_wrapper::StateWrapper,
 };
 use renegade_external_api::types::SignatureWithNonce;
 use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce as ContractSignatureWithNonce;
-use renegade_types_account::account::order_auth::mocks::mock_public_intent_permit;
+use renegade_types_account::{
+    account::order_auth::mocks::mock_public_intent_permit,
+    order::{Order, OrderMetadata},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -879,24 +883,23 @@ pub fn gen_settle_public_intent_external_match_transition_for_existing(
 pub fn gen_public_intent_metadata_update_message(
     owner: Address,
 ) -> PublicIntentMetadataUpdateMessage {
-    let intent = gen_random_intent(owner);
+    let intent = StateWrapper::new(gen_random_intent(owner), Scalar::zero(), Scalar::zero());
     let intent_signature = gen_mock_intent_signature();
     let permit = mock_public_intent_permit();
     let intent_hash = B256::random();
-    let order_id = Uuid::new_v4();
     let matching_pool = "test-pool".to_string();
     let allow_external_matches = true;
-    let min_fill_size = random_amount().min(intent.amount_in);
+    let min_fill_size = random_amount().min(intent.inner.amount_in);
+
+    let metadata = OrderMetadata::new(min_fill_size, allow_external_matches);
+    let order = Order::new(intent, metadata);
 
     PublicIntentMetadataUpdateMessage {
         intent_hash,
-        intent,
+        order,
         intent_signature,
         permit,
-        order_id,
         matching_pool,
-        allow_external_matches,
-        min_fill_size,
     }
 }
 
@@ -905,15 +908,17 @@ pub fn gen_public_intent_metadata_update_message_for_existing(
     existing: &PublicIntentStateObject,
 ) -> PublicIntentMetadataUpdateMessage {
     // Use same intent_hash but different metadata values
+    let mut order = existing.order.clone();
+    order.id = Uuid::new_v4();
+    order.metadata.allow_external_matches = !existing.order.metadata.allow_external_matches;
+    order.metadata.min_fill_size = random_amount().min(existing.order.intent.inner.amount_in);
+
     PublicIntentMetadataUpdateMessage {
         intent_hash: existing.intent_hash,
-        intent: existing.order.intent.inner.clone(),
+        order,
         intent_signature: gen_mock_intent_signature(),
         permit: existing.permit.clone(),
-        order_id: Uuid::new_v4(),
         matching_pool: "updated-pool".to_string(),
-        allow_external_matches: !existing.order.metadata.allow_external_matches,
-        min_fill_size: random_amount().min(existing.order.intent.inner.amount_in),
     }
 }
 
