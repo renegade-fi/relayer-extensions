@@ -170,6 +170,7 @@ fn apply_settlement(
     match public_intent_settlement_data {
         PublicIntentSettlementData::InternalMatch { amount_in, .. } => {
             public_intent.order.decrement_amount_in(*amount_in);
+            public_intent.order.metadata.mark_filled();
         },
         PublicIntentSettlementData::ExternalMatch { price, external_party_amount_in, .. } => {
             public_intent.update_from_external_match(*price, *external_party_amount_in);
@@ -198,6 +199,7 @@ fn construct_new_public_intent(
                 account_id,
             );
             public_intent.order.decrement_amount_in(amount_in);
+            public_intent.order.metadata.mark_filled();
             public_intent
         },
         PublicIntentSettlementData::ExternalMatch {

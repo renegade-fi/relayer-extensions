@@ -194,7 +194,7 @@ impl Ring2FirstFillNewOutBalanceSettlementData {
 
     /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
-        self.settlement_bundle.settlementStatement.relayerFee.clone().into()
+        self.settlement_bundle.settlementStatement.feeRates.relayerFeeRate.clone().into()
     }
 
     /// Get the protocol fee rate for the traded pair at the given block number
@@ -408,7 +408,7 @@ impl Ring2FirstFillSettlementData {
 
     /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
-        self.settlement_bundle.settlementStatement.relayerFee.clone().into()
+        self.settlement_bundle.settlementStatement.feeRates.relayerFeeRate.clone().into()
     }
 
     /// Get the protocol fee rate for the traded pair at the given block number
@@ -545,7 +545,7 @@ impl Ring2SettlementData {
 
     /// Get the relayer fee rate
     fn get_relayer_fee_rate(&self) -> FixedPoint {
-        self.settlement_bundle.settlementStatement.relayerFee.clone().into()
+        self.settlement_bundle.settlementStatement.feeRates.relayerFeeRate.clone().into()
     }
 
     /// Get the protocol fee rate for the traded pair at the given block number
