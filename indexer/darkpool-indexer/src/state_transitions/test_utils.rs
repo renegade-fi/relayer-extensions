@@ -1,7 +1,6 @@
 //! Common utilities for state transition tests
 
 use alloy::primitives::{Address, B256, TxHash, U256};
-use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine};
 use darkpool_indexer_api::types::message_queue::{
     CancelPublicIntentMessage, MasterViewSeedMessage, PublicIntentMetadataUpdateMessage,
 };
@@ -20,7 +19,7 @@ use renegade_darkpool_types::{
     intent::{DarkpoolStateIntent, Intent},
     settlement_obligation::SettlementObligation,
 };
-use renegade_external_api::types::order::SignatureWithNonce;
+use renegade_external_api::types::SignatureWithNonce;
 use renegade_solidity_abi::v2::IDarkpoolV2::SignatureWithNonce as ContractSignatureWithNonce;
 use renegade_types_account::account::order_auth::mocks::mock_public_intent_permit;
 use uuid::Uuid;
@@ -142,8 +141,8 @@ pub fn gen_random_intent(owner: Address) -> Intent {
 
 /// Generate a mock intent signature for public intents
 pub fn gen_mock_intent_signature() -> SignatureWithNonce {
-    let nonce = U256::random().to_string();
-    let signature = BASE64_STANDARD_NO_PAD.encode(vec![0u8; 65]);
+    let nonce = U256::random();
+    let signature = vec![0u8; 65];
     SignatureWithNonce { nonce, signature }
 }
 

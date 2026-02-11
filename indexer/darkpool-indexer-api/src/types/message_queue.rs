@@ -4,7 +4,7 @@ use alloy_primitives::{Address, B256, TxHash, U256};
 use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
 use renegade_darkpool_types::intent::Intent;
-use renegade_external_api::types::order::SignatureWithNonce;
+use renegade_external_api::types::SignatureWithNonce;
 use renegade_solidity_abi::v2::IDarkpoolV2::PublicIntentPermit;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -140,4 +140,6 @@ pub struct PublicIntentMetadataUpdateMessage {
     pub allow_external_matches: bool,
     /// The minimum fill size allowed for the intent
     pub min_fill_size: Amount,
+    /// Whether the intent has received at least one fill
+    pub has_been_filled: bool,
 }

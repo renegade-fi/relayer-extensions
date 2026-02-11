@@ -472,6 +472,8 @@ pub struct PublicIntentModel {
     pub intent_signature_bytes: String,
     /// The permit for the public intent (ABI-encoded, hex string)
     pub permit: String,
+    /// Whether the intent has received at least one fill
+    pub has_been_filled: bool,
 }
 
 impl From<PublicIntentStateObject> for PublicIntentModel {
@@ -490,7 +492,8 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
         let Intent { in_token, out_token, owner, min_price, amount_in } = order.intent.inner;
 
         // Extract metadata fields from the order
-        let OrderMetadata { min_fill_size, allow_external_matches } = order.metadata;
+        let OrderMetadata { min_fill_size, allow_external_matches, has_been_filled } =
+            order.metadata;
 
         let intent_hash_string = intent_hash.to_string();
         let input_mint_string = in_token.to_string();
@@ -523,6 +526,7 @@ impl From<PublicIntentStateObject> for PublicIntentModel {
             intent_signature_nonce: intent_signature_nonce_bigdecimal,
             intent_signature_bytes: intent_signature_bytes_string,
             permit: permit_string,
+            has_been_filled,
         }
     }
 }
@@ -545,6 +549,7 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
             intent_signature_nonce,
             intent_signature_bytes,
             permit,
+            has_been_filled,
         } = value;
 
         let intent_hash_b256 =
@@ -594,7 +599,8 @@ impl From<PublicIntentModel> for PublicIntentStateObject {
         let state_intent = StateWrapper::new(intent, Scalar::zero(), Scalar::zero());
 
         // Reconstruct the order metadata
-        let metadata = OrderMetadata::new(min_fill_size_u128, allow_external_matches);
+        let mut metadata = OrderMetadata::new(min_fill_size_u128, allow_external_matches);
+        metadata.has_been_filled = has_been_filled;
 
         // Reconstruct the order with Ring0 privacy level
         let order = Order::new_with_ring(order_id, state_intent, metadata, PrivacyRing::Ring0);

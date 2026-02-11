@@ -68,6 +68,7 @@ diesel::table! {
         intent_signature_nonce -> Numeric,
         intent_signature_bytes -> Text,
         permit -> Text,
+        has_been_filled -> Bool,
     }
 }
 

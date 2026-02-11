@@ -2,7 +2,6 @@
 //! canonical representations of data outside of the external API & DB layers.
 
 use alloy::primitives::{Address, B256};
-use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine};
 use darkpool_indexer_api::types::{
     http::{ApiBalance, ApiIntent, ApiPublicIntent, ApiStateObject},
     message_queue::PublicIntentMetadataUpdateMessage,
@@ -495,6 +494,7 @@ impl PublicIntentStateObject {
             scalar_to_u128(&inverse_price.floor_mul_int(external_party_amount_in));
 
         self.order.intent.inner.amount_in -= internal_party_amount_in;
+        self.order.metadata.mark_filled();
     }
 
     /// Create a new public intent state object from a metadata update message
@@ -508,15 +508,18 @@ impl PublicIntentStateObject {
             StateWrapper::new(message.intent.clone(), Scalar::zero(), Scalar::zero());
 
         // Build the order metadata from the message fields (not defaults)
-        let metadata = OrderMetadata::new(message.min_fill_size, message.allow_external_matches);
+        let metadata = OrderMetadata {
+            min_fill_size: message.min_fill_size,
+            allow_external_matches: message.allow_external_matches,
+            has_been_filled: message.has_been_filled,
+        };
 
         // Build the order with the provided order_id
         let order =
             Order::new_with_ring(message.order_id, state_intent, metadata, PrivacyRing::Ring0);
 
         // Convert API signature type to contract signature type
-        let intent_signature: SignatureWithNonce =
-            message.intent_signature.clone().try_into().map_err(|e| format!("{e}"))?;
+        let intent_signature: SignatureWithNonce = message.intent_signature.clone().into();
 
         Ok(Self {
             intent_hash: message.intent_hash,
@@ -536,6 +539,7 @@ impl PublicIntentStateObject {
         self.matching_pool = message.matching_pool.clone();
         self.order.metadata.allow_external_matches = message.allow_external_matches;
         self.order.metadata.min_fill_size = message.min_fill_size;
+        self.order.metadata.has_been_filled = message.has_been_filled;
     }
 
     /// Cancel the public intent
@@ -557,8 +561,8 @@ impl From<PublicIntentStateObject> for ApiPublicIntent {
 
         // Convert the intent signature to the API type
         let intent_signature = ApiSignatureWithNonce {
-            nonce: intent_signature.nonce.to_string(),
-            signature: BASE64_STANDARD_NO_PAD.encode(&intent_signature.signature),
+            nonce: intent_signature.nonce,
+            signature: intent_signature.signature.to_vec(),
         };
 
         ApiPublicIntent { intent_hash, order, intent_signature, permit, matching_pool }
