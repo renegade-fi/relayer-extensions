@@ -57,6 +57,15 @@ pub enum Environment {
     Testnet,
 }
 
+impl std::fmt::Display for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Environment::Mainnet => write!(f, "mainnet"),
+            Environment::Testnet => write!(f, "testnet"),
+        }
+    }
+}
+
 /// The cli for the fee sweeper
 #[rustfmt::skip]
 #[derive(Parser)]
