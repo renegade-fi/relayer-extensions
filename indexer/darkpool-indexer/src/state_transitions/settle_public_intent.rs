@@ -6,7 +6,7 @@ use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_circuit_types::{Amount, fixed_point::FixedPoint};
 use renegade_darkpool_types::intent::Intent;
 use renegade_solidity_abi::v2::IDarkpoolV2::{PublicIntentPermit, SignatureWithNonce};
-use tracing::{instrument, warn};
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -89,6 +89,10 @@ impl StateApplicator {
             block_number,
             public_intent_settlement_data,
         } = transition;
+
+        info!(
+            "Applying public intent settlement transition for intent hash {intent_hash:#x} in tx {tx_hash:#x}",
+        );
 
         let mut conn = self.db_client.get_db_conn().await?;
 

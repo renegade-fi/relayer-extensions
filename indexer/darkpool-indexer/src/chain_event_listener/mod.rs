@@ -147,6 +147,10 @@ impl ChainEventListener {
                 "no tx hash for public intent {intent_hash} update event"
             )))?;
 
+            info!(
+                "Received public intent update event for intent hash {intent_hash:#x} in tx {tx_hash:#x}",
+            );
+
             let message = Message::UpdatePublicIntent(UpdatePublicIntentMessage {
                 intent_hash,
                 tx_hash,
