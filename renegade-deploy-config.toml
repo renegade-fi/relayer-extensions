@@ -180,3 +180,12 @@ ecr_repo = "indexer-base-sepolia-v2"
 [services.base-sepolia-indexer.deploy]
 environment = "base-sepolia-v2"
 resource = "indexer"
+
+[services.ethereum-sepolia-indexer]
+[services.ethereum-sepolia-indexer.build]
+dockerfile = "indexer/darkpool-indexer/Dockerfile"
+ecr_repo = "indexer-ethereum-sepolia-v2"
+
+[services.ethereum-sepolia-indexer.deploy]
+environment = "ethereum-sepolia-v2"
+resource = "indexer"

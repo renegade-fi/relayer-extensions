@@ -48,7 +48,7 @@ const ETHEREUM_MAINNET_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x0000000000000000000000000000000000000000"));
 /// The address of the darkpool contract deployed on Ethereum Sepolia
 const ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
-    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+    Address::new(hex!("0x45537c28F245645CC1E7F7258FCC18A189CE16e3"));
 /// The address of the darkpool contract deployed on devnet
 const DEVNET_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x0000000000000000000000000000000000000000"));
@@ -70,7 +70,7 @@ const BASE_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 37243659;
 const ETHEREUM_MAINNET_NULLIFIER_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for nullifier spend events
 /// on Ethereum Sepolia
-const ETHEREUM_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 0;
+const ETHEREUM_SEPOLIA_NULLIFIER_START_BLOCK: u64 = 10144455;
 /// The block number from which to start listening for nullifier spend events
 /// on devnet
 const DEVNET_NULLIFIER_START_BLOCK: u64 = 0;
@@ -92,7 +92,7 @@ const BASE_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 37243659;
 const ETHEREUM_MAINNET_RECOVERY_ID_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for recovery ID registration
 /// events on Ethereum Sepolia
-const ETHEREUM_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 0;
+const ETHEREUM_SEPOLIA_RECOVERY_ID_START_BLOCK: u64 = 10144455;
 /// The block number from which to start listening for recovery ID registration
 /// events on devnet
 const DEVNET_RECOVERY_ID_START_BLOCK: u64 = 0;
@@ -114,7 +114,7 @@ const BASE_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 37243659;
 const ETHEREUM_MAINNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent update
 /// events on Ethereum Sepolia
-const ETHEREUM_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
+const ETHEREUM_SEPOLIA_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 10144455;
 /// The block number from which to start listening for public intent update
 /// events on devnet
 const DEVNET_PUBLIC_INTENT_UPDATE_START_BLOCK: u64 = 0;
@@ -136,7 +136,7 @@ const BASE_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 37243659;
 const ETHEREUM_MAINNET_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
 /// The block number from which to start listening for public intent
 /// cancellation events on Ethereum Sepolia
-const ETHEREUM_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
+const ETHEREUM_SEPOLIA_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 10144455;
 /// The block number from which to start listening for public intent
 /// cancellation events on devnet
 const DEVNET_PUBLIC_INTENT_CANCELLATION_START_BLOCK: u64 = 0;
