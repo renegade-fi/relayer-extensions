@@ -11,6 +11,8 @@ members = [
     "funds-manager/funds-manager-api",
     "funds-manager/funds-manager-server",
     "price-reporter",
+    "indexer/darkpool-indexer",
+    "indexer/darkpool-indexer-api",
     "price-reporter-client",
     "prover-service/server",
     "prover-service/api",
@@ -47,12 +49,12 @@ renegade-solidity-abi = { package = "abi", git = "https://github.com/renegade-fi
 uuid = { version = "1", features = ["serde", "v4"] }
 
 # === Blockchain Dependencies === #
-alloy-contract = "1.0.32"
-alloy-sol-types = "1.0.32"
-alloy-dyn-abi = "1.0.32"
-alloy-json-rpc = "1.0.32"
-alloy-primitives = "1.0.32"
-alloy = "1.0.32"
+alloy-contract = "1.0.42"
+alloy-sol-types = "1.0.42"
+alloy-dyn-abi = "1.0.42"
+alloy-json-rpc = "1.0.42"
+alloy-primitives = "1.0.42"
+alloy = "1.0.42"
 
 # === Database Dependencies === #
 diesel = { version = "2.3" }

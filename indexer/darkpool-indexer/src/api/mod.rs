@@ -1,3 +1,4 @@
 //! The darkpool indexer's external API
 
-pub mod handlers;
+pub mod http;
+pub mod message_queue;

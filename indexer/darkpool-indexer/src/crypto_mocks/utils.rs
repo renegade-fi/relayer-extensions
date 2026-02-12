@@ -1,21 +1,10 @@
 //! Common, low-level cryptographic utilities
 
+use alloy::primitives::{Address, B256, keccak256};
+use renegade_circuit_types::Amount;
 use renegade_constants::Scalar;
-use tiny_keccak::Hasher;
-
-/// The output size of the Keccak-256 hash function in bytes
-const KECCAK_OUTPUT_SIZE: usize = 32;
-
-/// Compute the Keccak-256 hash of a message
-pub fn keccak256(msg: &[u8]) -> [u8; KECCAK_OUTPUT_SIZE] {
-    let mut hash = [0u8; KECCAK_OUTPUT_SIZE];
-
-    let mut hasher = tiny_keccak::Keccak::v256();
-    hasher.update(msg);
-    hasher.finalize(&mut hash);
-
-    hash
-}
+use renegade_crypto::fields::{scalar_to_address, scalar_to_u128};
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 
 /// Hash a message to a scalar. We do this by hashing the message, extending the
 /// hash to 64 bytes, then performing modular reduction of the result into a
@@ -27,13 +16,32 @@ pub fn hash_to_scalar(msg: &[u8]) -> Scalar {
     let msg_hash = keccak256(msg);
 
     // Hash the hash again
-    let recursive_hash = keccak256(&msg_hash);
+    let recursive_hash = keccak256(msg_hash);
 
     // Concatenate the hashes
-    let mut extended_hash = [0u8; 64];
-    extended_hash[..KECCAK_OUTPUT_SIZE].copy_from_slice(&msg_hash);
-    extended_hash[KECCAK_OUTPUT_SIZE..].copy_from_slice(&recursive_hash);
+    let mut extended_hash = [0u8; B256::len_bytes() * 2];
+    extended_hash[..B256::len_bytes()].copy_from_slice(msg_hash.as_slice());
+    extended_hash[B256::len_bytes()..].copy_from_slice(recursive_hash.as_slice());
 
     // Perform modular reduction
     Scalar::from_be_bytes_mod_order(&extended_hash)
+}
+
+/// Decrypt an amount ciphertext using a stream cipher, advancing its internal
+/// state
+pub fn decrypt_amount(amount_public_share: Scalar, stream_cipher: &mut PoseidonCSPRNG) -> Amount {
+    let private_share = stream_cipher.next().unwrap();
+    let amount_scalar = amount_public_share + private_share;
+    scalar_to_u128(&amount_scalar)
+}
+
+/// Decrypt an address ciphertext using a stream cipher, advancing its internal
+/// state
+pub fn decrypt_address(
+    address_public_share: Scalar,
+    stream_cipher: &mut PoseidonCSPRNG,
+) -> Address {
+    let private_share = stream_cipher.next().unwrap();
+    let address_scalar = address_public_share + private_share;
+    scalar_to_address(&address_scalar)
 }

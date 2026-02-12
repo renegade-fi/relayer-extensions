@@ -5,11 +5,15 @@ edition = "2024"
 
 [dependencies]
 # === Renegade === #
-renegade-constants = { workspace = true }
-ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git", features = ["proof-system-types"] }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
 
 # === Blockchain === #
 alloy-primitives = { workspace = true }
+renegade-solidity-abi = { workspace = true, default-features = true }
 
 # === Misc === #
 serde = "1.0"

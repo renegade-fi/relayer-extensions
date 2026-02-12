@@ -140,3 +140,43 @@ cargo_features = "log-invalid-bundles"
 [services.mainnet-prover-service.deploy]
 environment = "mainnet"
 resource = "prover-service-v2"
+
+###############
+### Indexer ###
+###############
+
+[services.arbitrum-one-indexer]
+[services.arbitrum-one-indexer.build]
+dockerfile = "indexer/darkpool-indexer/Dockerfile"
+ecr_repo = "indexer-arbitrum-one-v2"
+
+[services.arbitrum-one-indexer.deploy]
+environment = "arbitrum-one-v2"
+resource = "indexer"
+
+[services.arbitrum-sepolia-indexer]
+[services.arbitrum-sepolia-indexer.build]
+dockerfile = "indexer/darkpool-indexer/Dockerfile"
+ecr_repo = "indexer-arbitrum-sepolia-v2"
+
+[services.arbitrum-sepolia-indexer.deploy]
+environment = "arbitrum-sepolia-v2"
+resource = "indexer"
+
+[services.base-mainnet-indexer]
+[services.base-mainnet-indexer.build]
+dockerfile = "indexer/darkpool-indexer/Dockerfile"
+ecr_repo = "indexer-base-mainnet-v2"
+
+[services.base-mainnet-indexer.deploy]
+environment = "base-mainnet-v2"
+resource = "indexer"
+
+[services.base-sepolia-indexer]
+[services.base-sepolia-indexer.build]
+dockerfile = "indexer/darkpool-indexer/Dockerfile"
+ecr_repo = "indexer-base-sepolia-v2"
+
+[services.base-sepolia-indexer.deploy]
+environment = "base-sepolia-v2"
+resource = "indexer"

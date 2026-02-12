@@ -1,16 +1,13 @@
 // @generated automatically by Diesel CLI.
 
-pub mod sql_types {
-    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "object_type"))]
-    pub struct ObjectType;
-}
-
 diesel::table! {
     balances (recovery_stream_seed) {
         recovery_stream_seed -> Numeric,
-        account_id -> Uuid,
-        active -> Bool,
+        version -> BigInt,
+        share_stream_seed -> Numeric,
+        share_stream_index -> BigInt,
+        nullifier -> Numeric,
+        public_shares -> Array<Numeric>,
         mint -> Text,
         owner_address -> Text,
         relayer_fee_recipient -> Text,
@@ -18,49 +15,35 @@ diesel::table! {
         protocol_fee -> Numeric,
         relayer_fee -> Numeric,
         amount -> Numeric,
-        allow_public_fills -> Bool,
-    }
-}
-
-diesel::table! {
-    expected_state_objects (nullifier) {
-        nullifier -> Numeric,
-        account_id -> Uuid,
-        owner_address -> Text,
-        recovery_stream_seed -> Numeric,
-        share_stream_seed -> Numeric,
-    }
-}
-
-diesel::table! {
-    use diesel::sql_types::*;
-    use super::sql_types::ObjectType;
-
-    generic_state_objects (recovery_stream_seed) {
-        recovery_stream_seed -> Numeric,
         account_id -> Uuid,
         active -> Bool,
-        object_type -> ObjectType,
-        nullifier -> Numeric,
-        version -> Numeric,
+    }
+}
+
+diesel::table! {
+    expected_state_objects (recovery_id) {
+        recovery_id -> Numeric,
+        account_id -> Uuid,
+        recovery_stream_seed -> Numeric,
         share_stream_seed -> Numeric,
-        share_stream_index -> Numeric,
-        owner_address -> Text,
-        public_shares -> Array<Numeric>,
-        private_shares -> Array<Numeric>,
     }
 }
 
 diesel::table! {
     intents (recovery_stream_seed) {
         recovery_stream_seed -> Numeric,
-        account_id -> Uuid,
-        active -> Bool,
+        version -> BigInt,
+        share_stream_seed -> Numeric,
+        share_stream_index -> BigInt,
+        nullifier -> Numeric,
+        public_shares -> Array<Numeric>,
         input_mint -> Text,
         output_mint -> Text,
         owner_address -> Text,
         min_price -> Numeric,
         input_amount -> Numeric,
+        account_id -> Uuid,
+        active -> Bool,
         matching_pool -> Text,
         allow_external_matches -> Bool,
         min_fill_size -> Numeric,
@@ -69,27 +52,86 @@ diesel::table! {
 }
 
 diesel::table! {
+    public_intents (intent_hash) {
+        intent_hash -> Text,
+        order_id -> Uuid,
+        input_mint -> Text,
+        output_mint -> Text,
+        owner_address -> Text,
+        min_price -> Numeric,
+        input_amount -> Numeric,
+        account_id -> Uuid,
+        active -> Bool,
+        matching_pool -> Text,
+        allow_external_matches -> Bool,
+        min_fill_size -> Numeric,
+        intent_signature_nonce -> Numeric,
+        intent_signature_bytes -> Text,
+        permit -> Text,
+        has_been_filled -> Bool,
+    }
+}
+
+diesel::table! {
     master_view_seeds (account_id) {
         account_id -> Uuid,
         owner_address -> Text,
         seed -> Numeric,
-        recovery_seed_csprng_index -> Numeric,
-        share_seed_csprng_index -> Numeric,
+        recovery_seed_csprng_index -> BigInt,
+        share_seed_csprng_index -> BigInt,
     }
 }
 
 diesel::table! {
     processed_nullifiers (nullifier) {
         nullifier -> Numeric,
-        block_number -> Numeric,
+    }
+}
+
+diesel::table! {
+    processed_recovery_ids (recovery_id) {
+        recovery_id -> Numeric,
+    }
+}
+
+diesel::table! {
+    processed_public_intent_updates (intent_hash, tx_hash) {
+        intent_hash -> Text,
+        tx_hash -> Text,
+    }
+}
+
+diesel::table! {
+    last_indexed_nullifier_block (id) {
+        id -> Integer,
+        block_number -> BigInt,
+    }
+}
+
+diesel::table! {
+    last_indexed_recovery_id_block (id) {
+        id -> Integer,
+        block_number -> BigInt,
+    }
+}
+
+diesel::table! {
+    last_indexed_public_intent_update_block (id) {
+        id -> Integer,
+        block_number -> BigInt,
     }
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
     balances,
     expected_state_objects,
-    generic_state_objects,
     intents,
+    public_intents,
     master_view_seeds,
     processed_nullifiers,
+    processed_recovery_ids,
+    processed_public_intent_updates,
+    last_indexed_nullifier_block,
+    last_indexed_recovery_id_block,
+    last_indexed_public_intent_update_block,
 );

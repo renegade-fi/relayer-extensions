@@ -1,0 +1,193 @@
+//! Handler logic for messages polled from the message queue by the darkpool
+//! indexer
+
+use darkpool_indexer_api::types::message_queue::{
+    CancelPublicIntentMessage, MasterViewSeedMessage, Message, NullifierSpendMessage,
+    PublicIntentMetadataUpdateMessage, RecoveryIdMessage, UpdatePublicIntentMessage,
+};
+use tracing::{info, instrument};
+
+use crate::{
+    indexer::{Indexer, error::IndexerError},
+    message_queue::MessageQueue,
+    state_transitions::StateTransition,
+};
+
+impl Indexer {
+    // -----------------------------
+    // | Top-Level Message Handler |
+    // -----------------------------
+
+    /// Handle a message polled from the message queue, parsing it into the API
+    /// message type and applying the appropriate handler logic
+    #[instrument(skip_all, fields(message = %message.display_name()))]
+    pub async fn handle_message(
+        &self,
+        message: Message,
+        deletion_id: String,
+    ) -> Result<(), IndexerError> {
+        match message {
+            Message::RegisterMasterViewSeed(message) => {
+                self.handle_master_view_seed_message(message).await?;
+            },
+            Message::RegisterRecoveryId(message) => {
+                self.handle_recovery_id_message(message).await?;
+            },
+            Message::NullifierSpend(message) => {
+                self.handle_nullifier_spend_message(message).await?;
+            },
+            Message::UpdatePublicIntent(message) => {
+                self.handle_update_public_intent_message(message).await?;
+            },
+            Message::CancelPublicIntent(message) => {
+                self.handle_cancel_public_intent_message(message).await?;
+            },
+            Message::UpdatePublicIntentMetadata(message) => {
+                self.handle_public_intent_metadata_update_message(message).await?;
+            },
+        }
+
+        self.message_queue.delete_message(deletion_id).await?;
+
+        Ok(())
+    }
+
+    // ------------
+    // | Handlers |
+    // ------------
+
+    // === Master View Seed Message Handler ===
+
+    /// Handle a message representing the registration of a new master view seed
+    #[instrument(skip_all, fields(account_id = %message.account_id))]
+    pub async fn handle_master_view_seed_message(
+        &self,
+        message: MasterViewSeedMessage,
+    ) -> Result<(), IndexerError> {
+        let account_id = message.account_id;
+        let state_transition = StateTransition::RegisterMasterViewSeed(message);
+
+        self.state_applicator
+            .apply_state_transition(state_transition, false /* is_backfill */)
+            .await?;
+
+        // Kick off a backfill for the user's state in the background, so that we can
+        // delete the master view seed message from the queue immediately
+        let self_clone = self.clone();
+        tokio::spawn(async move { self_clone.backfill_user_state(account_id).await });
+
+        Ok(())
+    }
+
+    // === Recovery ID Message Handler ===
+
+    /// Handle a message representing the registration of a new recovery ID
+    #[instrument(skip_all, fields(recovery_id = %message.recovery_id))]
+    pub async fn handle_recovery_id_message(
+        &self,
+        message: RecoveryIdMessage,
+    ) -> Result<(), IndexerError> {
+        let RecoveryIdMessage { recovery_id, tx_hash, is_backfill } = message;
+        let state_transition =
+            self.get_state_transition_for_recovery_id(recovery_id, tx_hash).await?;
+
+        if let Some(state_transition) = state_transition {
+            info!(
+                "Applying {} state transition for recovery ID {recovery_id}",
+                state_transition.name()
+            );
+
+            self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+        }
+
+        Ok(())
+    }
+
+    // === Nullifier Spend Message Handler ===
+
+    /// Handle a message representing the spending of a state object's nullifier
+    /// onchain
+    #[instrument(skip_all, fields(nullifier = %message.nullifier))]
+    pub async fn handle_nullifier_spend_message(
+        &self,
+        message: NullifierSpendMessage,
+    ) -> Result<(), IndexerError> {
+        info!("Handling nullifier spend message");
+
+        let NullifierSpendMessage { nullifier, tx_hash, is_backfill } = message;
+        if let Some(state_transition) =
+            self.get_state_transition_for_nullifier(nullifier, tx_hash).await?
+        {
+            self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+        }
+
+        Ok(())
+    }
+
+    // === Public Intent Update Message Handler ===
+
+    /// Handle a message representing the update of a public intent
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
+    pub async fn handle_update_public_intent_message(
+        &self,
+        message: UpdatePublicIntentMessage,
+    ) -> Result<(), IndexerError> {
+        let UpdatePublicIntentMessage { intent_hash, tx_hash, is_backfill } = message;
+
+        info!(
+            "Handling public intent update message for intent hash {intent_hash:#x} in tx {tx_hash:#x}"
+        );
+
+        let state_transition =
+            self.get_state_transition_for_public_intent_update(intent_hash, tx_hash).await?;
+
+        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Cancellation Message Handler ===
+
+    /// Handle a message representing the cancellation of a public intent
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
+    pub async fn handle_cancel_public_intent_message(
+        &self,
+        message: CancelPublicIntentMessage,
+    ) -> Result<(), IndexerError> {
+        info!(
+            "Handling public intent cancellation message for intent hash {intent_hash:#x} in tx {tx_hash:#x}",
+            intent_hash = message.intent_hash,
+            tx_hash = message.tx_hash
+        );
+
+        let is_backfill = message.is_backfill;
+        let state_transition = StateTransition::CancelPublicIntent(message);
+
+        self.state_applicator.apply_state_transition(state_transition, is_backfill).await?;
+
+        Ok(())
+    }
+
+    // === Public Intent Metadata Update Message Handler ===
+
+    /// Handle a message representing an update to a public intent's metadata
+    #[instrument(skip_all, fields(intent_hash = %message.intent_hash))]
+    pub async fn handle_public_intent_metadata_update_message(
+        &self,
+        message: PublicIntentMetadataUpdateMessage,
+    ) -> Result<(), IndexerError> {
+        info!(
+            "Handling public intent metadata update message for intent hash {intent_hash:#x} (order ID {order_id})",
+            intent_hash = message.intent_hash,
+            order_id = message.order.id
+        );
+
+        let state_transition = StateTransition::UpdatePublicIntentMetadata(message);
+
+        self.state_applicator
+            .apply_state_transition(state_transition, false /* is_backfill */)
+            .await?;
+
+        Ok(())
+    }
+}

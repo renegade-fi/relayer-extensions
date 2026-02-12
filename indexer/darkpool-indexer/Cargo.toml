@@ -3,22 +3,43 @@ name = "darkpool-indexer"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+integration = [
+    "diesel_migrations",
+    "postgresql_embedded",
+    "diesel-async/migrations",
+    "renegade-solidity-abi/transfer-auth",
+    "renegade-solidity-abi/v2-auth-helpers",
+]
+
+[[test]]
+name = "integration"
+path = "integration/main.rs"
+harness = false
+required-features = ["integration"]
+
 [dependencies]
 # === Renegade === #
-renegade-constants = { package = "constants", path = "/Users/akirillo/code/renegade/constants" }
-renegade-common = { package = "common", path = "/Users/akirillo/code/renegade/common" }
-renegade-crypto = { path = "/Users/akirillo/code/renegade/renegade-crypto" }
-renegade-circuit-types = { package = "circuit-types", path = "/Users/akirillo/code/renegade/circuit-types" }
-ark-mpc = { git = "https://github.com/renegade-fi/ark-mpc" } # We import this here so that its default features are set 
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-crypto = { package = "crypto", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-darkpool-types = { package = "darkpool-types", git = "https://github.com/renegade-fi/renegade.git", features = ["proof-system-types"] }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", features = ["hmac"] }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade.git", features = ["telemetry"] }
 
 # === Runtime === #
 tokio = { version = "1.10", features = ["full"] }
 clap = { version = "4.5.3", features = ["derive", "env"] }
+futures-util = "0.3"
+async-trait = "0.1"
 
 # === DB === #
 diesel = { workspace = true, features = ["postgres", "numeric", "uuid"] }
-diesel-async = { workspace = true, features = ["postgres", "bb8"] }
-bb8 = { workspace = true }
+diesel_migrations = { version = "2.3", optional = true }
+diesel-async = { workspace = true, features = ["postgres", "deadpool"] }
+postgresql_embedded = { version = "0.19", features = ["tokio", "bundled"], optional = true }
 native-tls = { workspace = true }
 postgres-native-tls = { workspace = true }
 tokio-postgres = { workspace = true }
@@ -33,17 +54,36 @@ aws-sdk-sqs = "1.50.0"
 darkpool-indexer-api = { path = "../darkpool-indexer-api" }
 serde = "1.0"
 serde_json = "1.0"
+warp = { version = "0.4", features = ["server"] }
+base64 = "0.22.1"
 
 # === Blockchain === #
-alloy = { workspace = true }
-
-# === Crypto === #
-tiny-keccak = { version = "2.0", features = ["keccak", "sha3"] }
+alloy = { workspace = true, features = ["provider-ws", "provider-trace-api", "provider-debug-api"] }
+renegade-solidity-abi = { workspace = true, default-features = true }
 
 # === Misc === #
+rustls = { version = "0.23", default-features = false }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 itertools = "0.10"
+bytes = "1.10.1"
+ruint = { version = "1.17.0", features = ["num-bigint"] }
 
 [dev-dependencies]
+# === Renegade === #
+renegade-circuits = { package = "circuits-core", git = "https://github.com/renegade-fi/renegade.git", features = ["test_helpers"] }
+renegade-types-account = { package = "types-account", git = "https://github.com/renegade-fi/renegade.git", features = ["mocks"] }
+test-helpers = { git = "https://github.com/renegade-fi/renegade.git" }
+
+# === Runtime === #
+inventory = "0.3"
+
+# === Blockchain === #
+alloy = { workspace = true, features = ["getrandom", "provider-anvil-node"] }
+
+# === Misc === #
 rand = "0.8"
+colored = "3"
+eyre = "0.6"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+num-bigint = "0.4"

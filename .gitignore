@@ -19,3 +19,4 @@ target/
 **/*.json
 
 **/.cursor/
+CLAUDE*.md
