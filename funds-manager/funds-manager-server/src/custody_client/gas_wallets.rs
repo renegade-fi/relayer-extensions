@@ -148,7 +148,7 @@ impl CustodyClient {
             if my_balance < total_amount { my_balance / wallets.len() as f64 } else { fill_to };
 
         for wallet in wallets.iter() {
-            self.top_up_gas(&wallet.address, target).await?;
+            self.top_up_gas(&wallet.address, "ETH", target).await?;
         }
         Ok(())
     }
@@ -157,9 +157,10 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
-        self.top_up_gas_with_tolerance(addr, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
+        self.top_up_gas_with_tolerance(addr, symbol, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
     }
 
     /// Refill gas for a wallet up to a given amount
@@ -169,12 +170,13 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas_with_tolerance(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
         tolerance: f64,
     ) -> Result<(), FundsManagerError> {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
-            info!("Skipping gas refill for {addr} because balance is within tolerance");
+            info!("Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance");
             return Ok(());
         }
 
