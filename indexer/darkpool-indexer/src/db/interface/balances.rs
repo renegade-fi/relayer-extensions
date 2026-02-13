@@ -3,6 +3,7 @@
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_constants::Scalar;
+use uuid::Uuid;
 
 use crate::{
     db::{
@@ -21,11 +22,10 @@ impl DbClient {
     // -----------
 
     /// Insert a balance record representing a newly-created balance
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_balance(
         &self,
         balance: BalanceStateObject,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<(), DbError> {
         let balance_model: BalanceModel = balance.into();
 
@@ -33,7 +33,25 @@ impl DbClient {
             .values(balance_model)
             .execute(conn)
             .await
-            .map_err(DbError::query)?;
+            .map_err(DbError::from)?;
+
+        Ok(())
+    }
+
+    /// Update a balance record
+    pub async fn update_balance(
+        &self,
+        balance: BalanceStateObject,
+        conn: &mut DbConn,
+    ) -> Result<(), DbError> {
+        let balance_model: BalanceModel = balance.into();
+
+        diesel::update(balances::table)
+            .filter(balances::recovery_stream_seed.eq(balance_model.recovery_stream_seed.clone()))
+            .set(balance_model)
+            .execute(conn)
+            .await
+            .map_err(DbError::from)?;
 
         Ok(())
     }
@@ -42,11 +60,27 @@ impl DbClient {
     // | Getters |
     // -----------
 
+    /// Get a balance by its nullifier
+    pub async fn get_balance_by_nullifier(
+        &self,
+        nullifier: Scalar,
+        conn: &mut DbConn,
+    ) -> Result<BalanceStateObject, DbError> {
+        let nullifier_bigdecimal = scalar_to_bigdecimal(nullifier);
+
+        balances::table
+            .filter(balances::nullifier.eq(nullifier_bigdecimal))
+            .first(conn)
+            .await
+            .map_err(DbError::from)
+            .map(BalanceModel::into)
+    }
+
     /// Get a balance by its recovery stream seed
-    pub async fn get_balance(
+    pub async fn get_balance_by_recovery_stream_seed(
         &self,
         recovery_stream_seed: Scalar,
-        conn: &mut DbConn<'_>,
+        conn: &mut DbConn,
     ) -> Result<Option<BalanceStateObject>, DbError> {
         let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
 
@@ -55,7 +89,39 @@ impl DbClient {
             .first(conn)
             .await
             .optional()
-            .map_err(DbError::query)
+            .map_err(DbError::from)
             .map(|maybe_record| maybe_record.map(BalanceModel::into))
+    }
+
+    /// Check if a balance record exists for a given recovery stream seed
+    pub async fn balance_exists(
+        &self,
+        recovery_stream_seed: Scalar,
+        conn: &mut DbConn,
+    ) -> Result<bool, DbError> {
+        let recovery_stream_seed_bigdecimal = scalar_to_bigdecimal(recovery_stream_seed);
+
+        balances::table
+            .filter(balances::recovery_stream_seed.eq(recovery_stream_seed_bigdecimal))
+            .first::<BalanceModel>(conn)
+            .await
+            .optional()
+            .map_err(DbError::from)
+            .map(|maybe_record| maybe_record.is_some())
+    }
+
+    /// Get all of a user's active balance state objects
+    pub async fn get_account_active_balances(
+        &self,
+        account_id: Uuid,
+        conn: &mut DbConn,
+    ) -> Result<Vec<BalanceStateObject>, DbError> {
+        balances::table
+            .filter(balances::account_id.eq(account_id))
+            .filter(balances::active.eq(true))
+            .load(conn)
+            .await
+            .map_err(DbError::from)
+            .map(|balances| balances.into_iter().map(BalanceModel::into).collect())
     }
 }

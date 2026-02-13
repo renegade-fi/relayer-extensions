@@ -131,7 +131,7 @@ impl CustodyClient {
 
     /// The secret name for a hot wallet
     pub(crate) fn hot_wallet_secret_name(address: &str) -> String {
-        format!("hot-wallet-{address}")
+        format!("hot-wallet-{}", address.to_lowercase())
     }
 
     /// Get the hot wallet private key for a vault
@@ -170,6 +170,6 @@ impl CustodyClient {
     /// Top up the gas (ether) balance on the quoter hot wallet
     pub(crate) async fn top_up_quoter_hot_wallet_gas(&self) -> Result<(), FundsManagerError> {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
-        self.top_up_gas(&hot_wallet.address, DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT).await
+        self.top_up_gas(&hot_wallet.address, "ETH", DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT).await
     }
 }

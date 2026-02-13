@@ -2,11 +2,13 @@
 
 use std::sync::Arc;
 
-use bb8::{Pool, PooledConnection};
 use diesel::ConnectionError;
 use diesel_async::{
     AsyncPgConnection,
-    pooled_connection::{AsyncDieselConnectionManager, ManagerConfig},
+    pooled_connection::{
+        AsyncDieselConnectionManager, ManagerConfig,
+        deadpool::{Object, Pool},
+    },
 };
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
@@ -19,9 +21,9 @@ use crate::db::error::DbError;
 // ---------
 
 /// The DB connection type
-pub type DbConn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgConnection>>;
+pub type DbConn = Object<AsyncPgConnection>;
 /// The DB pool type
-pub type DbPool = Pool<AsyncDieselConnectionManager<AsyncPgConnection>>;
+pub type DbPool = Pool<AsyncPgConnection>;
 
 // ----------
 // | Client |
@@ -31,17 +33,17 @@ pub type DbPool = Pool<AsyncDieselConnectionManager<AsyncPgConnection>>;
 #[derive(Clone)]
 pub struct DbClient {
     /// The database connection pool
-    db_pool: Arc<DbPool>,
+    pub db_pool: Arc<DbPool>,
 }
 
 impl DbClient {
     /// Create a new database client using the provided database URL
-    pub async fn new(db_url: &str) -> Result<Self, DbError> {
+    pub fn new(db_url: &str) -> Result<Self, DbError> {
         let mut conf = ManagerConfig::default();
         conf.custom_setup = Box::new(move |url| Box::pin(Self::establish_connection(url)));
 
         let manager = AsyncDieselConnectionManager::new_with_config(db_url, conf);
-        let db_pool = Pool::builder().build(manager).await.map_err(DbError::client_setup)?;
+        let db_pool = Pool::builder(manager).build().map_err(DbError::client_setup)?;
 
         Ok(Self { db_pool: Arc::new(db_pool) })
     }

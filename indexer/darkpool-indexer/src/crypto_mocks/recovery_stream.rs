@@ -1,7 +1,8 @@
 //! Helper functions for working with recovery streams
 
-use renegade_circuit_types::csprng::PoseidonCSPRNG;
 use renegade_constants::Scalar;
+use renegade_crypto::hash::compute_poseidon_hash;
+use renegade_darkpool_types::csprng::PoseidonCSPRNG;
 
 use crate::crypto_mocks::utils::hash_to_scalar;
 
@@ -27,4 +28,11 @@ pub fn create_recovery_seed_csprng(master_view_seed: Scalar) -> PoseidonCSPRNG {
     let csprng_seed = hash_to_scalar(&seed_msg);
 
     PoseidonCSPRNG::new(csprng_seed)
+}
+
+/// Sample the next nullifier from a recovery stream, advancing the stream's
+/// internal state
+pub fn sample_next_nullifier(recovery_stream: &mut PoseidonCSPRNG) -> Scalar {
+    let next_recovery_id = recovery_stream.next().unwrap();
+    compute_poseidon_hash(&[next_recovery_id, recovery_stream.seed])
 }

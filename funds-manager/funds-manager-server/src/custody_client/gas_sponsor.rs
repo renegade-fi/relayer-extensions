@@ -224,7 +224,10 @@ impl CustodyClient {
             Chain::ArbitrumSepolia | Chain::ArbitrumOne => sol::receiveEthCall {}.abi_encode(),
             // Solidity implementations use the `receive` fallback function to receive ETH
             // No calldata is needed here
-            Chain::BaseSepolia | Chain::BaseMainnet => Vec::new(),
+            Chain::BaseSepolia
+            | Chain::BaseMainnet
+            | Chain::EthereumSepolia
+            | Chain::EthereumMainnet => Vec::new(),
             _ => {
                 panic!("transferring eth is not supported on {:?}", self.chain);
             },

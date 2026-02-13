@@ -18,7 +18,7 @@ use super::CustodyClient;
 ///
 /// I.e. if the wallet's balance is within this percentage of the desired fill,
 /// we skip refilling
-pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.1; // 10%
+pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.3; // 30%
 /// The amount to top up a newly registered gas wallet
 pub const DEFAULT_TOP_UP_AMOUNT: f64 = 0.01; // ETH
 
@@ -120,7 +120,7 @@ impl CustodyClient {
 
     /// Get the secret name for a gas wallet's private key
     fn gas_wallet_secret_name(address: &str) -> String {
-        format!("gas-wallet-{}", address)
+        format!("gas-wallet-{}", address.to_lowercase())
     }
 
     /// Refill gas for a set of wallets
@@ -148,7 +148,7 @@ impl CustodyClient {
             if my_balance < total_amount { my_balance / wallets.len() as f64 } else { fill_to };
 
         for wallet in wallets.iter() {
-            self.top_up_gas(&wallet.address, target).await?;
+            self.top_up_gas(&wallet.address, "ETH", target).await?;
         }
         Ok(())
     }
@@ -157,9 +157,10 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
-        self.top_up_gas_with_tolerance(addr, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
+        self.top_up_gas_with_tolerance(addr, symbol, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
     }
 
     /// Refill gas for a wallet up to a given amount
@@ -169,12 +170,15 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas_with_tolerance(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
         tolerance: f64,
     ) -> Result<(), FundsManagerError> {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
-            info!("Skipping gas refill for {addr} because balance is within tolerance");
+            info!(
+                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance"
+            );
             return Ok(());
         }
 

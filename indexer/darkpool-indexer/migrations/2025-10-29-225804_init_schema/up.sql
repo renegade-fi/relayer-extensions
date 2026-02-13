@@ -1,21 +1,29 @@
 -- Defines the initial set of tables for the darkpool indexer database.
+-- All numeric columns represent unsigned 256-bit integers. As such, we constrain all to be non-negative, have a precision of 78 (# of digits in 2^256), and a scale of 0 (no fractional component)
 
 -- BALANCES --
 
 -- Stores darkpool balances
 CREATE TABLE "balances"(
-	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
-	"account_id" UUID NOT NULL,
-	"active" BOOL NOT NULL,
+	"recovery_stream_seed" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
+	"version" BIGINT NOT NULL CHECK (version >= 0),
+	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0),
+	"share_stream_index" BIGINT NOT NULL CHECK (share_stream_index >= 0),
+	"nullifier" NUMERIC(78) NOT NULL CHECK (nullifier >= 0),
+	"public_shares" NUMERIC(78)[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"mint" TEXT NOT NULL,
 	"owner_address" TEXT NOT NULL,
 	"relayer_fee_recipient" TEXT NOT NULL,
 	"one_time_authority" TEXT NOT NULL,
-	"protocol_fee" NUMERIC NOT NULL CHECK (protocol_fee >= 0),
-	"relayer_fee" NUMERIC NOT NULL CHECK (relayer_fee >= 0),
-	"amount" NUMERIC NOT NULL CHECK (amount >= 0),
-	"allow_public_fills" BOOL NOT NULL
+	"protocol_fee" NUMERIC(78) NOT NULL CHECK (protocol_fee >= 0),
+	"relayer_fee" NUMERIC(78) NOT NULL CHECK (relayer_fee >= 0),
+	"amount" NUMERIC(78) NOT NULL CHECK (amount >= 0),
+	"account_id" UUID NOT NULL,
+	"active" BOOL NOT NULL
 );
+
+-- Indexes a balance by its nullifier
+CREATE INDEX "idx_balances_nullifier" ON "balances" ("nullifier");
 
 -- Indexes a balance by its account ID & active flag
 CREATE INDEX "idx_balances_account_id_active" ON "balances" ("account_id", "active");
@@ -24,41 +32,107 @@ CREATE INDEX "idx_balances_account_id_active" ON "balances" ("account_id", "acti
 
 -- Stores information about state objects which are expected to be created
 CREATE TABLE "expected_state_objects"(
-	"nullifier" NUMERIC NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
+	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0),
 	"account_id" UUID NOT NULL,
-	"owner_address" TEXT NOT NULL,
-	"recovery_stream_seed" NUMERIC NOT NULL CHECK (recovery_stream_seed >= 0),
-	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0),
+	"recovery_stream_seed" NUMERIC(78) NOT NULL CHECK (recovery_stream_seed >= 0),
+	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0)
 );
 
 -- PROCESSED NULLIFIERS --
 
--- Stores nullifiers which have already been processed
+-- Stores nullifiers which have already been processed (idempotency guard)
 CREATE TABLE "processed_nullifiers"(
-	"nullifier" NUMERIC NOT NULL PRIMARY KEY CHECK (nullifier >= 0),
-	"block_number" NUMERIC NOT NULL CHECK (block_number >= 0)
+	"nullifier" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (nullifier >= 0)
+);
+
+-- PROCESSED RECOVERY IDs --
+
+-- Stores recovery IDs which have already been processed (idempotency guard)
+CREATE TABLE "processed_recovery_ids"(
+	"recovery_id" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_id >= 0)
+);
+
+-- PROCESSED PUBLIC INTENT UPDATES --
+
+-- Stores public intent updates which have already been processed (idempotency guard)
+CREATE TABLE "processed_public_intent_updates"(
+	"intent_hash" TEXT NOT NULL,
+	"tx_hash" TEXT NOT NULL,
+	PRIMARY KEY ("intent_hash", "tx_hash")
+);
+
+-- LAST INDEXED BLOCK TABLES --
+
+-- Tracks the last indexed block for nullifier spend events (single-row)
+CREATE TABLE "last_indexed_nullifier_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
+
+-- Tracks the last indexed block for recovery ID registration events (single-row)
+CREATE TABLE "last_indexed_recovery_id_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
+);
+
+-- Tracks the last indexed block for public intent update events (single-row)
+CREATE TABLE "last_indexed_public_intent_update_block"(
+	"id" INTEGER NOT NULL PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	"block_number" BIGINT NOT NULL CHECK (block_number >= 0)
 );
 
 -- INTENTS --
 
 -- Stores darkpool intents
 CREATE TABLE "intents"(
-	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
-	"account_id" UUID NOT NULL,
-	"active" BOOL NOT NULL,
+	"recovery_stream_seed" NUMERIC(78) NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
+	"version" BIGINT NOT NULL CHECK (version >= 0),
+	"share_stream_seed" NUMERIC(78) NOT NULL CHECK (share_stream_seed >= 0),
+	"share_stream_index" BIGINT NOT NULL CHECK (share_stream_index >= 0),
+	"nullifier" NUMERIC(78) NOT NULL CHECK (nullifier >= 0),
+	"public_shares" NUMERIC(78)[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
 	"input_mint" TEXT NOT NULL,
 	"output_mint" TEXT NOT NULL,
 	"owner_address" TEXT NOT NULL,
-	"min_price" NUMERIC NOT NULL CHECK (min_price >= 0),
-	"input_amount" NUMERIC NOT NULL CHECK (input_amount >= 0),
+	"min_price" NUMERIC(78) NOT NULL CHECK (min_price >= 0),
+	"input_amount" NUMERIC(78) NOT NULL CHECK (input_amount >= 0),
+	"account_id" UUID NOT NULL,
+	"active" BOOL NOT NULL,
 	"matching_pool" TEXT NOT NULL,
 	"allow_external_matches" BOOL NOT NULL,
-	"min_fill_size" NUMERIC NOT NULL CHECK (min_fill_size >= 0),
+	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0),
 	"precompute_cancellation_proof" BOOL NOT NULL
 );
 
+-- Indexes an intent by its nullifier
+CREATE INDEX "idx_intents_nullifier" ON "intents" ("nullifier");
+
 -- Indexes an intent by its account ID & active flag
 CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active");
+
+-- PUBLIC INTENTS --
+
+-- Stores public darkpool intents
+CREATE TABLE "public_intents"(
+	"intent_hash" TEXT NOT NULL PRIMARY KEY,
+	"order_id" UUID NOT NULL,
+	"input_mint" TEXT NOT NULL,
+	"output_mint" TEXT NOT NULL,
+	"owner_address" TEXT NOT NULL,
+	"min_price" NUMERIC(78) NOT NULL CHECK (min_price >= 0),
+	"input_amount" NUMERIC(78) NOT NULL CHECK (input_amount >= 0),
+	"account_id" UUID NOT NULL,
+	"active" BOOL NOT NULL,
+	"matching_pool" TEXT NOT NULL,
+	"allow_external_matches" BOOL NOT NULL,
+	"min_fill_size" NUMERIC(78) NOT NULL CHECK (min_fill_size >= 0),
+	"intent_signature_nonce" NUMERIC(78) NOT NULL CHECK (intent_signature_nonce >= 0),
+	"intent_signature_bytes" TEXT NOT NULL,
+	"permit" TEXT NOT NULL
+);
+
+-- Indexes a public intent by its account ID & active flag
+CREATE INDEX "idx_public_intents_account_id_active" ON "public_intents" ("account_id", "active");
 
 -- MASTER VIEW SEEDS --
 
@@ -66,34 +140,7 @@ CREATE INDEX "idx_intents_account_id_active" ON "intents" ("account_id", "active
 CREATE TABLE "master_view_seeds"(
 	"account_id" UUID NOT NULL PRIMARY KEY,
 	"owner_address" TEXT NOT NULL,
-	"seed" NUMERIC NOT NULL CHECK (seed >= 0),
-	"recovery_seed_csprng_index" NUMERIC NOT NULL CHECK (recovery_seed_csprng_index >= 0),
-	"share_seed_csprng_index" NUMERIC NOT NULL CHECK (share_seed_csprng_index >= 0)
+	"seed" NUMERIC(78) NOT NULL CHECK (seed >= 0),
+	"recovery_seed_csprng_index" BIGINT NOT NULL CHECK (recovery_seed_csprng_index >= 0),
+	"share_seed_csprng_index" BIGINT NOT NULL CHECK (share_seed_csprng_index >= 0)
 );
-
--- GENERIC STATE OBJECTS --
-
--- An enum representing the type of a generic state object
-CREATE TYPE "object_type" AS ENUM ('intent', 'balance');
-
--- Stores generic state objects
-CREATE TABLE "generic_state_objects"(
-	"recovery_stream_seed" NUMERIC NOT NULL PRIMARY KEY CHECK (recovery_stream_seed >= 0),
-	"account_id" UUID NOT NULL,
-	"active" BOOL NOT NULL,
-	"object_type" "object_type" NOT NULL,
-	"nullifier" NUMERIC NOT NULL CHECK (nullifier >= 0),
-	"version" NUMERIC NOT NULL CHECK (version >= 0),
-	"share_stream_seed" NUMERIC NOT NULL CHECK (share_stream_seed >= 0),
-	"share_stream_index" NUMERIC NOT NULL CHECK (share_stream_index >= 0),
-	"owner_address" TEXT NOT NULL,
-	"public_shares" NUMERIC[] NOT NULL CHECK (array_position(public_shares, NULL) IS NULL AND 0 <= ALL(public_shares)),
-	"private_shares" NUMERIC[] NOT NULL CHECK (array_position(private_shares, NULL) IS NULL AND 0 <= ALL(private_shares))
-);
-
--- Indexes a generic state object by its account ID & active flag
-CREATE INDEX "idx_generic_state_objects_account_id_active" ON "generic_state_objects" ("account_id", "active");
-
--- Indexes a generic state object by its nullifier
-CREATE INDEX "idx_generic_state_objects_nullifier" ON "generic_state_objects" ("nullifier");
-

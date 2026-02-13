@@ -1,0 +1,23 @@
+services:
+  anvil:
+    image: anvil:latest
+    build:
+      context: anvil
+      dockerfile: Dockerfile
+    ports:
+      - "8545:8545"
+
+  indexer:
+    image: indexer_integration:latest
+    build:
+      context: ../../../
+      dockerfile: indexer/darkpool-indexer/integration/Dockerfile
+      additional_contexts:
+        anvil: "service:anvil"
+    command: >
+      cargo test -p darkpool-indexer --test integration --features "integration" --
+        --deployments /deployments.json
+        --anvil-ws-url ws://anvil:8545
+    tty: true
+    depends_on:
+      - anvil

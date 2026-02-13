@@ -36,6 +36,10 @@ pub(crate) struct Server {
     pub chain_clients: HashMap<Chain, ChainClients>,
     /// The price reporter client
     pub price_reporter: PriceReporterClient,
+    /// The maximum amount of gas (in ETH) that can be withdrawn at a given time
+    pub max_gas_withdrawal_amount: f64,
+    /// The maximum amount (in ETH) that a request may refill gas to
+    pub max_gas_refill_amount: f64,
 }
 
 impl Server {
@@ -85,7 +89,14 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server { hmac_key, chain_clients, environment: args.environment, price_reporter })
+        Ok(Server {
+            hmac_key,
+            chain_clients,
+            environment: args.environment,
+            price_reporter,
+            max_gas_withdrawal_amount: args.max_gas_withdrawal_amount,
+            max_gas_refill_amount: args.max_gas_refill_amount,
+        })
     }
 
     /// Get the custody client for the given chain
