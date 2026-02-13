@@ -119,6 +119,15 @@ pub struct Cli {
     #[clap(long, default_value = "3000")]
     pub port: u16,
 
+    // --- Gas Limits --- //
+
+    /// The maximum amount of gas (in ETH) that can be withdrawn at a given time
+    #[clap(long, env = "MAX_GAS_WITHDRAWAL_AMOUNT", default_value = "1.0")]
+    pub max_gas_withdrawal_amount: f64,
+    /// The maximum amount (in ETH) that a request may refill gas to
+    #[clap(long, env = "MAX_GAS_REFILL_AMOUNT", default_value = "0.1")]
+    pub max_gas_refill_amount: f64,
+
     // --- Telemetry --- //
 
     /// Whether or not Datadog is in use. Controls log format & telemetry export.
@@ -229,6 +238,14 @@ pub struct ChainConfig {
     // --- Contract Addresses --- //
     /// The Permit2 contract address for the chain
     pub permit2_addr: Address,
+
+    // --- Gas Wallet Params --- //
+    /// The amount of ETH to top up gas wallets to.
+    /// Defaults to 0.01 ETH if not specified.
+    pub gas_top_up_amount: Option<f64>,
+    /// The refill tolerance as a fraction (0.0–1.0). Refill is skipped if
+    /// balance exceeds target * tolerance. Defaults to 0.3 if not specified.
+    pub gas_refill_tolerance: Option<f64>,
 }
 
 impl ChainConfig {
@@ -278,6 +295,8 @@ impl ChainConfig {
             gas_sponsor_address,
             gas_sponsor_address_v2,
             price_reporter.clone(),
+            self.gas_top_up_amount,
+            self.gas_refill_tolerance,
         )?;
 
         let quoter_hot_wallet =

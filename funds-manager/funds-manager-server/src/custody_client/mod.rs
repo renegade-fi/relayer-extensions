@@ -146,6 +146,10 @@ pub struct CustodyClient {
     gas_sponsor_address_v2: Address,
     /// The price reporter client
     price_reporter: PriceReporterClient,
+    /// The amount of ETH to fill gas wallets to on registration
+    gas_top_up_amount: f64,
+    /// The tolerance for gas refills (fraction of target balance)
+    gas_refill_tolerance: f64,
 }
 
 impl CustodyClient {
@@ -163,7 +167,10 @@ impl CustodyClient {
         gas_sponsor_address: Address,
         gas_sponsor_address_v2: Address,
         price_reporter: PriceReporterClient,
+        gas_top_up_amount: Option<f64>,
+        gas_refill_tolerance: Option<f64>,
     ) -> Result<Self, FundsManagerError> {
+        use gas_wallets::{DEFAULT_GAS_REFILL_TOLERANCE, DEFAULT_TOP_UP_AMOUNT};
         let fireblocks_client =
             Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
 
@@ -177,6 +184,8 @@ impl CustodyClient {
             gas_sponsor_address,
             gas_sponsor_address_v2,
             price_reporter,
+            gas_top_up_amount: gas_top_up_amount.unwrap_or(DEFAULT_TOP_UP_AMOUNT),
+            gas_refill_tolerance: gas_refill_tolerance.unwrap_or(DEFAULT_GAS_REFILL_TOLERANCE),
         })
     }
 
