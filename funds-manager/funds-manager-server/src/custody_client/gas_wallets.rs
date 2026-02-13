@@ -18,7 +18,7 @@ use super::CustodyClient;
 ///
 /// I.e. if the wallet's balance is within this percentage of the desired fill,
 /// we skip refilling
-pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.1; // 10%
+pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.3; // 30%
 /// The amount to top up a newly registered gas wallet
 pub const DEFAULT_TOP_UP_AMOUNT: f64 = 0.01; // ETH
 

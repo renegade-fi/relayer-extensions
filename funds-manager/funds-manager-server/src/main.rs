@@ -276,6 +276,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("custody"))
         .and(with_chain_param())
         .and(warp::path("gas-wallets"))
+        .and(warp::path::end())
         .and(with_hmac_auth(server.clone()))
         .and(with_server(server.clone()))
         .and_then(create_gas_wallet_handler);
@@ -317,6 +318,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("custody"))
         .and(with_chain_param())
         .and(warp::path("gas-wallets"))
+        .and(warp::path::end())
         .and(with_hmac_auth(server.clone()))
         .and(with_server(server.clone()))
         .and_then(get_gas_wallets_handler);
@@ -335,6 +337,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("custody"))
         .and(with_chain_param())
         .and(warp::path("hot-wallets"))
+        .and(warp::path::end())
         .and(with_hmac_auth(server.clone()))
         .map(with_chain_and_json_body::<CreateHotWalletRequest>)
         .and_then(identity)
