@@ -128,8 +128,8 @@ ecr_repo = "prover-service-testnet-v2"
 cargo_features = "log-invalid-bundles"
 
 [services.testnet-prover-service.deploy]
-environment = "testnet"
-resource = "prover-service-v2"
+environment = "testnet-v2"
+resource = "prover-service"
 
 [services.mainnet-prover-service]
 [services.mainnet-prover-service.build]
@@ -138,5 +138,5 @@ ecr_repo = "prover-service-mainnet-v2"
 cargo_features = "log-invalid-bundles"
 
 [services.mainnet-prover-service.deploy]
-environment = "mainnet"
-resource = "prover-service-v2"
+environment = "mainnet-v2"
+resource = "prover-service"

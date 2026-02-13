@@ -117,6 +117,20 @@ pub struct PrivateSettlementProofResponse {
     pub output_balance_link_proof_1: PlonkLinkProof,
 }
 
+/// A public settlement proof response with validity and output-balance links
+///
+/// Sent by the prover service for intent-and-balance public settlement proofs
+/// that compute both linking proofs for a single party
+#[derive(Serialize, Deserialize)]
+pub struct PublicSettlementProofResponse {
+    /// The settlement proof
+    pub proof: PlonkProof,
+    /// The validity linking proof
+    pub validity_link_proof: PlonkLinkProof,
+    /// The output balance linking proof
+    pub output_balance_link_proof: PlonkLinkProof,
+}
+
 // -----------------
 // | Request Types |
 // -----------------
@@ -226,6 +240,8 @@ pub struct IntentAndBalanceBoundedSettlementRequest {
     pub witness: IntentAndBalanceBoundedSettlementWitness,
     /// The link hint for the validity proof
     pub validity_link_hint: ProofLinkingHint,
+    /// The link hint for the output balance validity proof
+    pub output_balance_link_hint: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT AND BALANCE PRIVATE SETTLEMENT`
@@ -252,10 +268,10 @@ pub struct IntentAndBalancePublicSettlementRequest {
     pub statement: IntentAndBalancePublicSettlementStatement,
     /// The witness
     pub witness: IntentAndBalancePublicSettlementWitness,
-    /// The party ID (0 or 1) for two-party settlements
-    pub party_id: u8,
     /// The link hint for the validity proof
     pub validity_link_hint: ProofLinkingHint,
+    /// The link hint for the output balance validity proof
+    pub output_balance_link_hint: ProofLinkingHint,
 }
 
 /// A request to prove `INTENT ONLY BOUNDED SETTLEMENT`
