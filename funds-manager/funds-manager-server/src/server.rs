@@ -86,12 +86,7 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server {
-            hmac_key,
-            chain_clients,
-            environment: args.environment,
-            price_reporter,
-        })
+        Ok(Server { hmac_key, chain_clients, environment: args.environment, price_reporter })
     }
 
     /// Get the custody client for the given chain
