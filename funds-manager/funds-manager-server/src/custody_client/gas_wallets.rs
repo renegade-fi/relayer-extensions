@@ -177,7 +177,8 @@ impl CustodyClient {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
             info!(
-                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance"
+                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount}] (has {bal}, above {})",
+                amount * tolerance,
             );
             return Ok(());
         }
