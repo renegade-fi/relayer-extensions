@@ -240,6 +240,12 @@ pub struct ChainConfig {
     pub permit2_addr: Address,
 
     // --- Gas Wallet Params --- //
+    /// The maximum amount (in ETH) that a request may refill gas to.
+    /// Falls back to the server-wide CLI default if not specified.
+    pub max_gas_refill_amount: Option<f64>,
+    /// The maximum amount of gas (in ETH) that can be withdrawn at a given
+    /// time. Falls back to the server-wide CLI default if not specified.
+    pub max_gas_withdrawal_amount: Option<f64>,
     /// The amount of ETH to top up gas wallets to.
     /// Defaults to 0.01 ETH if not specified.
     pub gas_top_up_amount: Option<f64>,
@@ -258,6 +264,7 @@ impl ChainConfig {
         db_pool: Arc<DbPool>,
         aws_config: SdkConfig,
         price_reporter: PriceReporterClient,
+        cli_args: &Cli,
     ) -> Result<ChainClients, FundsManagerError> {
         // Build a relayer client
         // let relayer_client = RelayerClient::new(&self.relayer_url, chain);
@@ -284,6 +291,16 @@ impl ChainConfig {
         let gas_sponsor_address = get_gas_sponsor_address(chain);
         let gas_sponsor_address_v2 = get_gas_sponsor_address_v2(chain);
 
+        use crate::custody_client::gas_wallets::{DEFAULT_GAS_REFILL_TOLERANCE, DEFAULT_TOP_UP_AMOUNT};
+        let max_gas_refill_amount =
+            self.max_gas_refill_amount.unwrap_or(cli_args.max_gas_refill_amount);
+        let max_gas_withdrawal_amount =
+            self.max_gas_withdrawal_amount.unwrap_or(cli_args.max_gas_withdrawal_amount);
+        let gas_top_up_amount =
+            self.gas_top_up_amount.unwrap_or_else(|| DEFAULT_TOP_UP_AMOUNT);
+        let gas_refill_tolerance =
+            self.gas_refill_tolerance.unwrap_or_else(|| DEFAULT_GAS_REFILL_TOLERANCE);
+
         let custody_client = CustodyClient::new(
             chain,
             chain_id,
@@ -295,8 +312,10 @@ impl ChainConfig {
             gas_sponsor_address,
             gas_sponsor_address_v2,
             price_reporter.clone(),
-            self.gas_top_up_amount,
-            self.gas_refill_tolerance,
+            max_gas_refill_amount,
+            max_gas_withdrawal_amount,
+            gas_top_up_amount,
+            gas_refill_tolerance,
         )?;
 
         let quoter_hot_wallet =

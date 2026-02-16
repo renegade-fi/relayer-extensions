@@ -146,6 +146,10 @@ pub struct CustodyClient {
     gas_sponsor_address_v2: Address,
     /// The price reporter client
     price_reporter: PriceReporterClient,
+    /// The maximum amount (in ETH) that a request may refill gas to
+    max_gas_refill_amount: f64,
+    /// The maximum amount of gas (in ETH) that can be withdrawn at a given time
+    max_gas_withdrawal_amount: f64,
     /// The amount of ETH to fill gas wallets to on registration
     gas_top_up_amount: f64,
     /// The tolerance for gas refills (fraction of target balance)
@@ -167,10 +171,11 @@ impl CustodyClient {
         gas_sponsor_address: Address,
         gas_sponsor_address_v2: Address,
         price_reporter: PriceReporterClient,
-        gas_top_up_amount: Option<f64>,
-        gas_refill_tolerance: Option<f64>,
+        max_gas_refill_amount: f64,
+        max_gas_withdrawal_amount: f64,
+        gas_top_up_amount: f64,
+        gas_refill_tolerance: f64,
     ) -> Result<Self, FundsManagerError> {
-        use gas_wallets::{DEFAULT_GAS_REFILL_TOLERANCE, DEFAULT_TOP_UP_AMOUNT};
         let fireblocks_client =
             Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
 
@@ -184,9 +189,21 @@ impl CustodyClient {
             gas_sponsor_address,
             gas_sponsor_address_v2,
             price_reporter,
-            gas_top_up_amount: gas_top_up_amount.unwrap_or(DEFAULT_TOP_UP_AMOUNT),
-            gas_refill_tolerance: gas_refill_tolerance.unwrap_or(DEFAULT_GAS_REFILL_TOLERANCE),
+            max_gas_refill_amount,
+            max_gas_withdrawal_amount,
+            gas_top_up_amount,
+            gas_refill_tolerance,
         })
+    }
+
+    /// Get the maximum gas refill amount for this chain
+    pub fn max_gas_refill_amount(&self) -> f64 {
+        self.max_gas_refill_amount
+    }
+
+    /// Get the maximum gas withdrawal amount for this chain
+    pub fn max_gas_withdrawal_amount(&self) -> f64 {
+        self.max_gas_withdrawal_amount
     }
 
     /// Get a database connection from the pool

@@ -36,10 +36,6 @@ pub(crate) struct Server {
     pub chain_clients: HashMap<Chain, ChainClients>,
     /// The price reporter client
     pub price_reporter: PriceReporterClient,
-    /// The maximum amount of gas (in ETH) that can be withdrawn at a given time
-    pub max_gas_withdrawal_amount: f64,
-    /// The maximum amount (in ETH) that a request may refill gas to
-    pub max_gas_refill_amount: f64,
 }
 
 impl Server {
@@ -83,6 +79,7 @@ impl Server {
                     arc_pool.clone(),
                     aws_config.clone(),
                     price_reporter.clone(),
+                    &args,
                 )
                 .await?;
 
@@ -94,8 +91,6 @@ impl Server {
             chain_clients,
             environment: args.environment,
             price_reporter,
-            max_gas_withdrawal_amount: args.max_gas_withdrawal_amount,
-            max_gas_refill_amount: args.max_gas_refill_amount,
         })
     }
 

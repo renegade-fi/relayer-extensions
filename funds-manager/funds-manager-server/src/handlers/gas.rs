@@ -27,15 +27,14 @@ pub(crate) async fn withdraw_gas_handler(
     withdraw_request: WithdrawGasRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
-    let max = server.max_gas_withdrawal_amount;
+    let custody_client = server.get_custody_client(&chain)?;
+    let max = custody_client.max_gas_withdrawal_amount();
     if withdraw_request.amount > max {
         return Err(warp::reject::custom(ApiError::BadRequest(format!(
             "Requested amount {} ETH exceeds maximum allowed withdrawal of {} ETH",
             withdraw_request.amount, max
         ))));
     }
-
-    let custody_client = server.get_custody_client(&chain)?;
     custody_client
         .withdraw_gas(withdraw_request.amount, &withdraw_request.destination_address)
         .await
@@ -50,16 +49,16 @@ pub(crate) async fn refill_gas_handler(
     req: RefillGasRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    let custody_client = server.get_custody_client(&chain)?;
+
     // Check that the refill amount is less than the max
-    let max = server.max_gas_refill_amount;
+    let max = custody_client.max_gas_refill_amount();
     if req.amount > max {
         return Err(warp::reject::custom(ApiError::BadRequest(format!(
             "Requested amount {} ETH exceeds maximum allowed refill of {} ETH",
             req.amount, max
         ))));
     }
-
-    let custody_client = server.get_custody_client(&chain)?;
     custody_client.refill_gas_wallets(req.amount).await?;
 
     let resp = json!({});
