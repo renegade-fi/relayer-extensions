@@ -144,11 +144,15 @@ impl CustodyClient {
 
         // If the gas wallet has insufficient funds, top up each wallet as much as
         // possible
-        let target =
-            if my_balance < total_amount { my_balance / wallets.len() as f64 } else { fill_to };
+        let (target, amount_desc) = if my_balance < total_amount {
+            let t = my_balance / wallets.len() as f64;
+            (t, format!("(hot wallet balance / {} wallets = {})", wallets.len(), t))
+        } else {
+            (fill_to, format!("fill_to amount {fill_to}"))
+        };
 
         for wallet in wallets.iter() {
-            self.top_up_gas(&wallet.address, "ETH", target).await?;
+            self.top_up_gas(&wallet.address, "ETH", target, &amount_desc).await?;
         }
         Ok(())
     }
@@ -159,8 +163,10 @@ impl CustodyClient {
         addr: &str,
         symbol: &str,
         amount: f64,
+        amount_desc: &str,
     ) -> Result<(), FundsManagerError> {
-        self.top_up_gas_with_tolerance(addr, symbol, amount, self.gas_refill_tolerance).await
+        self.top_up_gas_with_tolerance(addr, symbol, amount, self.gas_refill_tolerance, amount_desc)
+            .await
     }
 
     /// Refill gas for a wallet up to a given amount
@@ -173,11 +179,12 @@ impl CustodyClient {
         symbol: &str,
         amount: f64,
         tolerance: f64,
+        amount_desc: &str,
     ) -> Result<(), FundsManagerError> {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
             info!(
-                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount}] (has {bal}, above {})",
+                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount_desc}] (has {bal}, above {})",
                 amount * tolerance,
             );
             return Ok(());
