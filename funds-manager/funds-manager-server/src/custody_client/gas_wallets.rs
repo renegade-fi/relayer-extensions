@@ -75,7 +75,7 @@ impl CustodyClient {
 
         // Update the gas wallet to be active, top up wallets, and return the key
         self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
-        self.refill_gas_wallets(DEFAULT_TOP_UP_AMOUNT).await?;
+        self.refill_gas_wallets(self.gas_top_up_amount).await?;
         Ok(secret_value)
     }
 
@@ -160,7 +160,7 @@ impl CustodyClient {
         symbol: &str,
         amount: f64,
     ) -> Result<(), FundsManagerError> {
-        self.top_up_gas_with_tolerance(addr, symbol, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
+        self.top_up_gas_with_tolerance(addr, symbol, amount, self.gas_refill_tolerance).await
     }
 
     /// Refill gas for a wallet up to a given amount

@@ -11,13 +11,13 @@ import requests
 def refill_gas(
     host: str,
     chain: str,
-    amount: float,
+    fill_to: float,
     hmac_key_hex: str | None = None,
 ) -> dict:
     """Refill gas for all active gas wallets."""
     path = f"/custody/{chain}/gas/refill-gas"
     body = json.dumps(
-        {"amount": amount},
+        {"amount": fill_to},
         separators=(",", ":"),
     )
 
@@ -40,15 +40,15 @@ def main():
     parser = argparse.ArgumentParser(description="Refill gas for all active gas wallets")
     parser.add_argument("--host", required=True, help="Funds manager host, e.g. http://localhost:3000")
     parser.add_argument("--chain", default="ethereum-sepolia", help="Chain name (default: ethereum-sepolia)")
-    parser.add_argument("--amount", type=float, default=0.1, help="Amount of ETH to top up each wallet to (default: 0.1)")
+    parser.add_argument("--fill-to", type=float, default=0.1, help="Target ETH balance to fill each wallet to (default: 0.1)")
     parser.add_argument("--hmac-key", default=None, help="HMAC key as hex string (omit if auth is disabled)")
     args = parser.parse_args()
 
-    print(f"Refilling gas wallets on {args.chain} to {args.amount} ETH each...")
+    print(f"Refilling gas wallets on {args.chain} to {args.fill_to} ETH each...")
     result = refill_gas(
         host=args.host,
         chain=args.chain,
-        amount=args.amount,
+        fill_to=args.fill_to,
         hmac_key_hex=args.hmac_key,
     )
     print(json.dumps(result, indent=2))
