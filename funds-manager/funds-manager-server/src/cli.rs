@@ -291,13 +291,14 @@ impl ChainConfig {
         let gas_sponsor_address = get_gas_sponsor_address(chain);
         let gas_sponsor_address_v2 = get_gas_sponsor_address_v2(chain);
 
-        use crate::custody_client::gas_wallets::{DEFAULT_GAS_REFILL_TOLERANCE, DEFAULT_TOP_UP_AMOUNT};
+        use crate::custody_client::gas_wallets::{
+            DEFAULT_GAS_REFILL_TOLERANCE, DEFAULT_TOP_UP_AMOUNT,
+        };
         let max_gas_refill_amount =
             self.max_gas_refill_amount.unwrap_or(cli_args.max_gas_refill_amount);
         let max_gas_withdrawal_amount =
             self.max_gas_withdrawal_amount.unwrap_or(cli_args.max_gas_withdrawal_amount);
-        let gas_top_up_amount =
-            self.gas_top_up_amount.unwrap_or_else(|| DEFAULT_TOP_UP_AMOUNT);
+        let gas_top_up_amount = self.gas_top_up_amount.unwrap_or_else(|| DEFAULT_TOP_UP_AMOUNT);
         let gas_refill_tolerance =
             self.gas_refill_tolerance.unwrap_or_else(|| DEFAULT_GAS_REFILL_TOLERANCE);
 
