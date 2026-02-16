@@ -237,13 +237,14 @@ impl OnChainEventListenerExecutor {
                 // Increase rate limit
                 self.add_bundle_rate_limit_token(&bundle_ctx.key_description).await?;
 
+                let is_malleable = matches!(external_match, ExternalMatch::Malleable(..));
                 let api_match: ApiExternalMatchResult = external_match.match_result().into();
 
                 // Record external match spread cost
                 self.record_external_match_spread_cost(tx, &bundle_ctx, &api_match).await?;
 
                 // Record settlement metrics
-                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match)?;
+                self.record_settlement_metrics(&receipt, &bundle_ctx, &api_match, is_malleable)?;
 
                 // Record sponsorship metrics
                 if let Some((gas_sponsorship_info, nonce)) = &bundle_ctx.gas_sponsorship_info {

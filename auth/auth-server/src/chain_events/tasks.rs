@@ -12,7 +12,7 @@ use tracing::warn;
 
 use crate::chain_events::abis::GasSponsorContract::SponsoredExternalMatch;
 use crate::chain_events::utils::GPv2Settlement;
-use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
+use crate::telemetry::labels::{EXTERNAL_MATCH_SPREAD_COST, IS_MALLEABLE_TAG};
 use crate::{bundle_store::BundleContext, chain_events::listener::OnChainEventListenerExecutor};
 use crate::{
     error::AuthServerError,
@@ -55,10 +55,12 @@ impl OnChainEventListenerExecutor {
         receipt: &TransactionReceipt,
         ctx: &BundleContext,
         match_result: &ApiExternalMatchResult,
+        is_malleable: bool,
     ) -> Result<(), AuthServerError> {
         let mut labels = self.get_labels(ctx);
         let is_settled_via_cowswap = self.detect_cowswap_settlement(receipt);
         labels.push((SETTLED_VIA_COWSWAP_TAG.to_string(), is_settled_via_cowswap.to_string()));
+        labels.push((IS_MALLEABLE_TAG.to_string(), is_malleable.to_string()));
 
         record_volume_with_tags(
             &match_result.base_mint,
