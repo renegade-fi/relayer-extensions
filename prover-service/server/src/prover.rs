@@ -10,11 +10,12 @@ use prover_service_api::{
     IntentAndBalanceValidityRequest, IntentOnlyBoundedSettlementRequest,
     IntentOnlyFirstFillValidityRequest, IntentOnlyPublicSettlementRequest,
     IntentOnlyValidityRequest, NewOutputBalanceValidityRequest, OutputBalanceValidityRequest,
-    PrivateSettlementProofResponse, ProofAndHintResponse, ProofResponse, SettlementProofResponse,
-    ValidBalanceCreateRequest, ValidDepositRequest, ValidNoteRedemptionRequest,
-    ValidOrderCancellationRequest, ValidPrivateProtocolFeePaymentRequest,
-    ValidPrivateRelayerFeePaymentRequest, ValidPublicProtocolFeePaymentRequest,
-    ValidPublicRelayerFeePaymentRequest, ValidWithdrawalRequest,
+    PrivateSettlementProofResponse, ProofAndHintResponse, ProofResponse,
+    PublicSettlementProofResponse, SettlementProofResponse, ValidBalanceCreateRequest,
+    ValidDepositRequest, ValidNoteRedemptionRequest, ValidOrderCancellationRequest,
+    ValidPrivateProtocolFeePaymentRequest, ValidPrivateRelayerFeePaymentRequest,
+    ValidPublicProtocolFeePaymentRequest, ValidPublicRelayerFeePaymentRequest,
+    ValidWithdrawalRequest,
 };
 use renegade_circuit_types::{
     PlonkLinkProof, PlonkProof, ProofLinkingHint, traits::SingleProverCircuit,
@@ -197,11 +198,21 @@ pub(crate) async fn handle_intent_and_balance_bounded_settlement(
     .await?;
 
     // Bounded settlement always links into party 0 slot
-    let link_proof =
-        blocking_intent_and_balance_link(PARTY_0, request.validity_link_hint, settlement_link_hint)
-            .await?;
+    let (validity_link_proof, output_balance_link_proof) = tokio::try_join!(
+        blocking_intent_and_balance_link(
+            PARTY_0,
+            request.validity_link_hint,
+            settlement_link_hint.clone()
+        ),
+        blocking_output_balance_link(
+            PARTY_0,
+            request.output_balance_link_hint,
+            settlement_link_hint
+        ),
+    )?;
 
-    let resp = SettlementProofResponse { proof, link_proof };
+    let resp =
+        PublicSettlementProofResponse { proof, validity_link_proof, output_balance_link_proof };
     Ok(warp::reply::json(&resp))
 }
 
@@ -266,14 +277,21 @@ pub(crate) async fn handle_intent_and_balance_public_settlement(
     )
     .await?;
 
-    let link_proof = blocking_intent_and_balance_link(
-        request.party_id,
-        request.validity_link_hint,
-        settlement_link_hint,
-    )
-    .await?;
+    let (validity_link_proof, output_balance_link_proof) = tokio::try_join!(
+        blocking_intent_and_balance_link(
+            PARTY_0,
+            request.validity_link_hint,
+            settlement_link_hint.clone()
+        ),
+        blocking_output_balance_link(
+            PARTY_0,
+            request.output_balance_link_hint,
+            settlement_link_hint
+        ),
+    )?;
 
-    let resp = SettlementProofResponse { proof, link_proof };
+    let resp =
+        PublicSettlementProofResponse { proof, validity_link_proof, output_balance_link_proof };
     Ok(warp::reply::json(&resp))
 }
 
