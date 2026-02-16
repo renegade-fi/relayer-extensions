@@ -244,7 +244,7 @@ pub struct ChainConfig {
     /// Defaults to 0.01 ETH if not specified.
     pub gas_top_up_amount: Option<f64>,
     /// The refill tolerance as a fraction (0.0–1.0). Refill is skipped if
-    /// balance exceeds target * tolerance. Defaults to 0.3 if not specified.
+    /// balance exceeds target * tolerance.
     pub gas_refill_tolerance: Option<f64>,
 }
 

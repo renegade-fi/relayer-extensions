@@ -40,7 +40,7 @@ def main():
     parser = argparse.ArgumentParser(description="Refill gas for all active gas wallets")
     parser.add_argument("--host", required=True, help="Funds manager host, e.g. http://localhost:3000")
     parser.add_argument("--chain", default="ethereum-sepolia", help="Chain name (default: ethereum-sepolia)")
-    parser.add_argument("--amount", type=float, default=0.01, help="Amount of ETH to top up each wallet to (default: 0.01)")
+    parser.add_argument("--amount", type=float, default=0.1, help="Amount of ETH to top up each wallet to (default: 0.1)")
     parser.add_argument("--hmac-key", default=None, help="HMAC key as hex string (omit if auth is disabled)")
     args = parser.parse_args()
 
