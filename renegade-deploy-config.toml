@@ -43,6 +43,15 @@ cargo_features = "base"
 environment = "base-mainnet"
 resource = "auth-server-v2"
 
+[services.ethereum-mainnet-auth-server]
+[services.ethereum-mainnet-auth-server.build]
+dockerfile = "auth/Dockerfile"
+ecr_repo = "auth-server-ethereum-mainnet-v2"
+cargo_features = "ethereum"
+
+[services.ethereum-mainnet-auth-server.deploy]
+environment = "ethereum-mainnet"
+resource = "auth-server-v2"
 #####################
 ### Funds Manager ###
 #####################
