@@ -31,7 +31,7 @@ alloy-dyn-abi = { workspace = true, features = ["eip712"] }
 alloy-json-rpc = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy = { workspace = true, features = ["provider-ws"] }
-ethers = "2"
+ethers-core = "2"
 
 # === Renegade Dependencies === #
 price-reporter-client = { path = "../../price-reporter-client" }

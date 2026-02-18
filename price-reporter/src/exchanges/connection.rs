@@ -201,13 +201,13 @@ pub fn parse_json_from_message(
         })
     } else if let Message::Close(close_frame) = message {
         let topic = pair_info.to_topic();
-        warn!("Received close message from {topic} websocket");
-        if let Some(close_frame) = close_frame {
-            let code = close_frame.code;
-            let reason = close_frame.reason;
-            warn!("Close code: {code}, reason: {reason} for {topic} websocket");
-        }
-        Ok(None)
+        let reason = close_frame
+            .map(|f| format!("code: {}, reason: {}", f.code, f.reason))
+            .unwrap_or_else(|| "no reason given".to_string());
+        warn!("Received close frame from {topic} websocket: {reason}");
+        Err(ExchangeConnectionError::ConnectionHangup(format!(
+            "received close frame from {topic} websocket"
+        )))
     } else {
         Ok(None)
     }

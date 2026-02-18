@@ -21,7 +21,7 @@ use tracing::error;
 // For example, a Hyperliquid withdrawal action contains a field with the type
 // identifier `HyperliquidTransaction:Withdraw`. Due to the usage of the `:`
 // character, Alloy will fail to deserialize the TypedData.
-use ethers::types::{
+use ethers_core::types::{
     U256,
     transaction::eip712::{EIP712Domain, TypedData},
 };

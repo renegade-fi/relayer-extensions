@@ -10,8 +10,8 @@ ecr_repo = "auth-server-arbitrum-sepolia-v2"
 cargo_features = "arbitrum"
 
 [services.arbitrum-sepolia-auth-server.deploy]
-environment = "arbitrum-sepolia"
-resource = "auth-server-v2"
+environment = "arbitrum-sepolia-v2"
+resource = "auth-server"
 
 [services.base-sepolia-auth-server]
 [services.base-sepolia-auth-server.build]
@@ -20,8 +20,8 @@ ecr_repo = "auth-server-base-sepolia-v2"
 cargo_features = "base"
 
 [services.base-sepolia-auth-server.deploy]
-environment = "base-sepolia"
-resource = "auth-server-v2"
+environment = "base-sepolia-v2"
+resource = "auth-server"
 
 [services.arbitrum-one-auth-server]
 [services.arbitrum-one-auth-server.build]
@@ -30,8 +30,8 @@ ecr_repo = "auth-server-arbitrum-one-v2"
 cargo_features = "arbitrum"
 
 [services.arbitrum-one-auth-server.deploy]
-environment = "arbitrum-one"
-resource = "auth-server-v2"
+environment = "arbitrum-one-v2"
+resource = "auth-server"
 
 [services.base-mainnet-auth-server]
 [services.base-mainnet-auth-server.build]
@@ -40,8 +40,8 @@ ecr_repo = "auth-server-base-mainnet-v2"
 cargo_features = "base"
 
 [services.base-mainnet-auth-server.deploy]
-environment = "base-mainnet"
-resource = "auth-server-v2"
+environment = "base-mainnet-v2"
+resource = "auth-server"
 
 #####################
 ### Funds Manager ###
