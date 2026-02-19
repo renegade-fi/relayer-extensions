@@ -43,15 +43,16 @@ cargo_features = "base"
 environment = "base-mainnet"
 resource = "auth-server-v2"
 
-[services.ethereum-mainnet-auth-server]
-[services.ethereum-mainnet-auth-server.build]
+[services.ethereum-sepolia-auth-server]
+[services.ethereum-sepolia-auth-server.build]
 dockerfile = "auth/Dockerfile"
-ecr_repo = "auth-server-ethereum-mainnet-v2"
+ecr_repo = "auth-server-ethereum-sepolia-v2"
 cargo_features = "ethereum"
 
-[services.ethereum-mainnet-auth-server.deploy]
-environment = "ethereum-mainnet"
+[services.ethereum-sepolia-auth-server.deploy]
+environment = "ethereum-sepolia"
 resource = "auth-server-v2"
+
 #####################
 ### Funds Manager ###
 #####################
