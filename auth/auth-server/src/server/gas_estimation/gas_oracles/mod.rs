@@ -11,6 +11,11 @@ pub use arbitrum::estimate_l1_gas_component;
 #[cfg(feature = "base")]
 pub use base::estimate_l1_gas_component;
 
+#[cfg(feature = "ethereum")]
+mod ethereum;
+#[cfg(feature = "ethereum")]
+pub use ethereum::estimate_l1_gas_component;
+
 /// Result of the gas price estimation
 pub struct GasPriceEstimation {
     /// The L1 gas estimate in L2 gas units
