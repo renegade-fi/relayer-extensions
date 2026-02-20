@@ -67,9 +67,11 @@ impl CustodyClient {
         let wallet = self.get_hot_wallet_private_key(&wallet.address).await?;
 
         // Execute the erc20 transfer
+        let token = Token::from_addr_on_chain(token_address, self.chain);
+        let ticker = token.get_ticker().unwrap_or(token_address.to_string());
         let tx = self.erc20_transfer(token_address, destination_address, amount, wallet).await?;
         info!(
-            "Withdrew {amount} {token_address} from hot wallet to {destination_address}. Tx: {:?}",
+            "Withdrew {amount} {ticker} ({token_address}) from hot wallet to {destination_address}. Tx: {:?}",
             tx.transaction_hash
         );
 

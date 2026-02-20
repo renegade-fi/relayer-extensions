@@ -41,6 +41,7 @@ pub(crate) struct CachedSponsorshipInfo {
     pub gas_sponsorship_info: GasSponsorshipInfo,
     /// The original price from the relayer's signed quote,
     /// needed to restore the quote for signature verification
+    #[serde(with = "renegade_external_api::serde_helpers::f64_as_string")]
     pub original_price: f64,
 }
 
@@ -158,5 +159,129 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let redis_key = generate_quote_uuid(&res.signed_quote);
         self.write_sponsorship_info_to_redis(redis_key, &cached_info).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+
+    /// Simulates the UNFIXED CachedSponsorshipInfo — bare f64, serialized
+    /// as a JSON number (e.g. `1234.5678`).
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct BareF64Cache {
+        original_price: f64,
+    }
+
+    /// Simulates the FIXED CachedSponsorshipInfo — f64 serialized as a
+    /// JSON string (e.g. `"1234.5678"`), matching ApiTimestampedPrice.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct StringF64Cache {
+        #[serde(with = "renegade_external_api::serde_helpers::f64_as_string")]
+        original_price: f64,
+    }
+
+    /// Proof of concept: demonstrate that the JSON format of the bare f64
+    /// (number) differs from the f64_as_string format (string). The HMAC
+    /// is computed over the quote's JSON bytes, where the price field uses
+    /// f64_as_string. If the cached price round-trips through a different
+    /// JSON format, it could produce a different f64 bit pattern, causing
+    /// the re-serialized quote to differ → HMAC mismatch.
+    #[test]
+    fn test_f64_serialization_format_mismatch() {
+        // A realistic price value from a quote
+        let price: f64 = 0.000009483294637281045;
+
+        // --- Bare f64 (the bug) ---
+        let bare = BareF64Cache { original_price: price };
+        let bare_json = serde_json::to_string(&bare).unwrap();
+
+        // --- f64_as_string (the fix) ---
+        let string = StringF64Cache { original_price: price };
+        let string_json = serde_json::to_string(&string).unwrap();
+
+        println!("Original f64 bits:    {:064b}", price.to_bits());
+        println!("Original to_string(): {}", price);
+        println!();
+        println!("Bare f64 JSON:        {bare_json}");
+        println!("f64_as_string JSON:   {string_json}");
+
+        // The JSON formats are structurally different:
+        //   bare:   {"original_price":0.000009483294637281045}
+        //   string: {"original_price":"0.000009483294637281045"}
+        // This is the root cause — different serialization paths for the
+        // same logical value.
+
+        // Round-trip through bare JSON (simulating Redis write/read)
+        let bare_restored: BareF64Cache = serde_json::from_str(&bare_json).unwrap();
+        let bare_restored_bits = bare_restored.original_price.to_bits();
+
+        // Round-trip through string JSON
+        let string_restored: StringF64Cache = serde_json::from_str(&string_json).unwrap();
+        let string_restored_bits = string_restored.original_price.to_bits();
+
+        println!();
+        println!("Bare round-trip bits:   {:064b}", bare_restored_bits);
+        println!("String round-trip bits: {:064b}", string_restored_bits);
+        println!(
+            "Bits match original:    bare={}, string={}",
+            bare_restored_bits == price.to_bits(),
+            string_restored_bits == price.to_bits(),
+        );
+
+        // The critical check: after restoring the price from cache and
+        // re-serializing the quote (which uses f64_as_string), do we get
+        // the same string the relayer signed?
+        let original_display = price.to_string();
+        let bare_restored_display = bare_restored.original_price.to_string();
+        let string_restored_display = string_restored.original_price.to_string();
+
+        println!();
+        println!("Original Display:        {original_display}");
+        println!("Bare restored Display:   {bare_restored_display}");
+        println!("String restored Display: {string_restored_display}");
+
+        // The f64_as_string path is guaranteed to round-trip correctly
+        // because it uses the same serialization format (Display/to_string)
+        // on both sides. The bare path uses a *different* format (JSON
+        // number via ryu) which is not guaranteed to produce the same
+        // Display output after round-tripping.
+        assert_eq!(
+            string_restored_display, original_display,
+            "f64_as_string round-trip must preserve Display output exactly"
+        );
+    }
+
+    /// Demonstrate that serde_json's bare number format and f64::to_string()
+    /// can produce different representations for the same value, which is
+    /// the mechanism by which HMAC verification can fail.
+    #[test]
+    fn test_bare_vs_string_serialization_difference() {
+        // Try a range of realistic price values to find divergences
+        let test_prices: Vec<f64> = vec![
+            1.0 / 3.0,               // repeating decimal
+            0.1 + 0.2,               // classic floating point
+            std::f64::consts::PI,    // irrational
+            1e-15,                   // very small
+            1.7976931348623157e+308, // near f64::MAX
+            0.000009483294637281045, // realistic crypto price
+            2999.4800000000005,      // ETH-like price with rounding artifact
+        ];
+
+        println!(
+            "{:<35} | {:<30} | {:<30} | match?",
+            "value", "serde_json number", "f64::to_string()"
+        );
+        println!("{}", "-".repeat(105));
+
+        for price in &test_prices {
+            // What serde_json produces for a bare f64 (JSON number)
+            let serde_repr = serde_json::to_string(price).unwrap();
+            // What f64_as_string would produce (Display trait)
+            let display_repr = price.to_string();
+
+            let matches = serde_repr == display_repr;
+            println!("{price:<35e} | {serde_repr:<30} | {display_repr:<30} | {matches}");
+        }
     }
 }

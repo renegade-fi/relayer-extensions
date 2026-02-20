@@ -75,7 +75,7 @@ impl CustodyClient {
 
         // Update the gas wallet to be active, top up wallets, and return the key
         self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
-        self.refill_gas_wallets(DEFAULT_TOP_UP_AMOUNT).await?;
+        self.refill_gas_wallets(self.gas_top_up_amount).await?;
         Ok(secret_value)
     }
 
@@ -120,7 +120,7 @@ impl CustodyClient {
 
     /// Get the secret name for a gas wallet's private key
     fn gas_wallet_secret_name(address: &str) -> String {
-        format!("gas-wallet-{}", address)
+        format!("gas-wallet-{}", address.to_lowercase())
     }
 
     /// Refill gas for a set of wallets
@@ -144,11 +144,15 @@ impl CustodyClient {
 
         // If the gas wallet has insufficient funds, top up each wallet as much as
         // possible
-        let target =
-            if my_balance < total_amount { my_balance / wallets.len() as f64 } else { fill_to };
+        let (target, amount_desc) = if my_balance < total_amount {
+            let t = my_balance / wallets.len() as f64;
+            (t, format!("(hot wallet balance / {} wallets = {})", wallets.len(), t))
+        } else {
+            (fill_to, format!("fill_to amount {fill_to}"))
+        };
 
         for wallet in wallets.iter() {
-            self.top_up_gas(&wallet.address, target).await?;
+            self.top_up_gas(&wallet.address, "ETH", target, &amount_desc).await?;
         }
         Ok(())
     }
@@ -157,9 +161,12 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
+        amount_desc: &str,
     ) -> Result<(), FundsManagerError> {
-        self.top_up_gas_with_tolerance(addr, amount, DEFAULT_GAS_REFILL_TOLERANCE).await
+        self.top_up_gas_with_tolerance(addr, symbol, amount, self.gas_refill_tolerance, amount_desc)
+            .await
     }
 
     /// Refill gas for a wallet up to a given amount
@@ -169,12 +176,17 @@ impl CustodyClient {
     pub(crate) async fn top_up_gas_with_tolerance(
         &self,
         addr: &str,
+        symbol: &str,
         amount: f64,
         tolerance: f64,
+        amount_desc: &str,
     ) -> Result<(), FundsManagerError> {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
-            info!("Skipping gas refill for {addr} because balance is within tolerance");
+            info!(
+                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount_desc}] (has {bal}, above {})",
+                amount * tolerance,
+            );
             return Ok(());
         }
 
