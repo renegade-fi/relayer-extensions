@@ -41,6 +41,7 @@ pub(crate) struct CachedSponsorshipInfo {
     pub gas_sponsorship_info: GasSponsorshipInfo,
     /// The original price from the relayer's signed quote,
     /// needed to restore the quote for signature verification
+    #[serde(with = "renegade_external_api::serde_helpers::f64_as_string")]
     pub original_price: f64,
 }
 
