@@ -79,6 +79,7 @@ impl Server {
                     arc_pool.clone(),
                     aws_config.clone(),
                     price_reporter.clone(),
+                    &args,
                 )
                 .await?;
 

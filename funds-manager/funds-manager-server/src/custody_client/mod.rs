@@ -59,14 +59,18 @@ const ARB_SEPOLIA_ETH_ASSET_ID: &str = "ETH-AETH_SEPOLIA";
 const BASE_MAINNET_ETH_ASSET_ID: &str = "BASECHAIN_ETH";
 /// The Fireblocks asset ID for ETH on Base Sepolia
 const BASE_SEPOLIA_ETH_ASSET_ID: &str = "BASECHAIN_ETH_TEST5";
+/// The Fireblocks asset ID for ETH on Ethereum mainnet
+const ETHEREUM_MAINNET_ETH_ASSET_ID: &str = "ETH";
+/// The Fireblocks asset ID for ETH on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_ETH_ASSET_ID: &str = "ETH_TEST5";
 
 /// The Fireblocks asset IDs for native assets on testnets
 pub const TESTNET_NATIVE_ASSET_IDS: &[&str] =
-    &[ARB_SEPOLIA_ETH_ASSET_ID, BASE_SEPOLIA_ETH_ASSET_ID, "ETH_TEST5"];
+    &[ARB_SEPOLIA_ETH_ASSET_ID, BASE_SEPOLIA_ETH_ASSET_ID, ETHEREUM_SEPOLIA_ETH_ASSET_ID];
 
 /// The Fireblocks asset IDs for native assets on mainnets
 pub const MAINNET_NATIVE_ASSET_IDS: &[&str] =
-    &[ARB_ONE_ETH_ASSET_ID, BASE_MAINNET_ETH_ASSET_ID, "ETH"];
+    &[ARB_ONE_ETH_ASSET_ID, BASE_MAINNET_ETH_ASSET_ID, ETHEREUM_MAINNET_ETH_ASSET_ID];
 
 /// The number of confirmations Fireblocks requires to consider a contract call
 /// final
@@ -111,7 +115,9 @@ impl DepositWithdrawSource {
         let full_name = format!("{env_name} {name}").to_lowercase();
         match full_name.to_lowercase().as_str() {
             "arbitrum quoters" | "base quoters" | "ethereum quoters" => Ok(Self::Quoter),
-            "arbitrum fee collection" | "base fee collection" => Ok(Self::FeeRedemption),
+            "arbitrum fee collection" | "base fee collection" | "ethereum fee collection" => {
+                Ok(Self::FeeRedemption)
+            },
             "arbitrum gas" | "base gas" | "ethereum gas" => Ok(Self::Gas),
             _ => Err(FundsManagerError::parse(format!("invalid vault name: {name}"))),
         }
@@ -140,6 +146,14 @@ pub struct CustodyClient {
     gas_sponsor_address_v2: Address,
     /// The price reporter client
     price_reporter: PriceReporterClient,
+    /// The maximum amount (in ETH) that a request may refill gas to
+    max_gas_refill_amount: f64,
+    /// The maximum amount of gas (in ETH) that can be withdrawn at a given time
+    max_gas_withdrawal_amount: f64,
+    /// The amount of ETH to fill gas wallets to on registration
+    gas_top_up_amount: f64,
+    /// The tolerance for gas refills (fraction of target balance)
+    gas_refill_tolerance: f64,
 }
 
 impl CustodyClient {
@@ -157,6 +171,10 @@ impl CustodyClient {
         gas_sponsor_address: Address,
         gas_sponsor_address_v2: Address,
         price_reporter: PriceReporterClient,
+        max_gas_refill_amount: f64,
+        max_gas_withdrawal_amount: f64,
+        gas_top_up_amount: f64,
+        gas_refill_tolerance: f64,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_client =
             Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
@@ -171,7 +189,21 @@ impl CustodyClient {
             gas_sponsor_address,
             gas_sponsor_address_v2,
             price_reporter,
+            max_gas_refill_amount,
+            max_gas_withdrawal_amount,
+            gas_top_up_amount,
+            gas_refill_tolerance,
         })
+    }
+
+    /// Get the maximum gas refill amount for this chain
+    pub fn max_gas_refill_amount(&self) -> f64 {
+        self.max_gas_refill_amount
+    }
+
+    /// Get the maximum gas withdrawal amount for this chain
+    pub fn max_gas_withdrawal_amount(&self) -> f64 {
+        self.max_gas_withdrawal_amount
     }
 
     /// Get a database connection from the pool
@@ -233,6 +265,8 @@ impl CustodyClient {
             Chain::ArbitrumSepolia => Ok(ARB_SEPOLIA_ETH_ASSET_ID.to_string()),
             Chain::BaseMainnet => Ok(BASE_MAINNET_ETH_ASSET_ID.to_string()),
             Chain::BaseSepolia => Ok(BASE_SEPOLIA_ETH_ASSET_ID.to_string()),
+            Chain::EthereumMainnet => Ok(ETHEREUM_MAINNET_ETH_ASSET_ID.to_string()),
+            Chain::EthereumSepolia => Ok(ETHEREUM_SEPOLIA_ETH_ASSET_ID.to_string()),
             _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }
@@ -240,8 +274,12 @@ impl CustodyClient {
     /// Get the Fireblocks asset IDs for native assets on the current chain
     pub(crate) fn get_current_env_native_asset_ids(&self) -> Result<&[&str], FundsManagerError> {
         match self.chain {
-            Chain::ArbitrumOne | Chain::BaseMainnet => Ok(MAINNET_NATIVE_ASSET_IDS),
-            Chain::ArbitrumSepolia | Chain::BaseSepolia => Ok(TESTNET_NATIVE_ASSET_IDS),
+            Chain::ArbitrumOne | Chain::BaseMainnet | Chain::EthereumMainnet => {
+                Ok(MAINNET_NATIVE_ASSET_IDS)
+            },
+            Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia => {
+                Ok(TESTNET_NATIVE_ASSET_IDS)
+            },
             _ => Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         }
     }
@@ -249,7 +287,10 @@ impl CustodyClient {
     /// Get the Fireblocks blockchain ID for the current chain
     async fn get_current_blockchain_id(&self) -> Result<String, FundsManagerError> {
         let list_blockchains_params = ListBlockchainsParams::builder()
-            .test(matches!(self.chain, Chain::ArbitrumSepolia | Chain::BaseSepolia))
+            .test(matches!(
+                self.chain,
+                Chain::ArbitrumSepolia | Chain::BaseSepolia | Chain::EthereumSepolia
+            ))
             .deprecated(false)
             .build();
 
