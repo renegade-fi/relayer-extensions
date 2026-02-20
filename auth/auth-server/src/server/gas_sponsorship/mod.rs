@@ -223,7 +223,8 @@ mod tests {
         println!();
         println!("Bare round-trip bits:   {:064b}", bare_restored_bits);
         println!("String round-trip bits: {:064b}", string_restored_bits);
-        println!("Bits match original:    bare={}, string={}",
+        println!(
+            "Bits match original:    bare={}, string={}",
             bare_restored_bits == price.to_bits(),
             string_restored_bits == price.to_bits(),
         );
@@ -258,16 +259,19 @@ mod tests {
     fn test_bare_vs_string_serialization_difference() {
         // Try a range of realistic price values to find divergences
         let test_prices: Vec<f64> = vec![
-            1.0 / 3.0,                    // repeating decimal
-            0.1 + 0.2,                    // classic floating point
-            std::f64::consts::PI,          // irrational
-            1e-15,                         // very small
-            1.7976931348623157e+308,        // near f64::MAX
-            0.000009483294637281045,        // realistic crypto price
-            2999.4800000000005,            // ETH-like price with rounding artifact
+            1.0 / 3.0,               // repeating decimal
+            0.1 + 0.2,               // classic floating point
+            std::f64::consts::PI,    // irrational
+            1e-15,                   // very small
+            1.7976931348623157e+308, // near f64::MAX
+            0.000009483294637281045, // realistic crypto price
+            2999.4800000000005,      // ETH-like price with rounding artifact
         ];
 
-        println!("{:<35} | {:<30} | {:<30} | match?", "value", "serde_json number", "f64::to_string()");
+        println!(
+            "{:<35} | {:<30} | {:<30} | match?",
+            "value", "serde_json number", "f64::to_string()"
+        );
         println!("{}", "-".repeat(105));
 
         for price in &test_prices {
