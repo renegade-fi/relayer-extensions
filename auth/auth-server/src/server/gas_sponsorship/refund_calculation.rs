@@ -1,12 +1,15 @@
 //! Logic for calculating refund info for a sponsored match
 
 use alloy_primitives::U256;
+use alloy_sol_types::SolCall;
 use auth_server_api::GasSponsorshipInfo;
 use bigdecimal::{BigDecimal, FromPrimitive};
+use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
 use renegade_external_api::types::{
     ApiExternalQuote, BoundedExternalMatchApiBundle, ExternalOrder,
 };
+use renegade_solidity_abi::v2::IDarkpoolV2;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use tracing::info;
@@ -106,6 +109,7 @@ pub fn remove_gas_sponsorship_from_quote(
     quote.match_result.output_amount -= gas_sponsorship_info.refund_amount;
     quote.receive.amount -= gas_sponsorship_info.refund_amount;
     quote.price.price = cached_info.original_price;
+    quote.match_result.price_fp = cached_info.original_price_fp.clone();
 
     // Subtract the refund amount from the exact output amount requested in the
     // order, to match the order received & signed by the relayer
@@ -138,7 +142,17 @@ pub fn apply_gas_sponsorship_to_quote(
     let output_amt_f64 = quote.match_result.output_amount as f64;
     let price = output_amt_f64 / input_amt_f64;
 
+    if quote.match_result.input_amount == 0 {
+        return Err(AuthServerError::gas_sponsorship(
+            "cannot update sponsored quote price_fp: input_amount is zero",
+        ));
+    }
+
     quote.price.price = price;
+    quote.match_result.price_fp.price = FixedPoint::from_integer_ratio(
+        quote.match_result.output_amount,
+        quote.match_result.input_amount,
+    );
     quote.receive.amount += gas_sponsorship_info.refund_amount;
 
     // Update order to match what was requested by the user
@@ -155,10 +169,29 @@ pub fn apply_gas_sponsorship_to_quote(
 pub(crate) fn apply_gas_sponsorship_to_match_bundle(
     match_bundle: &mut BoundedExternalMatchApiBundle,
     refund_amount: u128,
-) {
+) -> Result<(), AuthServerError> {
     info!("Updating match bundle to reflect gas sponsorship");
     match_bundle.max_receive.amount += refund_amount;
     match_bundle.min_receive.amount += refund_amount;
+
+    // Extract the external party's input amount from the settlement tx
+    // calldata to compute the price update
+    let calldata = match_bundle.settlement_tx.input.input().unwrap_or_default();
+    let tx = IDarkpoolV2::sponsorExternalMatchCall::abi_decode(calldata)
+        .map_err(AuthServerError::gas_sponsorship)?;
+    let external_party_amount_in: u128 = tx.externalPartyAmountIn.to();
+
+    if external_party_amount_in == 0 {
+        return Err(AuthServerError::gas_sponsorship(
+            "cannot update sponsored match bundle price_fp: externalPartyAmountIn is zero",
+        ));
+    }
+
+    // Update price to reflect the effective post-refund execution price
+    let price_delta = FixedPoint::from_integer_ratio(refund_amount, external_party_amount_in);
+    match_bundle.match_result.price_fp = match_bundle.match_result.price_fp + price_delta;
+
+    Ok(())
 }
 
 /// Check if the exact output amount requested in the order should be updated

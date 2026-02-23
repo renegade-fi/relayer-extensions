@@ -11,7 +11,7 @@ use auth_server_api::{
 use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_external_api::http::external_match::{ExternalMatchResponse, ExternalQuoteResponse};
-use renegade_external_api::types::ExternalOrder;
+use renegade_external_api::types::{ApiTimestampedPriceFp, ExternalOrder};
 use renegade_types_core::Token;
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +43,9 @@ pub(crate) struct CachedSponsorshipInfo {
     /// needed to restore the quote for signature verification
     #[serde(with = "renegade_external_api::serde_helpers::f64_as_string")]
     pub original_price: f64,
+    /// The original fixed-point price from the quote's match result,
+    /// needed to restore the quote for signature verification
+    pub original_price_fp: ApiTimestampedPriceFp,
 }
 
 // ---------------
@@ -108,7 +111,7 @@ impl Server {
             apply_gas_sponsorship_to_match_bundle(
                 &mut external_match_resp.match_bundle,
                 gas_sponsorship_info.refund_amount,
-            );
+            )?;
         }
 
         Ok(SponsoredMatchResponse {
@@ -134,10 +137,12 @@ impl Server {
         // Update quote price / receive amount to reflect sponsorship
         // and capture the original price for caching
         let cached_info = if gas_sponsorship_info.requires_match_result_update() {
+            let original_price_fp = quote.match_result.price_fp.clone();
             let original_price = apply_gas_sponsorship_to_quote(quote, &gas_sponsorship_info)?;
             Some(CachedSponsorshipInfo {
                 gas_sponsorship_info: gas_sponsorship_info.clone(),
                 original_price,
+                original_price_fp,
             })
         } else {
             None
