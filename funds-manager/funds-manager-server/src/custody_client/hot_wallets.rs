@@ -171,6 +171,12 @@ impl CustodyClient {
     pub(crate) async fn top_up_quoter_hot_wallet_gas(&self) -> Result<(), FundsManagerError> {
         let hot_wallet = self.get_quoter_hot_wallet().await?;
         let desc = format!("quoter top-up amount {DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT}");
-        self.top_up_gas(&hot_wallet.address, ETHEREUM_MAINNET_ETH_ASSET_ID, DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT, &desc).await
+        self.top_up_gas(
+            &hot_wallet.address,
+            ETHEREUM_MAINNET_ETH_ASSET_ID,
+            DEFAULT_QUOTER_GAS_TOP_UP_AMOUNT,
+            &desc,
+        )
+        .await
     }
 }

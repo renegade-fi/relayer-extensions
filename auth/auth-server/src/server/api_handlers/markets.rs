@@ -6,7 +6,7 @@ use http::{HeaderMap, Method, StatusCode};
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_external_api::{
     http::market::{
-        GET_MARKETS_ROUTE, GET_MARKET_DEPTH_BY_MINT_ROUTE, GET_MARKETS_DEPTH_ROUTE,
+        GET_MARKET_DEPTH_BY_MINT_ROUTE, GET_MARKETS_DEPTH_ROUTE, GET_MARKETS_ROUTE,
         GetMarketDepthByMintResponse, GetMarketDepthsResponse, GetMarketsResponse,
     },
     types::market::{MarketDepth, MarketInfo},
@@ -98,7 +98,9 @@ impl Server {
             let self_clone = self.clone();
             let jh = tokio::spawn(async move {
                 let mut market_depth = market_depth;
-                self_clone.replace_external_match_fee_rate(key_id, &mut market_depth.market).await?;
+                self_clone
+                    .replace_external_match_fee_rate(key_id, &mut market_depth.market)
+                    .await?;
                 Ok(market_depth)
             });
 
@@ -136,9 +138,8 @@ impl Server {
         let should_stringify = should_stringify_numbers(&headers);
 
         // Forward the request
-        let mut resp = self
-            .handle_market_request_internal(GET_MARKETS_ROUTE, &key_desc, headers)
-            .await?;
+        let mut resp =
+            self.handle_market_request_internal(GET_MARKETS_ROUTE, &key_desc, headers).await?;
 
         if !resp.status().is_success() {
             return Ok(resp);
