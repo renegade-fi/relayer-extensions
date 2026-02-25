@@ -6,12 +6,12 @@ use http::{HeaderMap, Method, StatusCode};
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_external_api::{
     http::market::{
-        GET_MARKET_DEPTH_BY_MINT_ROUTE, GET_MARKETS_DEPTH_ROUTE, GetMarketDepthByMintResponse,
-        GetMarketDepthsResponse,
+        GET_MARKETS_ROUTE, GET_MARKET_DEPTH_BY_MINT_ROUTE, GET_MARKETS_DEPTH_ROUTE,
+        GetMarketDepthByMintResponse, GetMarketDepthsResponse, GetMarketsResponse,
     },
-    types::market::MarketDepth,
+    types::market::{MarketDepth, MarketInfo},
 };
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 use tracing::instrument;
 use uuid::Uuid;
 use warp::reject::Rejection;
@@ -57,7 +57,7 @@ impl Server {
         let mut response: GetMarketDepthByMintResponse =
             serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
 
-        self.replace_external_match_fee_rate(key_id, &mut response.market_depth).await?;
+        self.replace_external_match_fee_rate(key_id, &mut response.market_depth.market).await?;
         overwrite_response_body(&mut resp, response, should_stringify)?;
 
         Ok(resp)
@@ -98,7 +98,7 @@ impl Server {
             let self_clone = self.clone();
             let jh = tokio::spawn(async move {
                 let mut market_depth = market_depth;
-                self_clone.replace_external_match_fee_rate(key_id, &mut market_depth).await?;
+                self_clone.replace_external_match_fee_rate(key_id, &mut market_depth.market).await?;
                 Ok(market_depth)
             });
 
@@ -114,6 +114,59 @@ impl Server {
             .collect::<Result<Vec<_>, _>>()?;
 
         body.market_depths = market_depths;
+        overwrite_response_body(&mut resp, body, should_stringify)?;
+
+        Ok(resp)
+    }
+
+    /// Return all markets with user-specific relayer fees
+    #[instrument(skip(self, path, headers))]
+    pub async fn handle_all_markets_request(
+        &self,
+        path: warp::path::FullPath,
+        headers: HeaderMap,
+    ) -> Result<BytesResponse, Rejection> {
+        // Authorize the request
+        let path_str = path.as_str();
+        let (key_desc, key_id) = self
+            .authorize_request(path_str, "" /* query_str */, &headers, &[] /* body */)
+            .await?;
+
+        // Check if stringification is requested before headers are moved
+        let should_stringify = should_stringify_numbers(&headers);
+
+        // Forward the request
+        let mut resp = self
+            .handle_market_request_internal(GET_MARKETS_ROUTE, &key_desc, headers)
+            .await?;
+
+        if !resp.status().is_success() {
+            return Ok(resp);
+        }
+
+        // Deserialize the response body and replace the fee data
+        let mut body: GetMarketsResponse =
+            serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
+
+        // Update all markets' external match relayer fee rates concurrently
+        let mut join_set = JoinSet::new();
+        for market_info in body.markets.iter().cloned() {
+            let self_clone = self.clone();
+            join_set.spawn(async move {
+                let mut market_info = market_info;
+                self_clone.replace_external_match_fee_rate(key_id, &mut market_info).await?;
+                Ok(market_info)
+            });
+        }
+
+        let mut markets = Vec::<MarketInfo>::new();
+        while let Some(result) = join_set.join_next().await {
+            let market_info: Result<MarketInfo, AuthServerError> =
+                result.map_err(|e| AuthServerError::custom(format!("Join error: {e}")))?;
+            markets.push(market_info?);
+        }
+
+        body.markets = markets;
         overwrite_response_body(&mut resp, body, should_stringify)?;
 
         Ok(resp)
@@ -146,15 +199,15 @@ impl Server {
         Ok(resp)
     }
 
-    /// Replace the external match relayer fee rate for a given market depth
+    /// Replace the external match relayer fee rate for a given market info
     async fn replace_external_match_fee_rate(
         &self,
         user_id: Uuid,
-        market_depth: &mut MarketDepth,
+        market_info: &mut MarketInfo,
     ) -> Result<(), AuthServerError> {
-        let ticker = market_depth.market.base.symbol.clone();
+        let ticker = market_info.base.symbol.clone();
         let user_fee = self.get_user_fee(user_id, ticker).await?;
-        market_depth.market.external_match_fee_rates.relayer_fee_rate =
+        market_info.external_match_fee_rates.relayer_fee_rate =
             FixedPoint::from_f64_round_down(user_fee);
 
         Ok(())

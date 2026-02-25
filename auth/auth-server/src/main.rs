@@ -383,6 +383,17 @@ async fn main() -> Result<(), AuthServerError> {
             server.handle_assemble_match_bundle_request(path, headers, body, query_str).await
         });
 
+    let all_markets = warp::path("v2")
+        .and(warp::path("markets"))
+        .and(warp::path::end())
+        .and(warp::get())
+        .and(warp::path::full())
+        .and(warp::header::headers_cloned())
+        .and(with_server(server.clone()))
+        .and_then(|path, headers, server: Arc<Server>| async move {
+            server.handle_all_markets_request(path, headers).await
+        });
+
     let market_depth_by_mint = warp::path("v2")
         .and(warp::path("markets"))
         .and(warp::path::param::<String>())
@@ -433,6 +444,7 @@ async fn main() -> Result<(), AuthServerError> {
         .or(set_user_fee_override)
         .or(remove_asset_default_fee)
         .or(remove_user_fee_override)
+        .or(all_markets)
         .or(market_depth_by_mint)
         .or(all_markets_depth)
         .or(exchange_metadata_path)
