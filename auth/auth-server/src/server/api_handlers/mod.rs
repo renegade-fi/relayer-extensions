@@ -203,6 +203,10 @@ pub(crate) fn get_base_and_quote_amount_with_price(
     relayer_fee: FixedPoint,
     price: f64,
 ) -> Result<(Amount, Amount), AuthServerError> {
+    if price == 0.0 {
+        return Err(AuthServerError::custom("price is zero, cannot compute base/quote amounts"));
+    }
+
     let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
 
     let base_input_set = base_mint == order.input_mint && order.input_amount != 0;
@@ -250,6 +254,11 @@ fn fee_adjusted_output_amount(
     let protocol_fee = get_protocol_fee(&base_mint, &quote_mint);
     let total_fee = protocol_fee + relayer_fee;
 
+    if total_fee >= FixedPoint::one() {
+        return Err(AuthServerError::custom(
+            "total fee >= 100%, cannot compute fee-adjusted amount",
+        ));
+    }
     let one_minus_fee = FixedPoint::one() - total_fee;
     let adjusted_amount = one_minus_fee.floor_div_int(output_amount);
     Ok(scalar_to_u128(&adjusted_amount))
