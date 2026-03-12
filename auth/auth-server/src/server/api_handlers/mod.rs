@@ -254,12 +254,12 @@ fn fee_adjusted_output_amount(
     let protocol_fee = get_protocol_fee(&base_mint, &quote_mint);
     let total_fee = protocol_fee + relayer_fee;
 
-    let one_minus_fee = FixedPoint::one() - total_fee;
-    if one_minus_fee == FixedPoint::zero() {
+    if total_fee >= FixedPoint::one() {
         return Err(AuthServerError::custom(
-            "total fee is 100%, cannot compute fee-adjusted amount",
+            "total fee >= 100%, cannot compute fee-adjusted amount",
         ));
     }
+    let one_minus_fee = FixedPoint::one() - total_fee;
     let adjusted_amount = one_minus_fee.floor_div_int(output_amount);
     Ok(scalar_to_u128(&adjusted_amount))
 }
