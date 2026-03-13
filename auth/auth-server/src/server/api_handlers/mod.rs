@@ -203,8 +203,11 @@ pub(crate) fn get_base_and_quote_amount_with_price(
     relayer_fee: FixedPoint,
     price: f64,
 ) -> Result<(Amount, Amount), AuthServerError> {
-    if price == 0.0 {
-        return Err(AuthServerError::custom("price is zero, cannot compute base/quote amounts"));
+    let price_fp = FixedPoint::from_f64_round_down(price);
+    if price_fp == FixedPoint::zero() {
+        return Err(AuthServerError::custom(
+            "price is zero (or rounds to zero), cannot compute base/quote amounts",
+        ));
     }
 
     let (base_mint, quote_mint) = pick_base_and_quote_mints(order.input_mint, order.output_mint)?;
@@ -212,8 +215,6 @@ pub(crate) fn get_base_and_quote_amount_with_price(
     let base_input_set = base_mint == order.input_mint && order.input_amount != 0;
     let base_output_set = base_mint == order.output_mint && order.output_amount != 0;
     let quote_input_set = quote_mint == order.input_mint && order.input_amount != 0;
-
-    let price_fp = FixedPoint::from_f64_round_down(price);
 
     if base_input_set {
         let base_amount = order.input_amount;
