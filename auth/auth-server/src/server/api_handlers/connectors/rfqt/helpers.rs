@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use alloy_primitives::Bytes;
+use auth_server_api::SponsoredQuoteResponse;
 use auth_server_api::rfqt::{
     Consideration, Level, OrderDetails, RfqtLevelsQueryParams, RfqtLevelsResponse,
     RfqtQuoteRequest, RfqtQuoteResponse, TokenAmount, TokenPairLevels,
@@ -11,7 +12,7 @@ use renegade_api::http::{
     external_match::{
         ASSEMBLE_MALLEABLE_EXTERNAL_MATCH_ROUTE, AssembleExternalMatchRequest,
         AtomicMatchApiBundle, ExternalMatchRequest, ExternalOrder, ExternalQuoteRequest,
-        ExternalQuoteResponse, MalleableAtomicMatchApiBundle,
+        MalleableAtomicMatchApiBundle,
     },
     order_book::GetDepthForAllPairsResponse,
 };
@@ -140,7 +141,7 @@ pub fn create_quote_request(
 
 /// Transform a quote response to an assemble malleable request context
 pub fn transform_quote_to_assemble_malleable_ctx(
-    quote: ExternalQuoteResponse,
+    quote: SponsoredQuoteResponse,
     req_ctx: RequestContext<ExternalQuoteRequest>,
 ) -> Result<RequestContext<AssembleExternalMatchRequest>, AuthServerError> {
     let assemble_request = AssembleExternalMatchRequest {
