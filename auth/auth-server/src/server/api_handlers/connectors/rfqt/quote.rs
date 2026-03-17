@@ -12,7 +12,7 @@ use renegade_api::http::external_match::{
     REQUEST_EXTERNAL_QUOTE_ROUTE,
 };
 
-use auth_server_api::rfqt::RfqtQuoteRequest;
+use auth_server_api::{SponsoredQuoteResponse, rfqt::RfqtQuoteRequest};
 
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::overwrite_response_body;
@@ -128,12 +128,15 @@ impl Server {
         // 2. Proxy the request to the relayer
         let (quote_raw_resp, quote_resp_ctx) = self.forward_request(quote_req_ctx.clone()).await?;
 
-        // 3. Run the quote post-request subroutines
+        // 3. Preserve the existing quote post-request side effects, then
+        // build the sponsored quote locally for the internal RFQT assemble path.
         let _ = self.quote_post_request(quote_raw_resp, quote_resp_ctx.clone())?;
+        let sponsored_quote = self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
+        self.cache_quote_gas_sponsorship_info(&sponsored_quote).await?;
 
         // 4. Build assemble malleable quote request
         let mut assemble_req_ctx =
-            transform_quote_to_assemble_malleable_ctx(quote_resp_ctx.response(), quote_req_ctx)?;
+            transform_quote_to_assemble_malleable_ctx(sponsored_quote, quote_req_ctx)?;
 
         // 5. Run assemble pre-request subroutines
         self.assemble_malleable_quote_pre_request(&mut assemble_req_ctx).await?;
@@ -219,5 +222,22 @@ impl Server {
 
         overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
+    }
+
+    /// Build the sponsored quote shape needed for the internal RFQT assemble
+    /// flow without modifying the shared external quote handler.
+    fn sponsor_rfqt_quote_response(
+        &self,
+        ctx: &ResponseContext<
+            ExternalQuoteRequest,
+            renegade_api::http::external_match::ExternalQuoteResponse,
+        >,
+    ) -> Result<SponsoredQuoteResponse, AuthServerError> {
+        let resp = ctx.response();
+        if let Some(sponsorship_info) = ctx.sponsorship_info() {
+            return self.construct_sponsored_quote_response(resp, sponsorship_info);
+        }
+
+        Ok(SponsoredQuoteResponse { signed_quote: resp.signed_quote, gas_sponsorship_info: None })
     }
 }
