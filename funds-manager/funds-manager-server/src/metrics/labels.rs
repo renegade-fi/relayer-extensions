@@ -29,3 +29,6 @@ pub const CHAIN_TAG: &str = "chain";
 
 /// Metric tag for the venue that executed a swap
 pub const VENUE_TAG: &str = "venue";
+
+/// Metric tag for the service that initiated the swap
+pub const SOURCE_TAG: &str = "source";
