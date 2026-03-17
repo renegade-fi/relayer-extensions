@@ -9,6 +9,9 @@ use warp::reply::Json;
 
 use crate::{execution_client::error::ExecutionClientError, server::Server};
 
+/// The default source tag for untagged swap requests
+const DEFAULT_SOURCE: &str = "unknown";
+
 /// Handler for executing an immediate swap
 #[instrument(skip_all)]
 pub(crate) async fn swap_immediate_handler(
@@ -20,6 +23,8 @@ pub(crate) async fn swap_immediate_handler(
     let custody_client = server.get_custody_client(&chain)?;
     let metrics_recorder = server.get_metrics_recorder(&chain)?;
 
+    let source = params.source.clone().unwrap_or_else(|| DEFAULT_SOURCE.to_string());
+
     // Top up the quoter hot wallet gas before swapping
     custody_client.top_up_quoter_hot_wallet_gas().await?;
 
@@ -30,7 +35,7 @@ pub(crate) async fn swap_immediate_handler(
         .ok_or(ExecutionClientError::custom("No swap executed".to_string()))?;
 
     // Compute swap costs and respond
-    let execution_cost = match metrics_recorder.record_swap_cost(&outcome).await {
+    let execution_cost = match metrics_recorder.record_swap_cost(&outcome, &source).await {
         Ok(data) => data.execution_cost_usdc,
         Err(e) => {
             warn!("Failed to record swap cost metrics: {e}");
@@ -56,6 +61,8 @@ pub(crate) async fn swap_into_target_token_handler(
     let custody_client = server.get_custody_client(&chain)?;
     let metrics_recorder = server.get_metrics_recorder(&chain)?;
 
+    let source = req.quote_params.source.clone().unwrap_or_else(|| DEFAULT_SOURCE.to_string());
+
     // Top up the quoter hot wallet gas before swapping
     custody_client.top_up_quoter_hot_wallet_gas().await?;
 
@@ -65,7 +72,7 @@ pub(crate) async fn swap_into_target_token_handler(
     // Compute swap costs and respond
     let mut responses = vec![];
     for outcome in outcomes {
-        let execution_cost = match metrics_recorder.record_swap_cost(&outcome).await {
+        let execution_cost = match metrics_recorder.record_swap_cost(&outcome, &source).await {
             Ok(data) => data.execution_cost_usdc,
             Err(e) => {
                 warn!("Failed to record swap cost metrics: {e}");

@@ -155,7 +155,7 @@ pub(crate) async fn refill_gas_sponsor_handler(
         }
 
         for outcome in swap_outcomes {
-            if let Err(e) = metrics_recorder.record_swap_cost(&outcome).await {
+            if let Err(e) = metrics_recorder.record_swap_cost(&outcome, "gas-sponsor").await {
                 warn!("Failed to record swap cost metrics: {e}");
             }
         }

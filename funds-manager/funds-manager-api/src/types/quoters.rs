@@ -110,6 +110,9 @@ pub struct QuoteParams {
     /// The venue to use for the quote. If not provided, the best quote across
     /// all venues will be selected.
     pub venue: Option<SupportedExecutionVenue>,
+    /// An identifier for the service that initiated the swap, used for metric
+    /// tagging. If not provided, defaults to "unknown".
+    pub source: Option<String>,
 }
 
 /// A simplified representation of an execution quote, suitable for API
