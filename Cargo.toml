@@ -63,6 +63,5 @@ postgres-native-tls = "0.5"
 tokio-postgres = "0.7"
 
 # === Misc Dependencies === #
-metrics = "0.24.3"
 thiserror = "2.0"
 tracing = "0.1"
