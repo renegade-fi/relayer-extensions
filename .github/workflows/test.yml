@@ -22,7 +22,7 @@ jobs:
           "price-reporter-client",
           #"renegade-solver",
         ]
-        features: [""]
+        features: ["base", "arbitrum"]
         include:
           - package: "auth-server"
             features: "arbitrum"
