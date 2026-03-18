@@ -31,6 +31,10 @@ use crate::{
 const UNIT_PAIR_PRICE: f64 = 1.0;
 /// The interval at which to refresh the unit price
 const UNIT_PRICE_REFRESH_INTERVAL_MS: u64 = 1_000; // 1 second
+/// The interval at which to re-send the last known price, keeping downstream
+/// consumers' timestamps fresh for illiquid pairs whose exchange order books
+/// may not update within the staleness window.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 
 /// A map of price streams from exchanges maintained by the server,
 /// shared across all connections
@@ -154,15 +158,28 @@ impl GlobalPriceStreams {
         price_tx: &PriceSender,
         pair_info: &PairInfo,
     ) -> Result<(), ServerError> {
-        let delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
-        tokio::pin!(delay);
+        let keepalive_delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
+        let heartbeat_delay = tokio::time::sleep(HEARTBEAT_INTERVAL);
+        tokio::pin!(keepalive_delay);
+        tokio::pin!(heartbeat_delay);
+        let mut last_price: Option<Price> = None;
 
         loop {
             tokio::select! {
                 // Send a keepalive message to the exchange
-                _ = &mut delay => {
+                _ = &mut keepalive_delay => {
                     conn.send_keepalive().await.map_err(ServerError::ExchangeConnection)?;
-                    delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
+                    keepalive_delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
+                }
+
+                // Re-send the last known price to keep downstream timestamps
+                // fresh. Safe because no exchange update means the order book
+                // is unchanged, so the last price is still the current midpoint.
+                _ = &mut heartbeat_delay => {
+                    if let Some(price) = last_price {
+                        let _ = price_tx.send(price);
+                    }
+                    heartbeat_delay.as_mut().reset(Instant::now() + HEARTBEAT_INTERVAL);
                 }
 
                 // Forward the next price into the broadcast channel
@@ -170,6 +187,7 @@ impl GlobalPriceStreams {
                     Some(price_res) => {
                         let price = price_res.map_err(ServerError::ExchangeConnection)?;
                         let _ = price_tx.send(price);
+                        last_price = Some(price);
                     }
                     None => {
                         let stream_closure_msg = format!("Price stream for {} has closed", pair_info.to_topic());
