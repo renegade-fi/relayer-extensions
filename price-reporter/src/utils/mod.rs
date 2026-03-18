@@ -49,6 +49,13 @@ pub const RATE_LIMIT_RETRY_DELAY: Duration = Duration::from_millis(10_000); // 1
 /// The number of milliseconds in which `MAX_CONN_RETRIES` failures will cause a
 /// failure of the price reporter
 pub const MAX_CONN_RETRY_WINDOW: Duration = Duration::from_millis(60_000); // 1 minute
+/// The interval at which to re-send the last known price, keeping downstream
+/// consumers' timestamps fresh for illiquid pairs whose exchange order books
+/// may not update within the staleness window.
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+/// The maximum age of the last real exchange update before we stop replaying
+/// cached prices via heartbeat and treat the connection as dead.
+pub const MAX_HEARTBEAT_AGE: Duration = Duration::from_secs(120);
 /// The maximum number of retries to attempt before giving up on a connection
 pub const MAX_CONN_RETRIES: usize = 5;
 
