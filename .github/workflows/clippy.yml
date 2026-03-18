@@ -26,6 +26,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
       - run: rustup component add clippy
       - name: Run clippy on workspace
         run: cargo clippy --workspace --exclude auth-server ${{ env.CLIPPY_ARGS }}
@@ -42,6 +43,9 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.features }}
       - run: rustup component add clippy
       - name: Run clippy on auth-server
         run: cargo clippy -p auth-server --features ${{ matrix.features }} ${{ env.CLIPPY_ARGS }}
