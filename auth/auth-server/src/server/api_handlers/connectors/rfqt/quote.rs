@@ -130,7 +130,14 @@ impl Server {
 
         // 3. Preserve the existing quote post-request side effects, then
         // build the sponsored quote locally for the internal RFQT assemble path.
-        let _ = self.quote_post_request(quote_raw_resp, quote_resp_ctx.clone())?;
+        let quote_resp = self.quote_post_request(quote_raw_resp, quote_resp_ctx.clone())?;
+
+        // If the quote request failed (e.g., order too small, no match found),
+        // return the relayer's response directly instead of proceeding to assemble.
+        if !quote_resp_ctx.is_success() {
+            return Ok(quote_resp);
+        }
+
         let sponsored_quote = self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
         self.cache_quote_gas_sponsorship_info(&sponsored_quote).await?;
 

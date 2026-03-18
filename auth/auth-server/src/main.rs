@@ -18,6 +18,7 @@
 
 mod bundle_store;
 mod chain_events;
+pub(crate) mod darkpool;
 pub(crate) mod error;
 pub mod http_utils;
 mod server;

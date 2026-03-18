@@ -13,7 +13,7 @@ use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_common::types::chain::Chain;
-use renegade_darkpool_client::DarkpoolClient;
+use crate::darkpool::DarkpoolClient;
 use tracing::{error, info};
 
 use crate::{

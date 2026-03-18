@@ -384,6 +384,8 @@ pub fn to_chain_id(chain: Chain) -> u64 {
         Chain::BaseMainnet => 8453,
         Chain::BaseSepolia => 84532,
         Chain::Devnet => 0,
+        Chain::EthereumSepolia => 11155111,
+        Chain::EthereumMainnet => 1,
     }
 }
 

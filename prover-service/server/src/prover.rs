@@ -33,7 +33,7 @@ use renegade_circuits::{
     },
 };
 use serde::Serialize;
-use tracing::{error, instrument};
+use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
 use crate::error::ProverServiceError;

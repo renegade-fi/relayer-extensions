@@ -4,12 +4,12 @@ use renegade_circuit_types::{
     r#match::{BoundedMatchResult, ExternalMatchResult},
 };
 
-#[cfg(feature = "arbitrum")]
+#[cfg(all(feature = "arbitrum", not(feature = "base")))]
 mod arbitrum;
 #[cfg(feature = "base")]
 mod base;
 
-#[cfg(feature = "arbitrum")]
+#[cfg(all(feature = "arbitrum", not(feature = "base")))]
 pub(crate) use arbitrum::*;
 #[cfg(feature = "base")]
 pub(crate) use base::*;

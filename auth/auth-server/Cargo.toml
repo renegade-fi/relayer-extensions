@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+default = ["arbitrum"]
 arbitrum = ["renegade-darkpool-client/arbitrum"]
 base = ["renegade-darkpool-client/base", "dep:renegade-solidity-abi"]
 

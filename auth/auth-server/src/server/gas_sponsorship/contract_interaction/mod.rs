@@ -1,6 +1,6 @@
 //! Contract interaction helpers
 
-#[cfg(feature = "arbitrum")]
+#[cfg(all(feature = "arbitrum", not(feature = "base")))]
 mod arbitrum;
 #[cfg(feature = "base")]
 mod base;

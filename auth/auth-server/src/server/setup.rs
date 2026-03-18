@@ -27,8 +27,9 @@ use renegade_common::types::{
 };
 use renegade_config::setup_token_remaps;
 use renegade_constants::NATIVE_ASSET_ADDRESS;
-use renegade_darkpool_client::DarkpoolClient;
 use renegade_darkpool_client::client::DarkpoolClientConfig;
+
+use crate::darkpool::DarkpoolClient;
 use renegade_system_clock::SystemClock;
 use renegade_util::on_chain::{set_external_match_fee, set_protocol_fee};
 use reqwest::Client;
