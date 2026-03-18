@@ -351,6 +351,10 @@ mod test {
         let test_struct = TestStruct::new(SEED);
         let json_buf = json_serialize(&test_struct, false /* stringify */)?;
         let deser: TestStruct = serde_json::from_slice(&json_buf)?;
+
+        println!("{}", test_struct.c);
+        println!("{}", deser.c);
+
         assert_eq!(test_struct, deser);
         Ok(())
     }
