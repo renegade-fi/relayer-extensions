@@ -244,10 +244,13 @@ fn should_ignore_key(key: &str, value: &Value) -> bool {
 #[cfg(test)]
 mod test {
     use eyre::Result;
-    use rand::Rng;
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use serde::Deserialize;
 
     use super::*;
+
+    /// Seed for the pseudorandom number generator
+    const SEED: u64 = 43;
 
     // --------------
     // | Test Types |
@@ -318,9 +321,9 @@ mod test {
     }
 
     impl TestStruct {
-        /// Create a new random test struct
-        fn new() -> Self {
-            let mut rng = rand::thread_rng();
+        /// Create a new pseudorandom test struct from a seed
+        fn new(seed: u64) -> Self {
+            let mut rng = StdRng::seed_from_u64(seed);
             Self {
                 a: rng.r#gen(),
                 b: rng.r#gen(),
@@ -345,7 +348,7 @@ mod test {
     /// Tests serializing a struct without stringifying the numbers
     #[test]
     fn test_json_serialize() -> Result<()> {
-        let test_struct = TestStruct::new();
+        let test_struct = TestStruct::new(SEED);
         let json_buf = json_serialize(&test_struct, false /* stringify */)?;
         let deser: TestStruct = serde_json::from_slice(&json_buf)?;
         assert_eq!(test_struct, deser);
@@ -355,7 +358,7 @@ mod test {
     /// Tests stringifying the numbers in a response
     #[test]
     fn test_stringify_numbers_formatter() -> Result<()> {
-        let test_struct = TestStruct::new();
+        let test_struct = TestStruct::new(SEED);
         let json_buf = json_serialize(&test_struct, true /* stringify */)?;
         let stringified_deser: StringifiedTestStruct = serde_json::from_slice(&json_buf)?;
 
@@ -383,7 +386,7 @@ mod test {
     /// Tests deserializing a struct without stringifying the numbers
     #[test]
     fn test_json_deserialize() -> Result<()> {
-        let test_struct = TestStruct::new();
+        let test_struct = TestStruct::new(SEED);
         let json_buf = json_serialize(&test_struct, false /* stringify */)?;
         let deser: TestStruct = json_deserialize(&json_buf, false /* stringify */)?;
         assert_eq!(test_struct, deser);
@@ -393,7 +396,7 @@ mod test {
     /// Tests deserializing a struct with stringified numbers
     #[test]
     fn test_json_deserialize_stringify() -> Result<()> {
-        let test_struct = TestStruct::new();
+        let test_struct = TestStruct::new(SEED);
         let json_buf = json_serialize(&test_struct, true /* stringify */)?;
         let deser: TestStruct = json_deserialize(&json_buf, true /* stringify */)?;
         assert_eq!(test_struct, deser);
