@@ -17,10 +17,9 @@ use crate::{
         error::ExchangeConnectionError,
     },
     utils::{
-        CONN_RETRY_DELAY, ClosureSender, HEARTBEAT_INTERVAL, KEEPALIVE_INTERVAL,
-        MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW, MAX_HEARTBEAT_AGE, PairInfo,
-        PriceReceiver, PriceSender, PriceStream, RATE_LIMIT_RETRY_DELAY,
-        SharedPriceStreams,
+        CONN_RETRY_DELAY, ClosureSender, HEARTBEAT_INTERVAL, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES,
+        MAX_CONN_RETRY_WINDOW, MAX_HEARTBEAT_AGE, PairInfo, PriceReceiver, PriceSender,
+        PriceStream, RATE_LIMIT_RETRY_DELAY, SharedPriceStreams,
     },
 };
 
