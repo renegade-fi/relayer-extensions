@@ -1382,7 +1382,7 @@ dependencies = [
  "http 1.4.0",
  "hyper 0.14.32",
  "lazy_static",
- "metrics 0.24.3",
+ "metrics",
  "native-tls",
  "num-bigint",
  "opentelemetry",
@@ -3839,7 +3839,7 @@ dependencies = [
  "http 1.4.0",
  "http-body-util",
  "itertools 0.13.0",
- "metrics 0.22.3",
+ "metrics",
  "native-tls",
  "num-bigint",
  "postgres-native-tls",
@@ -5214,16 +5214,6 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "0.22.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2be3cbd384d4e955b231c895ce10685e3d8260c5ccffae898c96c723b0772835"
-dependencies = [
- "ahash",
- "portable-atomic",
-]
-
-[[package]]
-name = "metrics"
 version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d5312e9ba3771cfa961b585728215e3d972c950a3eed9252aa093d6301277e8"
@@ -5239,7 +5229,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57971e32cdee88619fb6c673fd89cfd37c12f2dd7c187fb400b7aae0ede0ed9e"
 dependencies = [
  "cadence",
- "metrics 0.24.3",
+ "metrics",
  "thiserror 1.0.69",
 ]
 
@@ -5252,7 +5242,7 @@ dependencies = [
  "indexmap 2.13.0",
  "itoa",
  "lockfree-object-pool",
- "metrics 0.24.3",
+ "metrics",
  "metrics-util",
  "once_cell",
  "tracing",
@@ -5271,7 +5261,7 @@ dependencies = [
  "crossbeam-utils",
  "hashbrown 0.16.1",
  "indexmap 2.13.0",
- "metrics 0.24.3",
+ "metrics",
  "ordered-float 5.1.0",
  "quanta",
  "radix_trie",
@@ -9060,7 +9050,7 @@ dependencies = [
  "http 1.4.0",
  "json",
  "libp2p",
- "metrics 0.24.3",
+ "metrics",
  "metrics-exporter-statsd",
  "metrics-tracing-context",
  "metrics-util",
