@@ -11,11 +11,11 @@ dependencies = [
  "ark-bn254",
  "ark-ec",
  "ark-ff 0.4.2",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "circuit-types",
+ "circuits-core",
+ "constants",
+ "crypto",
+ "darkpool-types",
  "jf-primitives",
  "num-bigint",
  "serde",
@@ -1361,13 +1361,13 @@ dependencies = [
  "bigdecimal 0.4.10",
  "bytes",
  "chrono",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
  "clap",
  "config",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "constants",
+ "crypto",
  "darkpool-client",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "darkpool-types",
  "dashmap",
  "diesel",
  "diesel-async",
@@ -1402,7 +1402,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "uuid",
  "warp 0.3.7",
 ]
@@ -1412,7 +1412,7 @@ name = "auth-server-api"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
  "external-api",
  "num-bigint",
  "serde",
@@ -2390,18 +2390,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
-dependencies = [
- "itertools 0.10.5",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "circuit-macros"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2412,7 +2401,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -2423,42 +2412,9 @@ dependencies = [
  "async-trait",
  "bigdecimal 0.3.1",
  "byteorder",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "futures",
- "hex",
- "itertools 0.10.5",
- "jf-primitives",
- "k256",
- "lazy_static",
- "mpc-plonk",
- "mpc-relation",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand 0.8.5",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "circuit-types"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
-dependencies = [
- "alloy-primitives",
- "ark-bn254",
- "ark-ec",
- "ark-ff 0.4.2",
- "ark-mpc",
- "ark-serialize 0.4.2",
- "async-trait",
- "bigdecimal 0.3.1",
- "byteorder",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "circuit-macros",
+ "constants",
+ "crypto",
  "futures",
  "hex",
  "itertools 0.10.5",
@@ -2478,7 +2434,7 @@ dependencies = [
 [[package]]
 name = "circuits-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy-primitives",
  "ark-crypto-primitives",
@@ -2487,11 +2443,11 @@ dependencies = [
  "ark-mpc",
  "bigdecimal 0.3.1",
  "bitvec",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-macros",
+ "circuit-types",
+ "constants",
+ "crypto",
+ "darkpool-types",
  "futures",
  "itertools 0.10.5",
  "jf-primitives",
@@ -2503,38 +2459,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
-]
-
-[[package]]
-name = "circuits-core"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
-dependencies = [
- "alloy-primitives",
- "ark-crypto-primitives",
- "ark-ec",
- "ark-ff 0.4.2",
- "ark-mpc",
- "bigdecimal 0.3.1",
- "bitvec",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "futures",
- "itertools 0.10.5",
- "jf-primitives",
- "lazy_static",
- "mpc-plonk",
- "mpc-relation",
- "num-bigint",
- "num-integer",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "util",
 ]
 
 [[package]]
@@ -2648,22 +2573,22 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "warp 0.3.7",
 ]
 
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy",
  "base64 0.13.1",
  "bimap",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
  "clap",
  "colored",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "constants",
  "darkpool-client",
  "ed25519-dalek 1.0.1",
  "json",
@@ -2678,7 +2603,7 @@ dependencies = [
  "types-core",
  "types-gossip",
  "url",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
@@ -2728,18 +2653,7 @@ dependencies = [
 [[package]]
 name = "constants"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
-dependencies = [
- "ark-bn254",
- "ark-ec",
- "ark-ed-on-bn254",
- "ark-mpc",
-]
-
-[[package]]
-name = "constants"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -2929,30 +2843,13 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy-primitives",
  "ark-ec",
  "ark-ff 0.4.2",
  "bigdecimal 0.3.1",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "itertools 0.10.5",
- "lazy_static",
- "num-bigint",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "crypto"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
-dependencies = [
- "alloy-primitives",
- "ark-ec",
- "ark-ff 0.4.2",
- "bigdecimal 0.3.1",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "constants",
  "itertools 0.10.5",
  "lazy_static",
  "num-bigint",
@@ -3059,7 +2956,7 @@ dependencies = [
 [[package]]
 name = "darkpool-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "abi",
  "alloy",
@@ -3070,11 +2967,11 @@ dependencies = [
  "ark-ec",
  "ark-ff 0.4.2",
  "async-trait",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "circuits-core",
+ "constants",
+ "crypto",
+ "darkpool-types",
  "itertools 0.12.1",
  "lazy_static",
  "matching-engine-core",
@@ -3087,37 +2984,19 @@ dependencies = [
  "types-account",
  "types-core",
  "types-proofs",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
 name = "darkpool-types"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy-primitives",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "itertools 0.10.5",
- "jf-primitives",
- "mpc-plonk",
- "mpc-relation",
- "rand 0.8.5",
- "serde",
-]
-
-[[package]]
-name = "darkpool-types"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
-dependencies = [
- "alloy-primitives",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "circuit-macros",
+ "circuit-types",
+ "constants",
+ "crypto",
  "itertools 0.10.5",
  "jf-primitives",
  "mpc-plonk",
@@ -3640,7 +3519,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3726,15 +3605,15 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "abi",
  "alloy",
  "base64 0.22.1",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "constants",
+ "crypto",
+ "darkpool-types",
  "hex",
  "http 1.4.0",
  "itertools 0.10.5",
@@ -3747,7 +3626,7 @@ dependencies = [
  "types-core",
  "types-gossip",
  "types-runtime",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "uuid",
 ]
 
@@ -3937,12 +3816,12 @@ dependencies = [
  "bigdecimal 0.4.10",
  "bytes",
  "chrono",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
  "clap",
  "config",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "crypto",
  "darkpool-client",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "darkpool-types",
  "diesel",
  "diesel-async",
  "ethers-core",
@@ -3971,7 +3850,7 @@ dependencies = [
  "tokio-postgres",
  "tracing",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "uuid",
  "warp 0.3.7",
 ]
@@ -5275,16 +5154,16 @@ dependencies = [
 [[package]]
 name = "matching-engine-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "crypto",
+ "darkpool-types",
  "dashmap",
  "rustc-hash 2.1.1",
  "types-account",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
@@ -5616,7 +5495,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6449,8 +6328,8 @@ dependencies = [
 name = "prover-service"
 version = "0.1.0"
 dependencies = [
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "circuits-core",
  "clap",
  "http 0.2.12",
  "http-auth-basic",
@@ -6464,7 +6343,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-opentelemetry",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "warp 0.3.7",
 ]
 
@@ -6472,8 +6351,8 @@ dependencies = [
 name = "prover-service-api"
 version = "0.1.0"
 dependencies = [
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "circuits-core",
  "serde",
 ]
 
@@ -6609,7 +6488,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.3",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7012,7 +6891,7 @@ dependencies = [
  "tungstenite 0.18.0",
  "types-core",
  "url",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
@@ -7337,7 +7216,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8218,12 +8097,12 @@ dependencies = [
 [[package]]
 name = "system-clock"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "tracing",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
@@ -8310,7 +8189,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8933,15 +8812,15 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 [[package]]
 name = "types-account"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "abi",
  "alloy",
  "ark-ff 0.4.2",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "constants",
+ "crypto",
+ "darkpool-types",
  "derivative",
  "itertools 0.10.5",
  "k256",
@@ -8951,37 +8830,37 @@ dependencies = [
  "serde",
  "signature 2.2.0",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "uuid",
 ]
 
 [[package]]
 name = "types-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy",
  "base64 0.22.1",
  "bimap",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "darkpool-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "constants",
+ "darkpool-types",
  "hmac",
  "num-bigint",
  "rand 0.8.5",
  "serde",
  "sha2 0.10.9",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
  "uuid",
 ]
 
 [[package]]
 name = "types-gossip"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "base64 0.22.1",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
  "derivative",
  "ed25519-dalek 1.0.1",
  "libp2p",
@@ -8990,18 +8869,18 @@ dependencies = [
  "serde",
  "serde_json",
  "types-account",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "util",
 ]
 
 [[package]]
 name = "types-proofs"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy-primitives",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "circuits-core 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "circuits-core",
+ "constants",
  "serde",
  "types-account",
  "types-core",
@@ -9010,7 +8889,7 @@ dependencies = [
 [[package]]
 name = "types-runtime"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "async-trait",
  "tokio",
@@ -9154,58 +9033,17 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics#382f7cce62a1db46c916d7ece7a8cff70f22101b"
+source = "git+https://github.com/renegade-fi/renegade.git#418c17b14b6bfe19945185ea6c1f36a610841f38"
 dependencies = [
  "alloy",
  "ark-ec",
  "ark-serialize 0.4.2",
  "base64 0.22.1",
  "chrono",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
+ "circuit-types",
+ "constants",
  "crossbeam",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fre-export-metrics)",
- "eyre",
- "futures",
- "hex",
- "http 1.4.0",
- "json",
- "libp2p",
- "metrics",
- "metrics-exporter-statsd",
- "metrics-tracing-context",
- "metrics-util",
- "num-bigint",
- "num-traits",
- "opentelemetry",
- "opentelemetry-datadog",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-serde 0.1.3",
- "tracing-subscriber 0.3.23",
-]
-
-[[package]]
-name = "util"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade#13e76649bf9b4ffe0a9bee85e0c4140a69147b04"
-dependencies = [
- "alloy",
- "ark-ec",
- "ark-serialize 0.4.2",
- "base64 0.22.1",
- "chrono",
- "circuit-types 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "constants 0.1.0 (git+https://github.com/renegade-fi/renegade)",
- "crossbeam",
- "crypto 0.1.0 (git+https://github.com/renegade-fi/renegade)",
+ "crypto",
  "eyre",
  "futures",
  "hex",
@@ -9741,6 +9579,15 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
+version = "0.60.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
+dependencies = [
+ "windows-targets 0.53.5",
+]
+
+[[package]]
+name = "windows-sys"
 version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
@@ -9772,11 +9619,28 @@ dependencies = [
  "windows_aarch64_gnullvm 0.52.6",
  "windows_aarch64_msvc 0.52.6",
  "windows_i686_gnu 0.52.6",
- "windows_i686_gnullvm",
+ "windows_i686_gnullvm 0.52.6",
  "windows_i686_msvc 0.52.6",
  "windows_x86_64_gnu 0.52.6",
  "windows_x86_64_gnullvm 0.52.6",
  "windows_x86_64_msvc 0.52.6",
+]
+
+[[package]]
+name = "windows-targets"
+version = "0.53.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4945f9f551b88e0d65f3db0bc25c33b8acea4d9e41163edf90dcd0b19f9069f3"
+dependencies = [
+ "windows-link",
+ "windows_aarch64_gnullvm 0.53.1",
+ "windows_aarch64_msvc 0.53.1",
+ "windows_i686_gnu 0.53.1",
+ "windows_i686_gnullvm 0.53.1",
+ "windows_i686_msvc 0.53.1",
+ "windows_x86_64_gnu 0.53.1",
+ "windows_x86_64_gnullvm 0.53.1",
+ "windows_x86_64_msvc 0.53.1",
 ]
 
 [[package]]
@@ -9798,6 +9662,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
 
 [[package]]
+name = "windows_aarch64_gnullvm"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9d8416fa8b42f5c947f8482c43e7d89e73a173cead56d044f6a56104a6d1b53"
+
+[[package]]
 name = "windows_aarch64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9814,6 +9684,12 @@ name = "windows_aarch64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
+
+[[package]]
+name = "windows_aarch64_msvc"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9d782e804c2f632e395708e99a94275910eb9100b2114651e04744e9b125006"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -9834,10 +9710,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e9b5ad5ab802e97eb8e295ac6720e509ee4c243f69d781394014ebfe8bbfa0b"
 
 [[package]]
+name = "windows_i686_gnu"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "960e6da069d81e09becb0ca57a65220ddff016ff2d6af6a223cf372a506593a3"
+
+[[package]]
 name = "windows_i686_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66"
+
+[[package]]
+name = "windows_i686_gnullvm"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa7359d10048f68ab8b09fa71c3daccfb0e9b559aed648a8f95469c27057180c"
 
 [[package]]
 name = "windows_i686_msvc"
@@ -9858,6 +9746,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
 
 [[package]]
+name = "windows_i686_msvc"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
+
+[[package]]
 name = "windows_x86_64_gnu"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9874,6 +9768,12 @@ name = "windows_x86_64_gnu"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "147a5c80aabfbf0c7d901cb5895d1de30ef2907eb21fbbab29ca94c5b08b1a78"
+
+[[package]]
+name = "windows_x86_64_gnu"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c3842cdd74a865a8066ab39c8a7a473c0778a3f29370b5fd6b4b9aa7df4a499"
 
 [[package]]
 name = "windows_x86_64_gnullvm"
@@ -9894,6 +9794,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
 
 [[package]]
+name = "windows_x86_64_gnullvm"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ffa179e2d07eee8ad8f57493436566c7cc30ac536a3379fdf008f47f6bb7ae1"
+
+[[package]]
 name = "windows_x86_64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9910,6 +9816,12 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "windows_x86_64_msvc"
+version = "0.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "winnow"
