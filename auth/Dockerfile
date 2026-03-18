@@ -8,7 +8,7 @@ COPY ./rust-toolchain ./rust-toolchain
 RUN cat rust-toolchain | xargs rustup toolchain install
 
 # Install cargo-chef
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --locked
 
 # === Sources === #
 FROM chef AS sources
