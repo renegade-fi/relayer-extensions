@@ -17,9 +17,9 @@ use crate::{
         error::ExchangeConnectionError,
     },
     utils::{
-        CONN_RETRY_DELAY, ClosureSender, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES,
-        MAX_CONN_RETRY_WINDOW, PairInfo, PriceReceiver, PriceSender, PriceStream,
-        RATE_LIMIT_RETRY_DELAY, SharedPriceStreams,
+        CONN_RETRY_DELAY, ClosureSender, HEARTBEAT_INTERVAL, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES,
+        MAX_CONN_RETRY_WINDOW, MAX_HEARTBEAT_AGE, PairInfo, PriceReceiver, PriceSender,
+        PriceStream, RATE_LIMIT_RETRY_DELAY, SharedPriceStreams,
     },
 };
 
@@ -154,15 +154,42 @@ impl GlobalPriceStreams {
         price_tx: &PriceSender,
         pair_info: &PairInfo,
     ) -> Result<(), ServerError> {
-        let delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
-        tokio::pin!(delay);
+        let keepalive_delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
+        let heartbeat_delay = tokio::time::sleep(HEARTBEAT_INTERVAL);
+        tokio::pin!(keepalive_delay);
+        tokio::pin!(heartbeat_delay);
+        let mut last_price: Option<Price> = None;
+        let mut last_exchange_update = Instant::now();
 
         loop {
             tokio::select! {
                 // Send a keepalive message to the exchange
-                _ = &mut delay => {
+                _ = &mut keepalive_delay => {
                     conn.send_keepalive().await.map_err(ServerError::ExchangeConnection)?;
-                    delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
+                    keepalive_delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
+                }
+
+                // Re-send the last known price to keep downstream timestamps
+                // fresh, but only if we've received a real exchange update
+                // recently — otherwise treat the connection as dead.
+                _ = &mut heartbeat_delay => {
+                    if let Some(price) = last_price {
+                        if last_exchange_update.elapsed() < MAX_HEARTBEAT_AGE {
+                            let _ = price_tx.send(price);
+                        } else {
+                            warn!(
+                                "No exchange update for {:?}, treating as stale: {}",
+                                last_exchange_update.elapsed(),
+                                pair_info.to_topic(),
+                            );
+                            return Err(ServerError::ExchangeConnection(
+                                ExchangeConnectionError::ConnectionHangup(
+                                    format!("No exchange data for {:?}", last_exchange_update.elapsed()),
+                                ),
+                            ));
+                        }
+                    }
+                    heartbeat_delay.as_mut().reset(Instant::now() + HEARTBEAT_INTERVAL);
                 }
 
                 // Forward the next price into the broadcast channel
@@ -170,6 +197,9 @@ impl GlobalPriceStreams {
                     Some(price_res) => {
                         let price = price_res.map_err(ServerError::ExchangeConnection)?;
                         let _ = price_tx.send(price);
+                        last_price = Some(price);
+                        last_exchange_update = Instant::now();
+                        heartbeat_delay.as_mut().reset(Instant::now() + HEARTBEAT_INTERVAL);
                     }
                     None => {
                         let stream_closure_msg = format!("Price stream for {} has closed", pair_info.to_topic());
