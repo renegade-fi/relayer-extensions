@@ -298,9 +298,9 @@ impl ChainConfig {
             self.max_gas_refill_amount.unwrap_or(cli_args.max_gas_refill_amount);
         let max_gas_withdrawal_amount =
             self.max_gas_withdrawal_amount.unwrap_or(cli_args.max_gas_withdrawal_amount);
-        let gas_top_up_amount = self.gas_top_up_amount.unwrap_or_else(|| DEFAULT_TOP_UP_AMOUNT);
+        let gas_top_up_amount = self.gas_top_up_amount.unwrap_or(DEFAULT_TOP_UP_AMOUNT);
         let gas_refill_tolerance =
-            self.gas_refill_tolerance.unwrap_or_else(|| DEFAULT_GAS_REFILL_TOLERANCE);
+            self.gas_refill_tolerance.unwrap_or(DEFAULT_GAS_REFILL_TOLERANCE);
 
         let custody_client = CustodyClient::new(
             chain,
