@@ -450,7 +450,7 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
     let base_token = quote.base_token();
     let asset = base_token.get_ticker().unwrap_or(base_token.get_addr());
 
-    metrics::gauge!(
+    renegade_util::metrics::gauge!(
         QUOTE_PRICE_DEVIATION,
         CHAIN_TAG => quote.chain.to_string(),
         ASSET_TAG => asset,

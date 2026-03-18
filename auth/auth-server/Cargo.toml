@@ -86,7 +86,6 @@ chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
 futures-util = "0.3"
 lazy_static = "1.4"
-metrics = { workspace = true }
 num-bigint = "0.4"
 atomic_float = "1"
 rustls = "0.23"

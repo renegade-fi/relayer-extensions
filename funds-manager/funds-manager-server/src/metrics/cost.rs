@@ -178,13 +178,13 @@ impl MetricsRecorder {
     ) {
         let labels = self.get_labels(quote, source);
 
-        metrics::gauge!(SWAP_EXECUTION_COST_METRIC_NAME, &labels)
+        renegade_util::metrics::gauge!(SWAP_EXECUTION_COST_METRIC_NAME, &labels)
             .set(cost_data.execution_cost_usdc);
-        metrics::gauge!(SWAP_GAS_COST_METRIC_NAME, &labels).set(cost_data.gas_cost_usd);
-        metrics::gauge!(SWAP_NOTIONAL_VOLUME_METRIC_NAME, &labels)
+        renegade_util::metrics::gauge!(SWAP_GAS_COST_METRIC_NAME, &labels).set(cost_data.gas_cost_usd);
+        renegade_util::metrics::gauge!(SWAP_NOTIONAL_VOLUME_METRIC_NAME, &labels)
             .set(cost_data.notional_volume_usdc);
-        metrics::gauge!(SWAP_RELATIVE_SPREAD_METRIC_NAME, &labels).set(cost_data.relative_spread);
-        metrics::gauge!(SELF_TRADE_VOLUME_USDC_METRIC_NAME, &labels)
+        renegade_util::metrics::gauge!(SWAP_RELATIVE_SPREAD_METRIC_NAME, &labels).set(cost_data.relative_spread);
+        renegade_util::metrics::gauge!(SELF_TRADE_VOLUME_USDC_METRIC_NAME, &labels)
             .set(cost_data.self_trade_volume_usdc);
     }
 
