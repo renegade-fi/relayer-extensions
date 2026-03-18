@@ -11,6 +11,7 @@ use renegade_external_api::types::ApiBoundedMatchResult;
 use renegade_solidity_abi::v2::IDarkpoolV2::SponsoredExternalMatch;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
+use renegade_util::metrics;
 use tracing::warn;
 
 use crate::chain_events::utils::GPv2Settlement;

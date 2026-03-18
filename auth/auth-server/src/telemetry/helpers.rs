@@ -12,6 +12,7 @@ use renegade_external_api::types::{
 };
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
+use renegade_util::metrics;
 use tracing::warn;
 
 use crate::{

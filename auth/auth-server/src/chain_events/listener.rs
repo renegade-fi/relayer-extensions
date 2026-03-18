@@ -225,7 +225,7 @@ impl OnChainEventListenerExecutor {
         // Get the time of settlement and the matches in the tx
         let settlement_time = self.get_settlement_timestamp(&receipt).await?;
         let matches = self.darkpool_client.find_external_matches_in_tx(tx).await?;
-        for (bounded_match, actual_external_input) in matches {
+        for (_hash, bounded_match, actual_external_input) in matches {
             // Process the external match (records all metrics)
             self.process_external_match(
                 &bounded_match,
