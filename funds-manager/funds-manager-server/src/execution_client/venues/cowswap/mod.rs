@@ -124,7 +124,7 @@ pub struct CowswapQuoteExecutionData {
 impl ExecutableQuote {
     /// Convert a Cowswap quote into an executable quote
     pub fn from_cowswap_quote(
-        cowswap_quote: OrderQuoteResponse,
+        cowswap_quote: &OrderQuoteResponse,
         slippage_tolerance: Option<f64>,
         chain: Chain,
         private_key: &PrivateKeySigner,
@@ -435,7 +435,7 @@ impl ExecutionVenue for CowswapClient {
             self.send_post_request(COWSWAP_QUOTE_ENDPOINT, quote_request).await?;
 
         let executable_quote = ExecutableQuote::from_cowswap_quote(
-            quote_response,
+            &quote_response,
             slippage_tolerance,
             self.chain,
             &self.hot_wallet,

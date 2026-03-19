@@ -256,6 +256,7 @@ pub struct ChainConfig {
 
 impl ChainConfig {
     /// Build chain-specific clients from the given config
+    #[allow(clippy::too_many_arguments)]
     pub async fn build_clients(
         &self,
         chain: Chain,
@@ -332,12 +333,11 @@ impl ChainConfig {
             chain,
             self.lifi_api_key.clone(),
             self.bebop_api_key.clone(),
-            base_provider.clone(),
+            &base_provider.clone(),
             price_reporter.clone(),
-            quoter_hot_wallet_private_key,
+            &quoter_hot_wallet_private_key,
             self.max_price_deviations.clone(),
-        )
-        .await?;
+        )?;
 
         // Build a metrics recorder
         let metrics_recorder = MetricsRecorder::new(price_reporter.clone(), base_provider, chain);
