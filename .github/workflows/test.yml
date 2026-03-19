@@ -18,6 +18,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: workspace
       - name: Build workspace
         run: cargo build --workspace --exclude auth-server
       - name: Test workspace
