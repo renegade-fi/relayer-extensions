@@ -352,9 +352,6 @@ mod test {
         let json_buf = json_serialize(&test_struct, false /* stringify */)?;
         let deser: TestStruct = serde_json::from_slice(&json_buf)?;
 
-        println!("{}", test_struct.c);
-        println!("{}", deser.c);
-
         assert_eq!(test_struct, deser);
         Ok(())
     }
@@ -405,5 +402,32 @@ mod test {
         let deser: TestStruct = json_deserialize(&json_buf, true /* stringify */)?;
         assert_eq!(test_struct, deser);
         Ok(())
+    }
+
+    /// Diagnostic test: isolates f64 precision loss caused by serde_json's `arbitrary_precision`
+    /// feature if `float_roundtrip` is absent.
+    #[test]
+    fn test_f64_arbitrary_precision_roundtrip() {
+        let val = 0.37652320722764565_f64;
+
+        // Path A: plain serde_json roundtrip (affected by arbitrary_precision)
+        let json = serde_json::to_string(&val).unwrap();
+        let parsed: f64 = serde_json::from_str(&json).unwrap();
+
+        println!("JSON representation: {json}");
+        println!("Original bits:   {:064b}", val.to_bits());
+        println!("Parsed bits:     {:064b}", parsed.to_bits());
+        println!("Bits match: {}", val.to_bits() == parsed.to_bits());
+
+        // Path B: Rust's own f64 parsing (not affected by arbitrary_precision)
+        let rust_parsed: f64 = json.parse().unwrap();
+        println!("Rust parse bits: {:064b}", rust_parsed.to_bits());
+        println!("Rust parse matches original: {}", val.to_bits() == rust_parsed.to_bits());
+
+        assert_eq!(
+            val.to_bits(),
+            parsed.to_bits(),
+            "serde_json roundtrip changed f64 bits: {val} -> {parsed}"
+        );
     }
 }
