@@ -20,6 +20,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: workspace
+          cache-targets: "true"
       - name: Build workspace
         run: cargo build --workspace --exclude auth-server
       - name: Test workspace
@@ -39,7 +40,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.features }}
+          key: auth-server-${{ matrix.features }}
+          cache-targets: "true"
       - name: Build auth-server
         run: cargo build --package auth-server --features ${{ matrix.features }}
       - name: Test auth-server
