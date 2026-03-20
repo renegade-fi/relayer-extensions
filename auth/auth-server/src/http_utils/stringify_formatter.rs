@@ -244,7 +244,7 @@ fn should_ignore_key(key: &str, value: &Value) -> bool {
 #[cfg(test)]
 mod test {
     use eyre::Result;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{Rng, thread_rng};
     use serde::Deserialize;
 
     use super::*;
@@ -322,8 +322,8 @@ mod test {
 
     impl TestStruct {
         /// Create a new pseudorandom test struct from a seed
-        fn new(seed: u64) -> Self {
-            let mut rng = StdRng::seed_from_u64(seed);
+        fn new(_seed: u64) -> Self {
+            let mut rng = thread_rng();
             Self {
                 a: rng.r#gen(),
                 b: rng.r#gen(),
@@ -416,21 +416,13 @@ mod test {
     /// feature if `float_roundtrip` is absent.
     #[test]
     fn test_f64_arbitrary_precision_roundtrip() {
+        // If `float_roundtrip` is absent, some values will pass this test, and others will fail.
+        // The following value will definitely fail if `float_roundtrip` is absent, though, so we
+        // use it as an example.
         let val = 0.37652320722764565_f64;
 
-        // Path A: plain serde_json roundtrip (affected by arbitrary_precision)
         let json = serde_json::to_string(&val).unwrap();
         let parsed: f64 = serde_json::from_str(&json).unwrap();
-
-        println!("JSON representation: {json}");
-        println!("Original bits:   {:064b}", val.to_bits());
-        println!("Parsed bits:     {:064b}", parsed.to_bits());
-        println!("Bits match: {}", val.to_bits() == parsed.to_bits());
-
-        // Path B: Rust's own f64 parsing (not affected by arbitrary_precision)
-        let rust_parsed: f64 = json.parse().unwrap();
-        println!("Rust parse bits: {:064b}", rust_parsed.to_bits());
-        println!("Rust parse matches original: {}", val.to_bits() == rust_parsed.to_bits());
 
         assert_eq!(
             val.to_bits(),
