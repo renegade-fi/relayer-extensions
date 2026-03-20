@@ -412,13 +412,13 @@ mod test {
         Ok(())
     }
 
-    /// Diagnostic test: isolates f64 precision loss caused by serde_json's `arbitrary_precision`
-    /// feature if `float_roundtrip` is absent.
+    /// Diagnostic test: isolates f64 precision loss caused by serde_json's
+    /// `arbitrary_precision` feature if `float_roundtrip` is absent.
     #[test]
     fn test_f64_arbitrary_precision_roundtrip() {
-        // If `float_roundtrip` is absent, some values will pass this test, and others will fail.
-        // The following value will definitely fail if `float_roundtrip` is absent, though, so we
-        // use it as an example.
+        // If `float_roundtrip` is absent, some values will pass this test, and others
+        // will fail. The following value will definitely fail if
+        // `float_roundtrip` is absent, though, so we use it as an example.
         let val = 0.37652320722764565_f64;
 
         let json = serde_json::to_string(&val).unwrap();
