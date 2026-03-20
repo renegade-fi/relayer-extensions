@@ -2,51 +2,50 @@ on: push
 
 name: Clippy Check
 
+env:
+  CLIPPY_ARGS: >
+    --tests
+    --benches
+    --
+    --no-deps
+    -D warnings
+    -D unsafe_code
+    -D missing_docs
+    -D clippy::missing_docs_in_private_items
+    -D clippy::needless_pass_by_value
+    -D clippy::needless_pass_by_ref_mut
+    -D clippy::unused_async
+
 jobs:
-  clippy-check:
+  clippy-workspace:
+    name: Clippy (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup component add clippy
+      - name: Run clippy on workspace
+        run: cargo clippy --workspace --exclude auth-server ${{ env.CLIPPY_ARGS }}
+
+  clippy-auth-server:
+    name: Clippy (auth-server/${{ matrix.features }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [
-          "auth-server-api",
-          "compliance-server",
-          "compliance-api",
-          "renegade-dealer",
-          "renegade-dealer-api",
-          "funds-manager-api",
-          "funds-manager",
-          "price-reporter",
-          "price-reporter-client",
-          #"renegade-solver",
-        ]
-        features: [""]
-        include:
-          - package: "auth-server"
-            features: "arbitrum"
-          - package: "auth-server"
-            features: "base"
+        features: ["arbitrum", "base"]
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Install Protoc
-        uses: arduino/setup-protoc@v1
+        uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: rustup component add clippy
-      - name: Run clippy on ${{ matrix.package }}
-        uses: actions-rs/clippy-check@v1
+      - uses: Swatinem/rust-cache@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: >
-            -p ${{ matrix.package }}
-            ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
-            --tests
-            --benches
-            --
-            --no-deps
-            -D warnings
-            -D unsafe_code
-            -D missing_docs
-            -D clippy::missing_docs_in_private_items
-            -D clippy::needless_pass_by_value
-            -D clippy::needless_pass_by_ref_mut
-            -D clippy::unused_async
+          key: ${{ matrix.features }}
+      - run: rustup component add clippy
+      - name: Run clippy on auth-server
+        run: cargo clippy -p auth-server --features ${{ matrix.features }} ${{ env.CLIPPY_ARGS }}

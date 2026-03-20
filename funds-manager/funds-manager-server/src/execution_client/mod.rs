@@ -38,13 +38,13 @@ pub struct ExecutionClient {
 impl ExecutionClient {
     /// Create a new client
     #[allow(clippy::too_many_arguments)]
-    pub async fn new(
+    pub fn new(
         chain: Chain,
         lifi_api_key: Option<String>,
         bebop_api_key: Option<String>,
-        base_provider: DynProvider,
+        base_provider: &DynProvider,
         price_reporter: PriceReporterClient,
-        quoter_hot_wallet: PrivateKeySigner,
+        quoter_hot_wallet: &PrivateKeySigner,
         max_price_deviations: MaxPriceDeviations,
     ) -> Result<Self, ExecutionClientError> {
         let hot_wallet_address = quoter_hot_wallet.address();
