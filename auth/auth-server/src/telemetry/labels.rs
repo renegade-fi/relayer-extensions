@@ -90,3 +90,5 @@ pub const L2_BASE_FEE_TAG: &str = "l2_base_fee";
 /// Metric tag indicating whether or not the bundle was settled as part of a CoW
 /// Protocol auction
 pub const SETTLED_VIA_COWSWAP_TAG: &str = "settled_via_cowswap";
+/// Metric tag indicating whether or not the bundle was malleable
+pub const IS_MALLEABLE_TAG: &str = "is_malleable";

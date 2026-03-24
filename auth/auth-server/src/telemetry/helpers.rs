@@ -88,7 +88,7 @@ pub(crate) fn calculate_quote_per_base_price(
         AuthServerError::Serde(format!("No decimals for {}", quote_token.get_addr()))
     })?;
 
-    let decimal_diff = quote_decimals as i32 - base_decimals as i32;
+    let decimal_diff = base_decimals as i32 - quote_decimals as i32;
     Ok(quote_per_base_price * 10f64.powi(decimal_diff))
 }
 
