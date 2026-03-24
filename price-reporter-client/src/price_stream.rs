@@ -131,13 +131,33 @@ impl MultiPriceStreamState {
     }
 }
 
+/// A guard that aborts a spawned task when the last reference is dropped.
+/// Wrapped in `Arc` so that `MultiPriceStream` can remain `Clone` — the
+/// task is aborted only when every clone has been dropped.
+struct TaskGuard(JoinHandle<()>);
+
+impl std::fmt::Debug for TaskGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("TaskGuard").field(&"...").finish()
+    }
+}
+
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// A multi-price stream that manages a WebSocket connection to the price
 /// reporter and provides access to the latest prices of the desired tokens
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct MultiPriceStream {
     /// The inner state of the multi-price stream, made shareable via an `Arc`
     /// so that it can be updated by the websocket thread
     inner: Arc<MultiPriceStreamState>,
+    /// Guard that aborts the background websocket task when all clones of
+    /// this stream are dropped
+    _task_guard: Arc<TaskGuard>,
 }
 
 // --------------------
@@ -151,11 +171,11 @@ impl MultiPriceStream {
         let inner = Arc::new(MultiPriceStreamState::new(exit_on_stale));
         let inner_clone = inner.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             Self::run_websocket_loop(inner_clone, ws_url, mints).await;
         });
 
-        Self { inner }
+        Self { inner, _task_guard: Arc::new(TaskGuard(handle)) }
     }
 
     /// Get the current state of the price stream
