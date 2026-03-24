@@ -1,7 +1,6 @@
 //! The routes for the HTTP server
 
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use http_body_util::{BodyExt, Full};
 use hyper::{
     HeaderMap, Request, Response, StatusCode,
@@ -80,18 +79,11 @@ impl PriceHandler {
         Self { config, price_streams }
     }
 
-    /// Get a single price from the stream pertaining to the given topic
+    /// Get the current price for the given topic by borrowing from the watch
+    /// channel directly, returning the latest known price immediately.
     pub async fn get_price(&self, topic: &str) -> Result<Price, ServerError> {
-        let self_clone = self.clone();
-
         let pair_info = PairInfo::from_topic(topic)?;
-        let mut price_stream = self_clone
-            .price_streams
-            .get_or_create_price_stream(pair_info, self_clone.config.clone())
-            .await?;
-
-        let price = price_stream.next().await.ok_or(ServerError::PriceStreamClosed)?;
-        Ok(price)
+        self.price_streams.get_current_price(pair_info, self.config.clone()).await
     }
 }
 

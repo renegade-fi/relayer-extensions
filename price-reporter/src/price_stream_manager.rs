@@ -200,6 +200,7 @@ impl GlobalPriceStreams {
                         last_price = Some(price);
                         last_exchange_update = Instant::now();
                         heartbeat_delay.as_mut().reset(Instant::now() + HEARTBEAT_INTERVAL);
+                        renegade_util::metrics::counter!("exchange_updates", "pair" => pair_info.to_topic()).increment(1);
                     }
                     None => {
                         let stream_closure_msg = format!("Price stream for {} has closed", pair_info.to_topic());
@@ -340,6 +341,35 @@ impl GlobalPriceStreams {
         let conversion_pair = pair_info.get_conversion_pair()?;
         let conversion_rx = self.get_or_create_price_receiver(conversion_pair, config).await?;
         Ok(conversion_rx)
+    }
+
+    /// Get the current price for a given pair via `.borrow()` on the watch
+    /// receiver, avoiding the `WatchStream` wrapper used by the websocket path.
+    pub async fn get_current_price(
+        &self,
+        pair_info: PairInfo,
+        config: ExchangeConnectionsConfig,
+    ) -> Result<Price, ServerError> {
+        let (normalized_pair_info, requires_conversion) =
+            self.normalize_pair_info(pair_info.clone())?;
+
+        let price_rx =
+            self.get_or_create_price_receiver(normalized_pair_info.clone(), config.clone()).await?;
+        let price = *price_rx.borrow();
+        if price == 0.0 {
+            return Err(ServerError::PriceStreamClosed);
+        }
+
+        if requires_conversion {
+            let conversion_rx = self.quote_conversion_stream(normalized_pair_info, config).await?;
+            let conversion_price = *conversion_rx.borrow();
+            if conversion_price == 0.0 {
+                return Err(ServerError::PriceStreamClosed);
+            }
+            Ok(price / conversion_price)
+        } else {
+            Ok(price)
+        }
     }
 
     /// Get a price receiver for the given pair or create a new stream
