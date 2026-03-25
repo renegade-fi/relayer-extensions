@@ -60,7 +60,12 @@ impl CustodyClient {
         let wallet = self.get_hot_wallet_by_vault(&source.vault_name(self.chain)).await?;
         let bal = self.get_erc20_balance(token_address, &wallet.address).await?;
         if bal < amount {
-            return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
+            let token = Token::from_addr_on_chain(token_address, self.chain);
+            let ticker = token.get_ticker().unwrap_or(token_address.to_string());
+            return Err(FundsManagerError::Custom(format!(
+                "Insufficient balance: wallet {} has {bal} {ticker} ({token_address}), need {amount}",
+                wallet.address,
+            )));
         }
 
         // Fetch the wallet private key
