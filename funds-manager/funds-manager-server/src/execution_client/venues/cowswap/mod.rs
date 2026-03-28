@@ -479,6 +479,7 @@ fn to_cowswap_chain(chain: Chain) -> Result<String, ExecutionClientError> {
     match chain {
         Chain::ArbitrumOne => Ok("arbitrum_one".to_string()),
         Chain::BaseMainnet => Ok("base".to_string()),
+        Chain::EthereumMainnet => Ok("mainnet".to_string()),
         _ => Err(ExecutionClientError::onchain(format!("Cowswap does not support chain: {chain}"))),
     }
 }
