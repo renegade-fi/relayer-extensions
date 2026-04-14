@@ -7,6 +7,7 @@ use alloy_primitives::U256;
 use auth_server_api::{
     GasSponsorshipInfo, GasSponsorshipQueryParams, SponsoredMatchResponse, SponsoredQuoteResponse,
 };
+use price_reporter_client::error::PriceReporterClientError;
 
 use refund_calculation::{apply_gas_sponsorship_to_match_bundle, apply_gas_sponsorship_to_quote};
 use renegade_circuit_types::fixed_point::FixedPoint;
@@ -70,7 +71,13 @@ impl Server {
         let rate_limited = !self.check_gas_sponsorship_rate_limit(key_desc).await?;
 
         let expected_quote_amount =
-            self.get_quote_amount(order, FixedPoint::zero() /* relayer_fee */).await?;
+            match self.get_quote_amount(order, FixedPoint::zero() /* relayer_fee */).await {
+                Ok(amt) => amt,
+                Err(AuthServerError::PriceReporter(PriceReporterClientError::StreamMissing(_))) => {
+                    return Ok(GasSponsorshipInfo::zero());
+                },
+                Err(e) => return Err(e),
+            };
 
         let expected_quote_amount_f64 = Token::usdc().convert_to_decimal(expected_quote_amount);
         let order_too_small = expected_quote_amount_f64 < self.min_sponsored_order_quote_amount;

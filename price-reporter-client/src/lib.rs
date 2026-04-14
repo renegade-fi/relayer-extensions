@@ -30,6 +30,10 @@ const WS_PORT: u16 = 4000;
 pub const PRICE_ROUTE: &str = "/price";
 /// Default timeout for requests to the price reporter
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
+/// Idle-connection timeout for the HTTP client's keep-alive pool.
+/// Must be strictly less than the price-reporter server's
+/// `header_read_timeout` (see `price-reporter/src/http_server.rs`).
+const POOL_IDLE_TIMEOUT_SECS: u64 = 20;
 
 /// The ticker for the WETH token
 const WETH_TICKER: &str = "WETH";
@@ -88,9 +92,13 @@ impl PriceReporterClient {
         let PriceReporterClientConfig { base_url, disable_price_stream, allow_stale_price_stream } =
             config;
 
-        // Build a shared HTTP client with a sensible default timeout
+        // Build a shared HTTP client with a sensible default timeout.
+        // `pool_idle_timeout` must stay below the price-reporter server's
+        // hyper `header_read_timeout` to avoid keep-alive races where the
+        // client reuses a socket the server has just closed.
         let http_client = Client::builder()
             .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+            .pool_idle_timeout(Duration::from_secs(POOL_IDLE_TIMEOUT_SECS))
             .build()
             .map_err(PriceReporterClientError::http)?;
 

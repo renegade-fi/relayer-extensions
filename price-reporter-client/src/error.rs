@@ -25,6 +25,10 @@ pub enum PriceReporterClientError {
     #[error("WebSocket error: {0}")]
     WebSocket(String),
 
+    /// No price stream available for the requested mint
+    #[error("No price stream for {0}")]
+    StreamMissing(String),
+
     /// Custom error
     #[error("Custom error: {0}")]
     Custom(String),
@@ -59,6 +63,12 @@ impl PriceReporterClientError {
     #[allow(clippy::needless_pass_by_value)]
     pub fn websocket<T: ToString>(msg: T) -> Self {
         Self::WebSocket(msg.to_string())
+    }
+
+    /// Create a new stream missing error
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn stream_missing<T: ToString>(mint: T) -> Self {
+        Self::StreamMissing(mint.to_string())
     }
 
     /// Create a new custom error

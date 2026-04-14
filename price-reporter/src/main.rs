@@ -57,7 +57,8 @@ async fn main() -> Result<(), ServerError> {
         &global_price_streams,
         &price_reporter_config.exchange_conn_config,
         price_reporter_config.disabled_exchanges.clone(),
-    )?;
+    )
+    .await?;
 
     // Bind the server to the given port
     let addr: SocketAddr = format!("0.0.0.0:{:?}", price_reporter_config.ws_port).parse().unwrap();
@@ -93,7 +94,10 @@ async fn main() -> Result<(), ServerError> {
 }
 
 /// Initialize price streams for all default token mapped pairs
-pub(crate) fn init_default_price_streams(
+///
+/// Cancels any existing streams that are no longer in the desired set
+/// (e.g. tokens removed from mappings), then initializes new streams.
+pub(crate) async fn init_default_price_streams(
     global_price_streams: &GlobalPriceStreams,
     config: &ExchangeConnectionsConfig,
     disabled_exchanges: Vec<Exchange>,
@@ -134,6 +138,15 @@ pub(crate) fn init_default_price_streams(
             streams.insert((base_token.clone(), exchange));
         });
     }
+
+    // Build the desired set of PairInfo keys and cancel any streams not in it
+    let desired_pairs: HashSet<PairInfo> = streams
+        .iter()
+        .filter_map(|(token, exchange)| {
+            PairInfo::new_default_stable(*exchange, &token.get_addr()).ok()
+        })
+        .collect();
+    global_price_streams.cancel_removed_streams(&desired_pairs).await;
 
     // Initialize all streams
     for (base_token, exchange) in streams {

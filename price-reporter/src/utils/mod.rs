@@ -23,6 +23,7 @@ use tokio::{
 };
 use tokio_stream::{StreamMap, wrappers::WatchStream};
 use tokio_tungstenite::WebSocketStream;
+use tokio_util::sync::CancellationToken;
 use tungstenite::Message;
 
 use crate::exchanges::ExchangeConnectionsConfig;
@@ -75,7 +76,7 @@ pub type PriceReceiver = WatchReceiver<Price>;
 /// A type alias for a shareable map of price streams, indexed by the (source,
 /// base, quote) tuple
 // TODO: Replace w/ `DashMap`?
-pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, PriceReceiver>>>;
+pub type SharedPriceStreams = Arc<RwLock<HashMap<PairInfo, (PriceReceiver, CancellationToken)>>>;
 
 /// A type alias for a price stream
 pub type SinglePriceStream = WatchStream<Price>;

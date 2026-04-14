@@ -1,6 +1,6 @@
 //! The minimal HTTP server maintained by the price reporter
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use http_body_util::Full;
 use hyper::{
@@ -14,7 +14,18 @@ use matchit::Router;
 use renegade_util::err_str;
 use routes::{REFRESH_TOKEN_MAPPING_ROUTE, RefreshTokenMappingHandler};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::error;
+use tracing::{debug, error};
+
+/// Header-read timeout for keep-alive connections. Must be strictly greater
+/// than the `pool_idle_timeout` used by `price-reporter-client` so that
+/// clients reap idle sockets before the server does, preventing keep-alive
+/// reuse of just-closed connections.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Substring match identifying the benign hyper idle-timeout error. Logged at
+/// debug rather than error since the connection close is standard keep-alive
+/// housekeeping, not a failure.
+const IDLE_TIMEOUT_ERR_SUBSTR: &str = "read header from client timeout";
 
 use crate::{
     errors::ServerError,
@@ -106,7 +117,11 @@ impl HttpServer {
             let self_clone = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = self_clone.handle_stream(stream).await {
-                    error!("Error handling stream: {e}");
+                    if e.to_string().contains(IDLE_TIMEOUT_ERR_SUBSTR) {
+                        debug!("Idle keep-alive connection closed: {e}");
+                    } else {
+                        error!("Error handling stream: {e}");
+                    }
                 }
             });
         }
@@ -124,6 +139,7 @@ impl HttpServer {
         let timer = TokioTimer::new();
         Http1Builder::new()
             .timer(timer)
+            .header_read_timeout(HEADER_READ_TIMEOUT)
             .serve_connection(stream_io, service_fn)
             .await
             .map_err(err_str!(ServerError::HttpServer))

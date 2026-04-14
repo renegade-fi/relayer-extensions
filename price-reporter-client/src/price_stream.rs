@@ -182,9 +182,7 @@ impl MultiPriceStream {
     pub async fn get_price(&self, mint: &str) -> Result<f64, PriceReporterClientError> {
         let prices = self.inner.prices.read().await;
 
-        let price = prices
-            .get(mint)
-            .ok_or(PriceReporterClientError::custom(format!("No price stream for {mint}")))?;
+        let price = prices.get(mint).ok_or(PriceReporterClientError::stream_missing(mint))?;
 
         Ok(price.load(Ordering::Relaxed))
     }

@@ -180,6 +180,7 @@ impl RefreshTokenMappingHandler {
             &self.config,
             self.disabled_exchanges.clone(),
         )
+        .await
     }
 }
 

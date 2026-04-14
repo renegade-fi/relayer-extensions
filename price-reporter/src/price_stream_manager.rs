@@ -1,6 +1,10 @@
 //! Manages exchange connections and price streams
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use renegade_types_core::{Exchange, Price};
 use tokio::{
@@ -8,6 +12,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -55,21 +60,42 @@ impl GlobalPriceStreams {
         &self,
         pair_info: PairInfo,
         price_rx: PriceReceiver,
+        cancel_token: CancellationToken,
     ) -> Option<PriceReceiver> {
         let mut price_streams = self.price_streams.write().await;
 
-        if let Some(stream_rx) = price_streams.get(&pair_info).cloned() {
+        if let Some((stream_rx, _)) = price_streams.get(&pair_info).cloned() {
             return Some(stream_rx);
         }
 
-        price_streams.insert(pair_info, price_rx);
+        price_streams.insert(pair_info, (price_rx, cancel_token));
 
         None
     }
 
-    /// Remove a price stream from the global map
+    /// Remove a price stream from the global map, cancelling its task
     pub async fn remove_price_stream(&self, pair_info: PairInfo) {
-        self.price_streams.write().await.remove(&pair_info);
+        if let Some((_, cancel_token)) = self.price_streams.write().await.remove(&pair_info) {
+            cancel_token.cancel();
+        }
+    }
+
+    /// Cancel all streams whose PairInfo is not in the desired set
+    pub async fn cancel_removed_streams(&self, desired: &HashSet<PairInfo>) {
+        let to_cancel: Vec<PairInfo> = {
+            let streams = self.price_streams.read().await;
+            streams.keys().filter(|k| !desired.contains(k)).cloned().collect()
+        };
+
+        if !to_cancel.is_empty() {
+            let mut streams = self.price_streams.write().await;
+            for pair_info in to_cancel {
+                info!("Cancelling removed price stream: {}", pair_info.to_topic());
+                if let Some((_, cancel_token)) = streams.remove(&pair_info) {
+                    cancel_token.cancel();
+                }
+            }
+        }
     }
 
     /// Initialize a price stream for the given pair info
@@ -82,9 +108,11 @@ impl GlobalPriceStreams {
 
         // Create a shared channel into which we forward streamed prices
         let (price_tx, price_rx) = channel(Price::default());
+        let cancel_token = CancellationToken::new();
 
-        if let Some(stream_rx) =
-            self.maybe_add_price_stream(pair_info.clone(), price_rx.clone()).await
+        if let Some(stream_rx) = self
+            .maybe_add_price_stream(pair_info.clone(), price_rx.clone(), cancel_token.clone())
+            .await
         {
             // If a price receiver entry already exists, return it.
             // This prevents a race condition where two concurrent
@@ -98,8 +126,10 @@ impl GlobalPriceStreams {
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
         let global_price_streams = self.clone();
+        let task_cancel = cancel_token.clone();
         tokio::spawn(async move {
-            let res = Self::price_stream_task(config, pair_info.clone(), price_tx).await;
+            let res =
+                Self::price_stream_task(config, pair_info.clone(), price_tx, task_cancel).await;
             global_price_streams.remove_price_stream(pair_info).await;
             global_price_streams.closure_channel.send(res).unwrap()
         });
@@ -113,6 +143,7 @@ impl GlobalPriceStreams {
         config: ExchangeConnectionsConfig,
         pair_info: PairInfo,
         price_tx: PriceSender,
+        cancel_token: CancellationToken,
     ) -> Result<(), ServerError> {
         if pair_info.is_unit_pair() {
             Self::stream_unit_pair_price(&price_tx).await;
@@ -125,12 +156,20 @@ impl GlobalPriceStreams {
             Self::connect_with_retries(&pair_info, &config, &mut retry_timestamps).await?;
 
         loop {
-            match Self::manage_connection(&mut conn, &price_tx, &pair_info).await {
-                Ok(()) => {},
-                Err(e) => {
-                    conn = Self::exhaust_retries(e, &pair_info, &config, &mut retry_timestamps)
-                        .await?;
-                },
+            tokio::select! {
+                _ = cancel_token.cancelled() => {
+                    info!("Price stream cancelled for {}", pair_info.to_topic());
+                    return Ok(());
+                }
+                res = Self::manage_connection(&mut conn, &price_tx, &pair_info) => {
+                    match res {
+                        Ok(()) => {},
+                        Err(e) => {
+                            conn = Self::exhaust_retries(e, &pair_info, &config, &mut retry_timestamps)
+                                .await?;
+                        },
+                    }
+                }
             }
         }
     }
@@ -379,7 +418,7 @@ impl GlobalPriceStreams {
         config: ExchangeConnectionsConfig,
     ) -> Result<PriceReceiver, ServerError> {
         let price_streams = self.price_streams.read().await;
-        if let Some(stream_rx) = price_streams.get(&pair_info).cloned() {
+        if let Some((stream_rx, _)) = price_streams.get(&pair_info).cloned() {
             return Ok(stream_rx);
         }
 

@@ -4,6 +4,7 @@ use crate::server::gas_sponsorship::CachedSponsorshipInfo;
 use auth_server_api::{GasSponsorshipInfo, SponsoredQuoteResponse};
 use bytes::Bytes;
 use http::StatusCode;
+use price_reporter_client::error::PriceReporterClientError;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, GLOBAL_MATCHING_POOL};
 use renegade_external_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
@@ -335,12 +336,19 @@ impl Server {
         record_quote_not_found(ctx.user(), &address_to_hex_string(&base_mint));
 
         // Record a zero fill ratio
-        let quote_amt = self
+        let quote_amt = match self
             .get_quote_amount(
                 order,
                 FixedPoint::zero(), // relayer_fee
             )
-            .await?;
+            .await
+        {
+            Ok(amt) => amt,
+            Err(AuthServerError::PriceReporter(PriceReporterClientError::StreamMissing(_))) => {
+                return Ok(());
+            },
+            Err(e) => return Err(e),
+        };
 
         // We ignore excessively large quotes for telemetry, as they're likely spam
         if quote_amt >= QUOTE_FILL_RATIO_IGNORE_THRESHOLD {
