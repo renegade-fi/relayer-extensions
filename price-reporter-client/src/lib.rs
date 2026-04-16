@@ -139,6 +139,14 @@ impl PriceReporterClient {
         })
     }
 
+    /// Signal the background WebSocket price stream (if any) to shut down
+    /// gracefully, sending Close frames before exiting.
+    pub fn shutdown(&self) {
+        if let Some(ref stream) = self.multi_price_stream {
+            stream.shutdown();
+        }
+    }
+
     /// A convenience method for fetching the current price of ETH in USDC.
     pub async fn get_eth_price(&self) -> Result<f64, PriceReporterClientError> {
         // Under the hood, the price reporter streams native ETH prices for the WETH

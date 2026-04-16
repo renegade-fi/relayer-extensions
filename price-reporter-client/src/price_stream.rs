@@ -18,6 +18,7 @@ use renegade_api::websocket::WebsocketMessage;
 use serde::Deserialize;
 use tokio::{net::TcpStream, sync::RwLock, task::JoinHandle};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, warn};
 
 use super::{construct_price_topic, error::PriceReporterClientError, get_base_mint_from_topic};
@@ -134,6 +135,10 @@ impl MultiPriceStreamState {
 /// A guard that aborts a spawned task when the last reference is dropped.
 /// Wrapped in `Arc` so that `MultiPriceStream` can remain `Clone` — the
 /// task is aborted only when every clone has been dropped.
+///
+/// In normal operation the task is shut down gracefully via a
+/// [`CancellationToken`]; the abort here is a safety net for the case
+/// where the stream is dropped without an explicit `shutdown()` call.
 struct TaskGuard(JoinHandle<()>);
 
 impl std::fmt::Debug for TaskGuard {
@@ -155,8 +160,11 @@ pub struct MultiPriceStream {
     /// The inner state of the multi-price stream, made shareable via an `Arc`
     /// so that it can be updated by the websocket thread
     inner: Arc<MultiPriceStreamState>,
+    /// Token used to signal the background task to shut down gracefully,
+    /// giving it a chance to send WebSocket Close frames before exiting
+    cancel: CancellationToken,
     /// Guard that aborts the background websocket task when all clones of
-    /// this stream are dropped
+    /// this stream are dropped (safety net if `shutdown()` was not called)
     _task_guard: Arc<TaskGuard>,
 }
 
@@ -168,14 +176,16 @@ impl MultiPriceStream {
     /// Create a new multi-price stream, starting the subscription to the price
     /// topics
     pub fn new(ws_url: String, mints: Vec<String>, exit_on_stale: bool) -> Self {
+        let cancel = CancellationToken::new();
         let inner = Arc::new(MultiPriceStreamState::new(exit_on_stale));
         let inner_clone = inner.clone();
+        let cancel_clone = cancel.clone();
 
         let handle = tokio::spawn(async move {
-            Self::run_websocket_loop(inner_clone, ws_url, mints).await;
+            Self::run_websocket_loop(inner_clone, ws_url, mints, cancel_clone).await;
         });
 
-        Self { inner, _task_guard: Arc::new(TaskGuard(handle)) }
+        Self { inner, cancel, _task_guard: Arc::new(TaskGuard(handle)) }
     }
 
     /// Get the current state of the price stream
@@ -191,6 +201,15 @@ impl MultiPriceStream {
     pub fn is_connected(&self) -> bool {
         self.inner.is_connected.load(Ordering::Relaxed)
     }
+
+    /// Signal the background WebSocket task to shut down gracefully.
+    ///
+    /// The task will send a Close frame on its open connection and exit.
+    /// If the stream is later dropped without calling this, the task is
+    /// forcibly aborted via [`TaskGuard`] as a safety net.
+    pub fn shutdown(&self) {
+        self.cancel.cancel();
+    }
 }
 
 // -------------------
@@ -198,15 +217,29 @@ impl MultiPriceStream {
 // -------------------
 
 impl MultiPriceStream {
-    /// The main WebSocket connection loop that handles reconnections
+    /// The main WebSocket connection loop that handles reconnections.
+    ///
+    /// Exits cleanly when `cancel` is triggered, allowing each connection
+    /// attempt to send a Close frame before dropping.
     async fn run_websocket_loop(
         state: Arc<MultiPriceStreamState>,
         ws_url: String,
         mints: Vec<String>,
+        cancel: CancellationToken,
     ) {
         loop {
-            if let Err(e) = Self::stream_prices(state.clone(), &ws_url, &mints).await {
+            if cancel.is_cancelled() {
+                break;
+            }
+
+            if let Err(e) =
+                Self::stream_prices(state.clone(), &ws_url, &mints, cancel.clone()).await
+            {
                 error!("Error streaming prices: {e}");
+            }
+
+            if cancel.is_cancelled() {
+                break;
             }
 
             state.set_connected(false);
@@ -215,42 +248,68 @@ impl MultiPriceStream {
         }
     }
 
-    /// Subscribe to the price topics and handle price updates
+    /// Subscribe to the price topics, handle price updates, and send a
+    /// graceful Close frame before returning.
+    ///
+    /// The write half of the WebSocket is kept alive for the duration of
+    /// the connection so that a proper Close frame can be sent on exit.
     async fn stream_prices(
         state: Arc<MultiPriceStreamState>,
         ws_url: &str,
         mints: &[String],
+        cancel: CancellationToken,
     ) -> Result<(), PriceReporterClientError> {
-        let read = connect_and_subscribe(ws_url, mints).await?;
+        let (mut write, read) = connect_and_subscribe(ws_url, mints).await?;
         state.set_connected(true);
-        Self::handle_price_updates(read, state).await
+
+        let result = Self::handle_price_updates(read, state, cancel).await;
+
+        // Send a graceful WebSocket Close frame before dropping the
+        // connection. Errors are ignored — the peer may already be gone.
+        let _ = write.send(Message::Close(None)).await;
+        let _ = write.close().await;
+
+        result
     }
 
     /// Handle price updates from the price reporter, updating the state with
-    /// the latest prices
+    /// the latest prices. Exits when the connection drops or `cancel` fires.
     async fn handle_price_updates(
         mut ws_read: WsReadStream,
         state: Arc<MultiPriceStreamState>,
+        cancel: CancellationToken,
     ) -> Result<(), PriceReporterClientError> {
-        while let Some(res) = ws_read.next().await {
-            let msg = res.map_err(PriceReporterClientError::websocket)?;
+        loop {
+            tokio::select! {
+                biased;
 
-            match msg {
-                Message::Text(ref text) => {
-                    if let Ok(price_message) = serde_json::from_str::<PriceMessage>(text) {
-                        let mint = get_base_mint_from_topic(&price_message.topic)?;
-                        state.update_price(mint, price_message.price).await;
-                    } else {
-                        debug!("Received invalid price message: {text}");
+                _ = cancel.cancelled() => break,
+
+                msg = ws_read.next() => {
+                    let Some(res) = msg else { break };
+                    let msg = res.map_err(PriceReporterClientError::websocket)?;
+
+                    match msg {
+                        Message::Text(ref text) => {
+                            if let Ok(price_message) =
+                                serde_json::from_str::<PriceMessage>(text)
+                            {
+                                let mint =
+                                    get_base_mint_from_topic(&price_message.topic)?;
+                                state.update_price(mint, price_message.price).await;
+                            } else {
+                                debug!("Received invalid price message: {text}");
+                            }
+                        },
+                        Message::Close(_) => {
+                            warn!("Price reporter websocket closed");
+                            break;
+                        },
+                        _ => {
+                            warn!("Received unsupported message: {msg:?}");
+                        },
                     }
-                },
-                Message::Close(_) => {
-                    warn!("Price reporter websocket closed");
-                    break;
-                },
-                _ => {
-                    warn!("Received unsupported message: {msg:?}");
-                },
+                }
             }
         }
 
@@ -263,11 +322,14 @@ impl MultiPriceStream {
 // ---------------------
 
 /// Attempt to connect to the websocket and send a subscription message for each
-/// of the given token mints, returning the read stream
+/// of the given token mints, returning both the write and read streams.
+///
+/// The caller is responsible for keeping the write half alive and sending a
+/// Close frame before dropping.
 async fn connect_and_subscribe(
     ws_url: &str,
     mints: &[String],
-) -> Result<WsReadStream, PriceReporterClientError> {
+) -> Result<(WsWriteStream, WsReadStream), PriceReporterClientError> {
     let (mut write, read) = ws_connect(ws_url).await?;
 
     for mint in mints {
@@ -281,7 +343,7 @@ async fn connect_and_subscribe(
         write.send(message_ser).await.map_err(PriceReporterClientError::websocket)?;
     }
 
-    Ok(read)
+    Ok((write, read))
 }
 
 /// Build a websocket connection to the given endpoint
