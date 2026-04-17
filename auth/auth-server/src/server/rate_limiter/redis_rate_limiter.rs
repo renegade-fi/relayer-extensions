@@ -80,14 +80,6 @@ impl RedisRateLimiter {
         self.redis.clone()
     }
 
-    /// Load the rate limit script into Redis
-    pub(crate) async fn load_scripts(&self) -> Result<(), AuthServerError> {
-        let mut conn = self.redis().clone();
-        let script = Script::new(INCR_LIMIT_LUA);
-        script.load_async(&mut conn).await?;
-        Ok(())
-    }
-
     // --------------------
     // | Rate Limit Logic |
     // --------------------
@@ -135,7 +127,7 @@ impl RedisRateLimiter {
         let mut invocation = INCR_LIMIT_SCRIPT.key(key);
         invocation.arg(limit).arg(ttl).arg(amount);
 
-        let consumed: f64 = self.redis().invoke_script(&invocation).await?;
+        let consumed: f64 = invocation.invoke_async(&mut self.redis()).await?;
         if consumed == -1. {
             return Err(AuthServerError::RateLimit);
         }

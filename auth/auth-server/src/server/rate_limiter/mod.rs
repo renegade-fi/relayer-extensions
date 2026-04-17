@@ -171,9 +171,6 @@ impl AuthServerRateLimiter {
         let execution_cost_rate_limiter =
             ExecutionCostRateLimiter::new(execution_cost_redis_url).await?;
 
-        // Load the rate limit scripts, this only needs to be called on one of the rate
-        // limiters.
-        quote_rate_limiter.load_scripts().await?;
         Ok(Self {
             quote_rate_limiter,
             bundle_rate_limiter,
