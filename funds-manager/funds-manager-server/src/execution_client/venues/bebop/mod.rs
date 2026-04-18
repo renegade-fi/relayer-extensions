@@ -345,6 +345,7 @@ fn to_bebop_chain(chain: Chain) -> Result<String, ExecutionClientError> {
     match chain {
         Chain::ArbitrumOne => Ok("arbitrum".to_string()),
         Chain::BaseMainnet => Ok("base".to_string()),
+        Chain::EthereumMainnet => Ok("ethereum".to_string()),
         _ => Err(ExecutionClientError::onchain(format!("Bebop does not support chain: {chain}"))),
     }
 }
