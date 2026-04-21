@@ -43,6 +43,6 @@ jobs:
           key: auth-server-${{ matrix.features }}
           cache-targets: "true"
       - name: Build auth-server
-        run: cargo build --package auth-server --features ${{ matrix.features }}
+        run: cargo build --package auth-server --no-default-features --features ${{ matrix.features }}
       - name: Test auth-server
-        run: cargo test --package auth-server --features ${{ matrix.features }} --verbose -- --skip integration
+        run: cargo test --package auth-server --no-default-features --features ${{ matrix.features }} --verbose -- --skip integration

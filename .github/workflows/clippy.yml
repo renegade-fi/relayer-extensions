@@ -48,4 +48,4 @@ jobs:
           key: ${{ matrix.features }}
       - run: rustup component add clippy
       - name: Run clippy on auth-server
-        run: cargo clippy -p auth-server --features ${{ matrix.features }} ${{ env.CLIPPY_ARGS }}
+        run: cargo clippy -p auth-server --no-default-features --features ${{ matrix.features }} ${{ env.CLIPPY_ARGS }}
