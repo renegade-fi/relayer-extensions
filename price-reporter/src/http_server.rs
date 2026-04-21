@@ -4,15 +4,15 @@ use std::{net::SocketAddr, sync::Arc};
 
 use http_body_util::Full;
 use hyper::{
+    Error as HyperError, Request, Response, StatusCode,
     body::{Bytes as BytesBody, Incoming as IncomingBody},
     server::conn::http1::Builder as Http1Builder,
     service::service_fn,
-    Error as HyperError, Request, Response, StatusCode,
 };
 use hyper_util::rt::{TokioIo, TokioTimer};
 use matchit::Router;
 use renegade_util::err_str;
-use routes::{RefreshTokenMappingHandler, REFRESH_TOKEN_MAPPING_ROUTE};
+use routes::{REFRESH_TOKEN_MAPPING_ROUTE, RefreshTokenMappingHandler};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::error;
 
@@ -22,7 +22,7 @@ use crate::{
     utils::{HttpRouter, PriceReporterConfig},
 };
 
-use self::routes::{Handler, HealthCheckHandler, PriceHandler, HEALTH_CHECK_ROUTE, PRICE_ROUTE};
+use self::routes::{HEALTH_CHECK_ROUTE, Handler, HealthCheckHandler, PRICE_ROUTE, PriceHandler};
 
 pub mod routes;
 

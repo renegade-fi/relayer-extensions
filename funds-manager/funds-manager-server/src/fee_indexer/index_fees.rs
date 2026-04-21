@@ -21,7 +21,7 @@ use renegade_darkpool_client::{
     },
     conversion::u256_to_scalar,
 };
-use renegade_solidity_abi::IDarkpool::settleOfflineFeeCall as BaseSettleOfflineFeeCall;
+use renegade_solidity_abi::v1::IDarkpool::settleOfflineFeeCall as BaseSettleOfflineFeeCall;
 use renegade_util::err_str;
 use tracing::{info, warn};
 

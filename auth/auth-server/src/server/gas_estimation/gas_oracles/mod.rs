@@ -1,12 +1,12 @@
 //! Chain specific gas oracle contract methods
 use alloy_primitives::U256;
 
-#[cfg(feature = "arbitrum")]
+#[cfg(all(feature = "arbitrum", not(feature = "base")))]
 mod arbitrum;
 #[cfg(feature = "base")]
 mod base;
 
-#[cfg(feature = "arbitrum")]
+#[cfg(all(feature = "arbitrum", not(feature = "base")))]
 pub use arbitrum::estimate_l1_gas_component;
 #[cfg(feature = "base")]
 pub use base::estimate_l1_gas_component;

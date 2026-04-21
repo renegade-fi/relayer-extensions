@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use renegade_common::types::{exchange::Exchange, price::Price};
 use tokio::{
-    sync::{watch::channel, RwLock},
+    sync::{RwLock, watch::channel},
     time::Instant,
 };
 use tokio_stream::StreamExt;
@@ -13,13 +13,13 @@ use tracing::{error, info, warn};
 use crate::{
     errors::ServerError,
     exchanges::{
-        connect_exchange, connection::ExchangeConnection, error::ExchangeConnectionError,
-        ExchangeConnectionsConfig,
+        ExchangeConnectionsConfig, connect_exchange, connection::ExchangeConnection,
+        error::ExchangeConnectionError,
     },
     utils::{
-        ClosureSender, PairInfo, PriceReceiver, PriceSender, PriceStream, SharedPriceStreams,
-        CONN_RETRY_DELAY, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW,
-        RATE_LIMIT_RETRY_DELAY,
+        CONN_RETRY_DELAY, ClosureSender, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES,
+        MAX_CONN_RETRY_WINDOW, PairInfo, PriceReceiver, PriceSender, PriceStream,
+        RATE_LIMIT_RETRY_DELAY, SharedPriceStreams,
     },
 };
 

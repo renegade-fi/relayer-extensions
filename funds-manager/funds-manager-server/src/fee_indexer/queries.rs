@@ -57,16 +57,16 @@ define_sql_function! {
 #[derive(Debug, Queryable, QueryableByName)]
 pub(crate) struct FeeValue {
     /// The tx hash of the fee
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub tx_hash: String,
     /// The mint of the fee
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub mint: String,
     /// The receiver of the mint
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub receiver: String,
     /// The value of the fee
-    #[sql_type = "Numeric"]
+    #[diesel(sql_type = Numeric)]
     #[allow(unused)]
     pub value: BigDecimal,
 }

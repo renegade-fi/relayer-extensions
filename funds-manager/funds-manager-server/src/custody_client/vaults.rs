@@ -125,7 +125,7 @@ impl CustodyClient {
             return Ok(None);
         };
 
-        let amount_f64 = available_f64 * 10_f64.powf(asset_onchain_data.decimals as f64);
+        let amount_f64 = available_f64 * 10_f64.powf(asset_onchain_data.decimals);
         let amount: u128 = amount_f64.floor() as u128;
 
         Ok(Some(TokenBalance { mint, amount }))

@@ -95,7 +95,7 @@ pub struct LifiQuoteExecutionData {
 impl ExecutableQuote {
     /// Convert a LiFi quote into an executable quote
     pub fn from_lifi_quote(
-        lifi_quote: LifiQuote,
+        lifi_quote: &LifiQuote,
         chain: Chain,
     ) -> Result<Self, ExecutionClientError> {
         let sell_token = lifi_quote.get_sell_token(chain);
@@ -297,7 +297,7 @@ impl ExecutionVenue for LifiClient {
             },
         };
 
-        let quote = ExecutableQuote::from_lifi_quote(resp, self.chain)?;
+        let quote = ExecutableQuote::from_lifi_quote(&resp, self.chain)?;
         Ok(vec![quote])
     }
 

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use futures_util::{SinkExt, Stream, StreamExt};
 use renegade_common::types::{exchange::Exchange, price::Price, token::Token};
 use renegade_util::err_str;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::error;
 use tungstenite::Message;
 use url::Url;
@@ -22,10 +22,10 @@ use crate::{
 };
 
 use super::{
-    connection::{parse_json_field_array, parse_json_from_message, ws_connect, ExchangeConnection},
+    ExchangeConnectionsConfig,
+    connection::{ExchangeConnection, parse_json_field_array, parse_json_from_message, ws_connect},
     error::ExchangeConnectionError,
     util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
-    ExchangeConnectionsConfig,
 };
 
 // -------------

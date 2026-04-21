@@ -109,6 +109,7 @@ impl ServerCache {
         self.rate_limit_cache.insert((api_key_id, method), rate_limit);
     }
 
+    #[allow(unused)]
     /// Clear the cache entry for a rate limit
     pub fn clear_rate_limit(&self, api_key_id: Uuid, method: RateLimitMethod) {
         self.rate_limit_cache.remove(&(api_key_id, method));

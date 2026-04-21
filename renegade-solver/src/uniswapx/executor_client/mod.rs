@@ -10,7 +10,7 @@ use alloy::{
 };
 use alloy_contract::{CallBuilder, CallDecoder};
 use alloy_primitives::Address;
-use renegade_solidity_abi::IDarkpool::IDarkpoolInstance as ExecutorInstance;
+use renegade_solidity_abi::v1::IDarkpool::IDarkpoolInstance as ExecutorInstance;
 use std::{str::FromStr, time::Duration};
 mod contract_interaction;
 pub mod errors;

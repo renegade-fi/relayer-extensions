@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+default = ["arbitrum"]
 arbitrum = ["renegade-darkpool-client/arbitrum"]
 base = ["renegade-darkpool-client/base", "dep:renegade-solidity-abi"]
 
@@ -82,11 +83,11 @@ num-bigint = "0.4"
 atomic_float = "1"
 rustls = "0.23"
 serde = { version = "1.0.218", features = ["derive"] }
-serde_json = { version = "1.0.139", features = ["arbitrary_precision"] }
+serde_json = { version = "1.0.139", features = ["arbitrary_precision", "float_roundtrip"] }
 serde_urlencoded = "0.7"
 thiserror = "1.0"
 tracing = "0.1"
-uuid = { version = "0.8.2", features = ["serde", "v4"] }
+uuid = { version = "1.17", features = ["serde", "v4"] }
 
 [dev-dependencies]
 eyre = "0.6"

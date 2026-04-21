@@ -4,12 +4,6 @@ description = "Manages custody of funds for protocol operator"
 version = "0.1.0"
 edition = "2021"
 
-[net]
-git-fetch-with-cli = true
-
-[http]
-check-revoke = false
-
 [dependencies]
 # === CLI + Server === #
 clap = { version = "4.5.3", features = ["derive", "env"] }
@@ -37,21 +31,19 @@ alloy-dyn-abi = { workspace = true, features = ["eip712"] }
 alloy-json-rpc = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy = { workspace = true, features = ["provider-ws"] }
-ethers = "2"
+ethers-core = "2"
 
 # === Renegade Dependencies === #
 price-reporter-client = { path = "../../price-reporter-client" }
-renegade-darkpool-client = { package = "darkpool-client", workspace = true, features = [
-    "all-chains",
-] }
-renegade-api = { package = "external-api", workspace = true }
-renegade-common = { package = "common", workspace = true }
-renegade-config = { package = "config", workspace = true }
-renegade-constants = { package = "constants", workspace = true }
-renegade-circuits = { package = "circuits", workspace = true }
-renegade-circuit-types = { package = "circuit-types", workspace = true }
+renegade-darkpool-client = { workspace = true, features = ["all-chains"] }
+renegade-api = { workspace = true }
+renegade-common = { workspace = true }
+renegade-config = { workspace = true }
+renegade-constants = { workspace = true }
+renegade-circuits = { workspace = true }
+renegade-circuit-types = { workspace = true }
 renegade-crypto = { workspace = true }
-renegade-util = { package = "util", workspace = true }
+renegade-util = { workspace = true }
 renegade-solidity-abi = { workspace = true }
 
 # === Misc Dependencies === #

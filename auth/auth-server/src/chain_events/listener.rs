@@ -3,6 +3,7 @@
 
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::darkpool::DarkpoolClient;
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
     rpc::types::{Filter, trace::geth::CallFrame},
@@ -13,7 +14,6 @@ use futures_util::StreamExt;
 use price_reporter_client::PriceReporterClient;
 use renegade_api::http::external_match::ApiExternalMatchResult;
 use renegade_common::types::chain::Chain;
-use renegade_darkpool_client::DarkpoolClient;
 use tracing::{error, info};
 
 use crate::{

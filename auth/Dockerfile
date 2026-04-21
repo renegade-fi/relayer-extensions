@@ -41,13 +41,13 @@ RUN sed -i '/members[[:space:]]*=[[:space:]]*\[/,/\]/c\members = ["auth/auth-ser
 RUN cargo chef prepare --recipe-path recipe.json --bin auth-server
 
 # Build only the dependencies to cache them in this layer
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json --no-default-features --features "$CARGO_FEATURES"
 
 COPY --from=sources /build/auth /build/auth
 COPY --from=sources /build/price-reporter-client /build/price-reporter-client
 WORKDIR /build
 
-RUN cargo build --release -p auth-server --features "$CARGO_FEATURES"
+RUN cargo build --release -p auth-server --no-default-features --features "$CARGO_FEATURES"
 
 # === Release stage === #
 FROM --platform=arm64 debian:trixie-slim

@@ -244,10 +244,13 @@ fn should_ignore_key(key: &str, value: &Value) -> bool {
 #[cfg(test)]
 mod test {
     use eyre::Result;
-    use rand::Rng;
+    use rand::{Rng, thread_rng};
     use serde::Deserialize;
 
     use super::*;
+
+    /// Number of test iterations to run
+    const NUM_TEST_ITERATIONS: u64 = 1000;
 
     // --------------
     // | Test Types |
@@ -318,9 +321,9 @@ mod test {
     }
 
     impl TestStruct {
-        /// Create a new random test struct
-        fn new() -> Self {
-            let mut rng = rand::thread_rng();
+        /// Create a new pseudorandom test struct from a seed
+        fn new(_seed: u64) -> Self {
+            let mut rng = thread_rng();
             Self {
                 a: rng.r#gen(),
                 b: rng.r#gen(),
@@ -345,37 +348,42 @@ mod test {
     /// Tests serializing a struct without stringifying the numbers
     #[test]
     fn test_json_serialize() -> Result<()> {
-        let test_struct = TestStruct::new();
-        let json_buf = json_serialize(&test_struct, false /* stringify */)?;
-        let deser: TestStruct = serde_json::from_slice(&json_buf)?;
-        assert_eq!(test_struct, deser);
+        for seed in 0..NUM_TEST_ITERATIONS {
+            let test_struct = TestStruct::new(seed);
+            let json_buf = json_serialize(&test_struct, false /* stringify */)?;
+            let deser: TestStruct = serde_json::from_slice(&json_buf)?;
+
+            assert_eq!(test_struct, deser);
+        }
         Ok(())
     }
 
     /// Tests stringifying the numbers in a response
     #[test]
     fn test_stringify_numbers_formatter() -> Result<()> {
-        let test_struct = TestStruct::new();
-        let json_buf = json_serialize(&test_struct, true /* stringify */)?;
-        let stringified_deser: StringifiedTestStruct = serde_json::from_slice(&json_buf)?;
+        for seed in 0..NUM_TEST_ITERATIONS {
+            let test_struct = TestStruct::new(seed);
+            let json_buf = json_serialize(&test_struct, true /* stringify */)?;
+            let stringified_deser: StringifiedTestStruct = serde_json::from_slice(&json_buf)?;
 
-        assert_eq!(test_struct.a, stringified_deser.a.parse::<u128>().unwrap());
-        assert_eq!(test_struct.b, stringified_deser.b.parse::<u64>().unwrap());
-        assert_eq!(test_struct.c, stringified_deser.c.parse::<f64>().unwrap());
-        assert_eq!(test_struct.d, stringified_deser.d);
-        assert_eq!(test_struct.e, stringified_deser.e);
+            assert_eq!(test_struct.a, stringified_deser.a.parse::<u128>().unwrap());
+            assert_eq!(test_struct.b, stringified_deser.b.parse::<u64>().unwrap());
+            assert_eq!(test_struct.c, stringified_deser.c.parse::<f64>().unwrap());
+            assert_eq!(test_struct.d, stringified_deser.d);
+            assert_eq!(test_struct.e, stringified_deser.e);
 
-        let g_parsed: Vec<u128> =
-            stringified_deser.f.iter().map(|s| s.parse::<u128>().unwrap()).collect();
-        assert_eq!(test_struct.f.clone(), g_parsed);
-        assert_eq!(test_struct.g.a, stringified_deser.g.a.parse::<u128>().unwrap());
-        assert_eq!(test_struct.g.b, stringified_deser.g.b);
-        assert_eq!(test_struct.g.c, stringified_deser.g.c.parse::<f64>().unwrap());
+            let g_parsed: Vec<u128> =
+                stringified_deser.f.iter().map(|s| s.parse::<u128>().unwrap()).collect();
+            assert_eq!(test_struct.f.clone(), g_parsed);
+            assert_eq!(test_struct.g.a, stringified_deser.g.a.parse::<u128>().unwrap());
+            assert_eq!(test_struct.g.b, stringified_deser.g.b);
+            assert_eq!(test_struct.g.c, stringified_deser.g.c.parse::<f64>().unwrap());
 
-        let gd_parsed: Vec<u128> =
-            stringified_deser.g.d.iter().map(|s| s.parse::<u128>().unwrap()).collect();
-        let gd_parsed_array: [u128; 10] = gd_parsed.try_into().unwrap();
-        assert_eq!(test_struct.g.d, gd_parsed_array);
+            let gd_parsed: Vec<u128> =
+                stringified_deser.g.d.iter().map(|s| s.parse::<u128>().unwrap()).collect();
+            let gd_parsed_array: [u128; 10] = gd_parsed.try_into().unwrap();
+            assert_eq!(test_struct.g.d, gd_parsed_array);
+        }
 
         Ok(())
     }
@@ -383,20 +391,43 @@ mod test {
     /// Tests deserializing a struct without stringifying the numbers
     #[test]
     fn test_json_deserialize() -> Result<()> {
-        let test_struct = TestStruct::new();
-        let json_buf = json_serialize(&test_struct, false /* stringify */)?;
-        let deser: TestStruct = json_deserialize(&json_buf, false /* stringify */)?;
-        assert_eq!(test_struct, deser);
+        for seed in 0..NUM_TEST_ITERATIONS {
+            let test_struct = TestStruct::new(seed);
+            let json_buf = json_serialize(&test_struct, false /* stringify */)?;
+            let deser: TestStruct = json_deserialize(&json_buf, false /* stringify */)?;
+            assert_eq!(test_struct, deser);
+        }
         Ok(())
     }
 
     /// Tests deserializing a struct with stringified numbers
     #[test]
     fn test_json_deserialize_stringify() -> Result<()> {
-        let test_struct = TestStruct::new();
-        let json_buf = json_serialize(&test_struct, true /* stringify */)?;
-        let deser: TestStruct = json_deserialize(&json_buf, true /* stringify */)?;
-        assert_eq!(test_struct, deser);
+        for seed in 0..NUM_TEST_ITERATIONS {
+            let test_struct = TestStruct::new(seed);
+            let json_buf = json_serialize(&test_struct, true /* stringify */)?;
+            let deser: TestStruct = json_deserialize(&json_buf, true /* stringify */)?;
+            assert_eq!(test_struct, deser);
+        }
         Ok(())
+    }
+
+    /// Diagnostic test: isolates f64 precision loss caused by serde_json's
+    /// `arbitrary_precision` feature if `float_roundtrip` is absent.
+    #[test]
+    fn test_f64_arbitrary_precision_roundtrip() {
+        // If `float_roundtrip` is absent, some values will pass this test, and others
+        // will fail. The following value will definitely fail if
+        // `float_roundtrip` is absent, though, so we use it as an example.
+        let val = 0.37652320722764565_f64;
+
+        let json = serde_json::to_string(&val).unwrap();
+        let parsed: f64 = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            val.to_bits(),
+            parsed.to_bits(),
+            "serde_json roundtrip changed f64 bits: {val} -> {parsed}"
+        );
     }
 }

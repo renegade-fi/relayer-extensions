@@ -179,6 +179,7 @@ impl RateLimitMethod {
     }
 }
 
+#[allow(unused)]
 #[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = rate_limits)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -186,18 +187,6 @@ pub struct RateLimit {
     pub api_key_id: Uuid,
     pub method: String,
     pub requests_per_minute: i32,
-}
-
-impl RateLimit {
-    /// Get the rate limit method as an enum
-    pub fn method_enum(&self) -> Option<RateLimitMethod> {
-        RateLimitMethod::from_str(&self.method)
-    }
-
-    /// Get the requests per minute as u32
-    pub fn requests_per_minute_u32(&self) -> u32 {
-        self.requests_per_minute as u32
-    }
 }
 
 /// New rate limit for insertion (not using Insertable due to custom enum type)

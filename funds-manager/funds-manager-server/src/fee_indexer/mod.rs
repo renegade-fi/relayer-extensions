@@ -77,7 +77,7 @@ impl Indexer {
     }
 
     /// Get a connection from the pool
-    pub async fn get_conn(&self) -> Result<DbConn, FundsManagerError> {
+    pub async fn get_conn(&self) -> Result<DbConn<'_>, FundsManagerError> {
         self.db_pool.get().await.map_err(err_str!(FundsManagerError::Db))
     }
 }
