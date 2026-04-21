@@ -159,7 +159,7 @@ impl RefreshTokenMappingHandler {
     }
 
     /// Authenticate a token mapping refresh request using the admin HMAC key.
-    async fn authenticate_request(
+    fn authenticate_request(
         &self,
         path: &str,
         headers: &HeaderMap,
@@ -206,7 +206,7 @@ impl Handler for RefreshTokenMappingHandler {
         let headers = req.headers().clone();
         let req_body = req.into_body().collect().await.unwrap_or_default();
         let body_bytes = req_body.to_bytes().to_vec();
-        if let Err(e) = self.authenticate_request(&path, &headers, &body_bytes).await {
+        if let Err(e) = self.authenticate_request(&path, &headers, &body_bytes) {
             return Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
                 .body(resp_body(e.to_string()))
