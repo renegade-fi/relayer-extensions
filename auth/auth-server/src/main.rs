@@ -12,7 +12,6 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::unused_async)]
 #![feature(trivial_bounds)]
-#![feature(let_chains)]
 #![feature(duration_constructors)]
 #![feature(int_roundings)]
 

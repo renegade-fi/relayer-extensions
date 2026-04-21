@@ -32,7 +32,7 @@ pub type DbPool = Pool<AsyncDieselConnectionManager<AsyncPgConnection>>;
 
 impl Server {
     /// Get a db connection from the pool
-    pub async fn get_db_conn(&self) -> Result<DbConn, AuthServerError> {
+    pub async fn get_db_conn(&self) -> Result<DbConn<'_>, AuthServerError> {
         self.db_pool.get().await.map_err(AuthServerError::db)
     }
 }

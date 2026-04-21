@@ -10,7 +10,7 @@ use derivative::Derivative;
 use renegade_common::types::{
     chain::Chain,
     exchange::Exchange,
-    token::{default_chain, Token, USDC_TICKER},
+    token::{Token, USDC_TICKER, default_chain},
 };
 use renegade_util::err_str;
 
@@ -21,8 +21,8 @@ use crate::{
         kraken::KrakenConnection, okx::OkxConnection,
     },
     utils::{
-        canonical_exchange::get_canonical_exchange, default_exchange_stable, get_token_and_chain,
-        resolve_tokens_and_chain, PriceTopic,
+        PriceTopic, canonical_exchange::get_canonical_exchange, default_exchange_stable,
+        get_token_and_chain, resolve_tokens_and_chain,
     },
 };
 
