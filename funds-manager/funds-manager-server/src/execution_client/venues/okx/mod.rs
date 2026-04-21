@@ -248,7 +248,7 @@ impl OkxClient {
     fn construct_swap_request_params(
         &self,
         params: QuoteParams,
-        excluded_liquidity_sources: Vec<String>,
+        excluded_liquidity_sources: &[String],
     ) -> OkxSwapRequestParams {
         let chain_id = to_chain_id(self.chain).to_string();
         let amount = params.from_amount.to_string();
@@ -357,7 +357,7 @@ impl ExecutionVenue for OkxClient {
             .collect();
 
         let swap_request_params =
-            self.construct_swap_request_params(params, excluded_liquidity_sources);
+            self.construct_swap_request_params(params, &excluded_liquidity_sources);
 
         let query_string =
             serde_qs::to_string(&swap_request_params).map_err(ExecutionClientError::parse)?;
@@ -370,7 +370,7 @@ impl ExecutionVenue for OkxClient {
         let approval_target = self.get_approval_target(swap_response.sell_token_address()).await?;
 
         let executable_quote =
-            ExecutableQuote::from_okx_swap_response(swap_response, approval_target).await?;
+            ExecutableQuote::from_okx_swap_response(swap_response, approval_target)?;
 
         Ok(vec![executable_quote])
     }
@@ -428,7 +428,7 @@ impl ExecutionVenue for OkxClient {
 
 impl ExecutableQuote {
     /// Convert an Okx swap response into an executable quote
-    pub async fn from_okx_swap_response(
+    pub fn from_okx_swap_response(
         swap_response: OkxSwapResponse,
         approval_target: Address,
     ) -> Result<Self, ExecutionClientError> {
