@@ -46,9 +46,4 @@ diesel::table! {
 diesel::joinable!(rate_limits -> api_keys (api_key_id));
 diesel::joinable!(user_fees -> api_keys (id));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    api_keys,
-    asset_default_fees,
-    rate_limits,
-    user_fees,
-);
+diesel::allow_tables_to_appear_in_same_query!(api_keys, asset_default_fees, rate_limits, user_fees,);

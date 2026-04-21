@@ -7,10 +7,11 @@
 
 use renegade_darkpool_client::client::DarkpoolClientInner;
 
+/// The chain-specific darkpool client used by `auth-server`
 #[cfg(all(feature = "arbitrum", not(feature = "base")))]
 pub(crate) type DarkpoolClient =
     DarkpoolClientInner<renegade_darkpool_client::arbitrum::ArbitrumDarkpool>;
 
+/// The chain-specific darkpool client used by `auth-server`
 #[cfg(feature = "base")]
-pub(crate) type DarkpoolClient =
-    DarkpoolClientInner<renegade_darkpool_client::base::BaseDarkpool>;
+pub(crate) type DarkpoolClient = DarkpoolClientInner<renegade_darkpool_client::base::BaseDarkpool>;
