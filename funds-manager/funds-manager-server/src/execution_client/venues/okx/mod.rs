@@ -370,7 +370,7 @@ impl ExecutionVenue for OkxClient {
         let approval_target = self.get_approval_target(swap_response.sell_token_address()).await?;
 
         let executable_quote =
-            ExecutableQuote::from_okx_swap_response(swap_response, approval_target)?;
+            ExecutableQuote::from_okx_swap_response(&swap_response, approval_target)?;
 
         Ok(vec![executable_quote])
     }
@@ -429,7 +429,7 @@ impl ExecutionVenue for OkxClient {
 impl ExecutableQuote {
     /// Convert an Okx swap response into an executable quote
     pub fn from_okx_swap_response(
-        swap_response: OkxSwapResponse,
+        swap_response: &OkxSwapResponse,
         approval_target: Address,
     ) -> Result<Self, ExecutionClientError> {
         let sell_token = swap_response.sell_token()?;
