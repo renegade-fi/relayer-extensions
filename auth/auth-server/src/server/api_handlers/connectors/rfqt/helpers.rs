@@ -88,6 +88,8 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
         Chain::ArbitrumSepolia => 421614,
         Chain::BaseMainnet => 8453,
         Chain::BaseSepolia => 84532,
+        Chain::EthereumMainnet => 1,
+        Chain::EthereumSepolia => 11155111,
         Chain::Devnet => 0,
     }
 }
