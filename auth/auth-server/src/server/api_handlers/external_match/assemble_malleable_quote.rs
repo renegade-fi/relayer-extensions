@@ -17,6 +17,13 @@ use crate::{
         Server,
         api_handlers::external_match::{BytesResponse, assemble_quote::AssembleQuoteRequestCtx},
     },
+    telemetry::{
+        helpers::record_malleable_external_match_metrics,
+        labels::{
+            GAS_SPONSORED_METRIC_TAG, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+            REQUEST_PATH_METRIC_TAG, SDK_VERSION_METRIC_TAG,
+        },
+    },
 };
 
 use super::ResponseContext;
@@ -210,7 +217,17 @@ impl Server {
         let assembled_timestamp = get_current_time_millis();
         self.write_malleable_bundle_context(Some(assembled_timestamp), ctx)?;
 
-        // TODO: Record metrics
-        Ok(())
+        let resp = ctx.response();
+        let is_sponsored = resp.gas_sponsorship_info.is_some();
+        let labels = vec![
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.user()),
+            (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.to_string()),
+            (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
+            (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
+            (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
+        ];
+
+        let order = &ctx.request().signed_quote.quote.order;
+        record_malleable_external_match_metrics(order, &resp.match_bundle, &labels)
     }
 }

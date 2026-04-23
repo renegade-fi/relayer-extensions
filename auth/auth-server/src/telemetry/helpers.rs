@@ -1,12 +1,15 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
-use renegade_api::http::external_match::{AtomicMatchApiBundle, ExternalOrder};
+use renegade_api::http::external_match::{
+    AtomicMatchApiBundle, ExternalOrder, MalleableAtomicMatchApiBundle,
+};
 use renegade_circuit_types::{fixed_point::FixedPoint, order::OrderSide};
 use renegade_common::types::token::Token;
 use renegade_constants::{
-    DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER,
+    DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, NATIVE_ASSET_ADDRESS, NATIVE_ASSET_WRAPPER_TICKER, Scalar,
 };
+use renegade_crypto::fields::scalar_to_u128;
 use renegade_util::hex::{biguint_from_hex_string, biguint_to_hex_addr};
 use tracing::warn;
 
@@ -175,12 +178,43 @@ fn record_external_match_response_metrics(
         OrderSide::Sell => (&match_bundle.send, &match_bundle.receive),
     };
 
-    record_volume_with_tags(&base.mint, base.amount, EXTERNAL_MATCH_BASE_VOLUME, labels);
-
-    let labels = extend_labels_with_base_asset(&base.mint, labels.to_vec());
-    record_volume_with_tags(&quote.mint, quote.amount, EXTERNAL_MATCH_QUOTE_VOLUME, &labels);
-
+    record_external_match_response_metrics_inner(
+        &base.mint,
+        base.amount,
+        &quote.mint,
+        quote.amount,
+        labels,
+    );
     Ok(())
+}
+
+/// Records the base/quote match volume metrics from scalar amounts.
+///
+/// Shared between the atomic and malleable flows: the atomic caller resolves
+/// base/quote from the bundle's `send`/`receive` by direction, while the
+/// malleable caller derives scalar amounts from the bounded match result.
+fn record_external_match_response_metrics_inner(
+    base_mint: &str,
+    base_amount: u128,
+    quote_mint: &str,
+    quote_amount: u128,
+    labels: &[(String, String)],
+) {
+    record_volume_with_tags(base_mint, base_amount, EXTERNAL_MATCH_BASE_VOLUME, labels);
+
+    let labels = extend_labels_with_base_asset(base_mint, labels.to_vec());
+    record_volume_with_tags(quote_mint, quote_amount, EXTERNAL_MATCH_QUOTE_VOLUME, &labels);
+}
+
+/// Compute a scalar quote amount from a fixed-point price and a scalar base
+/// amount.
+///
+/// Mirrors `compute_quote_amount` in `connectors::rfqt::helpers` — kept local
+/// to avoid a cross-module dependency from the telemetry layer into the
+/// connector layer.
+fn quote_amount_from_base(price: FixedPoint, base_amount: u128) -> u128 {
+    let quote_amount_fp = price * Scalar::from(base_amount);
+    scalar_to_u128(&quote_amount_fp.floor())
 }
 
 /// Records a counter metric with the given labels
@@ -235,6 +269,53 @@ pub(crate) fn record_external_match_metrics(
     if let Err(e) = record_external_match_response_metrics(match_bundle, labels) {
         warn!("Error recording response metrics: {e}");
     }
+
+    Ok(())
+}
+
+/// Records all metrics related to an external match request and malleable
+/// response.
+///
+/// Uses `max_base_amount` as the representative base amount for the match —
+/// this matches the convention in `connectors::rfqt::helpers` (the RFQT layer
+/// hands the solver a quote built from the upper bound of the range). Quote
+/// amount is derived from `price_fp * max_base_amount`. The actual settled
+/// amount is recorded separately from on-chain calldata by the chain-events
+/// listener.
+pub(crate) fn record_malleable_external_match_metrics(
+    order: &ExternalOrder,
+    match_bundle: &MalleableAtomicMatchApiBundle,
+    labels: &[(String, String)],
+) -> Result<(), AuthServerError> {
+    let price = match_bundle.match_result.price_fp.to_f64();
+    let base_mint = &match_bundle.match_result.base_mint;
+    let quote_mint = &match_bundle.match_result.quote_mint;
+
+    // Pick the quoted upper bound as the representative match amount
+    let base_amount = match_bundle.match_result.max_base_amount;
+    let quote_amount = quote_amount_from_base(match_bundle.match_result.price_fp, base_amount);
+
+    // Record request-side metrics (order volume + request count)
+    if let Err(e) = record_external_match_request_metrics(order, price, labels) {
+        warn!("Error recording malleable request metrics: {e}");
+    }
+
+    // Record fill ratio against the requested quote amount
+    let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
+    let requested_quote_amount =
+        order.get_quote_amount(FixedPoint::from_f64_round_down(price), relayer_fee);
+    if let Err(e) = record_fill_ratio(requested_quote_amount, quote_amount, labels) {
+        warn!("Error recording malleable fill ratio metric: {e}");
+    }
+
+    // Record response-side match volume metrics
+    record_external_match_response_metrics_inner(
+        base_mint,
+        base_amount,
+        quote_mint,
+        quote_amount,
+        labels,
+    );
 
     Ok(())
 }
