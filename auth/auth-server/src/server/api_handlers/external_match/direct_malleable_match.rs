@@ -16,6 +16,13 @@ use crate::{
         Server,
         api_handlers::{GLOBAL_MATCHING_POOL, external_match::BytesResponse},
     },
+    telemetry::{
+        helpers::record_malleable_external_match_metrics,
+        labels::{
+            GAS_SPONSORED_METRIC_TAG, KEY_DESCRIPTION_METRIC_TAG, REQUEST_ID_METRIC_TAG,
+            REQUEST_PATH_METRIC_TAG, SDK_VERSION_METRIC_TAG,
+        },
+    },
 };
 
 use super::{RequestContext, ResponseContext};
@@ -303,7 +310,7 @@ impl Server {
     /// Handle a direct malleable bundle response
     fn handle_direct_malleable_bundle_response(
         &self,
-        _order: &renegade_api::http::external_match::ExternalOrder,
+        order: &renegade_api::http::external_match::ExternalOrder,
         ctx: &SponsoredDirectMalleableMatchResponseCtx,
     ) -> Result<(), AuthServerError> {
         // Log the bundle
@@ -314,10 +321,16 @@ impl Server {
             "Direct malleable match bundle forwarded to client"
         );
 
-        // TODO: Record metrics
-        // Note: record_external_match_metrics expects AtomicMatchApiBundle,
-        // but we have MalleableAtomicMatchApiBundle. We need to create a
-        // new metrics function for malleable bundles or adapt the existing one.
-        Ok(())
+        let resp = ctx.response();
+        let is_sponsored = resp.gas_sponsorship_info.is_some();
+        let labels = vec![
+            (KEY_DESCRIPTION_METRIC_TAG.to_string(), ctx.user()),
+            (REQUEST_ID_METRIC_TAG.to_string(), ctx.request_id.to_string()),
+            (GAS_SPONSORED_METRIC_TAG.to_string(), is_sponsored.to_string()),
+            (SDK_VERSION_METRIC_TAG.to_string(), ctx.sdk_version.clone()),
+            (REQUEST_PATH_METRIC_TAG.to_string(), ctx.path.clone()),
+        ];
+
+        record_malleable_external_match_metrics(order, &resp.match_bundle, &labels)
     }
 }
