@@ -148,7 +148,9 @@ pub(crate) async fn refill_gas_sponsor_handler(
         {
             Ok(outcomes) => outcomes,
             Err(e) => {
-                warn!("multi_swap_into_target_tokens failed for {gas_sponsor}, sending existing balances only: {e}");
+                warn!(
+                    "multi_swap_into_target_tokens failed for {gas_sponsor}, sending existing balances only: {e}"
+                );
                 vec![]
             },
         };
