@@ -10,6 +10,7 @@ use renegade_api::auth::validate_expiring_auth;
 use renegade_types_core::Chain;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
+use tracing::warn;
 use warp::Filter;
 use warp::filters::path::FullPath;
 
@@ -70,8 +71,9 @@ async fn verify_hmac(
 
     let auth_headers = convert_headers(&headers);
     // Try v2 auth first
-    if validate_expiring_auth(&path, &auth_headers, &body, hmac_key).is_ok() {
-        return Ok((body,));
+    match validate_expiring_auth(&path, &auth_headers, &body, hmac_key) {
+        Ok(()) => return Ok((body,)),
+        Err(e) => warn!("v2 auth failed for {path}: {e}"),
     }
 
     // Fall back to v1 auth
