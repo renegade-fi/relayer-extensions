@@ -235,7 +235,11 @@ impl MultiPriceStream {
             if let Err(e) =
                 Self::stream_prices(state.clone(), &ws_url, &mints, cancel.clone()).await
             {
-                error!("Error streaming prices: {e}");
+                // Transient — typically a TCP reset on an idle WS. The
+                // surrounding loop reconnects unconditionally and the
+                // adjacent `Reconnecting to price reporter…` warn already
+                // signals what happened.
+                warn!("Error streaming prices: {e}");
             }
 
             if cancel.is_cancelled() {
