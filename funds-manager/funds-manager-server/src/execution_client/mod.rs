@@ -72,15 +72,14 @@ impl ExecutionClient {
         // sources. Treat any failure (revoked key, region restriction, transient
         // 5xx) as cause to skip OKX rather than crash the whole server — Lifi
         // and Bebop can still serve quote requests.
-        let okx = match OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain)
-            .await
-        {
-            Ok(client) => Some(client),
-            Err(e) => {
-                warn!("OkxClient startup failed, skipping OKX as an execution venue: {e}");
-                None
-            },
-        };
+        let okx =
+            match OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain).await {
+                Ok(client) => Some(client),
+                Err(e) => {
+                    warn!("OkxClient startup failed, skipping OKX as an execution venue: {e}");
+                    None
+                },
+            };
 
         let venues = AllExecutionVenues { lifi, cowswap, bebop, okx };
 

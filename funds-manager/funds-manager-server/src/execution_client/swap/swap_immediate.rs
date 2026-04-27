@@ -401,25 +401,26 @@ impl ExecutionClient {
         mut cumulative_gas_cost: U256,
         num_swaps_with_exclusion: &mut usize,
     ) -> Result<DecayingSwapOutcome, SwapControlFlow> {
-        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } = match executable_quote
-            .execution_data
-        {
-            QuoteExecutionData::Lifi(_) => {
-                self.venues.lifi.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Cowswap(_) => {
-                self.venues.cowswap.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Bebop(_) => {
-                self.venues.bebop.execute_quote(&executable_quote).await?
-            },
-            QuoteExecutionData::Okx(_) => {
-                let okx = self.venues.okx.as_ref().ok_or_else(|| {
-                    ExecutionClientError::custom("OKX quote received but OKX venue is not configured")
-                })?;
-                okx.execute_quote(&executable_quote).await?
-            },
-        };
+        let ExecutionResult { buy_amount_actual, gas_cost, tx_hash } =
+            match executable_quote.execution_data {
+                QuoteExecutionData::Lifi(_) => {
+                    self.venues.lifi.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Cowswap(_) => {
+                    self.venues.cowswap.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Bebop(_) => {
+                    self.venues.bebop.execute_quote(&executable_quote).await?
+                },
+                QuoteExecutionData::Okx(_) => {
+                    let okx = self.venues.okx.as_ref().ok_or_else(|| {
+                        ExecutionClientError::custom(
+                            "OKX quote received but OKX venue is not configured",
+                        )
+                    })?;
+                    okx.execute_quote(&executable_quote).await?
+                },
+            };
 
         cumulative_gas_cost += gas_cost;
 
