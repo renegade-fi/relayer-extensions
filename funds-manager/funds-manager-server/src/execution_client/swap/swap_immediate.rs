@@ -270,7 +270,14 @@ impl ExecutionClient {
     ) -> Result<Vec<ExecutableQuote>, ExecutionClientError> {
         // If a venue is specified in the params, we only consider that venue
         let venues = if let Some(venue) = params.venue {
-            vec![self.venues.get_venue(venue)]
+            match self.venues.get_venue(venue) {
+                Some(v) => vec![v],
+                None => {
+                    return Err(ExecutionClientError::custom(format!(
+                        "venue {venue:?} requested but not configured"
+                    )));
+                },
+            }
         } else {
             self.venues.get_all_venues()
         };
@@ -406,7 +413,12 @@ impl ExecutionClient {
             QuoteExecutionData::Bebop(_) => {
                 self.venues.bebop.execute_quote(&executable_quote).await?
             },
-            QuoteExecutionData::Okx(_) => self.venues.okx.execute_quote(&executable_quote).await?,
+            QuoteExecutionData::Okx(_) => {
+                let okx = self.venues.okx.as_ref().ok_or_else(|| {
+                    ExecutionClientError::custom("OKX quote received but OKX venue is not configured")
+                })?;
+                okx.execute_quote(&executable_quote).await?
+            },
         };
 
         cumulative_gas_cost += gas_cost;

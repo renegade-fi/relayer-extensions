@@ -30,8 +30,9 @@ pub struct AllExecutionVenues {
     pub cowswap: CowswapClient,
     /// The Bebop client
     pub bebop: BebopClient,
-    /// The Okx client
-    pub okx: OkxClient,
+    /// The Okx client. `None` if OKX startup failed (e.g. credentials rejected);
+    /// the venue is then skipped instead of crashing the server.
+    pub okx: Option<OkxClient>,
 }
 
 impl AllExecutionVenues {
@@ -39,16 +40,21 @@ impl AllExecutionVenues {
     pub fn get_all_venues(&self) -> Vec<&dyn ExecutionVenue> {
         // TEMP: We are disabling Cowswap by default until we have a mechanism
         // for self-trade prevention
-        vec![&self.lifi, &self.bebop, &self.okx]
+        let mut venues: Vec<&dyn ExecutionVenue> = vec![&self.lifi, &self.bebop];
+        if let Some(okx) = &self.okx {
+            venues.push(okx);
+        }
+        venues
     }
 
-    /// Get a venue by its specifier
-    pub fn get_venue(&self, venue: SupportedExecutionVenue) -> &dyn ExecutionVenue {
+    /// Get a venue by its specifier. Returns `None` for OKX when OKX startup
+    /// failed and the venue was skipped.
+    pub fn get_venue(&self, venue: SupportedExecutionVenue) -> Option<&dyn ExecutionVenue> {
         match venue {
-            SupportedExecutionVenue::Lifi => &self.lifi,
-            SupportedExecutionVenue::Cowswap => &self.cowswap,
-            SupportedExecutionVenue::Bebop => &self.bebop,
-            SupportedExecutionVenue::Okx => &self.okx,
+            SupportedExecutionVenue::Lifi => Some(&self.lifi),
+            SupportedExecutionVenue::Cowswap => Some(&self.cowswap),
+            SupportedExecutionVenue::Bebop => Some(&self.bebop),
+            SupportedExecutionVenue::Okx => self.okx.as_ref().map(|c| c as &dyn ExecutionVenue),
         }
     }
 }

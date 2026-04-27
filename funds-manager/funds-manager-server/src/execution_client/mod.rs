@@ -7,6 +7,7 @@ use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
 use alloy_primitives::{Address, U256};
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
+use tracing::warn;
 
 use crate::{
     cli::MaxPriceDeviations,
@@ -67,7 +68,19 @@ impl ExecutionClient {
             chain,
         );
 
-        let okx = OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain).await?;
+        // OKX startup performs an authenticated GET to fetch supported liquidity
+        // sources. Treat any failure (revoked key, region restriction, transient
+        // 5xx) as cause to skip OKX rather than crash the whole server — Lifi
+        // and Bebop can still serve quote requests.
+        let okx = match OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain)
+            .await
+        {
+            Ok(client) => Some(client),
+            Err(e) => {
+                warn!("OkxClient startup failed, skipping OKX as an execution venue: {e}");
+                None
+            },
+        };
 
         let venues = AllExecutionVenues { lifi, cowswap, bebop, okx };
 
