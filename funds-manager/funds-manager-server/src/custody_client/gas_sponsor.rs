@@ -13,7 +13,7 @@ use renegade_common::types::{
     chain::Chain,
     token::{get_all_tokens, Token, USD_TICKER},
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::error::FundsManagerError;
 
@@ -66,16 +66,31 @@ impl CustodyClient {
             .filter(|t| t.chain == self.chain && t.get_ticker().unwrap_or_default() != USD_TICKER);
 
         for token in all_tokens_on_chain {
-            // Get the gas sponsor's balance of the token
-            let price = self.price_reporter.get_price(&token.addr, self.chain).await?;
-            let bal = self.get_erc20_balance(&token.addr, &gas_sponsor_address).await?;
+            let ticker = token.get_ticker().unwrap_or(token.get_addr());
+
+            // Get the gas sponsor's balance of the token. Skip tokens whose price
+            // or balance lookup fails so a single bad token does not block the
+            // refill of every other token.
+            let price = match self.price_reporter.get_price(&token.addr, self.chain).await {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Skipping {ticker} ({}): no price ({e})", token.get_addr());
+                    continue;
+                },
+            };
+            let bal = match self.get_erc20_balance(&token.addr, &gas_sponsor_address).await {
+                Ok(b) => b,
+                Err(e) => {
+                    warn!("Skipping {ticker} ({}): balance lookup failed ({e})", token.get_addr());
+                    continue;
+                },
+            };
             let bal_value = bal * price;
 
             if bal_value < DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - MIN_TRANSFER_VALUE {
                 let refill_value = DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - bal_value;
                 let refill_amount = refill_value / price;
 
-                let ticker = token.get_ticker().unwrap_or(token.get_addr());
                 info!("Gas sponsor needs {refill_amount} (${refill_value}) of {ticker}");
 
                 tokens.push((token, refill_amount));
