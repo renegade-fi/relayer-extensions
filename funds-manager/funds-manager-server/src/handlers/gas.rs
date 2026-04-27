@@ -146,16 +146,14 @@ pub(crate) async fn refill_gas_sponsor_handler(
     // Swap into the target tokens such that we can cover the refill amounts.
     // A swap failure must not block sending tokens the quoter wallet already
     // holds (notably USDC), so tolerate the error and proceed.
-    let swap_outcomes = match execution_client
-        .multi_swap_into_target_tokens(&tokens_needing_refill)
-        .await
-    {
-        Ok(outcomes) => outcomes,
-        Err(e) => {
-            warn!("multi_swap_into_target_tokens failed, sending existing balances only: {e}");
-            vec![]
-        },
-    };
+    let swap_outcomes =
+        match execution_client.multi_swap_into_target_tokens(&tokens_needing_refill).await {
+            Ok(outcomes) => outcomes,
+            Err(e) => {
+                warn!("multi_swap_into_target_tokens failed, sending existing balances only: {e}");
+                vec![]
+            },
+        };
 
     // Send the tokens to the gas sponsor
     for (token, refill_amount) in tokens_needing_refill {
