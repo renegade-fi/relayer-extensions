@@ -10,6 +10,7 @@ use renegade_api::auth::validate_expiring_auth;
 use renegade_types_core::Chain;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
+use tracing::warn;
 use warp::Filter;
 use warp::filters::path::FullPath;
 
