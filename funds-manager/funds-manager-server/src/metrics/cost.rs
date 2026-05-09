@@ -15,11 +15,20 @@ use crate::{
     helpers::{IERC20::Transfer, get_darkpool_address, to_env_agnostic_name},
     metrics::labels::{
         ASSET_TAG, CHAIN_TAG, SELF_TRADE_VOLUME_USDC_METRIC_NAME, SOURCE_TAG,
-        SWAP_EXECUTION_COST_METRIC_NAME, SWAP_GAS_COST_METRIC_NAME,
-        SWAP_NOTIONAL_VOLUME_METRIC_NAME, SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG,
-        VENUE_TAG,
+        SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME, SWAP_EXECUTION_COST_METRIC_NAME,
+        SWAP_GAS_COST_METRIC_NAME, SWAP_NOTIONAL_VOLUME_METRIC_NAME,
+        SWAP_RELATIVE_SPREAD_METRIC_NAME, TRADE_SIDE_FACTOR_TAG, VENUE_TAG,
     },
 };
+
+/// Magnitude of `relative_spread` above which a swap's execution-cost gauge
+/// is routed to `SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME` instead of the
+/// nominal series. Set well above any plausible real spread (typical Bebop
+/// fills are < 1%) and well below the cbBTC 2026-05-08 incident, which
+/// recorded `relative_spread ≈ -0.989` because the reference price was half
+/// of true BTC. Comparison uses `!(<=)` so NaN/non-finite spreads also route
+/// to the artifact series.
+const OUTLIER_RELATIVE_SPREAD_THRESHOLD: f64 = 0.05;
 
 /// Unified data structure for swap cost information
 #[derive(Debug, Serialize)]
@@ -37,8 +46,11 @@ pub struct SwapExecutionData {
     pub is_buy: bool,
 
     // Market reference data
-    /// The Binance price for the token
-    pub binance_price: f64,
+    /// The price-reporter aggregated reference price for the token, in USDC.
+    /// Sourced via the price-reporter HTTP endpoint, which performs no
+    /// staleness or deviation gating — see follow-up tracking the gating
+    /// gap.
+    pub reference_price: f64,
     /// The transaction hash
     pub transaction_hash: String,
 
@@ -115,14 +127,15 @@ impl MetricsRecorder {
         } = swap_outcome;
 
         let base_mint = quote.base_token().get_alloy_address();
-        let binance_price = self.get_price(&base_mint, quote.chain).await?;
+        let reference_price = self.get_price(&base_mint, quote.chain).await?;
 
         let execution_price = quote.get_price(Some(*buy_amount_actual));
         let gas_cost_usd = self.get_wei_cost_usdc(*swap_gas_cost).await?;
         let notional_volume_usdc = quote.notional_volume_usdc(*buy_amount_actual);
 
         let trade_side_factor = if quote.is_sell() { -1.0 } else { 1.0 };
-        let relative_spread = trade_side_factor * (execution_price - binance_price) / binance_price;
+        let relative_spread =
+            trade_side_factor * (execution_price - reference_price) / reference_price;
         let execution_cost_usdc = notional_volume_usdc * relative_spread;
 
         // Calculate slippage metrics
@@ -151,7 +164,7 @@ impl MetricsRecorder {
             is_buy: !quote.is_sell(),
 
             // Market reference data
-            binance_price,
+            reference_price,
             transaction_hash: format!("{:#x}", tx_hash),
 
             // Execution details
@@ -178,7 +191,8 @@ impl MetricsRecorder {
     ) {
         let labels = self.get_labels(quote, source);
 
-        renegade_util::metrics::gauge!(SWAP_EXECUTION_COST_METRIC_NAME, &labels)
+        let execution_cost_metric = execution_cost_metric_name(cost_data.relative_spread);
+        renegade_util::metrics::gauge!(execution_cost_metric, &labels)
             .set(cost_data.execution_cost_usdc);
         renegade_util::metrics::gauge!(SWAP_GAS_COST_METRIC_NAME, &labels)
             .set(cost_data.gas_cost_usd);
@@ -287,7 +301,7 @@ impl MetricsRecorder {
             sell_amount = %cost_data.sell_amount,
             buy_amount_estimated = %cost_data.buy_amount_estimated,
             is_buy = %cost_data.is_buy,
-            binance_price = %cost_data.binance_price,
+            reference_price = %cost_data.reference_price,
             transaction_hash = %cost_data.transaction_hash,
             buy_amount_actual = %cost_data.buy_amount_actual,
             execution_price = %cost_data.execution_price,
@@ -300,5 +314,95 @@ impl MetricsRecorder {
             chain = %to_env_agnostic_name(self.chain),
             venue = %cost_data.venue,
             "Swap recorded for tx {tx_hash:#x}");
+    }
+}
+
+// -----------------------
+// | Metric-name routing |
+// -----------------------
+
+/// Pick the metric name for a swap's execution-cost gauge given its
+/// `relative_spread`. Magnitudes within
+/// `OUTLIER_RELATIVE_SPREAD_THRESHOLD` go to the nominal series; anything
+/// above (and any non-finite value: NaN, +inf, -inf) goes to the artifact
+/// series. The `!(<=)` form handles NaN correctly because all NaN
+/// comparisons return false.
+fn execution_cost_metric_name(relative_spread: f64) -> &'static str {
+    if !(relative_spread.abs() <= OUTLIER_RELATIVE_SPREAD_THRESHOLD) {
+        SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME
+    } else {
+        SWAP_EXECUTION_COST_METRIC_NAME
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Spreads well within tolerance — typical Bebop fills, well-functioning
+    /// price reporter — emit on the nominal series. The
+    /// `Cumulative Swap Execution Costs` widget consumes this series.
+    #[test]
+    fn nominal_spread_routes_to_main_metric() {
+        for spread in [0.0, 0.0001, 0.001, 0.01, -0.01, -0.001] {
+            assert_eq!(
+                execution_cost_metric_name(spread),
+                SWAP_EXECUTION_COST_METRIC_NAME,
+                "spread {spread} should route to nominal",
+            );
+        }
+    }
+
+    /// Reproduces the cbBTC pricing incident on 2026-05-08 ~07:10 UTC.
+    /// The reference price was $39,837.32 against a real execution price of
+    /// ~$79,256, giving `relative_spread ≈ -0.989` for a sell. Without
+    /// routing, the cumulative chart shifted permanently by ~−$5,696. This
+    /// case must land on the artifact series so the dashboard query stays
+    /// clean.
+    #[test]
+    fn cbbtc_incident_spread_routes_to_artifact_metric() {
+        let spread = -0.9892941750713036; // observed value from production logs
+        assert_eq!(execution_cost_metric_name(spread), SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME,);
+    }
+
+    /// Spreads just above the threshold route to the artifact series; spreads
+    /// just below stay on the nominal series. The boundary uses `<=` so
+    /// exactly-at-threshold counts as nominal.
+    #[test]
+    fn threshold_boundary_classification() {
+        assert_eq!(
+            execution_cost_metric_name(OUTLIER_RELATIVE_SPREAD_THRESHOLD),
+            SWAP_EXECUTION_COST_METRIC_NAME,
+            "exactly-at-threshold counts as nominal",
+        );
+        assert_eq!(
+            execution_cost_metric_name(-OUTLIER_RELATIVE_SPREAD_THRESHOLD),
+            SWAP_EXECUTION_COST_METRIC_NAME,
+        );
+
+        let just_above = OUTLIER_RELATIVE_SPREAD_THRESHOLD + 1e-9;
+        assert_eq!(
+            execution_cost_metric_name(just_above),
+            SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME,
+        );
+        assert_eq!(
+            execution_cost_metric_name(-just_above),
+            SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME,
+        );
+    }
+
+    /// Non-finite spreads — NaN from a `0.0 / 0.0` reference, infinity from
+    /// a non-zero numerator over a zero reference — must route to the
+    /// artifact series rather than silently corrupting the nominal series
+    /// with NaN/inf gauge values.
+    #[test]
+    fn non_finite_spreads_route_to_artifact_metric() {
+        for spread in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                execution_cost_metric_name(spread),
+                SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME,
+                "spread {spread} should route to artifact",
+            );
+        }
     }
 }

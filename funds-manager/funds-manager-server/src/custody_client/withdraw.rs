@@ -142,7 +142,10 @@ impl CustodyClient {
         let gas_wallet = self.get_hot_wallet_by_vault(&gas_vault_name).await?;
         let bal = self.get_ether_balance(&gas_wallet.address).await?;
         if bal < amount {
-            return Err(FundsManagerError::custom("Insufficient balance"));
+            return Err(FundsManagerError::custom(format!(
+                "Insufficient balance: gas wallet {} has {bal} ETH, need {amount} (destination: {to})",
+                gas_wallet.address,
+            )));
         }
 
         // Fetch the gas wallet's private key
@@ -182,7 +185,10 @@ impl CustodyClient {
             let amount_to_transfer = round_up(rounded_amount - hl_available_bal, USDC_DECIMALS)?;
             let bal = self.get_erc20_balance(&usdc_mint, &hot_wallet.address).await?;
             if bal < amount_to_transfer {
-                return Err(FundsManagerError::Custom("Insufficient balance".to_string()));
+                return Err(FundsManagerError::Custom(format!(
+                    "Insufficient balance for Hyperliquid bridge: quoter hot wallet {} has {bal} USDC, need to transfer {amount_to_transfer} (requested bridge amount: {amount}, rounded: {rounded_amount}, HL vault available: {hl_available_bal})",
+                    hot_wallet.address,
+                )));
             }
 
             // Transfer the USDC to the Hyperliquid account
