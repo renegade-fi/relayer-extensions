@@ -315,9 +315,7 @@ impl CustodyClient {
                 },
             }
         }
-        Err(last_err
-            .expect("retry loop ran at least one iteration")
-            .into())
+        Err(last_err.expect("retry loop ran at least one iteration").into())
     }
 }
 

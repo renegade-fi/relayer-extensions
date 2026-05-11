@@ -96,9 +96,8 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        let disabled_relayer_chains = parse_disabled_relayer_chains(
-            args.disabled_relayer_chains.as_deref(),
-        )?;
+        let disabled_relayer_chains =
+            parse_disabled_relayer_chains(args.disabled_relayer_chains.as_deref())?;
 
         Ok(Server {
             hmac_key,
