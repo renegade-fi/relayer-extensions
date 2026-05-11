@@ -1,7 +1,12 @@
 //! Defines the server which encapsulates all dependencies for funds manager
 //! execution
 
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    str::FromStr,
+    sync::Arc,
+};
 
 use aws_config::{BehaviorVersion, Region};
 use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
@@ -36,6 +41,12 @@ pub(crate) struct Server {
     pub chain_clients: HashMap<Chain, ChainClients>,
     /// The price reporter client
     pub price_reporter: PriceReporterClient,
+    /// Chains for which relayer-backed routes should short-circuit instead
+    /// of attempting to call the v1 relayer. Populated from the
+    /// `DISABLED_RELAYER_CHAINS` env var on startup; used by fee-indexer
+    /// handlers to avoid repeatedly hammering a wound-down relayer with
+    /// requests it can never serve.
+    pub disabled_relayer_chains: HashSet<Chain>,
 }
 
 impl Server {
@@ -85,7 +96,23 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
-        Ok(Server { hmac_key, chain_clients, environment: args.environment, price_reporter })
+        let disabled_relayer_chains = parse_disabled_relayer_chains(
+            args.disabled_relayer_chains.as_deref(),
+        )?;
+
+        Ok(Server {
+            hmac_key,
+            chain_clients,
+            environment: args.environment,
+            price_reporter,
+            disabled_relayer_chains,
+        })
+    }
+
+    /// Whether the relayer-backed routes for this chain should short-circuit
+    /// because the chain's relayer has been wound down.
+    pub fn is_relayer_disabled(&self, chain: &Chain) -> bool {
+        self.disabled_relayer_chains.contains(chain)
     }
 
     /// Get the custody client for the given chain
@@ -128,4 +155,22 @@ impl Server {
             .map(|clients| clients.fee_indexer.clone())
             .ok_or(FundsManagerError::custom(format!("No fee indexer configured for {chain}")))
     }
+}
+
+/// Parse a comma-separated `Chain` list (e.g. "arbitrum-one,base-mainnet")
+/// into a `HashSet`. `None` and empty strings yield an empty set; any
+/// non-empty entry that fails `Chain::from_str` is a startup-fatal error.
+fn parse_disabled_relayer_chains(raw: Option<&str>) -> Result<HashSet<Chain>, FundsManagerError> {
+    let Some(raw) = raw else { return Ok(HashSet::new()) };
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            Chain::from_str(s).map_err(|e| {
+                FundsManagerError::custom(format!(
+                    "Invalid Chain in DISABLED_RELAYER_CHAINS ({s}): {e:?}"
+                ))
+            })
+        })
+        .collect()
 }

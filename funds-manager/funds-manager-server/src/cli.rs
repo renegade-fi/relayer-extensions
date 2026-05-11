@@ -82,6 +82,23 @@ pub struct Cli {
 
     // --- Chain-Specific Config --- //
 
+    /// Chains whose relayer-backed routes should short-circuit instead of
+    /// attempting to call the v1 relayer. Use this when a chain's
+    /// relayer/bot-server has been wound down so the funds-manager doesn't
+    /// repeatedly fail HTTP calls into a dead service.
+    ///
+    /// Comma-separated, using the canonical `Chain::Display` strings
+    /// (e.g. "arbitrum-one,base-mainnet"). Parsed in
+    /// `Server::build_from_cli`; invalid entries error at startup.
+    ///
+    /// Currently gates:
+    ///   - GET  /fees/<chain>/get-fee-wallets   (returns empty wallets)
+    ///   - POST /fees/<chain>/index-fees       (skipped, logs an info line)
+    ///   - POST /fees/<chain>/redeem-fees      (skipped, logs an info line)
+    ///   - POST /fees/<chain>/withdraw-balance (returns 400)
+    #[clap(long, env = "DISABLED_RELAYER_CHAINS")]
+    pub disabled_relayer_chains: Option<String>,
+
     /// Name of the S3 bucket from which to read chain-specific configs
     #[clap(long, env = "CHAIN_CONFIGS_BUCKET")]
     pub chain_configs_bucket: Option<String>,

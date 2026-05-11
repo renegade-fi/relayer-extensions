@@ -11,7 +11,7 @@ use funds_manager_api::{
     quoters::DepositAddressResponse,
 };
 use renegade_common::types::chain::Chain;
-use tracing::error;
+use tracing::{error, info};
 use warp::reply::Json;
 
 use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};
@@ -21,6 +21,10 @@ pub(crate) async fn index_fees_handler(
     chain: Chain,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    if server.is_relayer_disabled(&chain) {
+        info!("index_fees: skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS");
+        return Ok(warp::reply::json(&"Fee indexing skipped (chain relayer disabled)"));
+    }
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.index_fees().await {
@@ -36,6 +40,10 @@ pub(crate) async fn redeem_fees_handler(
     chain: Chain,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    if server.is_relayer_disabled(&chain) {
+        info!("redeem_fees: skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS");
+        return Ok(warp::reply::json(&"Fee redemption skipped (chain relayer disabled)"));
+    }
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.redeem_fees().await {
@@ -52,6 +60,13 @@ pub(crate) async fn get_fee_wallets_handler(
     _body: Bytes, // no body
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    if server.is_relayer_disabled(&chain) {
+        // Return an empty wallets list so callers (gardener, etc.) don't see
+        // 5xx errors against a wound-down relayer. Both gardener's NAV and
+        // holdings paths already treat an empty wallets array as "no fee-
+        // redemption inventory on this chain", which is the correct answer.
+        return Ok(warp::reply::json(&FeeWalletsResponse { wallets: vec![] }));
+    }
     let indexer = server.get_fee_indexer(&chain)?;
     let wallets = indexer.fetch_fee_wallets().await?;
 
@@ -64,6 +79,12 @@ pub(crate) async fn withdraw_fee_balance_handler(
     req: WithdrawFeeBalanceRequest,
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
+    if server.is_relayer_disabled(&chain) {
+        // Operator-driven action — fail loud rather than silently swallow.
+        return Err(warp::reject::custom(ApiError::BadRequest(format!(
+            "{chain} relayer is disabled; fee withdrawal cannot proceed"
+        ))));
+    }
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.withdraw_fee_balance(req.wallet_id, req.mint).await {
