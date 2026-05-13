@@ -32,7 +32,9 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, Semaphore};
-use tracing::warn;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 /// Steady-state token refill rate in requests per second.
 ///
@@ -138,9 +140,14 @@ impl FireblocksLimiter {
         if guard.map_or(true, |existing| existing < new_until) {
             *guard = Some(new_until);
         }
-        warn!(
-            "Fireblocks 429: limiter cooldown for {}s (consecutive 429s: {})",
-            secs, n
+        log_task!(
+            Task::FireblocksRateLimit,
+            Outcome::Partial,
+            cooldown_secs = secs,
+            consecutive_429s = n,
+            "Fireblocks 429 received; gating workspace traffic for {}s (consecutive 429s: {})",
+            secs,
+            n
         );
     }
 

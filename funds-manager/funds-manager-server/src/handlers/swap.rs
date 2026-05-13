@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use funds_manager_api::quoters::{QuoteParams, SwapImmediateResponse, SwapIntoTargetTokenRequest};
 use renegade_types_core::Chain;
-use tracing::{instrument, warn};
+use tracing::instrument;
 use warp::reply::Json;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{execution_client::error::ExecutionClientError, server::Server};
 
 /// The default source tag for untagged swap requests
@@ -38,7 +40,13 @@ pub(crate) async fn swap_immediate_handler(
     let execution_cost = match metrics_recorder.record_swap_cost(&outcome, &source).await {
         Ok(data) => data.execution_cost_usdc,
         Err(e) => {
-            warn!("Failed to record swap cost metrics: {e}");
+            log_task!(
+                Task::RecordMetric,
+                Outcome::Failed,
+                metric = "swap-cost",
+                error = %e,
+                "failed to record swap cost metrics: {e}"
+            );
             0.0 // Default to 0 USD
         },
     };
@@ -75,7 +83,13 @@ pub(crate) async fn swap_into_target_token_handler(
         let execution_cost = match metrics_recorder.record_swap_cost(&outcome, &source).await {
             Ok(data) => data.execution_cost_usdc,
             Err(e) => {
-                warn!("Failed to record swap cost metrics: {e}");
+                log_task!(
+                Task::RecordMetric,
+                Outcome::Failed,
+                metric = "swap-cost",
+                error = %e,
+                "failed to record swap cost metrics: {e}"
+            );
                 0.0 // Default to 0 USD
             },
         };

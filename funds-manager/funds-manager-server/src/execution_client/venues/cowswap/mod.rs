@@ -17,7 +17,10 @@ use funds_manager_api::quoters::QuoteParams;
 use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::instrument;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{
@@ -380,7 +383,14 @@ impl CowswapClient {
 
             // Await for a single trade to be executed on the order
             if let Some(trade) = trades.first() {
-                info!("Cowswap trade executed in tx {}", trade.tx_hash);
+                log_task!(
+                    Task::SubmitOrder,
+                    Outcome::Ok,
+                    venue = "cowswap",
+                    tx_hash = %trade.tx_hash,
+                    "Cowswap trade executed in tx {}",
+                    trade.tx_hash
+                );
 
                 let tx_hash =
                     TxHash::from_str(&trade.tx_hash).map_err(ExecutionClientError::parse)?;
@@ -401,7 +411,13 @@ impl CowswapClient {
         // TODO: Here, we can cancel the order as it still hasn't been executed,
         // but for now we rely on the `valid_to` field to expire the order.
 
-        warn!("Cowswap trade not executed after {MAX_TRADE_EXECUTION_WAIT_TIME} seconds");
+        log_task!(
+            Task::SubmitOrder,
+            Outcome::Failed,
+            venue = "cowswap",
+            wait_secs = MAX_TRADE_EXECUTION_WAIT_TIME,
+            "Cowswap trade not executed after {MAX_TRADE_EXECUTION_WAIT_TIME} seconds"
+        );
 
         Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost: U256::ZERO, tx_hash: None })
     }
@@ -450,7 +466,12 @@ impl ExecutionVenue for CowswapClient {
         &self,
         executable_quote: &ExecutableQuote,
     ) -> Result<ExecutionResult, ExecutionClientError> {
-        info!("Executing Cowswap quote");
+        log_task!(
+            Task::SubmitOrder,
+            Outcome::Started,
+            venue = "cowswap",
+            "executing Cowswap quote"
+        );
 
         self.approve_erc20_allowance(
             executable_quote.quote.sell_token.get_alloy_address(),

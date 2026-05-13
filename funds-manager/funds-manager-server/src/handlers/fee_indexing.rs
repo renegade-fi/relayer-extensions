@@ -11,7 +11,6 @@ use funds_manager_api::{
     quoters::DepositAddressResponse,
 };
 use renegade_types_core::Chain;
-// use tracing::error;
 use warp::reply::Json;
 
 use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};

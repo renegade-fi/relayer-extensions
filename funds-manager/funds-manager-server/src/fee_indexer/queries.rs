@@ -18,7 +18,8 @@ use diesel_async::RunQueryDsl;
 use renegade_circuit_types::Amount;
 use renegade_common::types::wallet::WalletIdentifier;
 use renegade_constants::MAX_BALANCES;
-use tracing::warn;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use uuid::Uuid;
 
 use crate::db::models::RenegadeWalletMetadata;
@@ -127,7 +128,11 @@ impl Indexer {
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                warn!("Fee already exists in the database, skipping insertion...",);
+                log_task!(
+                    Task::IndexFees,
+                    Outcome::Skipped,
+                    "fee already exists in the database, skipping insertion"
+                );
                 Ok(())
             },
             Err(e) => Err(FundsManagerError::db(format!("failed to insert fee: {e}"))),

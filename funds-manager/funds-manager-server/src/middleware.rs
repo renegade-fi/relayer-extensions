@@ -10,9 +10,11 @@ use renegade_api::auth::validate_expiring_auth;
 use renegade_types_core::Chain;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
-use tracing::warn;
 use warp::Filter;
 use warp::filters::path::FullPath;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 // ---------
 // | Types |
@@ -73,7 +75,13 @@ async fn verify_hmac(
     // Try v2 auth first
     match validate_expiring_auth(&path, &auth_headers, &body, hmac_key) {
         Ok(()) => return Ok((body,)),
-        Err(e) => warn!("v2 auth failed for {path}: {e}"),
+        Err(e) => log_task!(
+            Task::Auth,
+            Outcome::Retrying,
+            subject = %path,
+            error = %e,
+            "v2 auth failed for {path}: {e}; falling back to v1"
+        ),
     }
 
     // Fall back to v1 auth

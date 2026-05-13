@@ -15,11 +15,12 @@ use renegade_common::types::wallet::derivation::{
 };
 use renegade_common::types::wallet::{Wallet, WalletIdentifier};
 use renegade_util::err_str;
-use tracing::{info, warn};
 
 use crate::db::models::RenegadeWalletMetadata;
 use crate::error::FundsManagerError;
 use crate::helpers::{create_secrets_manager_entry_with_description, get_secret_prefix};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::Indexer;
 
 /// The maximum number of fees to redeem in a given run of the indexer
@@ -28,7 +29,7 @@ pub(crate) const MAX_FEES_REDEEMED: usize = 100;
 impl Indexer {
     /// Redeem the most valuable open fees
     pub async fn redeem_fees(&self) -> Result<(), FundsManagerError> {
-        info!("redeeming fees...");
+        log_task!(Task::RedeemFees, Outcome::Started, "redeeming fees");
 
         // Get all mints that have unredeemed fees
         let mints = self.get_unredeemed_fee_mints().await?;
@@ -43,7 +44,14 @@ impl Indexer {
                     prices.insert(mint, price);
                 },
                 Err(e) => {
-                    warn!("{}: error getting price: {e}", mint);
+                    log_task!(
+                        Task::RedeemFees,
+                        Outcome::Partial,
+                        subject = %mint,
+                        error = %e,
+                        "{}: error getting price: {e}",
+                        mint
+                    );
                 },
             }
         }
@@ -82,7 +90,12 @@ impl Indexer {
         let wallet = match maybe_wallet {
             Some(wallet) => wallet,
             None => {
-                info!("creating new wallet for {mint}");
+                log_task!(
+                    Task::RedeemFees,
+                    Outcome::Started,
+                    subject = %mint,
+                    "creating new wallet for {mint}"
+                );
                 self.create_new_wallet().await?
             },
         };
@@ -122,7 +135,7 @@ impl Indexer {
 
         let wallet = Wallet::new_empty_wallet(wallet_id, blinder_seed, share_seed, key_chain);
         self.relayer_client.create_new_wallet(wallet, &blinder_seed).await?;
-        info!("created new wallet for fee redemption");
+        log_task!(Task::RedeemFees, Outcome::Ok, "created new wallet for fee redemption");
 
         Ok((wallet_id, root_key))
     }
@@ -138,7 +151,13 @@ impl Indexer {
         receiver: String,
         wallet: RenegadeWalletMetadata,
     ) -> Result<Note, FundsManagerError> {
-        info!("redeeming fee into {}", wallet.id);
+        log_task!(
+            Task::RedeemFees,
+            Outcome::Started,
+            wallet_id = %wallet.id,
+            "redeeming fee into {}",
+            wallet.id
+        );
         // Get the wallet key for the given wallet
         let eth_key = self.get_wallet_private_key(&wallet).await?;
         let wallet_keychain = derive_wallet_keychain(&eth_key, self.chain_id).unwrap();
@@ -188,11 +207,22 @@ impl Indexer {
             .await
             .map_err(err_str!(FundsManagerError::on_chain))?
         {
-            warn!("nullifier not seen on-chain after redemption, tx: {tx_hash}");
+            log_task!(
+                Task::RedeemFees,
+                Outcome::Partial,
+                tx_hash = %tx_hash,
+                "nullifier not seen on-chain after redemption, tx: {tx_hash}"
+            );
             return Ok(());
         }
 
-        info!("successfully redeemed fee from tx: {}", tx_hash);
+        log_task!(
+            Task::RedeemFees,
+            Outcome::Ok,
+            tx_hash = %tx_hash,
+            "successfully redeemed fee from tx: {}",
+            tx_hash
+        );
         self.mark_fee_as_redeemed(tx_hash).await
     }
 

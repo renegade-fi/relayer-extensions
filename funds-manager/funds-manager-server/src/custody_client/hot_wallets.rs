@@ -11,10 +11,11 @@ use funds_manager_api::{
     hot_wallets::{TokenBalance, WalletWithBalances},
     u256_try_into_u128,
 };
-use tracing::info;
 use uuid::Uuid;
 
 use super::CustodyClient;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     custody_client::{DepositWithdrawSource, ETHEREUM_MAINNET_ETH_ASSET_ID},
     error::FundsManagerError,
@@ -58,7 +59,15 @@ impl CustodyClient {
 
         // Insert the wallet metadata into the database
         self.insert_hot_wallet(&address, &vault, &secret_name, &internal_wallet_id).await?;
-        info!("Created hot wallet with address: {} for vault: {}", address, vault);
+        log_task!(
+            Task::HotWallet,
+            Outcome::Ok,
+            subject = %address,
+            vault = %vault,
+            "created hot wallet with address: {} for vault: {}",
+            address,
+            vault
+        );
         Ok(address)
     }
 
@@ -103,9 +112,20 @@ impl CustodyClient {
 
         // 4. Transfer the tokens
         let receipt = self.erc20_transfer(mint, &deposit_address, amount, wallet).await?;
-        info!(
-            "Transferred {} of token {} from hot wallet {} to vault address {}. \n\tTransaction hash: {:#x}",
-            amount, mint, hot_wallet_address, deposit_address, receipt.transaction_hash
+        log_task!(
+            Task::CustodyTransfer,
+            Outcome::Ok,
+            subject = %mint,
+            amount = amount,
+            from_hot_wallet = %hot_wallet_address,
+            to_vault_address = %deposit_address,
+            tx_hash = %format!("{:#x}", receipt.transaction_hash),
+            "transferred {} of token {} from hot wallet {} to vault address {} (tx {:#x})",
+            amount,
+            mint,
+            hot_wallet_address,
+            deposit_address,
+            receipt.transaction_hash
         );
 
         Ok(())

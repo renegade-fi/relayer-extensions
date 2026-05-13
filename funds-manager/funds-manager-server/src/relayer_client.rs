@@ -14,7 +14,6 @@ use renegade_types_core::{Chain, HmacKey};
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-
 use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The amount of time (ms) to declare a wallet signature value for

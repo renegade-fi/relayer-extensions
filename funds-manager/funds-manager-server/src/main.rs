@@ -15,6 +15,7 @@ pub mod execution_client;
 // pub mod fee_indexer;
 pub mod handlers;
 pub mod helpers;
+pub mod logger;
 pub mod metrics;
 pub mod middleware;
 pub mod relayer_client;
@@ -50,11 +51,12 @@ use renegade_types_core::Chain;
 use server::Server;
 
 use std::{collections::HashMap, error::Error, sync::Arc};
-use tracing::{error, info_span, warn};
+use tracing::info_span;
 use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
+use crate::logger::{install_panic_hook, Outcome, Task};
 use crate::handlers::fee_indexing::{
     get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_unredeemed_fee_totals_handler,
     index_fees_handler, redeem_fees_handler, withdraw_fee_balance_handler,
@@ -96,18 +98,55 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// Async main function
 async fn async_main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-    cli.validate()?;
-    if cli.hmac_key.is_none() {
-        warn!("Authentication is disabled. This is not recommended for production use.");
+    if let Err(e) = cli.validate() {
+        // Telemetry is not yet configured, so the only sink is stderr.
+        // Match the `[task] [outcome]` envelope so logs are searchable
+        // even at this stage.
+        eprintln!("[service-lifecycle] [failed] CLI validate: {e}");
+        return Err(e.into());
     }
 
     cli.configure_telemetry()?;
+    install_panic_hook();
+
+    log_task!(
+        Task::ServiceLifecycle,
+        Outcome::Started,
+        port = cli.port,
+        "funds-manager boot beginning"
+    );
+
+    if cli.hmac_key.is_none() {
+        log_task!(
+            Task::ServiceLifecycle,
+            Outcome::Partial,
+            "authentication disabled; not recommended for production"
+        );
+    }
 
     let chain_env = cli.environment.to_string();
     let _root_span = info_span!("funds-manager", chain_env = %chain_env).entered();
 
     let port = cli.port; // copy `cli.port` to use after moving `cli`
-    let server = Server::build_from_cli(cli).await.expect("failed to build server");
+    let server = match Server::build_from_cli(cli).await {
+        Ok(server) => {
+            log_task!(
+                Task::ServiceLifecycle,
+                Outcome::Ok,
+                "server built; chain clients and price reporter initialized"
+            );
+            server
+        }
+        Err(e) => {
+            log_task!(
+                Task::ServiceLifecycle,
+                Outcome::Failed,
+                error = %e,
+                "server build failed"
+            );
+            return Err(e.into());
+        }
+    };
 
     // ----------
     // | Routes |
@@ -425,7 +464,21 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         }))
         .recover(handle_rejection);
 
+    log_task!(
+        Task::ServiceLifecycle,
+        Outcome::Ok,
+        port = port,
+        "funds-manager listening on 0.0.0.0:{}",
+        port
+    );
+
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
+
+    log_task!(
+        Task::ServiceLifecycle,
+        Outcome::Ok,
+        "funds-manager warp server exited cleanly"
+    );
 
     Ok(())
 }
@@ -444,7 +497,13 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             ApiError::BadRequest(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
             ApiError::Unauthenticated(msg) => (warp::http::StatusCode::UNAUTHORIZED, msg),
         };
-        error!("API Error: {:?}", api_error);
+        log_task!(
+            Task::HandleRejection,
+            Outcome::Failed,
+            code = code.as_u16(),
+            "{:?}",
+            api_error
+        );
         Ok(warp::reply::with_status(message.clone(), code))
     } else {
         Err(err)

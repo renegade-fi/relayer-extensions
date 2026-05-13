@@ -3,10 +3,11 @@
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
-use tracing::info;
 use uuid::Uuid;
 
 use crate::CustodyClient;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::db::models::{GasWallet, GasWalletStatus, HotWallet};
 use crate::db::schema::{gas_wallets, hot_wallets};
 use crate::error::FundsManagerError;
@@ -84,7 +85,14 @@ impl CustodyClient {
             return Ok(());
         }
 
-        info!("Marking {} gas wallets as inactive", addresses.len());
+        log_task!(
+            Task::GasWallet,
+            Outcome::Started,
+            count = addresses.len(),
+            new_status = "inactive",
+            "marking {} gas wallets as inactive",
+            addresses.len()
+        );
         let mut conn = self.get_db_conn().await?;
         let updates = (
             gas_wallets::status.eq(GasWalletStatus::Inactive.to_string()),
@@ -118,7 +126,14 @@ impl CustodyClient {
             return Ok(());
         }
 
-        info!("Marking {} gas wallets as pending", addresses.len());
+        log_task!(
+            Task::GasWallet,
+            Outcome::Started,
+            count = addresses.len(),
+            new_status = "pending",
+            "marking {} gas wallets as pending",
+            addresses.len()
+        );
         let mut conn = self.get_db_conn().await?;
         let pending = GasWalletStatus::Pending.to_string();
         diesel::update(
@@ -152,7 +167,14 @@ impl CustodyClient {
             return Ok(());
         }
 
-        info!("Marking {} gas wallets as active", wallets.len());
+        log_task!(
+            Task::GasWallet,
+            Outcome::Started,
+            count = wallets.len(),
+            new_status = "active",
+            "marking {} gas wallets as active",
+            wallets.len()
+        );
         let mut conn = self.get_db_conn().await?;
         let active = GasWalletStatus::Active.to_string();
 

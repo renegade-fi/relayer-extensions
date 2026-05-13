@@ -34,7 +34,8 @@ use renegade_types_core::Chain;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str::FromStr, time::Instant};
-use tracing::{debug, info};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
@@ -336,7 +337,15 @@ impl CustodyClient {
 
             match tx_result {
                 Ok(tx) => {
-                    debug!("tx {}: {:?}", transaction_id, tx.status);
+                    log_task!(
+                        Task::PollFireblocksTx,
+                        Outcome::Started,
+                        subject = transaction_id,
+                        tx_status = ?tx.status,
+                        "tx {} status {:?}",
+                        transaction_id,
+                        tx.status
+                    );
                     match tx.status {
                         TransactionStatus::Blocked
                         | TransactionStatus::Cancelled
@@ -354,7 +363,15 @@ impl CustodyClient {
                     // the deadline. The limiter has already paused if the
                     // error was 429, so the next iteration's `acquire`
                     // will block until cooldown elapses.
-                    debug!("tx {} poll error: {:?}", transaction_id, e);
+                    log_task!(
+                        Task::PollFireblocksTx,
+                        Outcome::Retrying,
+                        subject = transaction_id,
+                        error = ?e,
+                        "tx {} poll error (retrying until deadline): {:?}",
+                        transaction_id,
+                        e
+                    );
                 }
             }
 
@@ -447,7 +464,13 @@ impl CustodyClient {
         let amount_units =
             parse_units(&amount.to_string(), "ether").map_err(FundsManagerError::parse)?.into();
 
-        info!("Transferring {amount} ETH to {to:#x}");
+        log_task!(
+            Task::CustodyTransfer,
+            Outcome::Started,
+            subject = %format!("{to:#x}"),
+            amount = amount,
+            "transferring {amount} ETH to {to:#x}"
+        );
         let tx = TransactionRequest::default().with_to(to).with_value(amount_units);
         send_tx_with_retry(tx, &client, TWO_CONFIRMATIONS).await
     }

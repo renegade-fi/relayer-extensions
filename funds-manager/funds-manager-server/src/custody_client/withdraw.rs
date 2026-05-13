@@ -14,9 +14,10 @@ use fireblocks_sdk::{
     },
 };
 use renegade_types_core::{Chain, Token, USDC_TICKER};
-use tracing::info;
 
 use super::{CustodyClient, DepositWithdrawSource};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 // -------------
 // | Constants |
@@ -75,8 +76,15 @@ impl CustodyClient {
         let token = Token::from_addr_on_chain(token_address, self.chain);
         let ticker = token.get_ticker().unwrap_or(token_address.to_string());
         let tx = self.erc20_transfer(token_address, destination_address, amount, wallet).await?;
-        info!(
-            "Withdrew {amount} {ticker} ({token_address}) from hot wallet to {destination_address}. Tx: {:?}",
+        log_task!(
+            Task::Withdraw,
+            Outcome::Ok,
+            subject = %token_address,
+            ticker = %ticker,
+            amount = amount,
+            destination = %destination_address,
+            tx_hash = ?tx.transaction_hash,
+            "withdrew {amount} {ticker} ({token_address}) from hot wallet to {destination_address} (tx {:?})",
             tx.transaction_hash
         );
 
@@ -156,7 +164,16 @@ impl CustodyClient {
 
         // Execute the transfer
         let tx = self.transfer_ether(to, amount, wallet).await?;
-        info!("Withdrew {amount} ETH from gas wallet to {to}. Tx: {:#}", tx.transaction_hash);
+        log_task!(
+            Task::Withdraw,
+            Outcome::Ok,
+            subject = "ETH",
+            amount = amount,
+            destination = %to,
+            tx_hash = %format!("{:#}", tx.transaction_hash),
+            "withdrew {amount} ETH from gas wallet to {to} (tx {:#})",
+            tx.transaction_hash
+        );
 
         Ok(())
     }
@@ -229,7 +246,16 @@ impl CustodyClient {
 
         self.poll_fireblocks_external_transaction(tx_hash).await?;
 
-        info!("Withdrew {amount} USDC from hot wallet to {hyperliquid_addr}. Tx: {:#x}", tx_hash);
+        log_task!(
+            Task::Withdraw,
+            Outcome::Ok,
+            subject = "USDC",
+            amount = amount,
+            destination = %hyperliquid_addr,
+            tx_hash = %format!("{:#x}", tx_hash),
+            "withdrew {amount} USDC from hot wallet to {hyperliquid_addr} (tx {:#x})",
+            tx_hash
+        );
 
         Ok(())
     }

@@ -3,8 +3,9 @@
 use std::str::FromStr;
 
 use alloy::{hex::ToHexExt, signers::local::PrivateKeySigner};
-use tracing::info;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     custody_client::DepositWithdrawSource,
     db::models::{GasWallet, GasWalletStatus},
@@ -29,7 +30,14 @@ impl CustodyClient {
 
     /// Refill gas for all gas wallets
     pub(crate) async fn refill_gas_wallets(&self, fill_to: f64) -> Result<(), FundsManagerError> {
-        info!("Refilling {} gas wallets to {fill_to} ETH", self.chain);
+        log_task!(
+            Task::GasWallet,
+            Outcome::Started,
+            chain = %self.chain,
+            fill_to = fill_to,
+            "refilling {} gas wallets to {fill_to} ETH",
+            self.chain
+        );
         // Fetch all gas wallets
         let gas_wallets = self.get_all_gas_wallets().await?;
         // Refill the gas wallets
@@ -57,7 +65,13 @@ impl CustodyClient {
             description,
         )
         .await?;
-        info!("Created gas wallet with address: {}", address);
+        log_task!(
+            Task::GasWallet,
+            Outcome::Ok,
+            subject = %address,
+            "created gas wallet with address: {}",
+            address
+        );
 
         Ok(address)
     }
@@ -183,8 +197,16 @@ impl CustodyClient {
     ) -> Result<(), FundsManagerError> {
         let bal = self.get_ether_balance(addr).await?;
         if bal > amount * tolerance {
-            info!(
-                "Skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount_desc}] (has {bal}, above {})",
+            log_task!(
+                Task::GasWallet,
+                Outcome::Skipped,
+                subject = %addr,
+                symbol = %symbol,
+                balance = bal,
+                target = amount,
+                amount_desc = %amount_desc,
+                tolerance = tolerance,
+                "skipping gas refill for 0x{addr} ({symbol}) because balance is within tolerance [{tolerance} of {amount_desc}] (has {bal}, above {})",
                 amount * tolerance,
             );
             return Ok(());

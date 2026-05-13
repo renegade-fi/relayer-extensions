@@ -15,7 +15,10 @@ use funds_manager_api::quoters::{QuoteParams, SupportedExecutionVenue};
 use renegade_types_core::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{info, instrument, warn};
+use tracing::instrument;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{
@@ -280,7 +283,13 @@ impl ExecutionVenue for BebopClient {
         for source in bebop_quote_sources {
             match ExecutableQuote::from_bebop_quote(&quote_response, &source, self.chain) {
                 Ok(executable_quote) => executable_quotes.push(executable_quote),
-                Err(e) => warn!("Failed to convert Bebop quote to executable quote: {e}"),
+                Err(e) => log_task!(
+                    Task::FetchQuote,
+                    Outcome::Partial,
+                    venue = "bebop",
+                    error = %e,
+                    "failed to convert Bebop quote to executable quote: {e}"
+                ),
             }
         }
 
@@ -305,7 +314,14 @@ impl ExecutionVenue for BebopClient {
 
         let tx = self.build_swap_tx(&bebop_execution_data).await?;
 
-        info!("Executing {} quote", quote.source);
+        log_task!(
+            Task::SubmitOrder,
+            Outcome::Started,
+            venue = "bebop",
+            source = %quote.source,
+            "executing {} quote",
+            quote.source
+        );
 
         match self.send_tx(tx).await {
             Ok(receipt) => {
@@ -320,12 +336,24 @@ impl ExecutionVenue for BebopClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({tx_hash:#x}) reverted");
+                    log_task!(
+                        Task::SubmitOrder,
+                        Outcome::Failed,
+                        venue = "bebop",
+                        tx_hash = %format!("{tx_hash:#x}"),
+                        "tx ({tx_hash:#x}) reverted"
+                    );
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },
             Err(e) => {
-                warn!("swap tx failed to send: {e}");
+                log_task!(
+                    Task::SubmitOrder,
+                    Outcome::Failed,
+                    venue = "bebop",
+                    error = %e,
+                    "swap tx failed to send: {e}"
+                );
                 Ok(ExecutionResult {
                     buy_amount_actual: U256::ZERO,
                     gas_cost: U256::ZERO,
