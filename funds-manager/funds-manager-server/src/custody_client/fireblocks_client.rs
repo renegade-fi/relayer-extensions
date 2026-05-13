@@ -1,12 +1,18 @@
 //! A wrapper around the Fireblocks SDK, augmenting it with helpful features
-//! such as response caching
+//! such as response caching and a process-wide rate limiter (token bucket
+//! plus 429-triggered cooldown). All outbound Fireblocks SDK calls in
+//! funds-manager should go through [`FireblocksClient::rate_limited`] so
+//! that the limiter sees them and stays within the workspace quota.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use fireblocks_sdk::{Client, ClientBuilder, models::AssetOnchainBeta};
 use tokio::sync::RwLock;
 
-use crate::error::FundsManagerError;
+use crate::{
+    custody_client::fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
+    error::FundsManagerError,
+};
 
 /// A client for interacting with the Fireblocks API
 #[derive(Clone)]
@@ -15,6 +21,8 @@ pub struct FireblocksClient {
     pub sdk: Client,
     /// Cached metadata from the Fireblocks API
     metadata: Arc<RwLock<FireblocksMetadata>>,
+    /// Process-wide rate limiter for Fireblocks calls
+    limiter: Arc<FireblocksLimiter>,
 }
 
 /// Cached metadata from the Fireblocks API
@@ -42,7 +50,9 @@ impl FireblocksMetadata {
 }
 
 impl FireblocksClient {
-    /// Construct a new Fireblocks client
+    /// Construct a new Fireblocks client. Reuses the process-wide rate
+    /// limiter so every `CustodyClient` shares one token bucket — this
+    /// matches the actual Fireblocks quota, which is per-workspace.
     pub fn new(
         fireblocks_api_key: &str,
         fireblocks_api_secret: &str,
@@ -55,9 +65,40 @@ impl FireblocksClient {
         let fireblocks_client = FireblocksClient {
             sdk: fireblocks_sdk,
             metadata: Arc::new(RwLock::new(FireblocksMetadata::new())),
+            limiter: global_limiter(),
         };
 
         Ok(fireblocks_client)
+    }
+
+    // -----------------
+    // | Rate limiting |
+    // -----------------
+
+    /// Run a Fireblocks SDK call under the process-wide rate limiter.
+    /// Acquires a token before invoking the closure and reports the
+    /// outcome (429 vs. success vs. other-error) back to the limiter so
+    /// that consecutive-429 backoff state stays correct.
+    ///
+    /// All call sites that touch the Fireblocks API should use this
+    /// helper. Calls that bypass it consume quota without contributing to
+    /// the limiter's view of the workspace load.
+    pub async fn rate_limited<'s, T, E, Fut>(
+        &'s self,
+        f: impl FnOnce(&'s Client) -> Fut,
+    ) -> Result<T, E>
+    where
+        Fut: Future<Output = Result<T, E>> + 's,
+        E: Is429,
+    {
+        self.limiter.acquire().await;
+        let result = f(&self.sdk).await;
+        match &result {
+            Err(e) if e.is_429() => self.limiter.on_429().await,
+            Ok(_) => self.limiter.on_success(),
+            _ => {}
+        }
+        result
     }
 
     // -----------

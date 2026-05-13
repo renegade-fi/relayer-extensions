@@ -272,10 +272,9 @@ impl CustodyClient {
 
         let whitelisted_wallets = self
             .fireblocks_client
-            .sdk
-            .apis()
-            .whitelisted_external_wallets_api()
-            .get_external_wallets()
+            .rate_limited(|sdk| async move {
+                sdk.apis().whitelisted_external_wallets_api().get_external_wallets().await
+            })
             .await?;
 
         for wallet in whitelisted_wallets {
@@ -326,7 +325,12 @@ impl CustodyClient {
             })
             .build();
 
-        let resp = self.fireblocks_client.sdk.transactions_api().create_transaction(params).await?;
+        let resp = self
+            .fireblocks_client
+            .rate_limited(
+                |sdk| async move { sdk.transactions_api().create_transaction(params).await },
+            )
+            .await?;
 
         let tx = self.poll_fireblocks_transaction(&resp.id).await?;
         if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Confirming {
