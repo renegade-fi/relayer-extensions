@@ -96,7 +96,7 @@ impl FireblocksClient {
         match &result {
             Err(e) if e.is_429() => self.limiter.on_429().await,
             Ok(_) => self.limiter.on_success(),
-            _ => {}
+            _ => {},
         }
         result
     }

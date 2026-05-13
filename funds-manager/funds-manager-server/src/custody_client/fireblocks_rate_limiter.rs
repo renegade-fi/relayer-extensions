@@ -138,10 +138,7 @@ impl FireblocksLimiter {
         if guard.map_or(true, |existing| existing < new_until) {
             *guard = Some(new_until);
         }
-        warn!(
-            "Fireblocks 429: limiter cooldown for {}s (consecutive 429s: {})",
-            secs, n
-        );
+        warn!("Fireblocks 429: limiter cooldown for {}s (consecutive 429s: {})", secs, n);
     }
 
     /// Notify the limiter that a Fireblocks call succeeded. Resets the
@@ -161,9 +158,7 @@ static GLOBAL_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
 /// Get a handle to the process-wide Fireblocks limiter, initializing it
 /// on first call.
 pub fn global_limiter() -> Arc<FireblocksLimiter> {
-    GLOBAL_LIMITER
-        .get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY))
-        .clone()
+    GLOBAL_LIMITER.get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY)).clone()
 }
 
 /// Trait that lets the limiter wrapper recognize a 429 across the two

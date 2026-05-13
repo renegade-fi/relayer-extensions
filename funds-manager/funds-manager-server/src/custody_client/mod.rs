@@ -251,7 +251,10 @@ impl CustodyClient {
         let blockchains = self
             .fireblocks_client
             .rate_limited(|sdk| async move {
-                sdk.apis().blockchains_assets_beta_api().list_blockchains(list_blockchains_params).await
+                sdk.apis()
+                    .blockchains_assets_beta_api()
+                    .list_blockchains(list_blockchains_params)
+                    .await
             })
             .await?;
 
@@ -299,9 +302,9 @@ impl CustodyClient {
                         | TransactionStatus::Confirming
                         | TransactionStatus::Failed
                         | TransactionStatus::Rejected => return Ok(tx),
-                        _ => {}
+                        _ => {},
                     }
-                }
+                },
                 Err(e) => {
                     // Match the SDK's `poll_transaction` semantics:
                     // transient errors during polling are tolerated until
@@ -309,7 +312,7 @@ impl CustodyClient {
                     // error was 429, so the next iteration's `acquire`
                     // will block until cooldown elapses.
                     debug!("tx {} poll error: {:?}", transaction_id, e);
-                }
+                },
             }
 
             if Instant::now() >= deadline {
