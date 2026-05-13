@@ -47,7 +47,14 @@ impl CustodyClient {
             .ok_or_else(|| FundsManagerError::fireblocks(format!("no asset for mint: {mint}")))?;
 
         // Fetch the wallet addresses for the asset
-        let addresses = self.fireblocks_client.sdk.addresses(&deposit_vault.id, &asset_id).await?;
+        let deposit_vault_id = deposit_vault.id.clone();
+        let asset_id_for_call = asset_id.clone();
+        let addresses = self
+            .fireblocks_client
+            .rate_limited(|sdk| async move {
+                sdk.addresses(&deposit_vault_id, &asset_id_for_call).await
+            })
+            .await?;
         let addr = addresses.first().ok_or_else(|| {
             FundsManagerError::fireblocks(format!("no addresses for asset: {}", asset_id))
         })?;

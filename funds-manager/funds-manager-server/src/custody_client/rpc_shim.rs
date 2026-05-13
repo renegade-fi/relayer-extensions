@@ -13,8 +13,7 @@ use fireblocks_sdk::{
     },
 };
 use serde_json::Value;
-use std::time::Duration;
-use tracing::{error, warn};
+use tracing::error;
 
 // Note: We deliberately use the Ethers implementation of EIP-712 TypedData
 // rather than Alloy's, because Alloy will fail to deserialize TypedData which
@@ -34,15 +33,6 @@ use super::CustodyClient;
 // -------------
 // | Constants |
 // -------------
-
-/// Backoff delays (ms) between retry attempts of Fireblocks
-/// `create_transaction` calls. The Fireblocks API rate-limits transaction
-/// creation under sustained load (e.g. gardener's order-modify cadence);
-/// transient 429s/5xx normally clear within a few hundred ms. We retry
-/// only the `create_transaction` call itself, not the surrounding poll
-/// loop, because `create_transaction` is not yet observable as a Fireblocks
-/// transaction on error and is therefore safe to re-issue.
-const FIREBLOCKS_CREATE_TX_RETRY_DELAYS_MS: &[u64] = &[0, 100, 300];
 
 /// The method name for the `eth_accounts` JSON-RPC method.
 const ETH_ACCOUNTS_METHOD: &str = "eth_accounts";
@@ -284,38 +274,19 @@ impl CustodyClient {
             })
             .build();
 
-        // Retry transient Fireblocks errors with brief backoff. On error the
-        // SDK has not yet acknowledged the transaction, so re-issuing is
-        // safe — at worst we burn a small amount of Fireblocks quota; we do
-        // not risk creating duplicate accepted transactions.
-        let mut last_err: Option<FundsManagerError> = None;
-        for (attempt, delay_ms) in FIREBLOCKS_CREATE_TX_RETRY_DELAYS_MS.iter().enumerate() {
-            if *delay_ms > 0 {
-                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
-            }
-            match self
-                .fireblocks_client
-                .sdk
-                .transactions_api()
-                .create_transaction(params.clone())
-                .await
-            {
-                Ok(resp) => return Ok(resp),
-                Err(e) => {
-                    let mapped = FundsManagerError::fireblocks(e);
-                    let remaining = FIREBLOCKS_CREATE_TX_RETRY_DELAYS_MS.len() - attempt - 1;
-                    if remaining > 0 {
-                        warn!(
-                            "Fireblocks create_transaction failed (attempt {} of {}); retrying: {mapped}",
-                            attempt + 1,
-                            FIREBLOCKS_CREATE_TX_RETRY_DELAYS_MS.len(),
-                        );
-                    }
-                    last_err = Some(mapped);
-                },
-            }
-        }
-        Err(last_err.expect("retry loop ran at least one iteration").into())
+        // Single-attempt call through the workspace rate limiter. The
+        // limiter paces steady-state RPS via a token bucket and applies a
+        // cooldown gate after any observed 429, so we no longer retry
+        // here — a per-call retry loop would just multiply the 429 storm
+        // it was meant to ride out. The gardener-side viem transport
+        // owns the outer retry policy.
+        self.fireblocks_client
+            .rate_limited(|sdk| {
+                let params = params.clone();
+                async move { sdk.transactions_api().create_transaction(params).await }
+            })
+            .await
+            .map_err(|e| FundsManagerError::fireblocks(e).into())
     }
 }
 

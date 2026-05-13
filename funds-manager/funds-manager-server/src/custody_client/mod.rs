@@ -1,6 +1,7 @@
 //! Manages the custody backend for the funds manager
 pub mod deposit;
 mod fireblocks_client;
+mod fireblocks_rate_limiter;
 pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;
@@ -197,10 +198,9 @@ impl CustodyClient {
 
         let arb_assets = self
             .fireblocks_client
-            .sdk
-            .apis()
-            .blockchains_assets_beta_api()
-            .list_assets(list_assets_params)
+            .rate_limited(|sdk| async move {
+                sdk.apis().blockchains_assets_beta_api().list_assets(list_assets_params).await
+            })
             .await?;
 
         for asset in arb_assets.data {
@@ -250,10 +250,9 @@ impl CustodyClient {
 
         let blockchains = self
             .fireblocks_client
-            .sdk
-            .apis()
-            .blockchains_assets_beta_api()
-            .list_blockchains(list_blockchains_params)
+            .rate_limited(|sdk| async move {
+                sdk.apis().blockchains_assets_beta_api().list_blockchains(list_blockchains_params).await
+            })
             .await?;
 
         blockchains
@@ -269,13 +268,61 @@ impl CustodyClient {
         &self,
         transaction_id: &str,
     ) -> Result<TransactionResponse, FundsManagerError> {
+        use fireblocks_sdk::models::TransactionStatus;
+
         let timeout = Duration::from_secs(60);
         let interval = Duration::from_secs(1);
+        let deadline = Instant::now() + timeout;
+
+        // Hand-rolled poll loop so each `get_transaction` call is routed
+        // through the workspace rate limiter; the SDK's own
+        // `Client::poll_transaction` helper is opaque and bypasses the
+        // limiter.
+        let id = transaction_id.to_string();
+        loop {
+            let tx_result = self
+                .fireblocks_client
+                .rate_limited(|sdk| {
+                    let id = id.clone();
+                    async move { sdk.get_transaction(&id).await }
+                })
+                .await;
+
+            match tx_result {
+                Ok(tx) => {
+                    debug!("tx {}: {:?}", transaction_id, tx.status);
+                    match tx.status {
+                        TransactionStatus::Blocked
+                        | TransactionStatus::Cancelled
+                        | TransactionStatus::Cancelling
+                        | TransactionStatus::Completed
+                        | TransactionStatus::Confirming
+                        | TransactionStatus::Failed
+                        | TransactionStatus::Rejected => return Ok(tx),
+                        _ => {}
+                    }
+                }
+                Err(e) => {
+                    // Match the SDK's `poll_transaction` semantics:
+                    // transient errors during polling are tolerated until
+                    // the deadline. The limiter has already paused if the
+                    // error was 429, so the next iteration's `acquire`
+                    // will block until cooldown elapses.
+                    debug!("tx {} poll error: {:?}", transaction_id, e);
+                }
+            }
+
+            if Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(interval).await;
+        }
+
+        // One final attempt past the deadline so the caller sees the most
+        // recent state (mirrors the SDK helper's trailing `get_transaction`).
+        let id = transaction_id.to_string();
         self.fireblocks_client
-            .sdk
-            .poll_transaction(transaction_id, timeout, interval, |tx| {
-                debug!("tx {}: {:?}", transaction_id, tx.status);
-            })
+            .rate_limited(|sdk| async move { sdk.get_transaction(&id).await })
             .await
             .map_err(FundsManagerError::fireblocks)
     }
@@ -294,12 +341,12 @@ impl CustodyClient {
         let params = GetTransactionsParams::builder().tx_hash(tx_hash_str).build();
 
         while Instant::now() < timeout_instant {
+            let params = params.clone();
             let txs = self
                 .fireblocks_client
-                .sdk
-                .apis()
-                .transactions_api()
-                .get_transactions(params.clone())
+                .rate_limited(|sdk| async move {
+                    sdk.apis().transactions_api().get_transactions(params).await
+                })
                 .await?;
 
             if let Some(tx) = txs.first() {
