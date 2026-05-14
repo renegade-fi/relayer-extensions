@@ -7,12 +7,11 @@ use uuid::Uuid;
 use warp::reject::Rejection;
 
 use renegade_external_api::http::external_match::{
-    AssembleExternalMatchRequest, ExternalMatchRequest, ExternalMatchResponse,
-    ExternalQuoteRequest, MalleableExternalMatchResponse, REQUEST_EXTERNAL_MATCH_ROUTE,
-    REQUEST_EXTERNAL_QUOTE_ROUTE,
+    ASSEMBLE_MATCH_BUNDLE_ROUTE, AssembleExternalMatchRequest, ExternalMatchResponse,
+    ExternalQuoteRequest, ExternalQuoteResponse, GET_EXTERNAL_MATCH_QUOTE_ROUTE,
 };
 
-use auth_server_api::rfqt::RfqtQuoteRequest;
+use auth_server_api::{SponsoredQuoteResponse, rfqt::RfqtQuoteRequest};
 
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::overwrite_response_body;
@@ -22,7 +21,7 @@ use crate::server::api_handlers::connectors::rfqt::helpers::{
     create_direct_match_request, create_quote_request, should_use_malleable_calldata,
     transform_match_bundle_to_rfqt_response, transform_quote_to_assemble_malleable_ctx,
 };
-use crate::server::api_handlers::connectors::rfqt::{MatchBundle, RequestContextVariant};
+use crate::server::api_handlers::connectors::rfqt::RequestContextVariant;
 use crate::server::api_handlers::external_match::{BytesResponse, RequestContext, ResponseContext};
 use crate::server::api_handlers::get_sdk_version;
 
@@ -39,21 +38,22 @@ impl Server {
 
         match ctx {
             RequestContextVariant::Malleable(quote_ctx) => {
-                self.handle_quote_and_assemble(quote_ctx, rfqt_request.clone()).await
+                self.handle_quote_and_assemble(quote_ctx, rfqt_request).await
             },
-            RequestContextVariant::Direct(match_ctx) => {
-                self.handle_direct_match(match_ctx, rfqt_request.clone()).await
+            RequestContextVariant::Direct(assemble_ctx) => {
+                self.handle_direct_match(assemble_ctx, rfqt_request).await
             },
         }
     }
 
     /// Build request context for an RFQT request, before the request is
-    /// proxied to the relayer
+    /// proxied to the relayer.
     ///
-    /// This method handles the specific case where we need to:
-    /// 1. Authorize using the original RFQT request body (for HMAC validation)
-    /// 2. Construct the RequestContext with the transformed request body
-    ///    (either quote or direct match based on query params)
+    /// 1. Authorize using the original RFQT request body (for HMAC validation).
+    /// 2. Construct the `RequestContext` with the transformed request body —
+    ///    either an external quote (malleable path) or a direct-order assemble.
+    /// 3. Validate that one side of the pair is USDC and apply the per-key
+    ///    relayer fee.
     #[instrument(skip_all)]
     async fn rfqt_pre_request(
         &self,
@@ -62,22 +62,18 @@ impl Server {
         body: Bytes,
         query_str: String,
     ) -> Result<(RequestContextVariant, RfqtQuoteRequest), AuthServerError> {
-        // Authorize using the original RFQT body (for proper HMAC validation)
         let path = path.as_str().to_string();
         let (key_desc, key_id) = self.authorize_request(&path, &query_str, &headers, &body).await?;
         let sdk_version = get_sdk_version(&headers);
 
-        // Parse the original RFQT request body
         let rfq_request: RfqtQuoteRequest = json_deserialize(&body, false /* stringify */)?;
 
-        // Determine transformation based on query params
         let ctx = if should_use_malleable_calldata(&query_str) {
-            // Transform to external quote request
-            let external_quote_request = create_quote_request(rfq_request.clone())?;
+            let external_quote_request = create_quote_request(&rfq_request)?;
             self.validate_request_body(&external_quote_request)?;
 
             let mut ctx = RequestContext {
-                path: REQUEST_EXTERNAL_QUOTE_ROUTE.to_string(),
+                path: GET_EXTERNAL_MATCH_QUOTE_ROUTE.to_string(),
                 query_str: query_str.clone(),
                 sdk_version: sdk_version.clone(),
                 headers: headers.clone(),
@@ -87,28 +83,23 @@ impl Server {
                 sponsorship_info: None,
                 request_id: Uuid::new_v4(),
             };
-
-            // Set the relayer fee
             self.set_relayer_fee(&mut ctx).await?;
             RequestContextVariant::Malleable(ctx)
         } else {
-            // Transform to external match request
-            let external_match_request = create_direct_match_request(rfq_request.clone())?;
-            self.validate_request_body(&external_match_request)?;
+            let assemble_request = create_direct_match_request(&rfq_request)?;
+            self.validate_request_body(&assemble_request)?;
 
             let mut ctx = RequestContext {
-                path: REQUEST_EXTERNAL_MATCH_ROUTE.to_string(),
+                path: ASSEMBLE_MATCH_BUNDLE_ROUTE.to_string(),
                 query_str: query_str.clone(),
                 sdk_version: sdk_version.clone(),
                 headers: headers.clone(),
                 user: key_desc.clone(),
                 key_id,
-                body: external_match_request,
+                body: assemble_request,
                 sponsorship_info: None,
                 request_id: Uuid::new_v4(),
             };
-
-            // Set the relayer fee
             self.set_relayer_fee(&mut ctx).await?;
             RequestContextVariant::Direct(ctx)
         };
@@ -116,108 +107,137 @@ impl Server {
         Ok((ctx, rfq_request))
     }
 
-    /// Handle a quote and assemble malleable match request
+    /// Handle a quote-and-assemble (malleable) RFQT request.
+    ///
+    /// The flow mirrors v1: run the quote step, synchronously sponsor the
+    /// returned quote, write the sponsorship cache so the subsequent assemble
+    /// step can reattach the gas-sponsor nonce, and then run the v2 assembly
+    /// pipeline (which itself reads the cache, fills the bundle, and emits
+    /// telemetry via `record_external_match_metrics`).
     async fn handle_quote_and_assemble(
         &self,
         mut quote_req_ctx: RequestContext<ExternalQuoteRequest>,
         rfqt_request: RfqtQuoteRequest,
     ) -> Result<BytesResponse, Rejection> {
-        // 1. Run the pre-request subroutines
+        // 1. Quote pre-request (rate limits, routing, gas-sponsor application
+        //    to the order).
         self.quote_pre_request(&mut quote_req_ctx).await?;
 
-        // 2. Proxy the request to the relayer
-        let (quote_raw_resp, quote_resp_ctx) = self.forward_request(quote_req_ctx.clone()).await?;
+        // 2. Proxy the quote request to the relayer.
+        let (quote_raw_resp, quote_resp_ctx) = self
+            .forward_request::<_, ExternalQuoteResponse>(quote_req_ctx.clone())
+            .await?;
 
-        // 3. Run the quote post-request subroutines
-        let _ = self.quote_post_request(quote_raw_resp, quote_resp_ctx.clone())?;
+        // 3. If the relayer rejected the quote, forward the response and stop.
+        if !quote_resp_ctx.is_success() {
+            return Ok(quote_raw_resp);
+        }
 
-        // 4. Build assemble malleable quote request
+        // 4. Build the sponsored quote synchronously and persist the cached
+        //    sponsorship info to Redis before assembling. The regular
+        //    quote endpoint caches asynchronously via a spawned task, which
+        //    would race the internal assemble step here.
+        let (sponsored_quote, cached_info) =
+            self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
+        if let Some(cached_info) = cached_info {
+            self.cache_quote_gas_sponsorship_info(&sponsored_quote, cached_info).await?;
+        }
+
+        // 5. Transform into the assemble request context (QuotedOrder).
         let mut assemble_req_ctx =
-            transform_quote_to_assemble_malleable_ctx(quote_resp_ctx.response(), quote_req_ctx)?;
+            transform_quote_to_assemble_malleable_ctx(sponsored_quote, quote_req_ctx)?;
 
-        // 5. Run assemble pre-request subroutines
-        self.assemble_malleable_quote_pre_request(&mut assemble_req_ctx).await?;
+        // 6. Run the v2 assembly pipeline (rate limits, gas sponsorship,
+        //    forwarding, metric emission).
+        self.assembly_pre_request(&mut assemble_req_ctx).await?;
+        let (assemble_raw_resp, assemble_resp_ctx) = self
+            .forward_request::<_, ExternalMatchResponse>(assemble_req_ctx)
+            .await?;
+        let assemble_res = self.assembly_post_request(assemble_raw_resp, assemble_resp_ctx.clone())?;
 
-        // 6. Proxy the request to the relayer
-        let (assemble_raw_resp, assemble_req_ctx) = self.forward_request(assemble_req_ctx).await?;
-
-        // 7. Run assemble post-request subroutines
+        // 7. Overwrite the response body with the RFQT-shaped response.
         let assemble_res =
-            self.assemble_malleable_quote_post_request(assemble_raw_resp, &assemble_req_ctx)?;
-
-        // 8. RFQT-specific post-processing
-        let assemble_res =
-            self.rfqt_post_request_malleable(&rfqt_request, assemble_res, &assemble_req_ctx)?;
+            self.rfqt_post_request_malleable(&rfqt_request, assemble_res, &assemble_resp_ctx)?;
 
         Ok(assemble_res)
     }
 
-    /// Handle a direct match request
+    /// Handle a direct (non-malleable) RFQT request via a single assemble call.
     async fn handle_direct_match(
         &self,
-        mut ctx: RequestContext<ExternalMatchRequest>,
+        mut ctx: RequestContext<AssembleExternalMatchRequest>,
         req: RfqtQuoteRequest,
     ) -> Result<BytesResponse, Rejection> {
-        // 1. Run the pre-request subroutines
-        self.direct_match_pre_request(&mut ctx).await?;
-
-        // 2. Proxy the request to the relayer
-        let (raw_resp, ctx) = self.forward_request(ctx).await?;
-
-        // 3. Run the post-request subroutines
-        let res = self.direct_match_post_request(raw_resp, ctx.clone())?;
-
-        // 4. RFQT-specific post-processing
-        let res = self.rfqt_post_request_direct(&req, res, &ctx)?;
-
+        self.assembly_pre_request(&mut ctx).await?;
+        let (raw_resp, resp_ctx) = self
+            .forward_request::<_, ExternalMatchResponse>(ctx)
+            .await?;
+        let res = self.assembly_post_request(raw_resp, resp_ctx.clone())?;
+        let res = self.rfqt_post_request_direct(&req, res, &resp_ctx)?;
         Ok(res)
     }
 
-    /// Transform a malleable match response to an RFQT response
+    /// Overwrite the relayer response body with the malleable RFQT response
+    /// shape (price + min/max receive/send populated).
     pub(crate) fn rfqt_post_request_malleable(
         &self,
         req: &RfqtQuoteRequest,
         mut resp: BytesResponse,
-        ctx: &ResponseContext<AssembleExternalMatchRequest, MalleableExternalMatchResponse>,
+        ctx: &ResponseContext<AssembleExternalMatchRequest, ExternalMatchResponse>,
     ) -> Result<BytesResponse, AuthServerError> {
         if !ctx.is_success() {
             return Ok(resp);
         }
 
-        let external_match_body = resp.body();
-        let external_match_resp: MalleableExternalMatchResponse =
-            serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
-
-        let rfqt_response = transform_match_bundle_to_rfqt_response(
-            MatchBundle::Malleable(external_match_resp.match_bundle),
-            req,
-        )?;
-
+        let match_bundle = ctx.response().match_bundle;
+        let rfqt_response =
+            transform_match_bundle_to_rfqt_response(&match_bundle, req, true /* malleable */)?;
         overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
     }
 
-    /// Transform a direct match response to an RFQT response
+    /// Overwrite the relayer response body with the direct (single-amount)
+    /// RFQT response shape (price + min/max fields stripped).
     pub(crate) fn rfqt_post_request_direct(
         &self,
         req: &RfqtQuoteRequest,
         mut resp: BytesResponse,
-        ctx: &ResponseContext<ExternalMatchRequest, ExternalMatchResponse>,
+        ctx: &ResponseContext<AssembleExternalMatchRequest, ExternalMatchResponse>,
     ) -> Result<BytesResponse, AuthServerError> {
         if !ctx.is_success() {
             return Ok(resp);
         }
 
-        let external_match_body = resp.body();
-        let external_match_resp: ExternalMatchResponse =
-            serde_json::from_slice(external_match_body).map_err(AuthServerError::serde)?;
-
-        let rfqt_response = transform_match_bundle_to_rfqt_response(
-            MatchBundle::Direct(external_match_resp.match_bundle),
-            req,
-        )?;
-
+        let match_bundle = ctx.response().match_bundle;
+        let rfqt_response =
+            transform_match_bundle_to_rfqt_response(&match_bundle, req, false /* malleable */)?;
         overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
+    }
+
+    /// Build the sponsored quote shape needed for the internal RFQT assemble
+    /// flow, without modifying the shared external quote handler.
+    fn sponsor_rfqt_quote_response(
+        &self,
+        ctx: &ResponseContext<ExternalQuoteRequest, ExternalQuoteResponse>,
+    ) -> Result<
+        (
+            SponsoredQuoteResponse,
+            Option<crate::server::gas_sponsorship::CachedSponsorshipInfo>,
+        ),
+        AuthServerError,
+    > {
+        let resp = ctx.response();
+        if let Some(sponsorship_info) = ctx.sponsorship_info() {
+            let (sponsored, cached) =
+                self.construct_sponsored_quote_response(resp, sponsorship_info)?;
+            return Ok((sponsored, cached));
+        }
+
+        let sponsored = SponsoredQuoteResponse {
+            signed_quote: resp.signed_quote,
+            gas_sponsorship_info: None,
+        };
+        Ok((sponsored, None))
     }
 }

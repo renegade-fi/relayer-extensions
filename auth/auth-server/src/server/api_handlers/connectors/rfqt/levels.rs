@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use http::{HeaderMap, Method};
-use renegade_external_api::http::order_book::GET_DEPTH_FOR_ALL_PAIRS_ROUTE;
+use renegade_external_api::http::market::GET_MARKETS_DEPTH_ROUTE;
 use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
@@ -29,9 +29,9 @@ impl Server {
         // Parse query params with validation
         let _params = parse_levels_query_params(&query_str, self.chain)?;
 
-        // Send /v0/order_book_depth request to relayer
+        // Fetch v2 market depths from the relayer
         let resp = self
-            .send_admin_request(Method::GET, GET_DEPTH_FOR_ALL_PAIRS_ROUTE, headers, Bytes::new())
+            .send_admin_request(Method::GET, GET_MARKETS_DEPTH_ROUTE, headers, Bytes::new())
             .await?;
 
         // Deserialize and transform the response

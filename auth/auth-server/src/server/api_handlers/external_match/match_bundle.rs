@@ -109,7 +109,7 @@ impl Server {
 
     /// Run the pre-request subroutines for the assembly endpoint
     #[instrument(skip_all)]
-    async fn assembly_pre_request(
+    pub(crate) async fn assembly_pre_request(
         &self,
         ctx: &mut AssembleMatchRequestCtx,
     ) -> Result<(), AuthServerError> {
@@ -128,7 +128,7 @@ impl Server {
 
     /// Run the post-request subroutines for the assembly endpoint
     #[instrument(skip_all, fields(success = ctx.is_success(), status = ctx.status().as_u16()))]
-    fn assembly_post_request(
+    pub(crate) fn assembly_post_request(
         &self,
         mut resp: BytesResponse,
         ctx: ExternalMatchResponseCtx,
