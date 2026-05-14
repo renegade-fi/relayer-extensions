@@ -26,8 +26,8 @@
 //! shared bucket models the actual quota correctly.
 
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
     Arc, OnceLock,
+    atomic::{AtomicU32, Ordering},
 };
 use std::time::{Duration, Instant};
 
@@ -168,9 +168,7 @@ static GLOBAL_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
 /// Get a handle to the process-wide Fireblocks limiter, initializing it
 /// on first call.
 pub fn global_limiter() -> Arc<FireblocksLimiter> {
-    GLOBAL_LIMITER
-        .get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY))
-        .clone()
+    GLOBAL_LIMITER.get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY)).clone()
 }
 
 /// Trait that lets the limiter wrapper recognize a 429 across the two
