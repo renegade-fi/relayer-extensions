@@ -6,12 +6,12 @@ use renegade_util::err_str;
 use uuid::Uuid;
 
 use crate::CustodyClient;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 use crate::db::models::{GasWallet, GasWalletStatus, HotWallet};
 use crate::db::schema::{gas_wallets, hot_wallets};
 use crate::error::FundsManagerError;
 use crate::helpers::to_env_agnostic_name;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use super::DepositWithdrawSource;
 

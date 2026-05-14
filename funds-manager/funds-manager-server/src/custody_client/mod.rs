@@ -10,6 +10,8 @@ pub mod rpc_shim;
 pub mod vaults;
 pub mod withdraw;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy::{
     network::TransactionBuilder,
     providers::{DynProvider, Provider},
@@ -34,8 +36,6 @@ use renegade_types_core::Chain;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str::FromStr, time::Instant};
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
@@ -298,7 +298,10 @@ impl CustodyClient {
         let blockchains = self
             .fireblocks_client
             .rate_limited(|sdk| async move {
-                sdk.apis().blockchains_assets_beta_api().list_blockchains(list_blockchains_params).await
+                sdk.apis()
+                    .blockchains_assets_beta_api()
+                    .list_blockchains(list_blockchains_params)
+                    .await
             })
             .await?;
 
@@ -354,9 +357,9 @@ impl CustodyClient {
                         | TransactionStatus::Confirming
                         | TransactionStatus::Failed
                         | TransactionStatus::Rejected => return Ok(tx),
-                        _ => {}
+                        _ => {},
                     }
-                }
+                },
                 Err(e) => {
                     // Match the SDK's `poll_transaction` semantics:
                     // transient errors during polling are tolerated until
@@ -372,7 +375,7 @@ impl CustodyClient {
                         transaction_id,
                         e
                     );
-                }
+                },
             }
 
             if Instant::now() >= deadline {

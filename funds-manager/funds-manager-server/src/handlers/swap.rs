@@ -84,12 +84,12 @@ pub(crate) async fn swap_into_target_token_handler(
             Ok(data) => data.execution_cost_usdc,
             Err(e) => {
                 log_task!(
-                Task::RecordMetric,
-                Outcome::Failed,
-                metric = "swap-cost",
-                error = %e,
-                "failed to record swap cost metrics: {e}"
-            );
+                    Task::RecordMetric,
+                    Outcome::Failed,
+                    metric = "swap-cost",
+                    error = %e,
+                    "failed to record swap cost metrics: {e}"
+                );
                 0.0 // Default to 0 USD
             },
         };

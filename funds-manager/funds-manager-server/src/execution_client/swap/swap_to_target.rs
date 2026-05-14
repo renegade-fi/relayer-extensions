@@ -9,13 +9,13 @@ use funds_manager_api::{
 };
 use renegade_types_core::{Token, USD_TICKER, USDC_TICKER, get_all_tokens};
 
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 use crate::execution_client::{
     ExecutionClient,
     error::ExecutionClientError,
     swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
 };
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 // -------------
 // | Constants |
@@ -357,11 +357,7 @@ impl ExecutionClient {
         let usdc_target_balance = purchase_values.iter().map(|(_, value)| value).sum();
 
         if usdc_target_balance == 0.0 {
-            log_task!(
-                Task::Swap,
-                Outcome::Skipped,
-                "no purchases needed, skipping swap into USDC"
-            );
+            log_task!(Task::Swap, Outcome::Skipped, "no purchases needed, skipping swap into USDC");
             return Ok(vec![]);
         }
 

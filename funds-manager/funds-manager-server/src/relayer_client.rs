@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::{error::FundsManagerError, helpers::convert_headers};
 use base64::engine::{Engine, general_purpose as b64_general_purpose};
 use http::{HeaderMap, HeaderValue};
 use renegade_api::{
@@ -14,7 +15,6 @@ use renegade_types_core::{Chain, HmacKey};
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The amount of time (ms) to declare a wallet signature value for
 pub const SIG_EXPIRATION_BUFFER_MS: u64 = 5000;
