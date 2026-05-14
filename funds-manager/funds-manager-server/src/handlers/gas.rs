@@ -133,7 +133,12 @@ pub(crate) async fn refill_gas_sponsor_handler(
 
     // Refill each gas sponsor contract (v1 and v2)
     for gas_sponsor in custody_client.gas_sponsor_addresses() {
-        info!("Refilling gas sponsor: {gas_sponsor}");
+        log_task!(
+            Task::GasSponsorRefill,
+            Outcome::Started,
+            gas_sponsor = %gas_sponsor,
+            "refilling gas sponsor: {gas_sponsor}"
+        );
 
         // Refill the gas sponsor with native ETH
         custody_client.refill_gas_sponsor_eth(&gas_sponsor).await?;
@@ -177,6 +182,7 @@ pub(crate) async fn refill_gas_sponsor_handler(
                     "failed to send {ticker} to gas sponsor ({gas_sponsor}), skipping: {e}"
                 );
             }
+        }
 
         for outcome in swap_outcomes {
             if let Err(e) = metrics_recorder.record_swap_cost(&outcome, "gas-sponsor").await {
