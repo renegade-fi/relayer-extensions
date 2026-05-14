@@ -10,7 +10,7 @@ use fireblocks_sdk::{Client, ClientBuilder, models::AssetOnchainBeta};
 use tokio::sync::RwLock;
 
 use crate::{
-    custody_client::fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
+    custody_client::fireblocks_rate_limiter::{FireblocksLimiter, Is429, global_limiter},
     error::FundsManagerError,
 };
 
@@ -96,7 +96,7 @@ impl FireblocksClient {
         match &result {
             Err(e) if e.is_429() => self.limiter.on_429().await,
             Ok(_) => self.limiter.on_success(),
-            _ => {}
+            _ => {},
         }
         result
     }
