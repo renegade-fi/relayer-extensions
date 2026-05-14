@@ -22,10 +22,7 @@ use renegade_external_api::{
 use renegade_types_core::{Chain, Token};
 use renegade_util::{get_current_time_millis, hex::address_to_hex_string};
 
-use crate::{
-    error::AuthServerError,
-    server::api_handlers::external_match::RequestContext,
-};
+use crate::{error::AuthServerError, server::api_handlers::external_match::RequestContext};
 
 // -------------
 // | Constants |
@@ -99,9 +96,7 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
 ///
 /// v2 `GetMarketDepthsResponse` carries a `MarketInfo` per pair, which already
 /// includes a timestamped price, so no per-mint price fan-out is needed.
-pub fn transform_depth_to_levels(
-    depth_response: GetMarketDepthsResponse,
-) -> RfqtLevelsResponse {
+pub fn transform_depth_to_levels(depth_response: GetMarketDepthsResponse) -> RfqtLevelsResponse {
     let mut pairs = HashMap::new();
     let usdc_addr = Token::usdc().get_addr();
 
@@ -137,10 +132,7 @@ pub fn create_quote_request(
     req: &RfqtQuoteRequest,
 ) -> Result<ExternalQuoteRequest, AuthServerError> {
     let external_order = transform_rfqt_to_external_order(req)?;
-    Ok(ExternalQuoteRequest {
-        external_order,
-        options: ExternalMatchingEngineOptions::default(),
-    })
+    Ok(ExternalQuoteRequest { external_order, options: ExternalMatchingEngineOptions::default() })
 }
 
 /// Transform a sponsored quote response into an assemble request context
@@ -236,9 +228,7 @@ pub fn transform_match_bundle_to_rfqt_response(
     let maker = match &bundle.settlement_tx.to {
         Some(TxKind::Call(addr)) => format!("{addr:#x}"),
         _ => {
-            return Err(AuthServerError::serde(
-                "Missing maker address in settlement transaction",
-            ));
+            return Err(AuthServerError::serde("Missing maker address in settlement transaction"));
         },
     };
     let calldata = bundle
@@ -434,11 +424,9 @@ mod tests {
         // 1 USDC -> 0.0005 WETH at ~2000 USDC/WETH (price expressed in
         // external-party output-per-input units, i.e. WETH-per-USDC).
         let price_fp = FixedPoint::from_f64_round_down(0.0005);
-        let settlement_tx = TransactionRequest::default()
-            .to(addr(MAKER_ADDR))
-            .input(alloy::rpc::types::TransactionInput::new(Bytes::from(vec![
-                0xde, 0xad, 0xbe, 0xef,
-            ])));
+        let settlement_tx = TransactionRequest::default().to(addr(MAKER_ADDR)).input(
+            alloy::rpc::types::TransactionInput::new(Bytes::from(vec![0xde, 0xad, 0xbe, 0xef])),
+        );
 
         BoundedExternalMatchApiBundle {
             match_result: ApiBoundedMatchResult {
@@ -741,7 +729,7 @@ mod tests {
         setup_token_remap();
 
         use renegade_external_api::types::market::{DepthSide, MarketDepth, MarketInfo};
-        use renegade_external_api::types::{ApiToken, ApiTimestampedPrice};
+        use renegade_external_api::types::{ApiTimestampedPrice, ApiToken};
 
         let market = MarketInfo {
             base: ApiToken { address: addr(WETH_ADDR), symbol: "WETH".to_string() },
@@ -763,9 +751,8 @@ mod tests {
             sell: DepthSide { total_quantity: 500_000_000_000_000, total_quantity_usd: 1.0 },
         };
 
-        let resp = transform_depth_to_levels(GetMarketDepthsResponse {
-            market_depths: vec![depth],
-        });
+        let resp =
+            transform_depth_to_levels(GetMarketDepthsResponse { market_depths: vec![depth] });
 
         let expected_key = format!("{WETH_ADDR}/{USDC_ADDR}");
         let levels = resp.pairs.get(&expected_key).expect("pair key present");
@@ -781,7 +768,7 @@ mod tests {
         setup_token_remap();
 
         use renegade_external_api::types::market::{DepthSide, MarketDepth, MarketInfo};
-        use renegade_external_api::types::{ApiToken, ApiTimestampedPrice};
+        use renegade_external_api::types::{ApiTimestampedPrice, ApiToken};
 
         let market = MarketInfo {
             base: ApiToken { address: addr(WETH_ADDR), symbol: "WETH".to_string() },
@@ -802,9 +789,8 @@ mod tests {
             sell: DepthSide { total_quantity: 500_000_000_000_000, total_quantity_usd: 1.0 },
         };
 
-        let resp = transform_depth_to_levels(GetMarketDepthsResponse {
-            market_depths: vec![depth],
-        });
+        let resp =
+            transform_depth_to_levels(GetMarketDepthsResponse { market_depths: vec![depth] });
         let levels = resp.pairs.values().next().unwrap();
         assert!(levels.bids.is_empty());
         assert_eq!(levels.asks.len(), 1);

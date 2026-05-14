@@ -17,11 +17,11 @@ use crate::error::AuthServerError;
 use crate::http_utils::request_response::overwrite_response_body;
 use crate::http_utils::stringify_formatter::json_deserialize;
 use crate::server::Server;
+use crate::server::api_handlers::connectors::rfqt::RequestContextVariant;
 use crate::server::api_handlers::connectors::rfqt::helpers::{
     create_direct_match_request, create_quote_request, should_use_malleable_calldata,
     transform_match_bundle_to_rfqt_response, transform_quote_to_assemble_malleable_ctx,
 };
-use crate::server::api_handlers::connectors::rfqt::RequestContextVariant;
 use crate::server::api_handlers::external_match::{BytesResponse, RequestContext, ResponseContext};
 use crate::server::api_handlers::get_sdk_version;
 
@@ -124,9 +124,8 @@ impl Server {
         self.quote_pre_request(&mut quote_req_ctx).await?;
 
         // 2. Proxy the quote request to the relayer.
-        let (quote_raw_resp, quote_resp_ctx) = self
-            .forward_request::<_, ExternalQuoteResponse>(quote_req_ctx.clone())
-            .await?;
+        let (quote_raw_resp, quote_resp_ctx) =
+            self.forward_request::<_, ExternalQuoteResponse>(quote_req_ctx.clone()).await?;
 
         // 3. If the relayer rejected the quote, forward the response and stop.
         if !quote_resp_ctx.is_success() {
@@ -137,8 +136,7 @@ impl Server {
         //    sponsorship info to Redis before assembling. The regular
         //    quote endpoint caches asynchronously via a spawned task, which
         //    would race the internal assemble step here.
-        let (sponsored_quote, cached_info) =
-            self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
+        let (sponsored_quote, cached_info) = self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
         if let Some(cached_info) = cached_info {
             self.cache_quote_gas_sponsorship_info(&sponsored_quote, cached_info).await?;
         }
@@ -150,10 +148,10 @@ impl Server {
         // 6. Run the v2 assembly pipeline (rate limits, gas sponsorship,
         //    forwarding, metric emission).
         self.assembly_pre_request(&mut assemble_req_ctx).await?;
-        let (assemble_raw_resp, assemble_resp_ctx) = self
-            .forward_request::<_, ExternalMatchResponse>(assemble_req_ctx)
-            .await?;
-        let assemble_res = self.assembly_post_request(assemble_raw_resp, assemble_resp_ctx.clone())?;
+        let (assemble_raw_resp, assemble_resp_ctx) =
+            self.forward_request::<_, ExternalMatchResponse>(assemble_req_ctx).await?;
+        let assemble_res =
+            self.assembly_post_request(assemble_raw_resp, assemble_resp_ctx.clone())?;
 
         // 7. Overwrite the response body with the RFQT-shaped response.
         let assemble_res =
@@ -169,9 +167,7 @@ impl Server {
         req: RfqtQuoteRequest,
     ) -> Result<BytesResponse, Rejection> {
         self.assembly_pre_request(&mut ctx).await?;
-        let (raw_resp, resp_ctx) = self
-            .forward_request::<_, ExternalMatchResponse>(ctx)
-            .await?;
+        let (raw_resp, resp_ctx) = self.forward_request::<_, ExternalMatchResponse>(ctx).await?;
         let res = self.assembly_post_request(raw_resp, resp_ctx.clone())?;
         let res = self.rfqt_post_request_direct(&req, res, &resp_ctx)?;
         Ok(res)
@@ -209,8 +205,11 @@ impl Server {
         }
 
         let match_bundle = ctx.response().match_bundle;
-        let rfqt_response =
-            transform_match_bundle_to_rfqt_response(&match_bundle, req, false /* malleable */)?;
+        let rfqt_response = transform_match_bundle_to_rfqt_response(
+            &match_bundle,
+            req,
+            false, /* malleable */
+        )?;
         overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)
     }
@@ -221,10 +220,7 @@ impl Server {
         &self,
         ctx: &ResponseContext<ExternalQuoteRequest, ExternalQuoteResponse>,
     ) -> Result<
-        (
-            SponsoredQuoteResponse,
-            Option<crate::server::gas_sponsorship::CachedSponsorshipInfo>,
-        ),
+        (SponsoredQuoteResponse, Option<crate::server::gas_sponsorship::CachedSponsorshipInfo>),
         AuthServerError,
     > {
         let resp = ctx.response();
@@ -234,10 +230,8 @@ impl Server {
             return Ok((sponsored, cached));
         }
 
-        let sponsored = SponsoredQuoteResponse {
-            signed_quote: resp.signed_quote,
-            gas_sponsorship_info: None,
-        };
+        let sponsored =
+            SponsoredQuoteResponse { signed_quote: resp.signed_quote, gas_sponsorship_info: None };
         Ok((sponsored, None))
     }
 }
