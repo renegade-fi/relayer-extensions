@@ -24,7 +24,6 @@ use renegade_external_api::types::ExternalOrder;
 use renegade_util::hex::address_to_hex_string;
 use renegade_util::on_chain::get_protocol_fee;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::Server;
@@ -32,6 +31,8 @@ use super::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, requires_exact_output_amount_update,
 };
 use crate::error::AuthServerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 pub use crate::server::api_handlers::external_match::SponsoredExternalMatchResponseCtx;
 use crate::server::helpers::pick_base_and_quote_mints;
 use crate::telemetry::helpers::{
@@ -130,8 +131,11 @@ impl Server {
         // order, so that the relayer produces a smaller quote which will
         // match the exact output amount after the refund is issued
         if requires_exact_output_amount_update(order, &gas_sponsorship_info) {
-            info!(
-                "Adjusting exact output amount requested in order to account for gas sponsorship"
+            log_task!(
+                Task::GasSponsorship,
+                Outcome::Started,
+                subject = "adjust-exact-output",
+                "adjusting exact output amount in order to account for gas sponsorship"
             );
             apply_gas_sponsorship_to_exact_output_amount(order, &gas_sponsorship_info)?;
         }
@@ -279,11 +283,16 @@ pub fn log_unsuccessful_relayer_request(
     let status = resp.status();
     let text = String::from_utf8_lossy(resp.body()).to_string();
     let sdk_version = get_sdk_version(headers);
-    warn!(
+    log_task!(
+        Task::ProxyRequest,
+        Outcome::Partial,
+        subject = "relayer-non-200",
         key_description = key_description,
         path = path,
-        sdk_version = sdk_version,
-        "Non-200 response from relayer: {status}: {text}",
+        sdk_version = %sdk_version,
+        status = status.as_u16(),
+        body = %text,
+        "non-200 response from relayer"
     );
 }
 
@@ -327,7 +336,10 @@ fn log_bundle(
 
     let key_description = ctx.user();
     let request_id = ctx.request_id.to_string();
-    info!(
+    log_task!(
+        Task::ExternalMatchAssemble,
+        Outcome::Ok,
+        subject = "bundle-sent",
         requested_base_amount = requested_base_amount,
         response_base_amount = response_base_amount,
         requested_quote_amount = requested_quote_amount,
@@ -337,18 +349,18 @@ fn log_bundle(
         key_description = key_description,
         request_id = request_id,
         is_sponsored = is_sponsored,
-        endpoint = ctx.path,
-        sdk_version = ctx.sdk_version,
-        "Sending bundle(is_buy: {}, recv: [{}, {}] ({}), send: [{}, {}] ({}), refund_amount: {} (refund_native_eth: {})) to client",
-        is_buy,
-        min_recv.amount,
-        max_recv.amount,
-        min_recv.mint,
-        min_send.amount,
-        max_send.amount,
-        min_send.mint,
-        refund_amount,
-        refund_native_eth
+        endpoint = %ctx.path,
+        sdk_version = %ctx.sdk_version,
+        is_buy = is_buy,
+        min_recv = %min_recv.amount,
+        max_recv = %max_recv.amount,
+        recv_mint = %min_recv.mint,
+        min_send = %min_send.amount,
+        max_send = %max_send.amount,
+        send_mint = %min_send.mint,
+        refund_amount = refund_amount,
+        refund_native_eth = refund_native_eth,
+        "sending bundle to client"
     );
 
     Ok(())

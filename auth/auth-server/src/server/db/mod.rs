@@ -11,7 +11,8 @@ use diesel_async::{
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use redis::aio::ConnectionManager;
-use tracing::error;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::error::AuthServerError;
 
@@ -72,7 +73,13 @@ pub(crate) async fn establish_connection(
     // Spawn the connection handle in a separate task
     tokio::spawn(async move {
         if let Err(e) = conn.await {
-            error!("Connection error: {}", e);
+            log_task!(
+                Task::Db,
+                Outcome::Failed,
+                subject = "postgres-connection",
+                error = %e,
+                "postgres connection task ended with error"
+            );
         }
     });
 

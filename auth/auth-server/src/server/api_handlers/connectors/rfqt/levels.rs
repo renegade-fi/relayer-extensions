@@ -7,6 +7,8 @@ use tracing::instrument;
 use warp::{reject::Rejection, reply::Json};
 
 use crate::error::AuthServerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::server::Server;
 use crate::server::api_handlers::connectors::rfqt::helpers::{
     parse_levels_query_params, transform_depth_to_levels,
@@ -21,6 +23,14 @@ impl Server {
         headers: HeaderMap,
         query_str: String,
     ) -> Result<Json, Rejection> {
+        log_task!(
+            Task::RfqtLevels,
+            Outcome::Started,
+            subject = "request",
+            chain = %self.chain,
+            "GET /rfqt/v3/levels"
+        );
+
         // Authorize request (path + query)
         let path_str = path.as_str();
         let (_key_desc, _key_id) =
@@ -38,6 +48,15 @@ impl Server {
         let depth_response = serde_json::from_slice(resp.body()).map_err(AuthServerError::serde)?;
         let body = transform_depth_to_levels(depth_response);
 
+        log_task!(
+            Task::RfqtLevels,
+            Outcome::Ok,
+            subject = "request",
+            chain = %self.chain,
+            pairs = body.pairs.len(),
+            "GET /rfqt/v3/levels returned {} pairs",
+            body.pairs.len()
+        );
         Ok(warp::reply::json(&body))
     }
 }

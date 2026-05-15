@@ -19,6 +19,7 @@ mod bundle_store;
 mod chain_events;
 pub(crate) mod error;
 pub mod http_utils;
+mod logger;
 mod server;
 mod telemetry;
 
@@ -31,7 +32,9 @@ use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{error, info, info_span};
+use tracing::info_span;
+
+use crate::logger::{Outcome, Task};
 use uuid::Uuid;
 use warp::{
     Filter, Rejection,
@@ -449,7 +452,13 @@ async fn main() -> Result<(), AuthServerError> {
         });
 
     // Bind the server and listen
-    info!("Starting auth server on port {}", listen_addr.port());
+    log_task!(
+        Task::ServiceLifecycle,
+        Outcome::Started,
+        subject = "boot",
+        port = listen_addr.port(),
+        "starting auth server"
+    );
     let routes = ping
         .or(external_quote_path)
         .or(external_match_path)
@@ -525,7 +534,13 @@ async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection>
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         json_error("Method Not Allowed", StatusCode::METHOD_NOT_ALLOWED)
     } else {
-        error!("unhandled rejection: {:?}", err);
+        log_task!(
+            Task::HandleRejection,
+            Outcome::Failed,
+            subject = "unhandled",
+            error = ?err,
+            "unhandled rejection"
+        );
         json_error("Internal Server Error", StatusCode::INTERNAL_SERVER_ERROR)
     };
 
@@ -536,7 +551,13 @@ async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>, Rejection>
 fn api_error_to_reply(api_error: &ApiError) -> WithStatus<Json> {
     let (code, message) = match api_error {
         ApiError::InternalError(e) => {
-            error!("Internal server error: {e}");
+            log_task!(
+                Task::HandleRejection,
+                Outcome::Failed,
+                subject = "internal-error",
+                error = %e,
+                "internal server error"
+            );
             (StatusCode::INTERNAL_SERVER_ERROR, DEFAULT_INTERNAL_SERVER_ERROR_MESSAGE)
         },
         ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),

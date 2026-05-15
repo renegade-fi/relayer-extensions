@@ -36,7 +36,8 @@ use renegade_types_core::{Chain, HmacKey};
 use renegade_util::get_current_time_millis;
 use renegade_util::telemetry::propagation::trace_context;
 use reqwest::Client;
-use tracing::error;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 /// The duration for which the admin authentication is valid
 const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds
@@ -123,7 +124,13 @@ impl Server {
                 Ok(response)
             },
             Err(e) => {
-                error!("Error proxying request: {}", e);
+                log_task!(
+                    Task::ProxyRequest,
+                    Outcome::Failed,
+                    subject = "forward",
+                    error = %e,
+                    "error proxying request"
+                );
                 Err(AuthServerError::custom(e))
             },
         }

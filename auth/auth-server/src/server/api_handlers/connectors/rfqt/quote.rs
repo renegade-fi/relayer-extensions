@@ -16,6 +16,8 @@ use auth_server_api::{SponsoredQuoteResponse, rfqt::RfqtQuoteRequest};
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::overwrite_response_body;
 use crate::http_utils::stringify_formatter::json_deserialize;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::server::Server;
 use crate::server::api_handlers::connectors::rfqt::RequestContextVariant;
 use crate::server::api_handlers::connectors::rfqt::helpers::{
@@ -38,10 +40,44 @@ impl Server {
 
         match ctx {
             RequestContextVariant::Malleable(quote_ctx) => {
-                self.handle_quote_and_assemble(quote_ctx, rfqt_request).await
+                log_task!(
+                    Task::RfqtQuote,
+                    Outcome::Started,
+                    subject = "request",
+                    chain = %self.chain,
+                    mode = "malleable",
+                    "POST /rfqt/v3/quote"
+                );
+                let res = self.handle_quote_and_assemble(quote_ctx, rfqt_request).await?;
+                log_task!(
+                    Task::RfqtQuote,
+                    Outcome::Ok,
+                    subject = "request",
+                    chain = %self.chain,
+                    mode = "malleable",
+                    "POST /rfqt/v3/quote completed"
+                );
+                Ok(res)
             },
             RequestContextVariant::Direct(assemble_ctx) => {
-                self.handle_direct_match(assemble_ctx, rfqt_request).await
+                log_task!(
+                    Task::RfqtQuote,
+                    Outcome::Started,
+                    subject = "request",
+                    chain = %self.chain,
+                    mode = "direct",
+                    "POST /rfqt/v3/quote"
+                );
+                let res = self.handle_direct_match(assemble_ctx, rfqt_request).await?;
+                log_task!(
+                    Task::RfqtQuote,
+                    Outcome::Ok,
+                    subject = "request",
+                    chain = %self.chain,
+                    mode = "direct",
+                    "POST /rfqt/v3/quote completed"
+                );
+                Ok(res)
             },
         }
     }

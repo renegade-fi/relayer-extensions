@@ -2,12 +2,13 @@
 use std::thread::Builder;
 use tokio::runtime::Builder as RuntimeBuilder;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
 
 use super::{
     error::OnChainEventListenerError,
     listener::{OnChainEventListener, OnChainEventListenerConfig, OnChainEventListenerExecutor},
 };
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 impl OnChainEventListener {
     /// Create a new on-chain event listener
@@ -35,7 +36,13 @@ impl OnChainEventListener {
                 let runtime = runtime.unwrap();
                 runtime.block_on(async {
                     if let Err(e) = executor.execute().await {
-                        error!("Chain event listener crashed with error: {e}");
+                        log_task!(
+                            Task::ChainEventListener,
+                            Outcome::Failed,
+                            subject = "executor",
+                            error = %e,
+                            "chain event listener crashed"
+                        );
                         return e;
                     }
 
@@ -56,10 +63,22 @@ impl OnChainEventListener {
             .spawn(move || {
                 match self.executor_handle.take().unwrap().join() {
                     Err(panic) => {
-                        error!("worker on-chain-event-listener panicked with error: {panic:?}");
+                        log_task!(
+                            Task::ChainEventListener,
+                            Outcome::Failed,
+                            subject = "worker-panic",
+                            panic = ?panic,
+                            "worker thread panicked"
+                        );
                     },
                     Ok(err) => {
-                        error!("worker on-chain-event-listener exited with error: {err:?}");
+                        log_task!(
+                            Task::ChainEventListener,
+                            Outcome::Failed,
+                            subject = "worker-exit",
+                            error = ?err,
+                            "worker thread exited with error"
+                        );
                     },
                 }
                 cancellation_token.cancel();

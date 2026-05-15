@@ -12,9 +12,9 @@ use renegade_solidity_abi::v2::IDarkpoolV2::SponsoredExternalMatch;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use renegade_util::metrics;
-use tracing::warn;
-
 use crate::chain_events::utils::GPv2Settlement;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::server::helpers::pick_base_and_quote_mints;
 use crate::telemetry::helpers::calculate_quote_per_base_price;
 use crate::telemetry::labels::EXTERNAL_MATCH_SPREAD_COST;
@@ -240,11 +240,15 @@ impl OnChainEventListenerExecutor {
 
         let spread_cost = quote_amount_decimal * relative_spread;
         if spread_cost > HIGH_SPREAD_COST_THRESHOLD_USD {
-            warn!(
+            log_task!(
+                Task::ChainEventListener,
+                Outcome::Partial,
+                subject = "high-spread-cost",
                 reference_price = reference_price,
                 match_price = match_price,
-                tx = format!("{tx:#x}"),
-                "High spread cost detected: {spread_cost} USD"
+                tx = %format!("{tx:#x}"),
+                spread_cost_usd = spread_cost,
+                "high spread cost detected"
             );
         }
 

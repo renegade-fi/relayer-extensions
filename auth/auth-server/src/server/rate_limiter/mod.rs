@@ -22,11 +22,13 @@
 
 use chrono::TimeDelta;
 use redis::aio::ConnectionManager as RedisConnection;
-use tracing::{error, instrument, warn};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     error::AuthServerError,
+    log_task,
+    logger::{Outcome, Task},
     server::{
         db::{create_redis_client, models::RateLimitMethod},
         rate_limiter::{
@@ -69,7 +71,13 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Quote).await?;
         if !self.rate_limiter.consume_quote_token(key_description, max_tokens).await {
-            warn!("Quote rate limit exceeded for key: {key_description}");
+            log_task!(
+                Task::RateLimit,
+                Outcome::Failed,
+                subject = "quote",
+                key_description = key_description,
+                "quote rate limit exceeded"
+            );
             return Err(AuthServerError::RateLimit);
         }
         Ok(())
@@ -86,7 +94,13 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Assemble).await?;
         if !self.rate_limiter.consume_bundle_token(key_description, max_tokens).await {
-            warn!("Bundle rate limit exceeded for key: {key_description}");
+            log_task!(
+                Task::RateLimit,
+                Outcome::Failed,
+                subject = "bundle-consume",
+                key_description = key_description,
+                "bundle rate limit exceeded"
+            );
             return Err(AuthServerError::RateLimit);
         }
         Ok(())
@@ -103,7 +117,13 @@ impl Server {
     ) -> Result<(), AuthServerError> {
         let max_tokens = self.get_rate_limit(key_id, RateLimitMethod::Assemble).await?;
         if self.rate_limiter.check_bundle_rate_limit(key_description, max_tokens).await {
-            warn!("Bundle rate limit exceeded for key: {key_description}");
+            log_task!(
+                Task::RateLimit,
+                Outcome::Failed,
+                subject = "bundle-peek",
+                key_description = key_description,
+                "bundle rate limit exceeded"
+            );
             return Err(AuthServerError::RateLimit);
         }
 
@@ -120,9 +140,12 @@ impl Server {
         key_description: &str,
     ) -> Result<bool, AuthServerError> {
         if !self.rate_limiter.check_gas_sponsorship(key_description).await? {
-            warn!(
+            log_task!(
+                Task::RateLimit,
+                Outcome::Failed,
+                subject = "gas-sponsorship",
                 key_description = key_description,
-                "Gas sponsorship rate limit exceeded for key: {key_description}"
+                "gas sponsorship rate limit exceeded"
             );
             return Ok(false);
         }
@@ -226,7 +249,14 @@ impl AuthServerRateLimiter {
             Ok(_) => true,
             Err(AuthServerError::RateLimit) => false,
             Err(e) => {
-                error!("Error incrementing quote token: {e}");
+                log_task!(
+                    Task::RateLimit,
+                    Outcome::Failed,
+                    subject = "quote-increment",
+                    user_id = user_id,
+                    error = %e,
+                    "error incrementing quote token"
+                );
                 false
             },
         }
@@ -242,7 +272,14 @@ impl AuthServerRateLimiter {
             Ok(_) => true,
             Err(AuthServerError::RateLimit) => false,
             Err(e) => {
-                error!("Error incrementing bundle token: {e}");
+                log_task!(
+                    Task::RateLimit,
+                    Outcome::Failed,
+                    subject = "bundle-increment",
+                    user_id = user_id,
+                    error = %e,
+                    "error incrementing bundle token"
+                );
                 false
             },
         }
@@ -294,7 +331,14 @@ impl AuthServerRateLimiter {
             Ok(exceeded) => exceeded,
             Err(e) => {
                 // If we fail to check the rate limit, assume it has been exceeded
-                error!("Error checking execution cost rate limit: {e}");
+                log_task!(
+                    Task::RateLimit,
+                    Outcome::Failed,
+                    subject = "execution-cost-check",
+                    ticker = ticker,
+                    error = %e,
+                    "error checking execution cost rate limit; treating as exceeded"
+                );
                 true
             },
         }

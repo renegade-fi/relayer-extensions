@@ -12,7 +12,8 @@ use renegade_external_api::types::{
 use renegade_solidity_abi::v2::IDarkpoolV2;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
-use tracing::info;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use super::{CachedSponsorshipInfo, WETH_TICKER};
 use crate::{error::AuthServerError, server::Server};
@@ -131,7 +132,12 @@ pub fn apply_gas_sponsorship_to_quote(
     quote: &mut ApiExternalQuote,
     gas_sponsorship_info: &GasSponsorshipInfo,
 ) -> Result<f64, AuthServerError> {
-    info!("Updating quote to reflect gas sponsorship");
+    log_task!(
+        Task::GasSponsorship,
+        Outcome::Started,
+        subject = "update-quote",
+        "updating quote to reflect gas sponsorship"
+    );
 
     // Capture the original price before modification
     let original_price = quote.price.price;
@@ -170,7 +176,13 @@ pub(crate) fn apply_gas_sponsorship_to_match_bundle(
     match_bundle: &mut BoundedExternalMatchApiBundle,
     refund_amount: u128,
 ) -> Result<(), AuthServerError> {
-    info!("Updating match bundle to reflect gas sponsorship");
+    log_task!(
+        Task::GasSponsorship,
+        Outcome::Started,
+        subject = "update-match-bundle",
+        refund_amount = refund_amount,
+        "updating match bundle to reflect gas sponsorship"
+    );
     match_bundle.max_receive.amount += refund_amount;
     match_bundle.min_receive.amount += refund_amount;
 

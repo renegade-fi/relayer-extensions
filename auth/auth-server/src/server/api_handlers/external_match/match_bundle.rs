@@ -9,10 +9,12 @@ use renegade_external_api::http::external_match::{
 use renegade_external_api::types::{ApiSignedQuote, ExternalOrder};
 use renegade_types_core::Token;
 use renegade_util::get_current_time_millis;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
 use warp::reject::Rejection;
 
 use crate::error::AuthServerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::http_utils::request_response::overwrite_response_body;
 use crate::server::api_handlers::external_match::BytesResponse;
 use crate::server::gas_sponsorship::refund_calculation::{
@@ -163,7 +165,13 @@ impl Server {
         let ticker = ctx.body.base_ticker()?;
         let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
         if should_route_to_global {
-            info!("Routing order to global matching pool");
+            log_task!(
+                Task::ExternalMatchAssemble,
+                Outcome::Partial,
+                subject = "routing",
+                ticker = %ticker,
+                "routing order to global matching pool (execution costs exceeded)"
+            );
             ctx.body_mut().options.matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }
 
@@ -212,7 +220,13 @@ impl Server {
         let redis_key = generate_quote_uuid(signed_quote);
         let cached_info = match self.read_sponsorship_info_from_redis(redis_key).await {
             Err(e) => {
-                error!("Error reading gas sponsorship info from Redis: {e}");
+                log_task!(
+                    Task::GasSponsorship,
+                    Outcome::Partial,
+                    subject = "cache-read",
+                    error = %e,
+                    "error reading gas sponsorship info from Redis"
+                );
                 None
             },
             Ok(cached_info) => cached_info,
@@ -267,7 +281,12 @@ impl Server {
             });
         }
 
-        info!("Sponsoring match bundle via gas sponsor");
+        log_task!(
+            Task::GasSponsorship,
+            Outcome::Started,
+            subject = "sponsor-bundle",
+            "sponsoring match bundle via gas sponsor"
+        );
         let (sponsorship_info, nonce) = gas_sponsorship_info.unwrap();
         let sponsored_match_resp =
             self.construct_sponsored_match_response(resp, sponsorship_info, nonce)?;
@@ -284,7 +303,13 @@ impl Server {
         let server_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone.record_assembly_metrics_helper(&ctx) {
-                warn!("Error handling assemble metrics: {e}");
+                log_task!(
+                    Task::Telemetry,
+                    Outcome::Partial,
+                    subject = "assemble-metrics",
+                    error = %e,
+                    "error handling assemble metrics"
+                );
             }
         });
     }
@@ -358,14 +383,17 @@ fn log_updated_order(
     let original_output_amount = original_order.output_amount;
     let updated_output_amount = updated_order.output_amount;
 
-    info!(
+    log_task!(
+        Task::ExternalMatchAssemble,
+        Outcome::Ok,
+        subject = "quote-updated",
         key_description = key,
         request_id = request_id,
-        sdk_version = sdk_version,
-        "Quote updated(original_input_amount: {}, updated_input_amount: {}, original_output_amount: {}, updated_output_amount: {})",
-        original_input_amount,
-        updated_input_amount,
-        original_output_amount,
-        updated_output_amount
+        sdk_version = %sdk_version,
+        original_input_amount = original_input_amount,
+        updated_input_amount = updated_input_amount,
+        original_output_amount = original_output_amount,
+        updated_output_amount = updated_output_amount,
+        "quote updated"
     );
 }

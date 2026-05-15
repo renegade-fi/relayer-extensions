@@ -13,7 +13,8 @@ use renegade_external_api::types::{
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use renegade_util::metrics;
-use tracing::warn;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     error::AuthServerError,
@@ -245,7 +246,13 @@ pub(crate) fn record_external_match_metrics(
 
     // Record request metrics
     if let Err(e) = record_external_match_request_metrics(order, price, labels) {
-        warn!("Error recording request metrics: {e}");
+        log_task!(
+            Task::Telemetry,
+            Outcome::Partial,
+            subject = "request-metrics",
+            error = %e,
+            "error recording request metrics"
+        );
     }
 
     let relayer_fee = FixedPoint::from_f64_round_down(DEFAULT_EXTERNAL_MATCH_RELAYER_FEE);
@@ -256,12 +263,24 @@ pub(crate) fn record_external_match_metrics(
 
     let matched_quote_amount = get_default_quote_amount(match_bundle)?;
     if let Err(e) = record_fill_ratio(requested_quote_amount, matched_quote_amount, labels) {
-        warn!("Error recording fill ratio metric: {e}");
+        log_task!(
+            Task::Telemetry,
+            Outcome::Partial,
+            subject = "fill-ratio-metric",
+            error = %e,
+            "error recording fill ratio metric"
+        );
     }
 
     // Record response metrics
     if let Err(e) = record_external_match_response_metrics(match_bundle, labels) {
-        warn!("Error recording response metrics: {e}");
+        log_task!(
+            Task::Telemetry,
+            Outcome::Partial,
+            subject = "response-metrics",
+            error = %e,
+            "error recording response metrics"
+        );
     }
 
     Ok(())

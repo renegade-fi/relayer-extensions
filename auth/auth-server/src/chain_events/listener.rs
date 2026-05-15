@@ -14,10 +14,10 @@ use price_reporter_client::PriceReporterClient;
 use renegade_darkpool_client::DarkpoolClient;
 use renegade_solidity_abi::v2::IDarkpoolV2;
 use renegade_types_core::Chain;
-use tracing::{error, info};
-
 use crate::{
     bundle_store::BundleStore,
+    log_task,
+    logger::{Outcome, Task},
     server::{
         gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
     },
@@ -131,10 +131,22 @@ impl OnChainEventListenerExecutor {
     /// Get a provider to use for streaming logs
     pub async fn log_provider(&self) -> Result<DynProvider, OnChainEventListenerError> {
         let provider = if self.has_websocket_listener() {
-            info!("Using websocket provider for log streaming");
+            log_task!(
+                Task::ChainEventListener,
+                Outcome::Started,
+                subject = "provider",
+                transport = "websocket",
+                "using websocket provider for log streaming"
+            );
             self.ws_client().await?
         } else {
-            info!("Using HTTP provider for log streaming");
+            log_task!(
+                Task::ChainEventListener,
+                Outcome::Started,
+                subject = "provider",
+                transport = "http",
+                "using HTTP provider for log streaming"
+            );
             self.darkpool_client.provider().clone()
         };
 
@@ -153,18 +165,36 @@ impl OnChainEventListenerExecutor {
             .block_number()
             .await
             .map_err(|err| OnChainEventListenerError::Darkpool(err.to_string()))?;
-        info!("Starting on-chain event listener from current block {starting_block_number}");
+        log_task!(
+            Task::ChainEventListener,
+            Outcome::Started,
+            subject = "execute",
+            starting_block = starting_block_number,
+            "starting on-chain event listener"
+        );
 
         // Begin the watch loop
         let res = self.watch_nonces().await.unwrap_err();
-        error!("on-chain event listener stream ended unexpectedly: {res}");
+        log_task!(
+            Task::ChainEventListener,
+            Outcome::Failed,
+            subject = "stream",
+            error = %res,
+            "on-chain event listener stream ended unexpectedly"
+        );
         Err(res)
     }
 
     /// Nonce watch loop
     async fn watch_nonces(&self) -> Result<(), OnChainEventListenerError> {
         // Build a log stream
-        info!("listening for nonce used events");
+        log_task!(
+            Task::ChainEventListener,
+            Outcome::Started,
+            subject = "watch-nonces",
+            gas_sponsor = %self.gas_sponsor_address,
+            "listening for nonce used events"
+        );
         let provider = self.log_provider().await?;
         let filter = Filter::new().address(self.gas_sponsor_address).event(NonceUsed::SIGNATURE);
         let mut stream = provider.subscribe_logs(&filter).await?.into_stream();
@@ -189,11 +219,26 @@ impl OnChainEventListenerExecutor {
     /// Handle a nonce used event
     fn handle_nonce_used(&self, tx: TxHash, nonce: U256) {
         let self_clone = self.clone();
-        info!("handling nonce used event: {nonce}");
+        log_task!(
+            Task::ChainEventListener,
+            Outcome::Started,
+            subject = "nonce-used",
+            nonce = %nonce,
+            tx = %tx,
+            "handling nonce used event"
+        );
         tokio::spawn(async move {
             let res = self_clone.check_external_match_settlement(nonce, tx).await;
             if let Err(e) = res {
-                error!("failed to check external match settlement: {e}");
+                log_task!(
+                    Task::ChainEventListener,
+                    Outcome::Failed,
+                    subject = "settlement-check",
+                    nonce = %nonce,
+                    tx = %tx,
+                    error = %e,
+                    "failed to check external match settlement"
+                );
             }
         });
     }

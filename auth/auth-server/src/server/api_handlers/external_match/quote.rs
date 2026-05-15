@@ -10,12 +10,14 @@ use renegade_constants::{DEFAULT_EXTERNAL_MATCH_RELAYER_FEE, GLOBAL_MATCHING_POO
 use renegade_external_api::http::external_match::{ExternalQuoteRequest, ExternalQuoteResponse};
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
 use warp::reject::Rejection;
 
 use crate::{
     error::AuthServerError,
     http_utils::request_response::overwrite_response_body,
+    log_task,
+    logger::{Outcome, Task},
     server::{
         Server,
         api_handlers::{
@@ -181,7 +183,13 @@ impl Server {
         let ticker = ctx.body.base_ticker()?;
         let should_route_to_global = self.should_route_to_global(ctx.key_id(), &ticker).await?;
         if should_route_to_global {
-            info!("Routing order to global matching pool");
+            log_task!(
+                Task::ExternalMatchQuote,
+                Outcome::Partial,
+                subject = "routing",
+                ticker = %ticker,
+                "routing order to global matching pool (execution costs exceeded)"
+            );
             ctx.body_mut().options.matching_pool = Some(GLOBAL_MATCHING_POOL.to_string());
         }
 
@@ -254,13 +262,25 @@ impl Server {
                 if let Err(e) =
                     server_clone.cache_quote_gas_sponsorship_info(&resp, cached_info).await
                 {
-                    error!("Error caching quote gas sponsorship info: {e}");
+                    log_task!(
+                        Task::GasSponsorship,
+                        Outcome::Failed,
+                        subject = "cache-write",
+                        error = %e,
+                        "error caching quote gas sponsorship info"
+                    );
                 }
             }
 
             // Log the quote response & emit metrics
             if let Err(e) = server_clone.record_quote_metrics_helper(&ctx) {
-                warn!("Error handling quote metrics: {e}");
+                log_task!(
+                    Task::Telemetry,
+                    Outcome::Partial,
+                    subject = "quote-metrics",
+                    error = %e,
+                    "error handling quote metrics"
+                );
             }
         });
     }
@@ -319,7 +339,13 @@ impl Server {
         let self_clone = self.clone();
         tokio::spawn(async move {
             if let Err(e) = self_clone.record_no_quote_found_helper(&ctx).await {
-                error!("Error recording no quote found metrics: {e}");
+                log_task!(
+                    Task::Telemetry,
+                    Outcome::Partial,
+                    subject = "no-quote-metrics",
+                    error = %e,
+                    "error recording no-quote-found metrics"
+                );
             }
         });
     }
@@ -388,17 +414,21 @@ fn log_quote(ctx: &SponsoredQuoteResponseCtx) -> Result<(), AuthServerError> {
         .map(|s| (s.refund_amount, s.refund_native_eth))
         .unwrap_or((0, false));
 
-    info!(
+    log_task!(
+        Task::ExternalMatchQuote,
+        Outcome::Ok,
+        subject = "quote-sent",
         is_sponsored = is_sponsored,
         key_description = key_desc,
-        sdk_version = sdk_version,
-        "Sending quote(is_buy: {is_buy}, receive: {} ({}), send: {} ({}), refund_amount: {} (refund_native_eth: {})) to client",
-        match_result.output_amount,
-        match_result.output_mint,
-        match_result.input_amount,
-        match_result.input_mint,
-        refund_amount,
-        refund_native_eth
+        sdk_version = %sdk_version,
+        is_buy = is_buy,
+        receive_amount = %match_result.output_amount,
+        receive_mint = %match_result.output_mint,
+        send_amount = %match_result.input_amount,
+        send_mint = %match_result.input_mint,
+        refund_amount = refund_amount,
+        refund_native_eth = refund_native_eth,
+        "sending quote to client"
     );
 
     Ok(())
