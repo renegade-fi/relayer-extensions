@@ -510,6 +510,11 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
 /// (`abs`) so that a venue quote that is suspiciously *favorable* against the
 /// reference is also rejected — the reference price itself may be wrong (see
 /// incident 2026-05-08, cbBTC).
+///
+/// The comparison is written `!(abs <= threshold)` rather than `abs >
+/// threshold` so that NaN deviations (from a NaN reference or execution
+/// price) fail closed — every NaN comparison returns false, so `!(NaN <=
+/// threshold)` is true and the gate fires.
 fn compute_price_deviation(
     is_sell: bool,
     quote_price: f64,
@@ -521,7 +526,7 @@ fn compute_price_deviation(
     } else {
         (quote_price - reference_price) / reference_price
     };
-    let exceeds = deviation.abs() > deviation_threshold;
+    let exceeds = !(deviation.abs() <= deviation_threshold);
     (deviation, exceeds)
 }
 
@@ -587,5 +592,36 @@ mod tests {
         let (deviation, exceeds) = compute_price_deviation(true, 79_256.0, 39_837.0, THRESHOLD);
         assert!(exceeds, "incident scenario must be caught by the .abs() check");
         assert!(deviation < -0.9, "expected ≈ -0.989, got {deviation}");
+    }
+
+    #[test]
+    fn nan_reference_fails_closed() {
+        // A NaN reference price (e.g. from a malformed price-reporter response)
+        // must trip the gate. The `!(abs <= threshold)` form is NaN-safe; the
+        // older `abs > threshold` form would return false and let the trade
+        // proceed against an undefined reference.
+        let (_, exceeds_sell) = compute_price_deviation(true, 100.0, f64::NAN, THRESHOLD);
+        let (_, exceeds_buy) = compute_price_deviation(false, 100.0, f64::NAN, THRESHOLD);
+        assert!(exceeds_sell, "NaN reference must trip the gate (sell)");
+        assert!(exceeds_buy, "NaN reference must trip the gate (buy)");
+    }
+
+    #[test]
+    fn nan_quote_fails_closed() {
+        // Symmetric to the above — a NaN venue quote must also trip the gate.
+        let (_, exceeds_sell) = compute_price_deviation(true, f64::NAN, 100.0, THRESHOLD);
+        let (_, exceeds_buy) = compute_price_deviation(false, f64::NAN, 100.0, THRESHOLD);
+        assert!(exceeds_sell);
+        assert!(exceeds_buy);
+    }
+
+    #[test]
+    fn zero_reference_fails_closed() {
+        // A zero reference price (e.g. from a corrupted Coinbase order book
+        // before the 0-price filter fix) produces an infinite deviation,
+        // which the gate must trip.
+        let (deviation, exceeds) = compute_price_deviation(true, 100.0, 0.0, THRESHOLD);
+        assert!(exceeds);
+        assert!(deviation.is_infinite());
     }
 }
