@@ -19,7 +19,8 @@ use itertools::Itertools;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{info, warn};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{
@@ -391,7 +392,14 @@ impl ExecutionVenue for OkxClient {
 
         let tx = self.build_swap_tx(&okx_execution_data).await?;
 
-        info!("Executing {} quote", quote.source);
+        log_task!(
+            Task::SubmitOrder,
+            Outcome::Started,
+            venue = "okx",
+            source = %quote.source,
+            "executing {} quote",
+            quote.source
+        );
 
         match self.send_tx(tx).await {
             Ok(receipt) => {
@@ -406,12 +414,24 @@ impl ExecutionVenue for OkxClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({tx_hash:#x}) reverted");
+                    log_task!(
+                        Task::SubmitOrder,
+                        Outcome::Failed,
+                        venue = "okx",
+                        tx_hash = %format!("{tx_hash:#x}"),
+                        "tx ({tx_hash:#x}) reverted"
+                    );
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },
             Err(e) => {
-                warn!("swap tx failed to send: {e}");
+                log_task!(
+                    Task::SubmitOrder,
+                    Outcome::Failed,
+                    venue = "okx",
+                    error = %e,
+                    "swap tx failed to send: {e}"
+                );
                 Ok(ExecutionResult {
                     buy_amount_actual: U256::ZERO,
                     gas_cost: U256::ZERO,

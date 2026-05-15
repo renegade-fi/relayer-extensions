@@ -7,8 +7,9 @@ use alloy::{providers::DynProvider, signers::local::PrivateKeySigner};
 use alloy_primitives::{Address, U256};
 use price_reporter_client::PriceReporterClient;
 use renegade_common::types::chain::Chain;
-use tracing::warn;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     cli::MaxPriceDeviations,
     execution_client::venues::{
@@ -76,7 +77,13 @@ impl ExecutionClient {
             match OkxClient::new(okx_credentials, base_provider, quoter_hot_wallet, chain).await {
                 Ok(client) => Some(client),
                 Err(e) => {
-                    warn!("OkxClient startup failed, skipping OKX as an execution venue: {e}");
+                    log_task!(
+                        Task::ServiceLifecycle,
+                        Outcome::Partial,
+                        venue = "okx",
+                        error = %e,
+                        "OkxClient startup failed, skipping OKX as an execution venue: {e}"
+                    );
                     None
                 },
             };

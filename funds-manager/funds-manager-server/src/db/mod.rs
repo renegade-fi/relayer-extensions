@@ -9,9 +9,10 @@ use diesel_async::{
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use renegade_util::err_str;
-use tracing::error;
 
 use crate::error::FundsManagerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 pub mod models;
 #[allow(missing_docs)]
@@ -48,7 +49,13 @@ pub async fn establish_connection(db_url: &str) -> Result<AsyncPgConnection, Con
     // Spawn the connection handle in a separate task
     tokio::spawn(async move {
         if let Err(e) = conn.await {
-            error!("Connection error: {}", e);
+            log_task!(
+                Task::Db,
+                Outcome::Failed,
+                error = %e,
+                "postgres connection error: {}",
+                e
+            );
         }
     });
 

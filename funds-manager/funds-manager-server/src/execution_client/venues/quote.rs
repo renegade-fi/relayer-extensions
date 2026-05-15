@@ -8,8 +8,8 @@ use renegade_common::types::{
     chain::Chain,
     token::{Token, USDC_TICKER},
 };
-use tracing::warn;
-
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     execution_client::{
         error::ExecutionClientError,
@@ -234,7 +234,10 @@ impl ExecutableQuote {
             contains_byte_subslice(calldata, darkpool_address.as_slice());
 
         if contains_darkpool_address {
-            warn!(
+            log_task!(
+                Task::FetchQuote,
+                Outcome::Partial,
+                source = %quote.source,
                 "{} quote calldata contains darkpool address, suspected self-trade",
                 quote.source
             );

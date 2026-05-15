@@ -13,8 +13,10 @@ use funds_manager_api::{
 };
 use renegade_common::types::chain::Chain;
 use serde_json::json;
-use tracing::{error, warn};
 use warp::reply::Json;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     custody_client::DepositWithdrawSource, db::models::GasWalletStatus, error::ApiError,
@@ -150,7 +152,12 @@ pub(crate) async fn refill_gas_sponsor_handler(
         match execution_client.multi_swap_into_target_tokens(&tokens_needing_refill).await {
             Ok(outcomes) => outcomes,
             Err(e) => {
-                warn!("multi_swap_into_target_tokens failed, sending existing balances only: {e}");
+                log_task!(
+                    Task::Swap,
+                    Outcome::Partial,
+                    error = %e,
+                    "multi_swap_into_target_tokens failed, sending existing balances only: {e}"
+                );
                 vec![]
             },
         };
@@ -161,13 +168,25 @@ pub(crate) async fn refill_gas_sponsor_handler(
         if let Err(e) =
             custody_client.send_token_to_gas_sponsor(&token, refill_amount, signer.clone()).await
         {
-            error!("Failed to send {ticker} to gas sponsor, skipping: {e}");
+            log_task!(
+                Task::GasSponsorRefill,
+                Outcome::Failed,
+                subject = %ticker,
+                error = %e,
+                "failed to send {ticker} to gas sponsor, skipping: {e}"
+            );
         }
     }
 
     for outcome in swap_outcomes {
         if let Err(e) = metrics_recorder.record_swap_cost(&outcome).await {
-            warn!("Failed to record swap cost metrics: {e}");
+            log_task!(
+                Task::RecordMetric,
+                Outcome::Failed,
+                metric = "swap-cost",
+                error = %e,
+                "failed to record swap cost metrics: {e}"
+            );
         }
     }
 

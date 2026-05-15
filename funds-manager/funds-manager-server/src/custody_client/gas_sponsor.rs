@@ -13,9 +13,9 @@ use renegade_common::types::{
     chain::Chain,
     token::{get_all_tokens, Token, USD_TICKER},
 };
-use tracing::{error, info, warn};
-
 use crate::error::FundsManagerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use super::{CustodyClient, DepositWithdrawSource};
 
@@ -74,14 +74,30 @@ impl CustodyClient {
             let price = match self.price_reporter.get_price(&token.addr, self.chain).await {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("Skipping {ticker} ({}): no price ({e})", token.get_addr());
+                    log_task!(
+                        Task::GasSponsorRefill,
+                        Outcome::Skipped,
+                        subject = %ticker,
+                        addr = %token.get_addr(),
+                        error = %e,
+                        "skipping {ticker} ({}): no price ({e})",
+                        token.get_addr()
+                    );
                     continue;
                 },
             };
             let bal = match self.get_erc20_balance(&token.addr, &gas_sponsor_address).await {
                 Ok(b) => b,
                 Err(e) => {
-                    warn!("Skipping {ticker} ({}): balance lookup failed ({e})", token.get_addr());
+                    log_task!(
+                        Task::GasSponsorRefill,
+                        Outcome::Skipped,
+                        subject = %ticker,
+                        addr = %token.get_addr(),
+                        error = %e,
+                        "skipping {ticker} ({}): balance lookup failed ({e})",
+                        token.get_addr()
+                    );
                     continue;
                 },
             };
@@ -91,7 +107,14 @@ impl CustodyClient {
                 let refill_value = DESIRED_GAS_SPONSORSHIP_RESERVE_VALUE - bal_value;
                 let refill_amount = refill_value / price;
 
-                info!("Gas sponsor needs {refill_amount} (${refill_value}) of {ticker}");
+                log_task!(
+                    Task::GasSponsorRefill,
+                    Outcome::Started,
+                    subject = %ticker,
+                    refill_amount = refill_amount,
+                    refill_value = refill_value,
+                    "gas sponsor needs {refill_amount} (${refill_value}) of {ticker}"
+                );
 
                 tokens.push((token, refill_amount));
             }
@@ -112,10 +135,24 @@ impl CustodyClient {
 
             match self.send_eth_to_gas_sponsor(refill_amount).await {
                 Ok(TransactionReceipt { transaction_hash: tx, .. }) => {
-                    info!("Sent {refill_amount} ETH from hot wallet to gas sponsor in tx {tx:#x}");
+                    log_task!(
+                        Task::GasSponsorRefill,
+                        Outcome::Ok,
+                        subject = "ETH",
+                        refill_amount = refill_amount,
+                        tx_hash = %format!("{tx:#x}"),
+                        "sent {refill_amount} ETH from hot wallet to gas sponsor in tx {tx:#x}"
+                    );
                 },
                 Err(e) => {
-                    error!("Failed to send ETH to gas sponsor, skipping: {e}");
+                    log_task!(
+                        Task::GasSponsorRefill,
+                        Outcome::Failed,
+                        subject = "ETH",
+                        refill_amount = refill_amount,
+                        error = %e,
+                        "failed to send ETH to gas sponsor, skipping: {e}"
+                    );
                 },
             }
         }
@@ -138,7 +175,14 @@ impl CustodyClient {
 
         let send_amount = if bal <= amount {
             let send_amount = bal * MAX_REFILL_REDUCTION_FACTOR;
-            info!("Hot wallet has less than the desired balance of {ticker}, sending {send_amount} {ticker}");
+            log_task!(
+                Task::GasSponsorRefill,
+                Outcome::Partial,
+                subject = %ticker,
+                send_amount = send_amount,
+                hot_wallet_balance = bal,
+                "hot wallet has less than the desired balance of {ticker}, sending {send_amount} {ticker}"
+            );
             send_amount
         } else {
             amount
@@ -157,8 +201,13 @@ impl CustodyClient {
             .erc20_transfer(mint, &self.gas_sponsor_address(), send_amount, quoter_wallet)
             .await?;
 
-        info!(
-            "Sent {send_amount} {ticker} from hot wallet to gas sponsor in tx {:#x}",
+        log_task!(
+            Task::GasSponsorRefill,
+            Outcome::Ok,
+            subject = %ticker,
+            send_amount = send_amount,
+            tx_hash = %format!("{:#x}", receipt.transaction_hash),
+            "sent {send_amount} {ticker} from hot wallet to gas sponsor in tx {:#x}",
             receipt.transaction_hash
         );
 

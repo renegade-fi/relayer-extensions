@@ -11,9 +11,10 @@ use funds_manager_api::{
     quoters::DepositAddressResponse,
 };
 use renegade_common::types::chain::Chain;
-use tracing::{error, info};
 use warp::reply::Json;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{custody_client::DepositWithdrawSource, error::ApiError, server::Server};
 
 /// Handler for indexing fees
@@ -22,13 +23,23 @@ pub(crate) async fn index_fees_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     if server.is_relayer_disabled(&chain) {
-        info!("index_fees: skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS");
+        log_task!(
+            Task::IndexFees,
+            Outcome::Skipped,
+            chain = %chain,
+            "skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS"
+        );
         return Ok(warp::reply::json(&"Fee indexing skipped (chain relayer disabled)"));
     }
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.index_fees().await {
-            error!("Error indexing fees: {e}");
+            log_task!(
+                Task::IndexFees,
+                Outcome::Failed,
+                error = %e,
+                "error indexing fees: {e}"
+            );
         }
     });
 
@@ -41,13 +52,23 @@ pub(crate) async fn redeem_fees_handler(
     server: Arc<Server>,
 ) -> Result<Json, warp::Rejection> {
     if server.is_relayer_disabled(&chain) {
-        info!("redeem_fees: skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS");
+        log_task!(
+            Task::RedeemFees,
+            Outcome::Skipped,
+            chain = %chain,
+            "skipping {chain}; relayer disabled via DISABLED_RELAYER_CHAINS"
+        );
         return Ok(warp::reply::json(&"Fee redemption skipped (chain relayer disabled)"));
     }
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.redeem_fees().await {
-            error!("Error redeeming fees: {e}");
+            log_task!(
+                Task::RedeemFees,
+                Outcome::Failed,
+                error = %e,
+                "error redeeming fees: {e}"
+            );
         }
     });
 
@@ -88,7 +109,12 @@ pub(crate) async fn withdraw_fee_balance_handler(
     let indexer = server.get_fee_indexer(&chain)?;
     tokio::task::spawn(async move {
         if let Err(e) = indexer.withdraw_fee_balance(req.wallet_id, req.mint).await {
-            error!("Error withdrawing fee balance: {e}");
+            log_task!(
+                Task::Withdraw,
+                Outcome::Failed,
+                error = %e,
+                "error withdrawing fee balance: {e}"
+            );
         }
     });
 

@@ -17,7 +17,10 @@ use funds_manager_api::quoters::QuoteParams;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{
@@ -292,7 +295,14 @@ impl ExecutionVenue for LifiClient {
         let resp: LifiQuote = match self.send_get_request(&path).await {
             Ok(resp) => resp,
             Err(e) => {
-                error!("LiFi error with path: {path}: {e}");
+                log_task!(
+                    Task::FetchQuote,
+                    Outcome::Failed,
+                    venue = "lifi",
+                    path = %path,
+                    error = %e,
+                    "LiFi error with path {path}: {e}"
+                );
                 return Err(e);
             },
         };
@@ -315,7 +325,14 @@ impl ExecutionVenue for LifiClient {
 
         let tx = self.build_swap_tx(&lifi_execution_data).await?;
 
-        info!("Executing Lifi quote from {}", lifi_execution_data.tool);
+        log_task!(
+            Task::SubmitOrder,
+            Outcome::Started,
+            venue = "lifi",
+            tool = %lifi_execution_data.tool,
+            "executing Lifi quote from {}",
+            lifi_execution_data.tool
+        );
 
         match self.send_tx(tx).await {
             Ok(receipt) => {
@@ -330,12 +347,24 @@ impl ExecutionVenue for LifiClient {
 
                     Ok(ExecutionResult { buy_amount_actual, gas_cost, tx_hash: Some(tx_hash) })
                 } else {
-                    warn!("tx ({tx_hash:#x}) reverted");
+                    log_task!(
+                        Task::SubmitOrder,
+                        Outcome::Failed,
+                        venue = "lifi",
+                        tx_hash = %format!("{tx_hash:#x}"),
+                        "tx ({tx_hash:#x}) reverted"
+                    );
                     Ok(ExecutionResult { buy_amount_actual: U256::ZERO, gas_cost, tx_hash: None })
                 }
             },
             Err(e) => {
-                warn!("swap tx failed to send: {e}");
+                log_task!(
+                    Task::SubmitOrder,
+                    Outcome::Failed,
+                    venue = "lifi",
+                    error = %e,
+                    "swap tx failed to send: {e}"
+                );
                 Ok(ExecutionResult {
                     buy_amount_actual: U256::ZERO,
                     gas_cost: U256::ZERO,

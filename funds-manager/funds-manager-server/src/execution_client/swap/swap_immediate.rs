@@ -4,7 +4,10 @@ use alloy_primitives::U256;
 use funds_manager_api::{quoters::QuoteParams, u256_try_into_u128};
 use futures::future::join_all;
 use renegade_common::types::token::Token;
-use tracing::{info, instrument, warn};
+use tracing::instrument;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{
@@ -120,17 +123,31 @@ impl ExecutionClient {
                 Err(SwapControlFlow::Error(e)) => return Err(e),
                 Err(SwapControlFlow::IncreasePriceDeviation) => {
                     max_price_deviation_multiplier += PRICE_DEVIATION_INCREASE;
-                    info!(
-                        "Increasing price deviation tolerance to {max_price_deviation_multiplier}x"
+                    log_task!(
+                        Task::Swap,
+                        Outcome::Retrying,
+                        multiplier = max_price_deviation_multiplier,
+                        "increasing price deviation tolerance to {max_price_deviation_multiplier}x"
                     );
 
                     if max_price_deviation_multiplier > MAX_PRICE_DEVIATION_INCREASE {
-                        warn!("Price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)");
+                        log_task!(
+                            Task::Swap,
+                            Outcome::Failed,
+                            multiplier = max_price_deviation_multiplier,
+                            max_multiplier = MAX_PRICE_DEVIATION_INCREASE,
+                            "price deviation tolerance exceeds maximum increase ({MAX_PRICE_DEVIATION_INCREASE}x)"
+                        );
                         return Ok(None);
                     }
                 },
                 Err(SwapControlFlow::DecreaseSwapSize { gas_cost }) => {
-                    info!("Decreasing swap size by {SWAP_DECAY_FACTOR}x");
+                    log_task!(
+                        Task::Swap,
+                        Outcome::Retrying,
+                        decay_factor = %SWAP_DECAY_FACTOR,
+                        "decreasing swap size by {SWAP_DECAY_FACTOR}x"
+                    );
                     params.from_amount /= SWAP_DECAY_FACTOR;
                     cumulative_gas_cost += gas_cost;
 
@@ -183,7 +200,7 @@ impl ExecutionClient {
 
         let maybe_executable_quote = self.fetch_best_quote(params, excluded_quote_sources).await?;
         if maybe_executable_quote.is_none() {
-            warn!("No quote found for swap");
+            log_task!(Task::FetchQuote, Outcome::Failed, "no quote found for swap");
             return Err(SwapControlFlow::NoSwap);
         }
 
@@ -207,13 +224,23 @@ impl ExecutionClient {
     /// for execution
     async fn can_execute_swap(&self, params: &QuoteParams) -> Result<bool, ExecutionClientError> {
         if !self.has_sufficient_balance(params).await? {
-            warn!("Hot wallet does not have sufficient balance to cover swap");
+            log_task!(
+                Task::Swap,
+                Outcome::Skipped,
+                "hot wallet does not have sufficient balance to cover swap"
+            );
             return Ok(false);
         }
 
         let expected_quote_amount = self.get_expected_quote_amount(params).await?;
         if expected_quote_amount < MIN_SWAP_QUOTE_AMOUNT {
-            warn!("Expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})");
+            log_task!(
+                Task::Swap,
+                Outcome::Skipped,
+                expected_amount = expected_quote_amount,
+                min_amount = MIN_SWAP_QUOTE_AMOUNT,
+                "expected swap amount of {expected_quote_amount} USDC is less than minimum swap amount ({MIN_SWAP_QUOTE_AMOUNT})"
+            );
             return Ok(false);
         }
 
@@ -296,7 +323,13 @@ impl ExecutionClient {
         for (venue, quotes_res) in quote_results {
             if let Err(e) = quotes_res {
                 let venue_specifier = venue.venue_specifier();
-                warn!("Error getting quote from {venue_specifier}: {e}");
+                log_task!(
+                    Task::FetchQuote,
+                    Outcome::Partial,
+                    venue = %venue_specifier,
+                    error = %e,
+                    "error getting quote from {venue_specifier}: {e}"
+                );
                 continue;
             }
 
@@ -318,7 +351,14 @@ impl ExecutionClient {
             let is_sell = quote.quote.is_sell();
             let quote_source = &quote.quote.source;
 
-            info!("{quote_source} quote price: {quote_price} (is_sell: {is_sell})");
+            log_task!(
+                Task::FetchQuote,
+                Outcome::Ok,
+                source = %quote_source,
+                quote_price = quote_price,
+                is_sell = is_sell,
+                "{quote_source} quote price: {quote_price} (is_sell: {is_sell})"
+            );
 
             if maybe_best_quote.is_none() {
                 maybe_best_quote = Some(quote);
@@ -382,12 +422,14 @@ impl ExecutionClient {
 
         let exceeds_max_deviation = deviation > deviation_threshold;
         if exceeds_max_deviation {
-            warn!(
-                quote_price,
-                renegade_price,
-                deviation,
-                deviation_threshold,
-                "Quote deviates too far from the Renegade price"
+            log_task!(
+                Task::FetchQuote,
+                Outcome::Partial,
+                quote_price = quote_price,
+                renegade_price = renegade_price,
+                deviation = deviation,
+                deviation_threshold = deviation_threshold,
+                "quote deviates too far from the Renegade price"
             );
         }
 

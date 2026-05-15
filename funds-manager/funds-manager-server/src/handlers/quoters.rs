@@ -6,8 +6,10 @@ use funds_manager_api::quoters::{
     DepositAddressResponse, WithdrawFundsRequest, WithdrawToHyperliquidRequest,
 };
 use renegade_common::types::chain::Chain;
-use tracing::warn;
 use warp::reply::Json;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::{
     cli::Environment, custody_client::DepositWithdrawSource, error::ApiError, server::Server,
@@ -47,7 +49,14 @@ pub(crate) async fn quoter_withdraw_handler(
             }
         },
         Err(e) => {
-            warn!("Error getting price for {}, allowing withdrawal: {e}", withdraw_request.mint);
+            log_task!(
+                Task::Withdraw,
+                Outcome::Partial,
+                subject = %withdraw_request.mint,
+                error = %e,
+                "error getting price for {}, allowing withdrawal: {e}",
+                withdraw_request.mint
+            );
         },
     }
 

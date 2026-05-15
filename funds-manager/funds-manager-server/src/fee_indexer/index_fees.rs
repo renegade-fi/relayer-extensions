@@ -23,7 +23,8 @@ use renegade_darkpool_client::{
 };
 use renegade_solidity_abi::v1::IDarkpool::settleOfflineFeeCall as BaseSettleOfflineFeeCall;
 use renegade_util::err_str;
-use tracing::{info, warn};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use crate::db::models::NewFee;
 use crate::error::FundsManagerError;
@@ -75,7 +76,13 @@ impl Indexer {
         start_block: u64,
         end_block: u64,
     ) -> Result<(), FundsManagerError> {
-        info!("indexing fees from blocks {start_block} to {end_block}");
+        log_task!(
+            Task::IndexFees,
+            Outcome::Started,
+            start_block = start_block,
+            end_block = end_block,
+            "indexing fees from blocks {start_block} to {end_block}"
+        );
 
         let filter = self
             .darkpool_client
@@ -116,11 +123,21 @@ impl Indexer {
         let note = match maybe_note {
             Some(note) => note,
             None => {
-                info!("not the note receiver, skipping...");
+                log_task!(
+                    Task::IndexFees,
+                    Outcome::Skipped,
+                    subject = %tx,
+                    "not the note receiver, skipping"
+                );
                 return Ok(());
             },
         };
-        info!("indexing note from tx: {tx}");
+        log_task!(
+            Task::IndexFees,
+            Outcome::Started,
+            subject = %tx,
+            "indexing note from tx: {tx}"
+        );
 
         // Check that the note's nullifier has not been spent
         let nullifier = note.nullifier();
@@ -130,7 +147,12 @@ impl Indexer {
             .await
             .map_err(|_| FundsManagerError::db("failed to check nullifier"))?
         {
-            info!("note nullifier already spent, skipping");
+            log_task!(
+                Task::IndexFees,
+                Outcome::Skipped,
+                subject = %tx,
+                "note nullifier already spent, skipping"
+            );
             return Ok(());
         }
 
@@ -208,7 +230,11 @@ impl Indexer {
         note_comm: NoteCommitment,
     ) -> Option<Note> {
         if !note.is_valid_ciphertext() {
-            warn!("invalid note ciphertext, skipping decryption...");
+            log_task!(
+                Task::IndexFees,
+                Outcome::Skipped,
+                "invalid note ciphertext, skipping decryption"
+            );
             return None;
         }
 

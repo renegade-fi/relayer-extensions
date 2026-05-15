@@ -10,9 +10,10 @@ use renegade_common::types::{
 };
 use renegade_darkpool_client::conversion::u256_to_amount;
 use serde::Serialize;
-use tracing::{info, warn};
 
 use super::MetricsRecorder;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     error::FundsManagerError,
     execution_client::{swap::DecayingSwapOutcome, venues::quote::ExecutionQuote},
@@ -81,7 +82,13 @@ impl MetricsRecorder {
         let cost_data = match self.build_swap_cost_data(swap_outcome).await {
             Ok(cost_data) => cost_data,
             Err(e) => {
-                warn!("Failed to build swap cost data: {e}");
+                log_task!(
+                    Task::RecordMetric,
+                    Outcome::Failed,
+                    metric = "swap-cost",
+                    error = %e,
+                    "failed to build swap cost data: {e}"
+                );
                 return Err(e);
             },
         };
@@ -275,7 +282,11 @@ impl MetricsRecorder {
 
     /// Log swap cost data in a Datadog-compatible format
     fn log_swap_cost_data(&self, cost_data: &SwapExecutionData, tx_hash: TxHash) {
-        info!(
+        log_task!(
+            Task::RecordMetric,
+            Outcome::Ok,
+            metric = "swap-cost",
+            subject = %format!("{tx_hash:#x}"),
             buy_token_address = %cost_data.buy_token_address,
             sell_token_address = %cost_data.sell_token_address,
             sell_amount = %cost_data.sell_amount,
@@ -293,6 +304,7 @@ impl MetricsRecorder {
             received_delta = %cost_data.received_delta,
             chain = %to_env_agnostic_name(self.chain),
             venue = %cost_data.venue,
-            "Swap recorded for tx {tx_hash:#x}");
+            "swap recorded for tx {tx_hash:#x}"
+        );
     }
 }

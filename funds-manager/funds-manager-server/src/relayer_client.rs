@@ -33,9 +33,10 @@ use renegade_crypto::fields::scalar_to_biguint;
 use renegade_util::{err_str, get_current_time_millis};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 use uuid::Uuid;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{error::FundsManagerError, helpers::convert_headers};
 
 /// The interval at which to poll relayer task status
@@ -78,7 +79,13 @@ impl RelayerClient {
         match self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await {
             Ok(resp) => Ok(resp),
             Err(err) => {
-                warn!("Failed to get wallet {wallet_id} from relayer: {err}");
+                log_task!(
+                    Task::FetchRelayerWallet,
+                    Outcome::Retrying,
+                    subject = %wallet_id,
+                    error = %err,
+                    "failed to get wallet {wallet_id} from relayer: {err}; will look up and retry"
+                );
                 self.lookup_wallet(eth_key, keychain).await?;
                 self.get_relayer_with_auth::<GetWalletResponse>(&path, &wallet_key).await
             },

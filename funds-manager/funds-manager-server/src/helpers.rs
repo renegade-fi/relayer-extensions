@@ -25,8 +25,10 @@ use renegade_common::types::chain::Chain;
 use renegade_util::{err_str, telemetry::helpers::backfill_trace_field};
 use reqwest::Response;
 use serde::Deserialize;
-use tracing::{error, info, instrument};
+use tracing::instrument;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{cli::Environment, error::FundsManagerError};
 
 /// An annotated constant used to indicate that two confirmations are
@@ -208,7 +210,12 @@ pub(crate) async fn approve_erc20_allowance(
         erc20.allowance(owner, spender).call().await.map_err(FundsManagerError::on_chain)?;
 
     if allowance >= amount {
-        info!("Already approved erc20 allowance for {spender:#x}");
+        log_task!(
+            Task::Erc20Approve,
+            Outcome::Skipped,
+            subject = %format!("{spender:#x}"),
+            "erc20 allowance already approved for {spender:#x}"
+        );
         return Ok(());
     }
 
@@ -217,7 +224,14 @@ pub(crate) async fn approve_erc20_allowance(
     let tx = erc20.approve(spender, approval_amount).into_transaction_request();
     let receipt = send_tx_with_retry(tx, &rpc_provider, TWO_CONFIRMATIONS).await?;
 
-    info!("Approved erc20 allowance at: {:#x}", receipt.transaction_hash);
+    log_task!(
+        Task::Erc20Approve,
+        Outcome::Ok,
+        subject = %format!("{spender:#x}"),
+        tx_hash = %format!("{:#x}", receipt.transaction_hash),
+        "approved erc20 allowance for {spender:#x} (tx {:#x})",
+        receipt.transaction_hash
+    );
     Ok(())
 }
 
@@ -483,7 +497,13 @@ pub async fn handle_http_response<Res: for<'de> Deserialize<'de>>(
     if !status.is_success() {
         let body = response.text().await?;
         let msg = format!("Unexpected status code: {status}\nbody: {body}");
-        error!(msg);
+        log_task!(
+            Task::HandleHttpRequest,
+            Outcome::Failed,
+            status = %status,
+            "{}",
+            msg
+        );
         return Err(FundsManagerError::http(msg));
     }
 

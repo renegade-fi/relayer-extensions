@@ -13,7 +13,9 @@ use fireblocks_sdk::{
     },
 };
 use serde_json::Value;
-use tracing::error;
+
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 // Note: We deliberately use the Ethers implementation of EIP-712 TypedData
 // rather than Alloy's, because Alloy will fail to deserialize TypedData which
@@ -158,9 +160,19 @@ impl CustodyClient {
 
         let tx = self.poll_fireblocks_transaction(&tx_resp.id).await?;
         if tx.status != TransactionStatus::Completed {
-            let err_msg = format!("Typed data signature request unsuccessful: {}", tx.status);
-            error!("{err_msg}");
-            return Err(FundsManagerError::fireblocks(err_msg).into());
+            log_task!(
+                Task::SignRpc,
+                Outcome::Failed,
+                tx_id = %tx_resp.id,
+                tx_status = ?tx.status,
+                "typed data signature request unsuccessful: {}",
+                tx.status
+            );
+            return Err(FundsManagerError::fireblocks(format!(
+                "Typed data signature request unsuccessful: {}",
+                tx.status
+            ))
+            .into());
         }
 
         let signature = tx
@@ -306,7 +318,13 @@ fn parse_sign_typed_data_params(mut params: Value) -> FundsManagerRpcResult<(Str
     let raw_data_str = serde_json::to_string(&raw_data).expect("Failed to re-serialize typed data");
 
     let typed_data: TypedData = serde_json::from_value(raw_data).map_err(|err| {
-        error!("Failed to deserialize typed data: {}", err);
+        log_task!(
+            Task::HandleRpcRequest,
+            Outcome::Failed,
+            error = %err,
+            "failed to deserialize typed data: {}",
+            err
+        );
         RpcError::deser_err(err, raw_data_str)
     })?;
 

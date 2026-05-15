@@ -8,8 +8,8 @@ use funds_manager_api::{
     u256_try_into_u128,
 };
 use renegade_common::types::token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
-use tracing::{info, warn};
-
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::execution_client::{
     error::ExecutionClientError,
     swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
@@ -68,7 +68,14 @@ impl ExecutionClient {
 
         if current_balance >= target_amount {
             let ticker = target_token.get_ticker().unwrap_or(target_token.get_addr());
-            info!("Current {ticker} balance ({current_balance}) is greater than target amount ({target_amount}), skipping swaps");
+            log_task!(
+                Task::Swap,
+                Outcome::Skipped,
+                subject = %ticker,
+                current_balance = current_balance,
+                target_amount = target_amount,
+                "current {ticker} balance ({current_balance}) is greater than target amount ({target_amount}), skipping swaps"
+            );
             return Ok(vec![]);
         }
 
@@ -78,7 +85,13 @@ impl ExecutionClient {
 
         // Check that the amount to cover is greater than the minimum swap amount
         if amount_to_cover_usdc < MIN_SWAP_QUOTE_AMOUNT {
-            info!("Target token value to cover (${amount_to_cover_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), skipping swaps");
+            log_task!(
+                Task::Swap,
+                Outcome::Skipped,
+                amount_to_cover_usdc = amount_to_cover_usdc,
+                min_amount = MIN_SWAP_QUOTE_AMOUNT,
+                "target token value to cover (${amount_to_cover_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), skipping swaps"
+            );
             return Ok(vec![]);
         }
 
@@ -126,8 +139,19 @@ impl ExecutionClient {
             let ticker = token.get_ticker().unwrap_or(token.get_addr());
             match self.buy_token_dollar_amount(token, purchase_value * SWAP_TO_COVER_BUFFER).await {
                 Ok(Some(outcome)) => swap_outcomes.push(outcome),
-                Ok(None) => warn!("No swap executed for {ticker}"),
-                Err(e) => warn!("Error swapping into {ticker}: {e}"),
+                Ok(None) => log_task!(
+                    Task::Swap,
+                    Outcome::Skipped,
+                    subject = %ticker,
+                    "no swap executed for {ticker}"
+                ),
+                Err(e) => log_task!(
+                    Task::Swap,
+                    Outcome::Failed,
+                    subject = %ticker,
+                    error = %e,
+                    "error swapping into {ticker}: {e}"
+                ),
             }
         }
 
@@ -157,12 +181,25 @@ impl ExecutionClient {
         // We increase the amount to cover by a fixed buffer to account for drift
         // in the prices sampled when getting swap candidates
         let mut remaining_amount_usdc = amount_to_cover_usdc * SWAP_TO_COVER_BUFFER;
-        info!("Need to cover ${amount_to_cover_usdc} {target_ticker}, purchasing ${remaining_amount_usdc}");
+        log_task!(
+            Task::Swap,
+            Outcome::Started,
+            subject = %target_ticker,
+            amount_to_cover_usdc = amount_to_cover_usdc,
+            remaining_amount_usdc = remaining_amount_usdc,
+            "need to cover ${amount_to_cover_usdc} {target_ticker}, purchasing ${remaining_amount_usdc}"
+        );
 
         let mut outcomes = vec![];
         for candidate in swap_candidates {
             if remaining_amount_usdc < MIN_SWAP_QUOTE_AMOUNT {
-                info!("Remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps");
+                log_task!(
+                    Task::Swap,
+                    Outcome::Ok,
+                    remaining_amount_usdc = remaining_amount_usdc,
+                    min_amount = MIN_SWAP_QUOTE_AMOUNT,
+                    "remaining amount to cover (${remaining_amount_usdc}) is less than minimum swap amount (${MIN_SWAP_QUOTE_AMOUNT}), stopping swaps"
+                );
                 break;
             }
 
@@ -191,7 +228,15 @@ impl ExecutionClient {
 
             outcomes.push(swap_outcome);
 
-            info!("Swapped {sell_amount} {ticker} for {buy_amount_decimal} {target_ticker}");
+            log_task!(
+                Task::Swap,
+                Outcome::Ok,
+                subject = %target_ticker,
+                from_ticker = %ticker,
+                sell_amount = sell_amount,
+                buy_amount = buy_amount_decimal,
+                "swapped {sell_amount} {ticker} for {buy_amount_decimal} {target_ticker}"
+            );
 
             remaining_amount_usdc -= buy_amount_decimal;
         }
@@ -311,7 +356,11 @@ impl ExecutionClient {
         let usdc_target_balance = purchase_values.iter().map(|(_, value)| value).sum();
 
         if usdc_target_balance == 0.0 {
-            info!("No purchases needed, skipping swap into USDC");
+            log_task!(
+                Task::Swap,
+                Outcome::Skipped,
+                "no purchases needed, skipping swap into USDC"
+            );
             return Ok(vec![]);
         }
 
@@ -327,7 +376,13 @@ impl ExecutionClient {
             exclude_tokens,
         };
 
-        info!("Buying into {usdc_target_balance} USDC to cover multi-swap purchases");
+        log_task!(
+            Task::Swap,
+            Outcome::Started,
+            subject = "USDC",
+            usdc_target_balance = usdc_target_balance,
+            "buying into {usdc_target_balance} USDC to cover multi-swap purchases"
+        );
 
         self.try_swap_into_target_token(swap_request).await
     }
@@ -339,7 +394,13 @@ impl ExecutionClient {
         purchase_value: f64,
     ) -> Result<Option<DecayingSwapOutcome>, ExecutionClientError> {
         let ticker = token.get_ticker().unwrap_or(token.get_addr());
-        info!("Buying ${purchase_value} of {ticker}");
+        log_task!(
+            Task::Swap,
+            Outcome::Started,
+            subject = %ticker,
+            purchase_value = purchase_value,
+            "buying ${purchase_value} of {ticker}"
+        );
 
         let usdc_token = Token::from_ticker_on_chain(USDC_TICKER, self.chain);
         let from_amount_u128 = usdc_token.convert_from_decimal(purchase_value);
