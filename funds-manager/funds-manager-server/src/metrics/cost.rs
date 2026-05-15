@@ -340,7 +340,8 @@ impl MetricsRecorder {
 /// series. The `!(<=)` form handles NaN correctly because all NaN
 /// comparisons return false.
 fn execution_cost_metric_name(relative_spread: f64) -> &'static str {
-    if !(relative_spread.abs() <= OUTLIER_RELATIVE_SPREAD_THRESHOLD) {
+    let abs_spread = relative_spread.abs();
+    if !abs_spread.is_finite() || abs_spread > OUTLIER_RELATIVE_SPREAD_THRESHOLD {
         SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME
     } else {
         SWAP_EXECUTION_COST_METRIC_NAME

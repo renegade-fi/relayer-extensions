@@ -72,11 +72,12 @@ impl CoinbaseOrderBookData {
 
     /// Add a bid at the given price level.
     ///
-    /// Non-positive prices are silently rejected: a zero or negative bid in
-    /// the book would skew `midpoint` toward `best_offer / 2`. A real Coinbase
-    /// feed never emits these, but partial-book / reset edge cases can.
+    /// Non-finite and non-positive prices are silently rejected: a zero or
+    /// negative bid would skew `midpoint` toward `best_offer / 2`, and a
+    /// NaN/Inf bid would corrupt the book entirely. A real Coinbase feed
+    /// never emits these, but partial-book / reset edge cases can.
     pub fn add_bid(&self, price_level: f64) {
-        if !(price_level > 0.0) {
+        if !price_level.is_finite() || price_level <= 0.0 {
             return;
         }
         if let Ok(price_notnan) = NotNan::new(price_level) {
@@ -86,12 +87,13 @@ impl CoinbaseOrderBookData {
 
     /// Add an offer at the given price level.
     ///
-    /// Non-positive prices are silently rejected: a zero or negative offer
-    /// becomes the new `best_offer` and pulls `midpoint` to `best_bid / 2`.
-    /// This is the failure mode behind the cbBTC pricing incident on
-    /// 2026-05-08 ~07:10 UTC.
+    /// Non-finite and non-positive prices are silently rejected: a zero or
+    /// negative offer becomes the new `best_offer` and pulls `midpoint` to
+    /// `best_bid / 2`. This is the failure mode behind the cbBTC pricing
+    /// incident on 2026-05-08 ~07:10 UTC. NaN/Inf would corrupt the book
+    /// entirely.
     pub fn add_offer(&self, price_level: f64) {
-        if !(price_level > 0.0) {
+        if !price_level.is_finite() || price_level <= 0.0 {
             return;
         }
         if let Ok(price_notnan) = NotNan::new(price_level) {

@@ -511,10 +511,9 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
 /// reference is also rejected — the reference price itself may be wrong (see
 /// incident 2026-05-08, cbBTC).
 ///
-/// The comparison is written `!(abs <= threshold)` rather than `abs >
-/// threshold` so that NaN deviations (from a NaN reference or execution
-/// price) fail closed — every NaN comparison returns false, so `!(NaN <=
-/// threshold)` is true and the gate fires.
+/// The check fails closed for non-finite deviations: a NaN reference or
+/// quote price, or a zero reference, produces a NaN/inf deviation that is
+/// treated as exceeding the threshold rather than passing it.
 fn compute_price_deviation(
     is_sell: bool,
     quote_price: f64,
@@ -526,7 +525,8 @@ fn compute_price_deviation(
     } else {
         (quote_price - reference_price) / reference_price
     };
-    let exceeds = !(deviation.abs() <= deviation_threshold);
+    let abs_dev = deviation.abs();
+    let exceeds = !abs_dev.is_finite() || abs_dev > deviation_threshold;
     (deviation, exceeds)
 }
 
