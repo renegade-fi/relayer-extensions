@@ -48,24 +48,25 @@ pub fn should_use_malleable_calldata(query_str: &str) -> bool {
 }
 
 /// Parse query string into `RfqtLevelsQueryParams` with validation against
-/// server chain
+/// server chain.
+///
+/// Accepts the standard URL-form shape `chainId=<u64>` (camelCase via the
+/// `RfqtLevelsQueryParams` derive). An empty query string deserializes to a
+/// default with `chain_id = None`, which skips the chain validation — 0x's
+/// router probes `GET /rfqt/v3/levels` without query params for the bare
+/// market list.
 pub fn parse_levels_query_params(
     query_str: &str,
     server_chain: Chain,
 ) -> Result<RfqtLevelsQueryParams, AuthServerError> {
-    if query_str.is_empty() {
-        return Ok(RfqtLevelsQueryParams::default());
-    }
-
-    // Parse chain ID, return bad request on failure
-    let chain_id = query_str
-        .parse::<u64>()
+    let params: RfqtLevelsQueryParams = serde_urlencoded::from_str(query_str)
         .map_err(|_| AuthServerError::bad_request("Invalid chain ID format"))?;
 
-    // Validate chain ID matches server chain
-    validate_chain_id(chain_id, server_chain)?;
+    if let Some(chain_id) = params.chain_id {
+        validate_chain_id(chain_id, server_chain)?;
+    }
 
-    Ok(RfqtLevelsQueryParams { chain_id: Some(chain_id) })
+    Ok(params)
 }
 
 /// Validate that the provided chain ID matches the server's configured chain
@@ -489,20 +490,46 @@ mod tests {
 
     #[test]
     fn parse_levels_query_params_matching_chain_accepted() {
-        let p = parse_levels_query_params("42161", Chain::ArbitrumOne).unwrap();
+        let p = parse_levels_query_params("chainId=42161", Chain::ArbitrumOne).unwrap();
         assert_eq!(p.chain_id, Some(42161));
     }
 
     #[test]
     fn parse_levels_query_params_mismatched_chain_rejected() {
-        let err = parse_levels_query_params("1", Chain::ArbitrumOne).unwrap_err();
+        let err = parse_levels_query_params("chainId=1", Chain::ArbitrumOne).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("Chain ID mismatch"), "unexpected error: {msg}");
     }
 
     #[test]
     fn parse_levels_query_params_malformed_rejected() {
-        let err = parse_levels_query_params("not-a-number", Chain::ArbitrumOne).unwrap_err();
+        let err =
+            parse_levels_query_params("chainId=not-a-number", Chain::ArbitrumOne).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("Invalid chain ID"), "unexpected error: {msg}");
+    }
+
+    /// Lenient parsing: any input that does not bind the `chainId` key (bare
+    /// values, unrelated keys) is treated as "no chain id provided" and
+    /// passes through validation. 0x's bare-list probe relies on this — it
+    /// requests `GET /rfqt/v3/levels` without query params and expects 200.
+    /// Documenting the shape so a future tightening doesn't break that
+    /// contract silently.
+    #[test]
+    fn parse_levels_query_params_non_keyed_inputs_treated_as_no_chain_id() {
+        for query in ["42161", "foo=bar"] {
+            let p = parse_levels_query_params(query, Chain::ArbitrumOne)
+                .unwrap_or_else(|e| panic!("query {query:?} unexpectedly rejected: {e:?}"));
+            assert!(p.chain_id.is_none(), "query {query:?} unexpectedly bound chain_id");
+        }
+    }
+
+    /// 0x router occasionally probes with `?chainId=` (empty value). That is
+    /// not a valid u64 and must surface a 400 rather than being treated as
+    /// "no chain id".
+    #[test]
+    fn parse_levels_query_params_empty_value_rejected() {
+        let err = parse_levels_query_params("chainId=", Chain::ArbitrumOne).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("Invalid chain ID"), "unexpected error: {msg}");
     }
