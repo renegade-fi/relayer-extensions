@@ -1,6 +1,9 @@
 //! Withdrawal methods for custodied funds
 use std::str::FromStr;
 
+use super::{CustodyClient, DepositWithdrawSource};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::{
     error::FundsManagerError,
     helpers::{get_secret, round_up},
@@ -17,9 +20,6 @@ use renegade_common::types::{
     chain::Chain,
     token::{Token, USDC_TICKER},
 };
-use super::{CustodyClient, DepositWithdrawSource};
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 // -------------
 // | Constants |

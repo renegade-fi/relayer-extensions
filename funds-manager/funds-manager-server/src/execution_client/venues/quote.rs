@@ -2,12 +2,6 @@
 
 use std::fmt::Display;
 
-use alloy_primitives::U256;
-use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
-use renegade_common::types::{
-    chain::Chain,
-    token::{Token, USDC_TICKER},
-};
 use crate::log_task;
 use crate::logger::{Outcome, Task};
 use crate::{
@@ -19,6 +13,12 @@ use crate::{
         },
     },
     helpers::{contains_byte_subslice, get_darkpool_address, to_chain_id},
+};
+use alloy_primitives::U256;
+use funds_manager_api::{quoters::ApiExecutionQuote, u256_try_into_u128};
+use renegade_common::types::{
+    chain::Chain,
+    token::{Token, USDC_TICKER},
 };
 
 /// The basic information included in an execution quote,

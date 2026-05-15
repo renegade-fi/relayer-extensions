@@ -57,7 +57,6 @@ use warp::Filter;
 
 use crate::custody_client::CustodyClient;
 use crate::error::ApiError;
-use crate::logger::{install_panic_hook, Outcome, Task};
 use crate::handlers::fee_indexing::{
     get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_unredeemed_fee_totals_handler,
     index_fees_handler, redeem_fees_handler, withdraw_fee_balance_handler,
@@ -76,6 +75,7 @@ use crate::handlers::swap::{swap_immediate_handler, swap_into_target_token_handl
 use crate::handlers::vaults::{
     get_vault_balances_handler, transfer_to_vault_handler, withdraw_from_vault_handler,
 };
+use crate::logger::{install_panic_hook, Outcome, Task};
 
 // -------
 // | Cli |
@@ -134,7 +134,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
                 "server built; chain clients and price reporter initialized"
             );
             server
-        }
+        },
         Err(e) => {
             log_task!(
                 Task::ServiceLifecycle,
@@ -143,7 +143,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
                 "server build failed"
             );
             return Err(e);
-        }
+        },
     };
 
     // ----------
@@ -462,11 +462,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
 
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 
-    log_task!(
-        Task::ServiceLifecycle,
-        Outcome::Ok,
-        "funds-manager warp server exited cleanly"
-    );
+    log_task!(Task::ServiceLifecycle, Outcome::Ok, "funds-manager warp server exited cleanly");
 
     Ok(())
 }
@@ -485,13 +481,7 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             ApiError::BadRequest(msg) => (warp::http::StatusCode::BAD_REQUEST, msg),
             ApiError::Unauthenticated(msg) => (warp::http::StatusCode::UNAUTHORIZED, msg),
         };
-        log_task!(
-            Task::HandleRejection,
-            Outcome::Failed,
-            code = code.as_u16(),
-            "{:?}",
-            api_error
-        );
+        log_task!(Task::HandleRejection, Outcome::Failed, code = code.as_u16(), "{:?}", api_error);
         Ok(warp::reply::with_status(message.clone(), code))
     } else {
         Err(err)

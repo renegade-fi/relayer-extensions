@@ -2,6 +2,8 @@
 
 use std::{collections::HashMap, iter, str::FromStr};
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy::{
     eips::BlockId,
     network::TransactionBuilder,
@@ -19,8 +21,6 @@ use itertools::Itertools;
 use renegade_common::types::chain::Chain;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::{
     execution_client::{

@@ -2,19 +2,19 @@
 
 use std::{cmp::Ordering, iter};
 
+use crate::execution_client::{
+    error::ExecutionClientError,
+    swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
+    ExecutionClient,
+};
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy_primitives::{Address, U256};
 use funds_manager_api::{
     quoters::{QuoteParams, SwapIntoTargetTokenRequest},
     u256_try_into_u128,
 };
 use renegade_common::types::token::{get_all_tokens, Token, USDC_TICKER, USD_TICKER};
-use crate::log_task;
-use crate::logger::{Outcome, Task};
-use crate::execution_client::{
-    error::ExecutionClientError,
-    swap::{DecayingSwapOutcome, MIN_SWAP_QUOTE_AMOUNT},
-    ExecutionClient,
-};
 
 // -------------
 // | Constants |
@@ -356,11 +356,7 @@ impl ExecutionClient {
         let usdc_target_balance = purchase_values.iter().map(|(_, value)| value).sum();
 
         if usdc_target_balance == 0.0 {
-            log_task!(
-                Task::Swap,
-                Outcome::Skipped,
-                "no purchases needed, skipping swap into USDC"
-            );
+            log_task!(Task::Swap, Outcome::Skipped, "no purchases needed, skipping swap into USDC");
             return Ok(vec![]);
         }
 

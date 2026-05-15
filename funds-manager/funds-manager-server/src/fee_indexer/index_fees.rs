@@ -1,6 +1,8 @@
 //! Phase one of the sweeper's execution; index all fees since the last
 //! consistent block
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy::consensus::constants::SELECTOR_LEN;
 use alloy::consensus::Transaction;
 use alloy::providers::Provider;
@@ -23,8 +25,6 @@ use renegade_darkpool_client::{
 };
 use renegade_solidity_abi::v1::IDarkpool::settleOfflineFeeCall as BaseSettleOfflineFeeCall;
 use renegade_util::err_str;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::db::models::NewFee;
 use crate::error::FundsManagerError;

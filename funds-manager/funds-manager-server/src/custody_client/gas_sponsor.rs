@@ -1,5 +1,8 @@
 //! Handlers for gas sponsor operations
 
+use crate::error::FundsManagerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy::{
     eips::BlockId,
     network::TransactionBuilder,
@@ -13,9 +16,6 @@ use renegade_common::types::{
     chain::Chain,
     token::{get_all_tokens, Token, USD_TICKER},
 };
-use crate::error::FundsManagerError;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use super::{CustodyClient, DepositWithdrawSource};
 

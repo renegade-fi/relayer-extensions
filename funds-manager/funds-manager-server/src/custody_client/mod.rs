@@ -10,6 +10,8 @@ pub mod rpc_shim;
 pub mod vaults;
 pub mod withdraw;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy::{
     network::TransactionBuilder,
     providers::{DynProvider, Provider},
@@ -34,8 +36,6 @@ use renegade_common::types::chain::Chain;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str::FromStr, time::Instant};
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::{
     custody_client::fireblocks_client::FireblocksClient,
@@ -329,7 +329,7 @@ impl CustodyClient {
                         transaction_id,
                         e
                     );
-                }
+                },
             }
 
             if Instant::now() >= deadline {

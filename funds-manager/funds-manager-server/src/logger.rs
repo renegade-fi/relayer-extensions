@@ -12,17 +12,17 @@
 //! [<task>] [<outcome>] <description>  (+ structured fields)
 //! ```
 //!
-//! - **Task** is a closed enum of operations funds-manager performs. New
-//!   tasks must be added to [`Task`] before use; the closed vocabulary is
-//!   what makes `@task:X` aggregations reliable.
-//! - **Outcome** is closed too: `started | ok | skipped | partial |
-//!   retrying | failed`. The outcome picks the underlying tracing level
-//!   (info/warn/error) so callers do not need to think about it.
-//! - **Description** is the human-readable detail. Any number of
-//!   structured fields can be passed before the description as
-//!   `key = value`. Reserve the field name `subject` for naming WHICH
-//!   thing the log line is about (vault, address, ticker, route) — that
-//!   keeps dashboards aggregable across call sites that share a task.
+//! - **Task** is a closed enum of operations funds-manager performs. New tasks
+//!   must be added to [`Task`] before use; the closed vocabulary is what makes
+//!   `@task:X` aggregations reliable.
+//! - **Outcome** is closed too: `started | ok | skipped | partial | retrying |
+//!   failed`. The outcome picks the underlying tracing level (info/warn/error)
+//!   so callers do not need to think about it.
+//! - **Description** is the human-readable detail. Any number of structured
+//!   fields can be passed before the description as `key = value`. Reserve the
+//!   field name `subject` for naming WHICH thing the log line is about (vault,
+//!   address, ticker, route) — that keeps dashboards aggregable across call
+//!   sites that share a task.
 //!
 //! Usage:
 //!
@@ -148,10 +148,10 @@ impl Task {
 /// - `Started`: work has begun. Pair with a later `Ok`/`Failed`/`Skipped`.
 /// - `Ok`: completed successfully.
 /// - `Skipped`: nothing to do this cycle; not a failure.
-/// - `Partial`: completed with a known degradation (cache fallback, some
-///   legs failed but the operation continued).
-/// - `Retrying`: intra-call retry attempt. A failure that propagates back
-///   to the caller for a later retry is `Failed`, not `Retrying`.
+/// - `Partial`: completed with a known degradation (cache fallback, some legs
+///   failed but the operation continued).
+/// - `Retrying`: intra-call retry attempt. A failure that propagates back to
+///   the caller for a later retry is `Failed`, not `Retrying`.
 /// - `Failed`: errored out; the operation did not complete.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {

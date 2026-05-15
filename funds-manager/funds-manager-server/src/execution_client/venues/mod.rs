@@ -30,8 +30,8 @@ pub struct AllExecutionVenues {
     pub cowswap: CowswapClient,
     /// The Bebop client
     pub bebop: BebopClient,
-    /// The Okx client. `None` if OKX startup failed (e.g. credentials rejected);
-    /// the venue is then skipped instead of crashing the server.
+    /// The Okx client. `None` if OKX startup failed (e.g. credentials
+    /// rejected); the venue is then skipped instead of crashing the server.
     pub okx: Option<OkxClient>,
 }
 
