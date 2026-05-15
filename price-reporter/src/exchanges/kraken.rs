@@ -29,7 +29,10 @@ use super::{
         ExchangeConnection, parse_json_field_array, parse_json_from_message, ws_connect, ws_ping,
     },
     error::ExchangeConnectionError,
-    util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
+    util::{
+        exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker,
+        safe_midpoint,
+    },
 };
 
 // -------------
@@ -108,7 +111,10 @@ impl KrakenConnection {
         let _reported_timestamp_seconds: f32 =
             parse_json_field_array(KRAKEN_PRICE_REPORT_TIMESTAMP_INDEX, price_data)?;
 
-        Ok(Some((best_bid + best_offer) / 2.0))
+        // A non-finite or non-positive bid/offer would corrupt the midpoint
+        // (see incident 2026-05-08 cbBTC). Drop the message rather than emit
+        // a bad price; the stream resumes on the next valid update.
+        Ok(safe_midpoint(best_bid, best_offer))
     }
 }
 

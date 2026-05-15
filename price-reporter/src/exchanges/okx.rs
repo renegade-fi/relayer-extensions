@@ -25,7 +25,10 @@ use super::{
     ExchangeConnectionsConfig,
     connection::{ExchangeConnection, parse_json_field_array, parse_json_from_message, ws_connect},
     error::ExchangeConnectionError,
-    util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
+    util::{
+        exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker,
+        safe_midpoint,
+    },
 };
 
 // -------------
@@ -98,7 +101,10 @@ impl OkxConnection {
         let best_offer: f64 =
             parse_json_field_array(OKX_PRICE, &first_data_entry[OKX_ASKS][FIRST_ENTRY])?;
 
-        Ok(Some((best_bid + best_offer) / 2.0))
+        // A non-finite or non-positive bid/offer would corrupt the midpoint
+        // (see incident 2026-05-08 cbBTC). Drop the message rather than emit
+        // a bad price; the stream resumes on the next valid update.
+        Ok(safe_midpoint(best_bid, best_offer))
     }
 }
 

@@ -24,7 +24,10 @@ use crate::{
         ExchangeConnectionsConfig,
         connection::{BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType},
         error::ExchangeConnectionError,
-        util::{exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker},
+        util::{
+            exchange_lists_pair_tokens, get_base_exchange_ticker, get_quote_exchange_ticker,
+            safe_midpoint,
+        },
     },
 };
 
@@ -113,7 +116,12 @@ impl BinanceConnection {
 
         let best_bid: f64 = parse_json_field(BINANCE_BID_PRICE, &message_json)?;
         let best_offer: f64 = parse_json_field(BINANCE_OFFER_PRICE, &message_json)?;
-        let midpoint_price = (best_bid + best_offer) / 2.0;
+        let midpoint_price = safe_midpoint(best_bid, best_offer).ok_or_else(|| {
+            ExchangeConnectionError::InvalidMessage(format!(
+                "binance REST bookTicker had non-finite or non-positive price: \
+                 bid={best_bid} offer={best_offer}"
+            ))
+        })?;
 
         Ok(PriceReport {
             base_token,
@@ -138,7 +146,10 @@ impl BinanceConnection {
             let best_bid: f64 = parse_json_field(BINANCE_BID_PRICE_WS, &json_blob)?;
             let best_offer: f64 = parse_json_field(BINANCE_OFFER_PRICE_WS, &json_blob)?;
 
-            Ok(Some((best_bid + best_offer) / 2.0))
+            // A non-finite or non-positive bid/offer would corrupt the midpoint
+            // (see incident 2026-05-08 cbBTC). Drop the message rather than emit
+            // a bad price; the stream resumes on the next valid update.
+            Ok(safe_midpoint(best_bid, best_offer))
         } else {
             Ok(None)
         }
