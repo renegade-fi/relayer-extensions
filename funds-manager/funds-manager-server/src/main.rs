@@ -144,7 +144,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
                 error = %e,
                 "server build failed"
             );
-            return Err(e.into());
+            return Err(e);
         },
     };
 
