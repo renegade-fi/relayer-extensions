@@ -38,8 +38,8 @@ pub struct SwapExecutionData {
     pub is_buy: bool,
 
     // Market reference data
-    /// The Binance price for the token
-    pub binance_price: f64,
+    /// The reference price for the token, as returned by the price reporter
+    pub reference_price: f64,
     /// The transaction hash
     pub transaction_hash: String,
 
@@ -122,14 +122,15 @@ impl MetricsRecorder {
         } = swap_outcome;
 
         let base_mint = quote.base_token().get_alloy_address();
-        let binance_price = self.get_price(&base_mint, quote.chain).await?;
+        let reference_price = self.get_price(&base_mint, quote.chain).await?;
 
         let execution_price = quote.get_price(Some(*buy_amount_actual));
         let gas_cost_usd = self.get_wei_cost_usdc(*swap_gas_cost).await?;
         let notional_volume_usdc = quote.notional_volume_usdc(*buy_amount_actual);
 
         let trade_side_factor = if quote.is_sell() { -1.0 } else { 1.0 };
-        let relative_spread = trade_side_factor * (execution_price - binance_price) / binance_price;
+        let relative_spread =
+            trade_side_factor * (execution_price - reference_price) / reference_price;
         let execution_cost_usdc = notional_volume_usdc * relative_spread;
 
         // Calculate slippage metrics
@@ -158,7 +159,7 @@ impl MetricsRecorder {
             is_buy: !quote.is_sell(),
 
             // Market reference data
-            binance_price,
+            reference_price,
             transaction_hash: format!("{:#x}", tx_hash),
 
             // Execution details
@@ -298,7 +299,7 @@ impl MetricsRecorder {
             sell_amount = %cost_data.sell_amount,
             buy_amount_estimated = %cost_data.buy_amount_estimated,
             is_buy = %cost_data.is_buy,
-            binance_price = %cost_data.binance_price,
+            reference_price = %cost_data.reference_price,
             transaction_hash = %cost_data.transaction_hash,
             buy_amount_actual = %cost_data.buy_amount_actual,
             execution_price = %cost_data.execution_price,
