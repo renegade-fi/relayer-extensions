@@ -702,7 +702,7 @@ mod tests {
         assert_eq!(resp.min_taker_send, Some(500_000));
         // Counterparty mirrors the RFQT request taker.
         assert_eq!(resp.order.consideration.counterparty, TAKER_ADDR);
-        assert_eq!(resp.order.consideration.partial_fill_allowed, true);
+        assert!(resp.order.consideration.partial_fill_allowed);
         // Empty signature is preserved.
         assert_eq!(resp.signature, "0x0");
     }
