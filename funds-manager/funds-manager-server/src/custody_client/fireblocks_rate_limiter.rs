@@ -137,7 +137,7 @@ impl FireblocksLimiter {
         let new_until = Instant::now() + Duration::from_secs(secs);
 
         let mut guard = self.cooldown_until.lock().await;
-        if guard.map_or(true, |existing| existing < new_until) {
+        if guard.is_none_or(|existing| existing < new_until) {
             *guard = Some(new_until);
         }
         log_task!(

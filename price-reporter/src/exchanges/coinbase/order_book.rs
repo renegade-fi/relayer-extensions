@@ -70,15 +70,30 @@ impl CoinbaseOrderBookData {
         }
     }
 
-    /// Add a bid at the given price level
+    /// Add a bid at the given price level.
+    ///
+    /// Non-positive prices are silently rejected: a zero or negative bid in
+    /// the book would skew `midpoint` toward `best_offer / 2`. A real Coinbase
+    /// feed never emits these, but partial-book / reset edge cases can.
     pub fn add_bid(&self, price_level: f64) {
+        if !(price_level > 0.0) {
+            return;
+        }
         if let Ok(price_notnan) = NotNan::new(price_level) {
             self.bids.insert(price_notnan);
         }
     }
 
-    /// Add an offer at the given price level
+    /// Add an offer at the given price level.
+    ///
+    /// Non-positive prices are silently rejected: a zero or negative offer
+    /// becomes the new `best_offer` and pulls `midpoint` to `best_bid / 2`.
+    /// This is the failure mode behind the cbBTC pricing incident on
+    /// 2026-05-08 ~07:10 UTC.
     pub fn add_offer(&self, price_level: f64) {
+        if !(price_level > 0.0) {
+            return;
+        }
         if let Ok(price_notnan) = NotNan::new(price_level) {
             self.offers.insert(price_notnan);
         }
@@ -88,5 +103,81 @@ impl CoinbaseOrderBookData {
     pub fn clear(&self) {
         self.bids.clear();
         self.offers.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reproduces the cbBTC pricing failure on 2026-05-08 around 07:10 UTC
+    /// (00:10 PDT): a real bid plus a zero-priced offer caused midpoint to
+    /// return real_bid / 2 (~$39,837 vs real BTC ~$79,674), which propagated
+    /// through `Exchange::Renegade` cbBTC pricing into the funds-manager
+    /// `swap_execution_cost` metric. Zero-priced levels must not enter the
+    /// book at all; with only real-bid data and no real offer, midpoint must
+    /// be `None`.
+    #[test]
+    fn midpoint_ignores_zero_priced_offer() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(79_674.0);
+        book.add_offer(0.0);
+
+        assert_eq!(
+            book.midpoint(),
+            None,
+            "midpoint must not synthesize half of best_bid when the only \
+             offer is zero-priced",
+        );
+    }
+
+    /// Symmetric to the above: a zero-priced bid alongside a real offer must
+    /// not produce real_offer / 2.
+    #[test]
+    fn midpoint_ignores_zero_priced_bid() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(0.0);
+        book.add_offer(79_675.0);
+
+        assert_eq!(book.midpoint(), None);
+    }
+
+    /// A zero-priced offer arriving alongside a real offer must not become
+    /// the new best offer (which would skew midpoint downward by ~½).
+    #[test]
+    fn zero_offer_does_not_displace_real_offer() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(79_674.0);
+        book.add_offer(79_675.0);
+        book.add_offer(0.0);
+
+        assert_eq!(book.best_offer(), Some(79_675.0));
+        assert_eq!(book.midpoint(), Some((79_674.0 + 79_675.0) / 2.0));
+    }
+
+    /// Negative prices are nonsensical in an order book and must also be
+    /// rejected at insertion time.
+    #[test]
+    fn negative_prices_are_rejected() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(-1.0);
+        book.add_offer(-1.0);
+
+        assert_eq!(book.best_bid(), None);
+        assert_eq!(book.best_offer(), None);
+    }
+
+    /// Sanity: a normal book still computes the midpoint correctly.
+    #[test]
+    fn midpoint_normal_book() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(100.0);
+        book.add_bid(99.0);
+        book.add_offer(101.0);
+        book.add_offer(102.0);
+
+        assert_eq!(book.best_bid(), Some(100.0));
+        assert_eq!(book.best_offer(), Some(101.0));
+        assert_eq!(book.midpoint(), Some(100.5));
     }
 }

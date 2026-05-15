@@ -389,7 +389,11 @@ impl ExecutionClient {
         Ok(balance >= params.from_amount)
     }
 
-    /// Check if a quote deviates too far from the Renegade price
+    /// Check if a quote deviates too far from the Renegade price.
+    ///
+    /// The check is two-sided: a venue quote that is much *better* than the
+    /// reference price is also rejected, on the assumption that the reference
+    /// price itself may be wrong. See incident 2026-05-08 (cbBTC).
     async fn exceeds_price_deviation(
         &self,
         quote: &ExecutionQuote,
@@ -401,17 +405,6 @@ impl ExecutionClient {
 
         let quote_price = quote.get_price(None /* buy_amount */);
 
-        // Check that the price is within the max price impact
-        let deviation = if quote.is_sell() {
-            (renegade_price - quote_price) / renegade_price
-        } else {
-            (quote_price - renegade_price) / renegade_price
-        };
-
-        // Record the price deviation regardless of whether it exceeds the threshold.
-        // This metric is useful for tuning the deviation maximums.
-        record_price_deviation(quote, deviation);
-
         let max_deviation = quote
             .base_token()
             .get_ticker()
@@ -420,7 +413,16 @@ impl ExecutionClient {
 
         let deviation_threshold = max_deviation * max_deviation_multiplier;
 
-        let exceeds_max_deviation = deviation > deviation_threshold;
+        let (deviation, exceeds_max_deviation) = compute_price_deviation(
+            quote.is_sell(),
+            quote_price,
+            renegade_price,
+            deviation_threshold,
+        );
+
+        // Record the price deviation regardless of whether it exceeds the threshold.
+        // This metric is useful for tuning the deviation maximums.
+        record_price_deviation(quote, deviation);
         if exceeds_max_deviation {
             log_task!(
                 Task::FetchQuote,
@@ -505,4 +507,130 @@ fn record_price_deviation(quote: &ExecutionQuote, deviation: f64) {
         VENUE_TAG => quote.venue.to_string(),
     )
     .set(deviation);
+}
+
+/// Compute the signed price deviation of a venue quote against a reference
+/// price, and whether it exceeds the threshold in either direction.
+///
+/// The signed convention is "positive = worse for the protocol": for a sell,
+/// `(reference - quote) / reference` is positive when the venue is selling our
+/// asset cheaply; for a buy, `(quote - reference) / reference` is positive
+/// when the venue is charging us a premium. The exceedance check is two-sided
+/// (`abs`) so that a venue quote that is suspiciously *favorable* against the
+/// reference is also rejected — the reference price itself may be wrong (see
+/// incident 2026-05-08, cbBTC).
+///
+/// The check fails closed for non-finite deviations: a NaN reference or
+/// quote price, or a zero reference, produces a NaN/inf deviation that is
+/// treated as exceeding the threshold rather than passing it.
+fn compute_price_deviation(
+    is_sell: bool,
+    quote_price: f64,
+    reference_price: f64,
+    deviation_threshold: f64,
+) -> (f64, bool) {
+    let deviation = if is_sell {
+        (reference_price - quote_price) / reference_price
+    } else {
+        (quote_price - reference_price) / reference_price
+    };
+    let abs_dev = deviation.abs();
+    let exceeds = !abs_dev.is_finite() || abs_dev > deviation_threshold;
+    (deviation, exceeds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_price_deviation;
+
+    /// 1% — matches `DEFAULT_MAX_PRICE_DEVIATION`.
+    const THRESHOLD: f64 = 0.01;
+
+    #[test]
+    fn sell_at_venue_below_reference_is_rejected() {
+        // Venue offers $98 to sell when reference says $100 — 2% unfavorable.
+        let (deviation, exceeds) = compute_price_deviation(true, 98.0, 100.0, THRESHOLD);
+        assert!(exceeds);
+        assert!(deviation > 0.0, "unfavorable deviation should be positive");
+    }
+
+    #[test]
+    fn buy_at_venue_above_reference_is_rejected() {
+        // Venue charges $102 to buy when reference says $100 — 2% unfavorable.
+        let (deviation, exceeds) = compute_price_deviation(false, 102.0, 100.0, THRESHOLD);
+        assert!(exceeds);
+        assert!(deviation > 0.0, "unfavorable deviation should be positive");
+    }
+
+    #[test]
+    fn sell_at_venue_above_reference_is_rejected_by_abs() {
+        // Venue offers $200 to sell when reference says $100 — favorable by 100%,
+        // but the reference is suspect. Pre-fix this passed; the two-sided check
+        // catches it.
+        let (deviation, exceeds) = compute_price_deviation(true, 200.0, 100.0, THRESHOLD);
+        assert!(exceeds, "two-sided gate must reject suspect-favorable sell quote");
+        assert!(deviation < 0.0, "favorable deviation is negative for sells");
+    }
+
+    #[test]
+    fn buy_at_venue_below_reference_is_rejected_by_abs() {
+        // Venue charges $50 to buy when reference says $100 — favorable by 50%.
+        let (deviation, exceeds) = compute_price_deviation(false, 50.0, 100.0, THRESHOLD);
+        assert!(exceeds, "two-sided gate must reject suspect-favorable buy quote");
+        assert!(deviation < 0.0, "favorable deviation is negative for buys");
+    }
+
+    #[test]
+    fn within_threshold_passes_either_direction() {
+        let small = THRESHOLD / 2.0;
+        for is_sell in [true, false] {
+            for sign in [1.0, -1.0] {
+                let quote_price = 100.0 * (1.0 + sign * small);
+                let (_, exceeds) = compute_price_deviation(is_sell, quote_price, 100.0, THRESHOLD);
+                assert!(!exceeds, "is_sell={is_sell} sign={sign} should not exceed threshold");
+            }
+        }
+    }
+
+    #[test]
+    fn cbbtc_2026_05_08_incident_is_caught() {
+        // Reproduces the 2026-05-08 cbBTC scenario: the price reporter returned
+        // ~$39,837 (half of real BTC) while Bebop quoted ~$79,256 on a sell.
+        // Pre-fix the one-sided check passed (deviation ≈ -0.989 < threshold).
+        // Post-fix the absolute value (≈ 0.989) exceeds any reasonable threshold.
+        let (deviation, exceeds) = compute_price_deviation(true, 79_256.0, 39_837.0, THRESHOLD);
+        assert!(exceeds, "incident scenario must be caught by the .abs() check");
+        assert!(deviation < -0.9, "expected ≈ -0.989, got {deviation}");
+    }
+
+    #[test]
+    fn nan_reference_fails_closed() {
+        // A NaN reference price (e.g. from a malformed price-reporter response)
+        // must trip the gate. The `!(abs <= threshold)` form is NaN-safe; the
+        // older `abs > threshold` form would return false and let the trade
+        // proceed against an undefined reference.
+        let (_, exceeds_sell) = compute_price_deviation(true, 100.0, f64::NAN, THRESHOLD);
+        let (_, exceeds_buy) = compute_price_deviation(false, 100.0, f64::NAN, THRESHOLD);
+        assert!(exceeds_sell, "NaN reference must trip the gate (sell)");
+        assert!(exceeds_buy, "NaN reference must trip the gate (buy)");
+    }
+
+    #[test]
+    fn nan_quote_fails_closed() {
+        // Symmetric to the above — a NaN venue quote must also trip the gate.
+        let (_, exceeds_sell) = compute_price_deviation(true, f64::NAN, 100.0, THRESHOLD);
+        let (_, exceeds_buy) = compute_price_deviation(false, f64::NAN, 100.0, THRESHOLD);
+        assert!(exceeds_sell);
+        assert!(exceeds_buy);
+    }
+
+    #[test]
+    fn zero_reference_fails_closed() {
+        // A zero reference price (e.g. from a corrupted Coinbase order book
+        // before the 0-price filter fix) produces an infinite deviation,
+        // which the gate must trip.
+        let (deviation, exceeds) = compute_price_deviation(true, 100.0, 0.0, THRESHOLD);
+        assert!(exceeds);
+        assert!(deviation.is_infinite());
+    }
 }
