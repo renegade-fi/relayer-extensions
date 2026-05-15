@@ -1,6 +1,8 @@
 //! Helper methods for capturing telemetry information throughout the auth
 //! server
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy_primitives::Address;
 use renegade_circuit_types::fixed_point::FixedPoint;
 use renegade_constants::{
@@ -13,8 +15,6 @@ use renegade_external_api::types::{
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
 use renegade_util::metrics;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::{
     error::AuthServerError,

@@ -17,6 +17,8 @@ use std::{sync::Arc, time::Duration};
 use crate::bundle_store::BundleStore;
 use crate::error::AuthServerError;
 use crate::http_utils::request_response::convert_headers;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use crate::server::caching::ServerCache;
 use aes_gcm::Aes128Gcm;
 use alloy::signers::k256::ecdsa::SigningKey;
@@ -36,8 +38,6 @@ use renegade_types_core::{Chain, HmacKey};
 use renegade_util::get_current_time_millis;
 use renegade_util::telemetry::propagation::trace_context;
 use reqwest::Client;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 /// The duration for which the admin authentication is valid
 const ADMIN_AUTH_DURATION_MS: u64 = 5_000; // 5 seconds

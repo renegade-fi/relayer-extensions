@@ -13,9 +13,9 @@ use tracing::instrument;
 use warp::reject::Rejection;
 
 use crate::error::AuthServerError;
+use crate::http_utils::request_response::overwrite_response_body;
 use crate::log_task;
 use crate::logger::{Outcome, Task};
-use crate::http_utils::request_response::overwrite_response_body;
 use crate::server::api_handlers::external_match::BytesResponse;
 use crate::server::gas_sponsorship::refund_calculation::{
     apply_gas_sponsorship_to_exact_output_amount, remove_gas_sponsorship_from_quote,

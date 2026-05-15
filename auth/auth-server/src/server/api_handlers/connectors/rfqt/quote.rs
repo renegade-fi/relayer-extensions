@@ -155,8 +155,8 @@ impl Server {
         mut quote_req_ctx: RequestContext<ExternalQuoteRequest>,
         rfqt_request: RfqtQuoteRequest,
     ) -> Result<BytesResponse, Rejection> {
-        // 1. Quote pre-request (rate limits, routing, gas-sponsor application
-        //    to the order).
+        // 1. Quote pre-request (rate limits, routing, gas-sponsor application to the
+        //    order).
         self.quote_pre_request(&mut quote_req_ctx).await?;
 
         // 2. Proxy the quote request to the relayer.
@@ -168,10 +168,10 @@ impl Server {
             return Ok(quote_raw_resp);
         }
 
-        // 4. Build the sponsored quote synchronously and persist the cached
-        //    sponsorship info to Redis before assembling. The regular
-        //    quote endpoint caches asynchronously via a spawned task, which
-        //    would race the internal assemble step here.
+        // 4. Build the sponsored quote synchronously and persist the cached sponsorship
+        //    info to Redis before assembling. The regular quote endpoint caches
+        //    asynchronously via a spawned task, which would race the internal assemble
+        //    step here.
         let (sponsored_quote, cached_info) = self.sponsor_rfqt_quote_response(&quote_resp_ctx)?;
         if let Some(cached_info) = cached_info {
             self.cache_quote_gas_sponsorship_info(&sponsored_quote, cached_info).await?;
@@ -181,8 +181,8 @@ impl Server {
         let mut assemble_req_ctx =
             transform_quote_to_assemble_malleable_ctx(sponsored_quote, quote_req_ctx)?;
 
-        // 6. Run the v2 assembly pipeline (rate limits, gas sponsorship,
-        //    forwarding, metric emission).
+        // 6. Run the v2 assembly pipeline (rate limits, gas sponsorship, forwarding,
+        //    metric emission).
         self.assembly_pre_request(&mut assemble_req_ctx).await?;
         let (assemble_raw_resp, assemble_resp_ctx) =
             self.forward_request::<_, ExternalMatchResponse>(assemble_req_ctx).await?;
@@ -244,7 +244,7 @@ impl Server {
         let rfqt_response = transform_match_bundle_to_rfqt_response(
             &match_bundle,
             req,
-            false, /* malleable */
+            false, // malleable
         )?;
         overwrite_response_body(&mut resp, rfqt_response, true /* stringify */)?;
         Ok(resp)

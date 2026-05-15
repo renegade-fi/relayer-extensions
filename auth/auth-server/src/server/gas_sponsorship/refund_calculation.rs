@@ -1,5 +1,7 @@
 //! Logic for calculating refund info for a sponsored match
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use auth_server_api::GasSponsorshipInfo;
@@ -12,8 +14,6 @@ use renegade_external_api::types::{
 use renegade_solidity_abi::v2::IDarkpoolV2;
 use renegade_types_core::Token;
 use renegade_util::hex::address_to_hex_string;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use super::{CachedSponsorshipInfo, WETH_TICKER};
 use crate::{error::AuthServerError, server::Server};

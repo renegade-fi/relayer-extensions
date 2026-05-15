@@ -3,6 +3,14 @@
 
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::{
+    bundle_store::BundleStore,
+    log_task,
+    logger::{Outcome, Task},
+    server::{
+        gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
+    },
+};
 use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
     rpc::types::Filter,
@@ -14,14 +22,6 @@ use price_reporter_client::PriceReporterClient;
 use renegade_darkpool_client::DarkpoolClient;
 use renegade_solidity_abi::v2::IDarkpoolV2;
 use renegade_types_core::Chain;
-use crate::{
-    bundle_store::BundleStore,
-    log_task,
-    logger::{Outcome, Task},
-    server::{
-        gas_estimation::gas_cost_sampler::GasCostSampler, rate_limiter::AuthServerRateLimiter,
-    },
-};
 
 use super::error::OnChainEventListenerError;
 

@@ -138,9 +138,10 @@ pub fn create_quote_request(
 
 /// Transform a sponsored quote response into an assemble request context
 ///
-/// Builds an `AssembleExternalMatchRequest` with `ExternalMatchAssemblyType::QuotedOrder`
-/// pointing at the v2 assemble route. The receiver is left unset; for the
-/// malleable RFQT path 0x's Settler picks the receiver at settlement time.
+/// Builds an `AssembleExternalMatchRequest` with
+/// `ExternalMatchAssemblyType::QuotedOrder` pointing at the v2 assemble route.
+/// The receiver is left unset; for the malleable RFQT path 0x's Settler picks
+/// the receiver at settlement time.
 pub fn transform_quote_to_assemble_malleable_ctx(
     quote: SponsoredQuoteResponse,
     req_ctx: RequestContext<ExternalQuoteRequest>,

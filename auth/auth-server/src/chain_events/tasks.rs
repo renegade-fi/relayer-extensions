@@ -1,17 +1,4 @@
 //! Helpers for executing subroutines in the on-chain event listener
-use alloy::providers::Provider;
-use alloy::rpc::types::TransactionReceipt;
-use alloy_primitives::{TxHash, U256};
-use alloy_sol_types::SolEvent;
-use auth_server_api::GasSponsorshipInfo;
-use bigdecimal::{BigDecimal, ToPrimitive};
-use renegade_circuit_types::Amount;
-use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
-use renegade_external_api::types::ApiBoundedMatchResult;
-use renegade_solidity_abi::v2::IDarkpoolV2::SponsoredExternalMatch;
-use renegade_types_core::Token;
-use renegade_util::hex::address_to_hex_string;
-use renegade_util::metrics;
 use crate::chain_events::utils::GPv2Settlement;
 use crate::log_task;
 use crate::logger::{Outcome, Task};
@@ -36,6 +23,19 @@ use crate::{
         },
     },
 };
+use alloy::providers::Provider;
+use alloy::rpc::types::TransactionReceipt;
+use alloy_primitives::{TxHash, U256};
+use alloy_sol_types::SolEvent;
+use auth_server_api::GasSponsorshipInfo;
+use bigdecimal::{BigDecimal, ToPrimitive};
+use renegade_circuit_types::Amount;
+use renegade_darkpool_types::bounded_match_result::BoundedMatchResult;
+use renegade_external_api::types::ApiBoundedMatchResult;
+use renegade_solidity_abi::v2::IDarkpoolV2::SponsoredExternalMatch;
+use renegade_types_core::Token;
+use renegade_util::hex::address_to_hex_string;
+use renegade_util::metrics;
 
 // -------------
 // | Constants |

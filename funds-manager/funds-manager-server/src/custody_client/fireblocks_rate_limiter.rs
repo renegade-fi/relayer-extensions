@@ -9,12 +9,12 @@
 //! gates every outbound call through two mechanisms:
 //!
 //! 1. A token bucket caps steady-state RPS. Tokens refill at
-//!    `STEADY_STATE_RPS`, up to `BURST_CAPACITY`. Each call consumes one
-//!    token; if none are available, the call awaits the next refill.
+//!    `STEADY_STATE_RPS`, up to `BURST_CAPACITY`. Each call consumes one token;
+//!    if none are available, the call awaits the next refill.
 //! 2. On 429 from any call, the limiter enters a cooldown — subsequent
-//!    `acquire` calls block until the cooldown elapses. Cooldown duration
-//!    grows multiplicatively per consecutive 429 (1s, 2s, 4s, 8s, 16s,
-//!    capped at 30s) and resets after any successful call.
+//!    `acquire` calls block until the cooldown elapses. Cooldown duration grows
+//!    multiplicatively per consecutive 429 (1s, 2s, 4s, 8s, 16s, capped at 30s)
+//!    and resets after any successful call.
 //!
 //! Limitation: the Fireblocks Rust SDK's error type does not preserve
 //! response headers, so we cannot read `Retry-After`. The fixed

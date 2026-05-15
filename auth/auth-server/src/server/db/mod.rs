@@ -2,6 +2,8 @@
 #![allow(mismatched_lifetime_syntaxes)]
 use std::time::Duration;
 
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 use bb8::{Pool, PooledConnection};
 use diesel::ConnectionError;
 use diesel_async::{
@@ -11,8 +13,6 @@ use diesel_async::{
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use redis::aio::ConnectionManager;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use crate::error::AuthServerError;
 
