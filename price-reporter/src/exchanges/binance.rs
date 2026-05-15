@@ -112,12 +112,16 @@ impl BinanceConnection {
 
         let best_bid: f64 = parse_json_field(BINANCE_BID_PRICE, &message_json)?;
         let best_offer: f64 = parse_json_field(BINANCE_OFFER_PRICE, &message_json)?;
-        let midpoint_price = safe_midpoint(best_bid, best_offer).ok_or_else(|| {
-            ExchangeConnectionError::InvalidMessage(format!(
-                "binance REST bookTicker had non-finite or non-positive price: \
-                 bid={best_bid} offer={best_offer}"
-            ))
-        })?;
+        // Deliberately not using `safe_midpoint` here: a bad initial REST price
+        // (e.g. `bid=0, offer=0` for a delisted/illiquid pair like RDNT) must
+        // not abort `connect()`, because the retry loop in price_stream_manager
+        // escalates the abort to `MaxRetries` and shuts the whole server down.
+        // The 0/NaN/Inf midpoint flows through to `compute_price_reporter_state`
+        // (renegade workers/price-reporter), which is hardened to return
+        // `NotEnoughDataReported` for any non-finite or non-positive served
+        // price, so no consumer ever sees the bad value. The WS stream path
+        // still uses `safe_midpoint` to drop individual bad updates.
+        let midpoint_price = (best_bid + best_offer) / 2.0;
 
         Ok(PriceReport {
             base_token,
