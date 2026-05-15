@@ -169,6 +169,36 @@ mod tests {
         assert_eq!(book.best_offer(), None);
     }
 
+    /// Non-finite prices (NaN, +Inf, -Inf) must be rejected at insertion
+    /// time. An Inf bid would become the new `best_bid` and drive midpoint
+    /// to infinity; an Inf offer is never the smallest in a populated book
+    /// but would corrupt an empty one; NaN would break comparisons entirely
+    /// (and `NotNan::new` rejects it downstream, but the explicit check
+    /// fails fast).
+    #[test]
+    fn non_finite_prices_are_rejected() {
+        for bad in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            let book = CoinbaseOrderBookData::new();
+            book.add_bid(bad);
+            book.add_offer(bad);
+            assert_eq!(book.best_bid(), None, "bid {bad} should be rejected");
+            assert_eq!(book.best_offer(), None, "offer {bad} should be rejected");
+        }
+    }
+
+    /// An Inf bid arriving alongside a real bid must not become best_bid
+    /// (which would push midpoint to infinity).
+    #[test]
+    fn inf_bid_does_not_displace_real_bid() {
+        let book = CoinbaseOrderBookData::new();
+        book.add_bid(79_674.0);
+        book.add_offer(79_675.0);
+        book.add_bid(f64::INFINITY);
+
+        assert_eq!(book.best_bid(), Some(79_674.0));
+        assert_eq!(book.midpoint(), Some((79_674.0 + 79_675.0) / 2.0));
+    }
+
     /// Sanity: a normal book still computes the midpoint correctly.
     #[test]
     fn midpoint_normal_book() {
