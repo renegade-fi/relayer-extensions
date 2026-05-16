@@ -14,6 +14,7 @@ pub mod error;
 pub mod execution_client;
 // pub mod fee_indexer;
 pub mod handlers;
+pub mod health_snapshot;
 pub mod helpers;
 pub mod logger;
 pub mod metrics;
@@ -471,6 +472,11 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         "funds-manager listening on 0.0.0.0:{}",
         port
     );
+
+    // Spawn the periodic health-snapshot loop. Detached for the lifetime
+    // of the process. Mirrors the gardener-side snapshot — both services
+    // emit `[health-snapshot] [ok]` lines every 30s.
+    crate::health_snapshot::spawn_health_snapshot_task();
 
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 

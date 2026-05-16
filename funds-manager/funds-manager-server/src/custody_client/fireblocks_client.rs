@@ -85,13 +85,14 @@ impl FireblocksClient {
     /// the limiter's view of the workspace load.
     pub async fn rate_limited<'s, T, E, Fut>(
         &'s self,
+        label: &'static str,
         f: impl FnOnce(&'s Client) -> Fut,
     ) -> Result<T, E>
     where
         Fut: Future<Output = Result<T, E>> + 's,
         E: Is429,
     {
-        self.limiter.acquire().await;
+        self.limiter.acquire(label).await;
         let result = f(&self.sdk).await;
         match &result {
             Err(e) if e.is_429() => self.limiter.on_429().await,

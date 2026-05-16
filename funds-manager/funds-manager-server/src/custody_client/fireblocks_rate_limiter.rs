@@ -27,7 +27,7 @@
 
 use std::sync::{
     Arc, OnceLock,
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicU32, AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant};
 
@@ -35,6 +35,12 @@ use tokio::sync::{Mutex, Semaphore};
 
 use crate::log_task;
 use crate::logger::{Outcome, Task};
+
+/// Minimum throttle-wait (ms) that produces a per-call
+/// `[fireblocks-rate-limit] [partial]` log line. Trivially short waits are
+/// silenced to keep log volume bounded; the periodic health snapshot still
+/// surfaces sub-threshold throttling via aggregate counters.
+const THROTTLE_LOG_FLOOR_MS: u128 = 100;
 
 /// Steady-state token refill rate in requests per second.
 ///
@@ -55,6 +61,26 @@ const INITIAL_COOLDOWN_SECS: u64 = 1;
 /// than the limiter holding traffic indefinitely.
 const MAX_COOLDOWN_SECS: u64 = 30;
 
+/// Public snapshot of the limiter's state. Consumed by the health-snapshot
+/// loop spawned at boot.
+#[derive(Clone, Copy, Debug)]
+pub struct FireblocksLimiterStatus {
+    /// Currently available tokens in the bucket.
+    pub bucket: usize,
+    /// Maximum bucket capacity.
+    pub capacity: usize,
+    /// Remaining cooldown duration in ms, or 0 when no cooldown is active.
+    pub cooldown_remaining_ms: u64,
+    /// Count of consecutive 429s; resets on any success.
+    pub consecutive_429s: u32,
+    /// Acquires that had to wait at all in the current rolling window.
+    pub throttled_window: u64,
+    /// Longest acquire-wait observed in the current rolling window, in ms.
+    pub peak_wait_ms_window: u64,
+    /// Total acquires completed in the current rolling window.
+    pub acquired_window: u64,
+}
+
 /// A token-bucket rate limiter for Fireblocks API calls, augmented with a
 /// 429-triggered cooldown gate.
 pub struct FireblocksLimiter {
@@ -73,6 +99,13 @@ pub struct FireblocksLimiter {
     /// Count of consecutive 429s; resets on any success. Drives the
     /// multiplicative backoff in [`Self::on_429`].
     consecutive_429s: AtomicU32,
+    /// Acquires that had to wait at all in the current rolling window.
+    /// Reset by [`Self::snapshot_and_reset`].
+    throttled_window: AtomicU64,
+    /// Longest acquire-wait observed in the current rolling window, in ms.
+    peak_wait_ms_window: AtomicU64,
+    /// Total acquires completed in the current rolling window.
+    acquired_window: AtomicU64,
 }
 
 impl FireblocksLimiter {
@@ -84,6 +117,9 @@ impl FireblocksLimiter {
             capacity: burst_capacity,
             cooldown_until: Mutex::new(None),
             consecutive_429s: AtomicU32::new(0),
+            throttled_window: AtomicU64::new(0),
+            peak_wait_ms_window: AtomicU64::new(0),
+            acquired_window: AtomicU64::new(0),
         });
 
         let weak = Arc::downgrade(&me);
@@ -106,7 +142,11 @@ impl FireblocksLimiter {
     /// Block until a token is available and any active cooldown has
     /// elapsed. The consumed token is not returned to the bucket; the
     /// refill task replenishes at the configured RPS.
-    pub async fn acquire(&self) {
+    ///
+    /// `label` is included in the per-throttle log line so we can grep
+    /// "which call site tripped the limiter."
+    pub async fn acquire(&self, label: &str) {
+        let start = Instant::now();
         loop {
             let deadline = *self.cooldown_until.lock().await;
             if let Some(until) = deadline {
@@ -126,6 +166,55 @@ impl FireblocksLimiter {
             .await
             .expect("Fireblocks limiter semaphore should never be closed");
         permit.forget();
+
+        let waited_ms = start.elapsed().as_millis();
+        self.acquired_window.fetch_add(1, Ordering::Relaxed);
+        if waited_ms > 0 {
+            self.throttled_window.fetch_add(1, Ordering::Relaxed);
+            self.peak_wait_ms_window.fetch_max(waited_ms as u64, Ordering::Relaxed);
+        }
+        if waited_ms >= THROTTLE_LOG_FLOOR_MS {
+            let bucket_after = self.permits.available_permits();
+            log_task!(
+                Task::FireblocksRateLimit,
+                Outcome::Partial,
+                subject = label,
+                waited_ms = waited_ms as u64,
+                bucket_after = bucket_after,
+                capacity = self.capacity,
+                "throttled {} waited_ms={} bucket_after={}/{}",
+                label,
+                waited_ms,
+                bucket_after,
+                self.capacity
+            );
+        }
+    }
+
+    /// Read-only snapshot of the limiter's state. Resets the rolling-window
+    /// counters (`throttled_window`, `peak_wait_ms_window`,
+    /// `acquired_window`) so successive calls describe a fresh window.
+    pub async fn snapshot_and_reset(&self) -> FireblocksLimiterStatus {
+        let bucket = self.permits.available_permits();
+        let cooldown_remaining_ms = match *self.cooldown_until.lock().await {
+            Some(until) => until
+                .checked_duration_since(Instant::now())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+            None => 0,
+        };
+        let throttled_window = self.throttled_window.swap(0, Ordering::Relaxed);
+        let peak_wait_ms_window = self.peak_wait_ms_window.swap(0, Ordering::Relaxed);
+        let acquired_window = self.acquired_window.swap(0, Ordering::Relaxed);
+        FireblocksLimiterStatus {
+            bucket,
+            capacity: self.capacity,
+            cooldown_remaining_ms,
+            consecutive_429s: self.consecutive_429s.load(Ordering::Relaxed),
+            throttled_window,
+            peak_wait_ms_window,
+            acquired_window,
+        }
     }
 
     /// Notify the limiter that a Fireblocks call returned 429. Pushes the

@@ -104,6 +104,8 @@ pub enum Task {
     HandleRejection,
     /// Untagged failures that escape to the panic hook.
     UncaughtPanic,
+    /// Periodic snapshot of shared-resource state (rate-limit bucket, etc).
+    HealthSnapshot,
 }
 
 impl Task {
@@ -138,6 +140,7 @@ impl Task {
             Task::RecordMetric => "record-metric",
             Task::HandleRejection => "handle-rejection",
             Task::UncaughtPanic => "uncaught-panic",
+            Task::HealthSnapshot => "health-snapshot",
         }
     }
 }

@@ -293,7 +293,7 @@ impl CustodyClient {
         // it was meant to ride out. The gardener-side viem transport
         // owns the outer retry policy.
         self.fireblocks_client
-            .rate_limited(|sdk| {
+            .rate_limited("create_transaction(sign-rpc)", |sdk| {
                 let params = params.clone();
                 async move { sdk.transactions_api().create_transaction(params).await }
             })

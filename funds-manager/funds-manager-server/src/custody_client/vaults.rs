@@ -45,9 +45,9 @@ impl CustodyClient {
 
         let vaults_resp = self
             .fireblocks_client
-            .rate_limited(
-                |sdk| async move { sdk.vaults_api().get_paged_vault_accounts(params).await },
-            )
+            .rate_limited("get_paged_vault_accounts", |sdk| async move {
+                sdk.vaults_api().get_paged_vault_accounts(params).await
+            })
             .await?;
 
         for vault in vaults_resp.accounts.into_iter() {
@@ -77,9 +77,9 @@ impl CustodyClient {
 
         let vault_asset = self
             .fireblocks_client
-            .rate_limited(
-                |sdk| async move { sdk.vaults_api().get_vault_account_asset(params).await },
-            )
+            .rate_limited("get_vault_account_asset", |sdk| async move {
+                sdk.vaults_api().get_vault_account_asset(params).await
+            })
             .await?;
 
         let available: f64 = vault_asset.available.parse().map_err(FundsManagerError::parse)?;
@@ -153,7 +153,7 @@ impl CustodyClient {
         let params = GetAssetByIdParams::builder().id(asset_id.to_string()).build();
         let asset_resp = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited("get_asset_by_id", |sdk| async move {
                 sdk.apis().blockchains_assets_beta_api().get_asset_by_id(params).await
             })
             .await?;

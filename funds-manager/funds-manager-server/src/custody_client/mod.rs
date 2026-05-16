@@ -1,7 +1,7 @@
 //! Manages the custody backend for the funds manager
 pub mod deposit;
 mod fireblocks_client;
-mod fireblocks_rate_limiter;
+pub mod fireblocks_rate_limiter;
 pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;
@@ -238,7 +238,7 @@ impl CustodyClient {
 
         let arb_assets = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited("list_assets", |sdk| async move {
                 sdk.apis().blockchains_assets_beta_api().list_assets(list_assets_params).await
             })
             .await?;
@@ -297,7 +297,7 @@ impl CustodyClient {
 
         let blockchains = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited("list_blockchains", |sdk| async move {
                 sdk.apis()
                     .blockchains_assets_beta_api()
                     .list_blockchains(list_blockchains_params)
@@ -332,7 +332,7 @@ impl CustodyClient {
         loop {
             let tx_result = self
                 .fireblocks_client
-                .rate_limited(|sdk| {
+                .rate_limited("get_transaction(poll)", |sdk| {
                     let id = id.clone();
                     async move { sdk.get_transaction(&id).await }
                 })
@@ -388,7 +388,7 @@ impl CustodyClient {
         // recent state (mirrors the SDK helper's trailing `get_transaction`).
         let id = transaction_id.to_string();
         self.fireblocks_client
-            .rate_limited(|sdk| async move { sdk.get_transaction(&id).await })
+            .rate_limited("get_transaction", |sdk| async move { sdk.get_transaction(&id).await })
             .await
             .map_err(FundsManagerError::fireblocks)
     }
@@ -410,7 +410,7 @@ impl CustodyClient {
             let params = params.clone();
             let txs = self
                 .fireblocks_client
-                .rate_limited(|sdk| async move {
+                .rate_limited("get_transactions(poll-indexed)", |sdk| async move {
                     sdk.apis().transactions_api().get_transactions(params).await
                 })
                 .await?;
