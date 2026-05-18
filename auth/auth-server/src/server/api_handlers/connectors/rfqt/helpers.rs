@@ -93,6 +93,25 @@ fn chain_to_chain_id(chain: Chain) -> u64 {
     }
 }
 
+/// Parse the upstream `/v2/markets/depth` response, or classify the failure.
+///
+/// Non-2xx responses and malformed JSON are surfaced as `Custom` (→ HTTP 500)
+/// rather than `Serde` (→ HTTP 400): the auth-server's caller did nothing
+/// wrong if the upstream relayer is broken, so a 400 would be misleading.
+pub fn parse_market_depths_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<GetMarketDepthsResponse, AuthServerError> {
+    if !status.is_success() {
+        return Err(AuthServerError::custom(format!(
+            "upstream relayer returned {status} for market-depths"
+        )));
+    }
+    serde_json::from_slice(body).map_err(|e| {
+        AuthServerError::custom(format!("upstream relayer returned malformed JSON: {e}"))
+    })
+}
+
 /// Transform v2 market-depths data into the RFQT levels response shape.
 ///
 /// v2 `GetMarketDepthsResponse` carries a `MarketInfo` per pair, which already
@@ -822,5 +841,48 @@ mod tests {
         let levels = resp.pairs.values().next().unwrap();
         assert!(levels.bids.is_empty());
         assert_eq!(levels.asks.len(), 1);
+    }
+
+    #[test]
+    fn parse_market_depths_response_upstream_non_success_maps_to_500() {
+        use crate::ApiError;
+        use http::StatusCode;
+
+        let err = parse_market_depths_response(
+            StatusCode::BAD_GATEWAY,
+            b"<html>upstream down</html>",
+        )
+        .expect_err("non-success status should error");
+
+        assert!(
+            matches!(err, AuthServerError::Custom(_)),
+            "expected Custom variant (→ 500), got {err:?}"
+        );
+
+        let api_err: ApiError = err.into();
+        assert!(
+            matches!(api_err, ApiError::InternalError(_)),
+            "expected ApiError::InternalError (HTTP 500), got {api_err:?}"
+        );
+    }
+
+    #[test]
+    fn parse_market_depths_response_malformed_json_maps_to_500() {
+        use crate::ApiError;
+        use http::StatusCode;
+
+        let err = parse_market_depths_response(StatusCode::OK, b"not json at all")
+            .expect_err("malformed JSON should error");
+
+        assert!(
+            matches!(err, AuthServerError::Custom(_)),
+            "expected Custom variant (→ 500), got {err:?}"
+        );
+
+        let api_err: ApiError = err.into();
+        assert!(
+            matches!(api_err, ApiError::InternalError(_)),
+            "expected ApiError::InternalError (HTTP 500), got {api_err:?}"
+        );
     }
 }
