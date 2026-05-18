@@ -848,11 +848,9 @@ mod tests {
         use crate::ApiError;
         use http::StatusCode;
 
-        let err = parse_market_depths_response(
-            StatusCode::BAD_GATEWAY,
-            b"<html>upstream down</html>",
-        )
-        .expect_err("non-success status should error");
+        let err =
+            parse_market_depths_response(StatusCode::BAD_GATEWAY, b"<html>upstream down</html>")
+                .expect_err("non-success status should error");
 
         assert!(
             matches!(err, AuthServerError::Custom(_)),

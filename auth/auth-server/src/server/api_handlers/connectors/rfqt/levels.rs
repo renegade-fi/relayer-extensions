@@ -48,8 +48,8 @@ impl Server {
         // 400 a raw serde error would produce.
         let upstream_status = resp.status();
         let body_bytes = resp.body();
-        let depth_response = parse_market_depths_response(upstream_status, body_bytes).map_err(
-            |err| {
+        let depth_response =
+            parse_market_depths_response(upstream_status, body_bytes).map_err(|err| {
                 let preview = body_preview(body_bytes);
                 log_task!(
                     Task::RfqtLevels,
@@ -62,8 +62,7 @@ impl Server {
                     "upstream market-depths fetch failed"
                 );
                 err
-            },
-        )?;
+            })?;
         let body = transform_depth_to_levels(depth_response);
 
         log_task!(
