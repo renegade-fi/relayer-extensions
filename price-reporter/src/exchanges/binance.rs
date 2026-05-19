@@ -10,7 +10,6 @@ use futures_util::{Stream, StreamExt};
 use renegade_types_core::{Exchange, Price, PriceReport, Token};
 use renegade_util::{err_str, get_current_time_millis};
 use serde_json::Value;
-use tracing::error;
 use tungstenite::Message;
 use url::Url;
 
@@ -25,6 +24,8 @@ use crate::{
             safe_midpoint,
         },
     },
+    log_task,
+    logger::{Outcome, Task},
 };
 
 use super::connection::{
@@ -197,7 +198,13 @@ impl ExchangeConnection for BinanceConnection {
                     Ok(mapped_stream) => mapped_stream.transpose(),
                     // Error on the incoming (filtered) stream
                     Err(e) => {
-                        error!("Error reading message from Binance ws: {}", e);
+                        log_task!(
+                            Task::ExchangeConnection,
+                            Outcome::Failed,
+                            exchange = "binance",
+                            error = %e,
+                            "error reading message from websocket"
+                        );
                         Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
                     },
                 }

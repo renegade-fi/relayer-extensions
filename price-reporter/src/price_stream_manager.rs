@@ -16,7 +16,6 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
 
 use crate::{
     errors::ServerError,
@@ -24,6 +23,8 @@ use crate::{
         ExchangeConnectionsConfig, connect_exchange, connection::ExchangeConnection,
         error::ExchangeConnectionError,
     },
+    log_task,
+    logger::{Outcome, Task},
     utils::{
         CONN_RETRY_DELAY, ClosureSender, FEED_AGE_EMIT_INTERVAL, HEARTBEAT_INTERVAL,
         HEARTBEAT_REPLAY_WARN_AGE, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW,
@@ -108,7 +109,12 @@ impl GlobalPriceStreams {
         if !to_cancel.is_empty() {
             let mut streams = self.price_streams.write().await;
             for pair_info in to_cancel {
-                info!("Cancelling removed price stream: {}", pair_info.to_topic());
+                log_task!(
+                    Task::PriceStream,
+                    Outcome::Ok,
+                    subject = %pair_info.to_topic(),
+                    "cancelling removed price stream"
+                );
                 if let Some((_, cancel_token)) = streams.remove(&pair_info) {
                     cancel_token.cancel();
                 }
@@ -139,7 +145,12 @@ impl GlobalPriceStreams {
             return Ok(stream_rx);
         }
 
-        info!("Initializing price stream for {}", pair_info.to_topic());
+        log_task!(
+            Task::PriceStream,
+            Outcome::Started,
+            subject = %pair_info.to_topic(),
+            "initializing price stream"
+        );
 
         // Spawn a task responsible for forwarding prices into the broadcast channel &
         // sending keepalive messages to the exchange
@@ -191,7 +202,12 @@ impl GlobalPriceStreams {
         loop {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
-                    info!("Price stream cancelled for {}", pair_info.to_topic());
+                    log_task!(
+                        Task::PriceStream,
+                        Outcome::Ok,
+                        subject = %pair_info.to_topic(),
+                        "price stream cancelled"
+                    );
                     return Ok(());
                 }
                 res = Self::manage_connection(&mut conn, &price_tx, &pair_info, &last_real_tick) => {
@@ -284,8 +300,10 @@ impl GlobalPriceStreams {
                 // case where the websocket handshake succeeds but the
                 // subscribe message is silently dropped.
                 _ = &mut subscribe_ack_deadline, if !received_first_tick => {
-                    warn!(
-                        topic = %pair_info.to_topic(),
+                    log_task!(
+                        Task::Subscription,
+                        Outcome::Failed,
+                        subject = %pair_info.to_topic(),
                         timeout_secs = SUBSCRIBE_ACK_TIMEOUT.as_secs(),
                         "no price tick received after connect; subscription appears dead"
                     );
@@ -308,18 +326,22 @@ impl GlobalPriceStreams {
                             // Surface long replay windows: useful to pinpoint
                             // a stuck feed before the watchdog fires.
                             if age > HEARTBEAT_REPLAY_WARN_AGE {
-                                warn!(
-                                    topic = %pair_info.to_topic(),
+                                log_task!(
+                                    Task::Heartbeat,
+                                    Outcome::Partial,
+                                    subject = %pair_info.to_topic(),
                                     age_secs = age.as_secs(),
                                     "replaying cached price; no real exchange update"
                                 );
                             }
                             let _ = price_tx.send(price);
                         } else {
-                            warn!(
-                                "No exchange update for {:?}, treating as stale: {}",
-                                age,
-                                pair_info.to_topic(),
+                            log_task!(
+                                Task::Heartbeat,
+                                Outcome::Failed,
+                                subject = %pair_info.to_topic(),
+                                age_secs = age.as_secs(),
+                                "no exchange update past max heartbeat age; treating as stale"
                             );
                             return Err(ServerError::ExchangeConnection(
                                 ExchangeConnectionError::ConnectionHangup(
@@ -376,7 +398,13 @@ impl GlobalPriceStreams {
         config: &ExchangeConnectionsConfig,
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
-        warn!("Error in connection to {}: {}", pair_info.to_topic(), prev_err);
+        log_task!(
+            Task::ExchangeConnection,
+            Outcome::Failed,
+            subject = %pair_info.to_topic(),
+            error = %prev_err,
+            "error in connection"
+        );
         let retry_start = Instant::now();
         let attempts_before_loop = retry_timestamps.len();
         let exchange = pair_info.exchange;
@@ -384,10 +412,12 @@ impl GlobalPriceStreams {
             // Add delay before retrying
             if prev_err.is_rate_limit_error() {
                 // We were rate limited, so we wait longer before retrying
-                info!(
-                    "Waiting {}s to retry {} connection due to rate limit",
-                    RATE_LIMIT_RETRY_DELAY.as_secs(),
-                    pair_info.to_topic()
+                log_task!(
+                    Task::ExchangeConnection,
+                    Outcome::Retrying,
+                    subject = %pair_info.to_topic(),
+                    delay_secs = RATE_LIMIT_RETRY_DELAY.as_secs(),
+                    "waiting before retry due to rate limit"
                 );
 
                 tokio::time::sleep(RATE_LIMIT_RETRY_DELAY).await;
@@ -397,8 +427,10 @@ impl GlobalPriceStreams {
 
             prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
                 Ok(conn) => {
-                    info!(
-                        topic = %pair_info.to_topic(),
+                    log_task!(
+                        Task::ExchangeConnection,
+                        Outcome::Ok,
+                        subject = %pair_info.to_topic(),
                         attempts = retry_timestamps.len() - attempts_before_loop,
                         elapsed_ms = retry_start.elapsed().as_millis() as u64,
                         "reconnected to exchange"
@@ -409,11 +441,24 @@ impl GlobalPriceStreams {
                     exchange,
                 ))) => {
                     // Return the original error if we've exhausted retries
-                    error!("Exhausted retries for {}", exchange);
+                    log_task!(
+                        Task::ExchangeConnection,
+                        Outcome::Failed,
+                        subject = %pair_info.to_topic(),
+                        exchange = %exchange,
+                        "exhausted retries"
+                    );
                     return Err(prev_err);
                 },
                 Err(e) => {
-                    warn!("Failed to reconnect to {exchange}: {e}");
+                    log_task!(
+                        Task::ExchangeConnection,
+                        Outcome::Retrying,
+                        subject = %pair_info.to_topic(),
+                        exchange = %exchange,
+                        error = %e,
+                        "failed to reconnect"
+                    );
                     e
                 },
             };
@@ -428,7 +473,12 @@ impl GlobalPriceStreams {
         config: &ExchangeConnectionsConfig,
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
-        warn!("Retrying connection for {}", pair_info.to_topic());
+        log_task!(
+            Task::ExchangeConnection,
+            Outcome::Retrying,
+            subject = %pair_info.to_topic(),
+            "retrying connection"
+        );
 
         // Increment the retry count and filter out old requests
         let now = Instant::now();

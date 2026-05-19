@@ -19,7 +19,6 @@ use reqwest::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
 use tungstenite::Message;
 use url::Url;
 
@@ -30,6 +29,8 @@ use crate::{
         connection::{BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType},
         error::ExchangeConnectionError,
     },
+    log_task,
+    logger::{Outcome, Task},
     utils::PairInfo,
 };
 
@@ -248,8 +249,11 @@ impl CoinbaseConnection {
         tokio::spawn(async move {
             loop {
                 if cancel_token.is_cancelled() {
-                    info!(
-                        "Received cancellation signal, stopping resubscription loop for {product_id}"
+                    log_task!(
+                        Task::Subscription,
+                        Outcome::Ok,
+                        subject = %product_id,
+                        "received cancellation signal, stopping resubscription loop"
                     );
                     break;
                 }
@@ -257,7 +261,13 @@ impl CoinbaseConnection {
                 if let Err(e) =
                     Self::resubscribe_to_channel(&product_id, &config, &mut writer).await
                 {
-                    error!("Error refreshing subscription: {e}");
+                    log_task!(
+                        Task::Subscription,
+                        Outcome::Failed,
+                        subject = %product_id,
+                        error = %e,
+                        "error refreshing subscription"
+                    );
                 }
 
                 let sleep_time = rand::thread_rng()
@@ -274,7 +284,12 @@ impl CoinbaseConnection {
         config: &ExchangeConnectionsConfig,
         writer: &mut BoxedWsWriter,
     ) -> Result<(), ExchangeConnectionError> {
-        info!("Refreshing subscription for {product_id}");
+        log_task!(
+            Task::Subscription,
+            Outcome::Started,
+            subject = %product_id,
+            "refreshing subscription"
+        );
 
         // Unsubscribe from the level2 channel for the product
         let authenticated_unsubscribe_msg =
@@ -382,14 +397,24 @@ impl CoinbaseConnection {
         let topic = pair_info.to_topic();
 
         if sequence_num > *last_sequence_num + 1 {
-            error!(
-                "Dropped message in {topic} websocket stream (sequence number: {sequence_num}; last seen: {last_sequence_num})"
+            log_task!(
+                Task::ExchangeConnection,
+                Outcome::Failed,
+                subject = %topic,
+                sequence_num = sequence_num,
+                last_sequence_num = *last_sequence_num,
+                "dropped message in coinbase websocket stream"
             );
         }
 
         if sequence_num < *last_sequence_num {
-            error!(
-                "Out-of-order message in {topic} websocket stream (sequence number: {sequence_num}; last seen: {last_sequence_num})"
+            log_task!(
+                Task::ExchangeConnection,
+                Outcome::Failed,
+                subject = %topic,
+                sequence_num = sequence_num,
+                last_sequence_num = *last_sequence_num,
+                "out-of-order message in coinbase websocket stream"
             );
         }
 
@@ -454,7 +479,13 @@ impl ExchangeConnection for CoinbaseConnection {
                     .transpose(),
 
                     Err(e) => {
-                        error!("Error reading message from Coinbase websocket: {e}");
+                        log_task!(
+                            Task::ExchangeConnection,
+                            Outcome::Failed,
+                            exchange = "coinbase",
+                            error = %e,
+                            "error reading message from websocket"
+                        );
                         Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
                     },
                 }

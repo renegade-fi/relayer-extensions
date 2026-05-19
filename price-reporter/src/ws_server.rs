@@ -9,12 +9,13 @@ use renegade_util::err_str;
 use tokio::net::TcpStream;
 use tokio_stream::StreamMap;
 use tokio_tungstenite::accept_async;
-use tracing::{debug, info};
 use tungstenite::Message;
 
 use crate::{
     errors::ServerError,
     exchanges::ExchangeConnectionsConfig,
+    log_task,
+    logger::{Outcome, Task},
     price_stream_manager::GlobalPriceStreams,
     utils::{
         PairInfo, PriceMessage, PriceStreamMap, WsWriteStream, get_price_topic_str,
@@ -35,7 +36,12 @@ pub async fn handle_connection(
 ) -> Result<(), ServerError> {
     let peer_addr = stream.peer_addr().map_err(ServerError::GetPeerAddr)?;
 
-    debug!("Accepting websocket connection from: {}", peer_addr);
+    log_task!(
+        Task::WsServer,
+        Outcome::Started,
+        subject = %peer_addr,
+        "accepting websocket connection"
+    );
 
     let websocket_stream =
         accept_async(stream).await.map_err(err_str!(ServerError::WebsocketConnection))?;
@@ -87,7 +93,12 @@ pub async fn handle_connection(
         }
     }
 
-    debug!("Closing websocket connection from: {}", peer_addr);
+    log_task!(
+        Task::WsServer,
+        Outcome::Ok,
+        subject = %peer_addr,
+        "closing websocket connection"
+    );
 
     Ok(())
 }
@@ -143,7 +154,13 @@ async fn handle_subscription_message(
 ) -> Result<SubscriptionResponse, ServerError> {
     match message {
         WebsocketMessage::Subscribe { topic } => {
-            info!("Subscribing {} to {}", peer_addr, &topic);
+            log_task!(
+                Task::WsServer,
+                Outcome::Ok,
+                peer = %peer_addr,
+                subject = %topic,
+                "client subscribed"
+            );
             let pair_info = PairInfo::from_topic(&topic)?;
             let stream = global_price_streams
                 .get_or_create_price_stream(pair_info.clone(), config.clone())
@@ -152,7 +169,13 @@ async fn handle_subscription_message(
             subscriptions.insert(pair_info.into(), stream);
         },
         WebsocketMessage::Unsubscribe { topic } => {
-            info!("Unsubscribing {} from {}", peer_addr, &topic);
+            log_task!(
+                Task::WsServer,
+                Outcome::Ok,
+                peer = %peer_addr,
+                subject = %topic,
+                "client unsubscribed"
+            );
             let pair_info = PairInfo::from_topic(&topic)?;
             subscriptions.remove(&pair_info.into());
         },

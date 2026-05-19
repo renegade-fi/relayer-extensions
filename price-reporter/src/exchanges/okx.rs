@@ -10,7 +10,6 @@ use futures_util::{SinkExt, Stream, StreamExt};
 use renegade_types_core::{Exchange, Price, Token};
 use renegade_util::err_str;
 use serde_json::{Value, json};
-use tracing::error;
 use tungstenite::Message;
 use url::Url;
 
@@ -18,6 +17,8 @@ use crate::{
     exchanges::connection::{
         BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType,
     },
+    log_task,
+    logger::{Outcome, Task},
     utils::PairInfo,
 };
 
@@ -166,7 +167,13 @@ impl ExchangeConnection for OkxConnection {
 
                     // Error reading from the websocket
                     Err(e) => {
-                        error!("Error reading message from Okx ws: {}", e);
+                        log_task!(
+                            Task::ExchangeConnection,
+                            Outcome::Failed,
+                            exchange = "okx",
+                            error = %e,
+                            "error reading message from websocket"
+                        );
                         Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
                     },
                 }

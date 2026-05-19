@@ -12,7 +12,6 @@ use lazy_static::lazy_static;
 use renegade_types_core::{Exchange, Price, Token};
 use renegade_util::err_str;
 use serde_json::{Value, json};
-use tracing::error;
 use tungstenite::Message;
 use url::Url;
 
@@ -20,6 +19,8 @@ use crate::{
     exchanges::connection::{
         BoxedPriceReader, BoxedWsWriter, InitializablePriceStream, PriceStreamType,
     },
+    log_task,
+    logger::{Outcome, Task},
     utils::PairInfo,
 };
 
@@ -176,7 +177,13 @@ impl ExchangeConnection for KrakenConnection {
 
                     // Error reading from the websocket
                     Err(e) => {
-                        error!("Error reading message from Kraken ws: {}", e);
+                        log_task!(
+                            Task::ExchangeConnection,
+                            Outcome::Failed,
+                            exchange = "kraken",
+                            error = %e,
+                            "error reading message from websocket"
+                        );
                         Some(Err(ExchangeConnectionError::ConnectionHangup(e.to_string())))
                     },
                 }

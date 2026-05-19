@@ -16,18 +16,21 @@ use itertools::Itertools;
 use renegade_types_core::{Exchange, Token, default_exchange_stable, get_all_base_tokens};
 use renegade_util::err_str;
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
-use tracing::{error, info};
 use utils::{PairInfo, setup_all_token_remaps};
 use ws_server::handle_connection;
 
 use crate::{
-    cli::Cli, exchanges::ExchangeConnectionsConfig, price_stream_manager::GlobalPriceStreams,
+    cli::Cli,
+    exchanges::ExchangeConnectionsConfig,
+    logger::{Outcome, Task},
+    price_stream_manager::GlobalPriceStreams,
 };
 
 mod cli;
 mod errors;
 mod exchanges;
 mod http_server;
+mod logger;
 mod price_stream_manager;
 mod utils;
 mod ws_server;
@@ -66,7 +69,7 @@ async fn main() -> Result<(), ServerError> {
     let listener =
         TcpListener::bind(addr).await.map_err(err_str!(ServerError::WebsocketConnection))?;
 
-    info!("Listening on: {}", addr);
+    log_task!(Task::ServiceLifecycle, Outcome::Ok, addr = %addr, "listening");
 
     let http_server = HttpServer::new(&price_reporter_config, global_price_streams.clone());
     tokio::spawn(http_server.execution_loop());
@@ -85,7 +88,12 @@ async fn main() -> Result<(), ServerError> {
             // Handle price stream closure
             Some(res) = closure_rx.recv() => {
                 if let Err(e) = res {
-                    error!("Shutting down server due to error: {}", e);
+                    log_task!(
+                        Task::ServiceLifecycle,
+                        Outcome::Failed,
+                        error = %e,
+                        "shutting down server due to price-stream task failure"
+                    );
                     break Ok(());
                 }
             }
@@ -102,7 +110,7 @@ pub(crate) async fn init_default_price_streams(
     config: &ExchangeConnectionsConfig,
     disabled_exchanges: Vec<Exchange>,
 ) -> Result<(), ServerError> {
-    info!("Initializing default price streams");
+    log_task!(Task::ServiceLifecycle, Outcome::Started, "initializing default price streams");
 
     let disabled_exchanges_set: HashSet<Exchange> = disabled_exchanges.into_iter().collect();
     let enabled_exchanges =
@@ -170,7 +178,13 @@ fn init_price_stream(
     tokio::spawn(async move {
         if let Err(e) = streams.get_or_create_price_stream(pair_info, config.clone()).await {
             let ticker = base_token.get_ticker().expect("Failed to get ticker");
-            error!("Error initializing price stream for {ticker}: {e}");
+            log_task!(
+                Task::PriceStream,
+                Outcome::Failed,
+                subject = %ticker,
+                error = %e,
+                "error initializing price stream"
+            );
         }
     });
 

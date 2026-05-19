@@ -14,7 +14,11 @@ use matchit::Router;
 use renegade_util::err_str;
 use routes::{REFRESH_TOKEN_MAPPING_ROUTE, RefreshTokenMappingHandler};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error};
+
+use crate::{
+    log_task,
+    logger::{Outcome, Task},
+};
 
 /// Header-read timeout for keep-alive connections. Must be strictly greater
 /// than the `pool_idle_timeout` used by `price-reporter-client` so that
@@ -118,9 +122,19 @@ impl HttpServer {
             tokio::spawn(async move {
                 if let Err(e) = self_clone.handle_stream(stream).await {
                     if e.to_string().contains(IDLE_TIMEOUT_ERR_SUBSTR) {
-                        debug!("Idle keep-alive connection closed: {e}");
+                        log_task!(
+                            Task::HttpServer,
+                            Outcome::Ok,
+                            error = %e,
+                            "idle keep-alive connection closed"
+                        );
                     } else {
-                        error!("Error handling stream: {e}");
+                        log_task!(
+                            Task::HttpServer,
+                            Outcome::Failed,
+                            error = %e,
+                            "error handling stream"
+                        );
                     }
                 }
             });

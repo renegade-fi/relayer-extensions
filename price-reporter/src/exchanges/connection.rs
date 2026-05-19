@@ -17,7 +17,11 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
-use tracing::{error, warn};
+
+use crate::{
+    log_task,
+    logger::{Outcome, Task},
+};
 use tungstenite::{Error as WsError, http::StatusCode};
 use url::Url;
 
@@ -122,7 +126,13 @@ pub(crate) async fn ws_connect(
     let ws_conn = match connect_async(url.clone()).await {
         Ok((conn, _resp)) => conn,
         Err(e) => {
-            error!("Cannot connect to the remote URL: {}", url);
+            log_task!(
+                Task::ExchangeConnection,
+                Outcome::Failed,
+                subject = %url,
+                error = %e,
+                "cannot connect to remote URL"
+            );
             if let WsError::Http(ref response) = e
                 && response.status() == StatusCode::TOO_MANY_REQUESTS
             {
@@ -204,7 +214,13 @@ pub fn parse_json_from_message(
         let reason = close_frame
             .map(|f| format!("code: {}, reason: {}", f.code, f.reason))
             .unwrap_or_else(|| "no reason given".to_string());
-        warn!("Received close frame from {topic} websocket: {reason}");
+        log_task!(
+            Task::ExchangeConnection,
+            Outcome::Partial,
+            subject = %topic,
+            reason = %reason,
+            "received close frame from exchange websocket"
+        );
         Err(ExchangeConnectionError::ConnectionHangup(format!(
             "received close frame from {topic} websocket"
         )))
