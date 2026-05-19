@@ -285,6 +285,12 @@ impl GlobalPriceStreams {
         let mut last_price: Option<Price> = None;
         let mut last_exchange_update = Instant::now();
         let mut received_first_tick = false;
+        // Edge-triggered state for the heartbeat-replay warn. We log once
+        // when the replay age first crosses `HEARTBEAT_REPLAY_WARN_AGE` and
+        // once when a real tick resumes — not on every heartbeat in
+        // between. Avoids log-spam on illiquid pairs that legitimately
+        // tick every 60–120s.
+        let mut replay_stalled = false;
 
         loop {
             tokio::select! {
@@ -323,9 +329,11 @@ impl GlobalPriceStreams {
                     if let Some(price) = last_price {
                         let age = last_exchange_update.elapsed();
                         if age < MAX_HEARTBEAT_AGE {
-                            // Surface long replay windows: useful to pinpoint
-                            // a stuck feed before the watchdog fires.
-                            if age > HEARTBEAT_REPLAY_WARN_AGE {
+                            // Edge-trigger: log exactly once when the replay
+                            // age first crosses the threshold. The matching
+                            // "recovered" log fires from the price-tick arm
+                            // when a real update finally arrives.
+                            if !replay_stalled && age > HEARTBEAT_REPLAY_WARN_AGE {
                                 log_task!(
                                     Task::Heartbeat,
                                     Outcome::Partial,
@@ -333,6 +341,7 @@ impl GlobalPriceStreams {
                                     age_secs = age.as_secs(),
                                     "replaying cached price; no real exchange update"
                                 );
+                                replay_stalled = true;
                             }
                             let _ = price_tx.send(price);
                         } else {
@@ -357,6 +366,20 @@ impl GlobalPriceStreams {
                 maybe_price_res = conn.next() => match maybe_price_res {
                     Some(price_res) => {
                         let price = price_res.map_err(ServerError::ExchangeConnection)?;
+                        // Edge-trigger: pair the earlier "replaying cached
+                        // price" warn with a single recovery log when a
+                        // real tick resumes. Captures the stall duration
+                        // before we reset `last_exchange_update`.
+                        if replay_stalled {
+                            log_task!(
+                                Task::Heartbeat,
+                                Outcome::Ok,
+                                subject = %pair_info.to_topic(),
+                                stalled_for_secs = last_exchange_update.elapsed().as_secs(),
+                                "real exchange update resumed"
+                            );
+                            replay_stalled = false;
+                        }
                         let _ = price_tx.send(price);
                         last_price = Some(price);
                         last_exchange_update = Instant::now();
