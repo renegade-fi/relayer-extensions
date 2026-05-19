@@ -2,7 +2,10 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -22,11 +25,26 @@ use crate::{
         error::ExchangeConnectionError,
     },
     utils::{
-        CONN_RETRY_DELAY, ClosureSender, HEARTBEAT_INTERVAL, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES,
-        MAX_CONN_RETRY_WINDOW, MAX_HEARTBEAT_AGE, PairInfo, PriceReceiver, PriceSender,
-        PriceStream, RATE_LIMIT_RETRY_DELAY, SharedPriceStreams,
+        CONN_RETRY_DELAY, ClosureSender, FEED_AGE_EMIT_INTERVAL, HEARTBEAT_INTERVAL,
+        HEARTBEAT_REPLAY_WARN_AGE, KEEPALIVE_INTERVAL, MAX_CONN_RETRIES, MAX_CONN_RETRY_WINDOW,
+        MAX_HEARTBEAT_AGE, PairInfo, PriceReceiver, PriceSender, PriceStream,
+        RATE_LIMIT_RETRY_DELAY, SUBSCRIBE_ACK_TIMEOUT, SharedPriceStreams,
     },
 };
+
+/// Tracks the wall-clock time of the most recent real price tick for a single
+/// stream, independent of the heartbeat-watchdog clock (which resets on every
+/// reconnect). Stored as millis-since-UNIX_EPOCH in an `AtomicU64` so the
+/// emitter task and the connection-management task can share it without a
+/// lock. A value of `0` means no real tick has been observed yet.
+type LastRealTick = Arc<AtomicU64>;
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 /// The price for a unit pair
 ///
@@ -150,6 +168,21 @@ impl GlobalPriceStreams {
             return Ok(());
         }
 
+        // Shared real-tick clock. Updated only when a genuine exchange tick
+        // arrives in `manage_connection`. Survives reconnects, so the
+        // `exchange_last_update_age_seconds` gauge reflects true upstream
+        // staleness regardless of socket churn.
+        let last_real_tick: LastRealTick = Arc::new(AtomicU64::new(0));
+
+        // Spawn the per-feed age-gauge emitter. Bound it to the same cancel
+        // token as the parent task so it shuts down cleanly.
+        let emitter_cancel = cancel_token.clone();
+        let emitter_pair = pair_info.clone();
+        let emitter_last_tick = last_real_tick.clone();
+        tokio::spawn(async move {
+            Self::emit_feed_age_loop(emitter_pair, emitter_last_tick, emitter_cancel).await;
+        });
+
         // Connect to the pair on the specified exchange
         let mut retry_timestamps = Vec::new();
         let mut conn =
@@ -161,7 +194,7 @@ impl GlobalPriceStreams {
                     info!("Price stream cancelled for {}", pair_info.to_topic());
                     return Ok(());
                 }
-                res = Self::manage_connection(&mut conn, &price_tx, &pair_info) => {
+                res = Self::manage_connection(&mut conn, &price_tx, &pair_info, &last_real_tick) => {
                     match res {
                         Ok(()) => {},
                         Err(e) => {
@@ -169,6 +202,39 @@ impl GlobalPriceStreams {
                                 .await?;
                         },
                     }
+                }
+            }
+        }
+    }
+
+    /// Periodically emit `exchange_last_update_age_seconds` for this stream
+    /// until the parent task is cancelled. The gauge value is the wall-clock
+    /// age of the most recent real exchange tick; while the connection is
+    /// down or stuck, the value keeps growing.
+    async fn emit_feed_age_loop(
+        pair_info: PairInfo,
+        last_real_tick: LastRealTick,
+        cancel_token: CancellationToken,
+    ) {
+        let topic = pair_info.to_topic();
+        let mut tick = tokio::time::interval(FEED_AGE_EMIT_INTERVAL);
+        loop {
+            tokio::select! {
+                _ = cancel_token.cancelled() => return,
+                _ = tick.tick() => {
+                    let last_ms = last_real_tick.load(Ordering::Relaxed);
+                    // Skip emission until we've observed at least one tick;
+                    // emitting `now` before the stream is up would produce
+                    // misleading huge values during initial connect.
+                    if last_ms == 0 {
+                        continue;
+                    }
+                    let age_secs = now_millis().saturating_sub(last_ms) as f64 / 1000.0;
+                    renegade_util::metrics::gauge!(
+                        "exchange_last_update_age_seconds",
+                        "pair" => topic.clone(),
+                    )
+                    .set(age_secs);
                 }
             }
         }
@@ -192,13 +258,17 @@ impl GlobalPriceStreams {
         conn: &mut Box<dyn ExchangeConnection>,
         price_tx: &PriceSender,
         pair_info: &PairInfo,
+        last_real_tick: &LastRealTick,
     ) -> Result<(), ServerError> {
         let keepalive_delay = tokio::time::sleep(KEEPALIVE_INTERVAL);
         let heartbeat_delay = tokio::time::sleep(HEARTBEAT_INTERVAL);
+        let subscribe_ack_deadline = tokio::time::sleep(SUBSCRIBE_ACK_TIMEOUT);
         tokio::pin!(keepalive_delay);
         tokio::pin!(heartbeat_delay);
+        tokio::pin!(subscribe_ack_deadline);
         let mut last_price: Option<Price> = None;
         let mut last_exchange_update = Instant::now();
+        let mut received_first_tick = false;
 
         loop {
             tokio::select! {
@@ -208,22 +278,52 @@ impl GlobalPriceStreams {
                     keepalive_delay.as_mut().reset(Instant::now() + KEEPALIVE_INTERVAL);
                 }
 
+                // Subscribe-ack deadline: if we have not received a real tick
+                // within `SUBSCRIBE_ACK_TIMEOUT` of (re)connecting, treat the
+                // subscription as dead and bail to the retry loop. Catches the
+                // case where the websocket handshake succeeds but the
+                // subscribe message is silently dropped.
+                _ = &mut subscribe_ack_deadline, if !received_first_tick => {
+                    warn!(
+                        topic = %pair_info.to_topic(),
+                        timeout_secs = SUBSCRIBE_ACK_TIMEOUT.as_secs(),
+                        "no price tick received after connect; subscription appears dead"
+                    );
+                    return Err(ServerError::ExchangeConnection(
+                        ExchangeConnectionError::ConnectionHangup(format!(
+                            "no price tick within {}s of connect for {}",
+                            SUBSCRIBE_ACK_TIMEOUT.as_secs(),
+                            pair_info.to_topic(),
+                        )),
+                    ));
+                }
+
                 // Re-send the last known price to keep downstream timestamps
                 // fresh, but only if we've received a real exchange update
                 // recently — otherwise treat the connection as dead.
                 _ = &mut heartbeat_delay => {
                     if let Some(price) = last_price {
-                        if last_exchange_update.elapsed() < MAX_HEARTBEAT_AGE {
+                        let age = last_exchange_update.elapsed();
+                        if age < MAX_HEARTBEAT_AGE {
+                            // Surface long replay windows: useful to pinpoint
+                            // a stuck feed before the watchdog fires.
+                            if age > HEARTBEAT_REPLAY_WARN_AGE {
+                                warn!(
+                                    topic = %pair_info.to_topic(),
+                                    age_secs = age.as_secs(),
+                                    "replaying cached price; no real exchange update"
+                                );
+                            }
                             let _ = price_tx.send(price);
                         } else {
                             warn!(
                                 "No exchange update for {:?}, treating as stale: {}",
-                                last_exchange_update.elapsed(),
+                                age,
                                 pair_info.to_topic(),
                             );
                             return Err(ServerError::ExchangeConnection(
                                 ExchangeConnectionError::ConnectionHangup(
-                                    format!("No exchange data for {:?}", last_exchange_update.elapsed()),
+                                    format!("No exchange data for {:?}", age),
                                 ),
                             ));
                         }
@@ -238,6 +338,8 @@ impl GlobalPriceStreams {
                         let _ = price_tx.send(price);
                         last_price = Some(price);
                         last_exchange_update = Instant::now();
+                        received_first_tick = true;
+                        last_real_tick.store(now_millis(), Ordering::Relaxed);
                         heartbeat_delay.as_mut().reset(Instant::now() + HEARTBEAT_INTERVAL);
                         renegade_util::metrics::counter!("exchange_updates", "pair" => pair_info.to_topic()).increment(1);
                     }
@@ -275,6 +377,8 @@ impl GlobalPriceStreams {
         retry_timestamps: &mut Vec<Instant>,
     ) -> Result<Box<dyn ExchangeConnection>, ServerError> {
         warn!("Error in connection to {}: {}", pair_info.to_topic(), prev_err);
+        let retry_start = Instant::now();
+        let attempts_before_loop = retry_timestamps.len();
         let exchange = pair_info.exchange;
         loop {
             // Add delay before retrying
@@ -292,7 +396,15 @@ impl GlobalPriceStreams {
             }
 
             prev_err = match Self::retry_connection(pair_info, config, retry_timestamps).await {
-                Ok(conn) => return Ok(conn),
+                Ok(conn) => {
+                    info!(
+                        topic = %pair_info.to_topic(),
+                        attempts = retry_timestamps.len() - attempts_before_loop,
+                        elapsed_ms = retry_start.elapsed().as_millis() as u64,
+                        "reconnected to exchange"
+                    );
+                    return Ok(conn);
+                },
                 Err(ServerError::ExchangeConnection(ExchangeConnectionError::MaxRetries(
                     exchange,
                 ))) => {

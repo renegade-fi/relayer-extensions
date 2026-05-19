@@ -59,6 +59,17 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 pub const MAX_HEARTBEAT_AGE: Duration = Duration::from_secs(120);
 /// The maximum number of retries to attempt before giving up on a connection
 pub const MAX_CONN_RETRIES: usize = 5;
+/// The maximum time to wait for the first real price tick after a successful
+/// (re)connect before treating the subscription as dead. Catches the case
+/// where the websocket handshake succeeds but the subscribe message is
+/// silently dropped or the exchange-side subscription is otherwise inert.
+pub const SUBSCRIBE_ACK_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often the per-stream metrics ticker emits
+/// `exchange_last_update_age_seconds`. Spans connect/retry phases.
+pub const FEED_AGE_EMIT_INTERVAL: Duration = Duration::from_secs(5);
+/// The replay-age threshold above which `manage_connection` emits a per-tick
+/// warn log. Below this, replay is treated as normal slow-market behavior.
+pub const HEARTBEAT_REPLAY_WARN_AGE: Duration = Duration::from_secs(30);
 
 // ---------
 // | TYPES |
