@@ -57,8 +57,16 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// The maximum age of the last real exchange update before we stop replaying
 /// cached prices via heartbeat and treat the connection as dead.
 pub const MAX_HEARTBEAT_AGE: Duration = Duration::from_secs(120);
-/// The maximum number of retries to attempt before giving up on a connection
-pub const MAX_CONN_RETRIES: usize = 5;
+/// The maximum number of retries to attempt before giving up on a connection.
+///
+/// Tuned so a transient upstream burst (e.g., a ~1–2 min Coinbase flake on a
+/// single pair) does not exhaust the budget and bring down the service. With
+/// `CONN_RETRY_DELAY = 2s` and `SUBSCRIBE_ACK_TIMEOUT = 10s`, one retry cycle
+/// takes ~12s — so 15 retries permits ~3 min of sustained failure on a given
+/// pair before we give up and let the service restart. The testnet event on
+/// 2026-05-20 09:49Z (Coinbase WETH-USD subscribe-ack thrashing) exhausted
+/// the previous limit of 5 in ~50s.
+pub const MAX_CONN_RETRIES: usize = 15;
 /// The maximum time to wait for the first real price tick after a successful
 /// (re)connect before treating the subscription as dead. Catches the case
 /// where the websocket handshake succeeds but the subscribe message is
