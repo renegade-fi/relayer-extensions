@@ -49,7 +49,7 @@ pub struct WalletWithBalances {
 }
 
 /// A balance for a specific token
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TokenBalance {
     /// The mint address of the token
     pub mint: String,

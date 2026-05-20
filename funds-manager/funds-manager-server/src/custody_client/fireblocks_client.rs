@@ -4,15 +4,26 @@
 //! funds-manager should go through [`FireblocksClient::rate_limited`] so
 //! that the limiter sees them and stays within the workspace quota.
 
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use fireblocks_sdk::{models::AssetOnchainBeta, Client, ClientBuilder};
+use funds_manager_api::hot_wallets::TokenBalance;
 use tokio::sync::RwLock;
 
 use crate::{
     custody_client::fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
     error::FundsManagerError,
 };
+
+/// TTL for cached vault-balance responses. Short enough to keep telemetry
+/// fresh; long enough to coalesce retry storms (gardener fetch-holdings
+/// retries ~1/20s per stuck token).
+const VAULT_BALANCES_CACHE_TTL: Duration = Duration::from_secs(3);
 
 /// A client for interacting with the Fireblocks API
 #[derive(Clone)]
@@ -35,6 +46,9 @@ struct FireblocksMetadata {
     pub deposit_addresses: HashMap<(String, String), String>,
     /// A mapping from asset ID to its onchain data
     pub asset_onchain_data: HashMap<String, AssetOnchainBeta>,
+    /// A mapping from vault name to a recently-fetched balance snapshot.
+    /// Expired entries are filtered on read.
+    pub vault_balances: HashMap<String, (Instant, Vec<TokenBalance>)>,
 }
 
 impl FireblocksMetadata {
@@ -45,6 +59,7 @@ impl FireblocksMetadata {
             asset_ids: HashMap::new(),
             deposit_addresses: HashMap::new(),
             asset_onchain_data: HashMap::new(),
+            vault_balances: HashMap::new(),
         }
     }
 }
@@ -129,6 +144,20 @@ impl FireblocksClient {
         self.metadata.read().await.asset_onchain_data.get(asset_id).cloned()
     }
 
+    /// Read a vault's cached token balances, if still within TTL
+    pub async fn read_cached_vault_balances(
+        &self,
+        vault_name: &str,
+    ) -> Option<Vec<TokenBalance>> {
+        let metadata = self.metadata.read().await;
+        let (cached_at, balances) = metadata.vault_balances.get(vault_name)?;
+        if cached_at.elapsed() < VAULT_BALANCES_CACHE_TTL {
+            Some(balances.clone())
+        } else {
+            None
+        }
+    }
+
     // -----------
     // | Setters |
     // -----------
@@ -160,5 +189,10 @@ impl FireblocksClient {
         asset_onchain_data: AssetOnchainBeta,
     ) {
         self.metadata.write().await.asset_onchain_data.insert(asset_id, asset_onchain_data);
+    }
+
+    /// Cache a vault's token balances with the current timestamp
+    pub async fn cache_vault_balances(&self, vault_name: String, balances: Vec<TokenBalance>) {
+        self.metadata.write().await.vault_balances.insert(vault_name, (Instant::now(), balances));
     }
 }

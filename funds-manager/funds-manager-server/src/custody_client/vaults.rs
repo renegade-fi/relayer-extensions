@@ -87,11 +87,21 @@ impl CustodyClient {
         Ok(available)
     }
 
-    /// Get the non-zero token balances of a vault
+    /// Get the non-zero token balances of a vault.
+    ///
+    /// Results are cached for a few seconds to coalesce retry storms from
+    /// the gardener-side fetch-holdings loop. The cache is a read-side
+    /// optimization only; mutating paths (deposit/withdraw/transfer) do
+    /// not invalidate it, so callers must tolerate up to
+    /// `VAULT_BALANCES_CACHE_TTL` of staleness.
     pub(crate) async fn get_vault_token_balances(
         &self,
         vault_name: &str,
     ) -> Result<Vec<TokenBalance>, FundsManagerError> {
+        if let Some(cached) = self.fireblocks_client.read_cached_vault_balances(vault_name).await {
+            return Ok(cached);
+        }
+
         let vault = self
             .get_vault_account(vault_name)
             .await?
@@ -100,9 +110,14 @@ impl CustodyClient {
         let futures =
             vault.assets.into_iter().map(|asset| self.try_get_token_balance_for_asset(asset));
 
-        let balances = try_join_all(futures).await?;
+        let balances: Vec<TokenBalance> =
+            try_join_all(futures).await?.into_iter().flatten().collect();
 
-        Ok(balances.into_iter().flatten().collect())
+        self.fireblocks_client
+            .cache_vault_balances(vault_name.to_string(), balances.clone())
+            .await;
+
+        Ok(balances)
     }
 
     /// Try to construct a `TokenBalance` for a given asset.
