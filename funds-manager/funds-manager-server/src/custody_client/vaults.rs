@@ -113,9 +113,7 @@ impl CustodyClient {
         let balances: Vec<TokenBalance> =
             try_join_all(futures).await?.into_iter().flatten().collect();
 
-        self.fireblocks_client
-            .cache_vault_balances(vault_name.to_string(), balances.clone())
-            .await;
+        self.fireblocks_client.cache_vault_balances(vault_name.to_string(), balances.clone()).await;
 
         Ok(balances)
     }

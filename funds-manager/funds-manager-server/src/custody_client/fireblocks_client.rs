@@ -145,10 +145,7 @@ impl FireblocksClient {
     }
 
     /// Read a vault's cached token balances, if still within TTL
-    pub async fn read_cached_vault_balances(
-        &self,
-        vault_name: &str,
-    ) -> Option<Vec<TokenBalance>> {
+    pub async fn read_cached_vault_balances(&self, vault_name: &str) -> Option<Vec<TokenBalance>> {
         let metadata = self.metadata.read().await;
         let (cached_at, balances) = metadata.vault_balances.get(vault_name)?;
         if cached_at.elapsed() < VAULT_BALANCES_CACHE_TTL {
