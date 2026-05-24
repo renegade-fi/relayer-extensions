@@ -53,6 +53,16 @@ cargo_features = "ethereum"
 environment = "ethereum-sepolia"
 resource = "auth-server-v2"
 
+[services.ethereum-sepolia-auth-server]
+[services.ethereum-sepolia-auth-server.build]
+dockerfile = "auth/Dockerfile"
+ecr_repo = "auth-server-ethereum-sepolia-v2"
+cargo_features = "ethereum"
+
+[services.ethereum-sepolia-auth-server.deploy]
+environment = "ethereum-sepolia"
+resource = "auth-server-v2"
+
 #####################
 ### Funds Manager ###
 #####################
