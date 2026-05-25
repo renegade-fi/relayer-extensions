@@ -96,6 +96,26 @@ impl Server {
             chain_clients.insert(chain, clients);
         }
 
+        // Top up v2 per-quoter EOAs before opening the HTTP listener so any
+        // subsequent rebalance cron tick lands against EOAs that have gas
+        // to sign their `transfer_erc20` legs. Best-effort: per-chain
+        // failures are logged inside `top_up_v2_quoter_eoas` and never bail
+        // server boot. Chains that don't host v2 quoters (no master-bot-seed
+        // secret, no quoter-config bucket) skip cleanly. See
+        // `custody_client/quoter_eoa_topup.rs` for the rationale.
+        for (chain, clients) in &chain_clients {
+            if let Err(e) = clients.custody_client.top_up_v2_quoter_eoas().await {
+                // top_up_v2_quoter_eoas only returns Err on truly unexpected
+                // states; per-EOA and missing-config errors are swallowed
+                // inside. Log here for symmetry, then keep going.
+                tracing::error!(
+                    chain = %chain,
+                    error = %e,
+                    "v2 quoter EOA top-up sweep returned an error; continuing boot"
+                );
+            }
+        }
+
         let disabled_relayer_chains =
             parse_disabled_relayer_chains(args.disabled_relayer_chains.as_deref())?;
 
