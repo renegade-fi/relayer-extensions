@@ -156,22 +156,21 @@ impl CustodyClient {
 
         // Load the quoter config. Same logic for missing buckets — a chain
         // without v2 quoters won't have one.
-        let config_text = match fetch_s3_object(&bucket, QUOTER_CONFIG_OBJECT_KEY, &self.aws_config)
-            .await
-        {
-            Ok(text) => text,
-            Err(e) => {
-                log_task!(
-                    Task::GasWallet,
-                    Outcome::Skipped,
-                    chain = %chain,
-                    bucket = %bucket,
-                    error = %e,
-                    "quoter config not available; skipping quoter EOA top-up"
-                );
-                return Ok(());
-            },
-        };
+        let config_text =
+            match fetch_s3_object(&bucket, QUOTER_CONFIG_OBJECT_KEY, &self.aws_config).await {
+                Ok(text) => text,
+                Err(e) => {
+                    log_task!(
+                        Task::GasWallet,
+                        Outcome::Skipped,
+                        chain = %chain,
+                        bucket = %bucket,
+                        error = %e,
+                        "quoter config not available; skipping quoter EOA top-up"
+                    );
+                    return Ok(());
+                },
+            };
 
         let document: QuoterConfigDocument = match serde_json::from_str(&config_text) {
             Ok(d) => d,
