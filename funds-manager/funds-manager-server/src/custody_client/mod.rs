@@ -275,8 +275,28 @@ impl CustodyClient {
     ) -> Result<TransactionResponse, FundsManagerError> {
         use fireblocks_sdk::models::TransactionStatus;
 
-        let timeout = Duration::from_secs(60);
-        let interval = Duration::from_secs(1);
+        // Poll cadence sizing
+        //
+        // Each in-flight sign holds a polling fiber that consumes one token
+        // per `interval` from the workspace rate limiter (15 RPS). At
+        // `interval = 1s` and ~13 concurrent signs (≈ steady-state load
+        // across 35 instruments), polls saturate ~87% of the bucket and
+        // starve `create_transaction`. At 3s, the same fan-out consumes
+        // ~29% of the bucket, leaving headroom for new signs.
+        //
+        // `timeout` was 60s; tripled in 2026-05-26 incident to give the
+        // Fireblocks queue more headroom under congestion. A shorter
+        // deadline turned every slow sign (status still Queued at 60s)
+        // into a caller-side "error" that propagated up and used to fire
+        // gardener viem retries — each retry = a new Fireblocks tx that
+        // also stuck in Queued, producing geometric growth. The 180s
+        // ceiling is comfortably above all observed pre-incident sign
+        // latencies and below any caller's own outer timeout (gardener
+        // ORDER_MODIFICATION_CRITICAL_SECTION_TIMEOUT_MS = 45s caps the
+        // surface bound regardless; longer here just avoids spurious
+        // funds-manager errors).
+        let timeout = Duration::from_secs(180);
+        let interval = Duration::from_secs(3);
         let deadline = Instant::now() + timeout;
 
         // Hand-rolled poll loop so each `get_transaction` call is routed
