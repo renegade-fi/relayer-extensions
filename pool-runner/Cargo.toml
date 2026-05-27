@@ -1,0 +1,40 @@
+[package]
+name = "pool-runner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# === CLI + Server === #
+clap = { version = "4.5.3", features = ["derive", "env"] }
+warp = "0.3"
+tokio = { version = "1", features = ["full"] }
+
+# === Renegade === #
+price-reporter-client = { path = "../price-reporter-client" }
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner", default-features = false, features = ["auth", "full-api"] }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner" }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner" }
+renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk.git", branch = "wj/pool-runner", features = ["internal"] }
+
+# === AWS === #
+aws-config = "1.5"
+aws-sdk-s3 = "1.37"
+
+# === Metrics === #
+# Must match the version used by `renegade-util` telemetry recorder.
+metrics = "=0.24.3"
+metrics-exporter-prometheus = "0.15"
+
+# === Misc === #
+alloy = "1.0.32"
+anyhow = "1.0"
+futures = "0.3"
+reqwest = { version = ">=0.12, <1.0", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+

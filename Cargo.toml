@@ -10,6 +10,7 @@ members = [
     "dealer/renegade-dealer-api",
     "funds-manager/funds-manager-api",
     "funds-manager/funds-manager-server",
+    "pool-runner",
     "price-reporter",
     "price-reporter-client",
     "prover-service/server",
@@ -65,3 +66,6 @@ tokio-postgres = "0.7"
 # === Misc Dependencies === #
 thiserror = "2.0"
 tracing = "0.1"
+
+[patch.crates-io]
+core2 = { git = "https://github.com/tcharding/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }
