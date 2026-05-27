@@ -41,8 +41,7 @@ async fn load_from_s3(s3_path: &str) -> Result<String> {
         .split_once('/')
         .ok_or_else(|| anyhow!("Invalid S3 path (expected bucket/key): {s3_path}"))?;
 
-    let config =
-        aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let client = aws_sdk_s3::Client::new(&config);
 
     let response = client
@@ -53,12 +52,8 @@ async fn load_from_s3(s3_path: &str) -> Result<String> {
         .await
         .with_context(|| format!("Failed to fetch s3://{s3_path}"))?;
 
-    let bytes = response
-        .body
-        .collect()
-        .await
-        .context("Failed to collect S3 response body")?
-        .into_bytes();
+    let bytes =
+        response.body.collect().await.context("Failed to collect S3 response body")?.into_bytes();
 
     String::from_utf8(bytes.to_vec()).context("S3 config is not valid UTF-8")
 }
