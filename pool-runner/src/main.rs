@@ -5,11 +5,7 @@ use std::sync::Arc;
 use clap::Parser;
 use tracing::info;
 
-use pool_runner::{
-    admin_ws_listener::AdminWebsocketListener,
-    cli::Cli,
-    server::Server,
-};
+use pool_runner::{admin_ws_listener::AdminWebsocketListener, cli::Cli, server::Server};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

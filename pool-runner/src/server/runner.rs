@@ -107,10 +107,8 @@ impl Server {
 
         // Assign user order into the managed pool
         info!("Assigning order {user_order_id} to pool {pool_name}");
-        if let Err(e) = self
-            .admin_client
-            .admin_assign_order_to_pool(user_order_id, pool_name.to_string())
-            .await
+        if let Err(e) =
+            self.admin_client.admin_assign_order_to_pool(user_order_id, pool_name.to_string()).await
         {
             self.fill_waiters.remove(user_order_id).await;
             return Err(anyhow::anyhow!("Failed to assign order to pool: {e}"));
@@ -157,10 +155,7 @@ impl Server {
         let matchable_amount = user_order.matchable_amount;
 
         if matchable_amount == 0 {
-            return Err(anyhow::anyhow!(
-                "Order {} has zero matchable amount",
-                order.id
-            ));
+            return Err(anyhow::anyhow!("Order {} has zero matchable amount", order.id));
         }
 
         let in_token = Token::from_alloy_address(&order.order.intent.in_token);
@@ -173,10 +168,7 @@ impl Server {
         } else if in_token != usdc && out_token == usdc {
             (in_token, false) // selling base for USDC
         } else {
-            return Err(anyhow::anyhow!(
-                "Cannot resolve base token for order {}",
-                order.id
-            ));
+            return Err(anyhow::anyhow!("Cannot resolve base token for order {}", order.id));
         };
 
         let base_ticker = base_token
