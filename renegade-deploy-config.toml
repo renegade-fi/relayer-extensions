@@ -135,9 +135,19 @@ region = "ca-central-1"
 # matching pool into MM-bound pools and back. Chain-agnostic binary (no
 # cargo_features needed) — only the deploy environment differs per chain.
 #
-# Only `base-sepolia` is wired today. Add `arbitrum-sepolia`, `arbitrum-one`,
-# `base-mainnet` entries when those environments are provisioned in
-# `renegade-infra/environments/.../pool-runner/`.
+# Deploy targets require matching Terraform env wiring under
+# `renegade-infra/environments/<env>/<chain>/pool-runner/`. base-sepolia is
+# wired today; the other three need their env directories created (and a
+# `terraform apply`) before their pipeline entries here can actually deploy.
+
+[services.arbitrum-sepolia-pool-runner]
+[services.arbitrum-sepolia-pool-runner.build]
+dockerfile = "pool-runner/Dockerfile"
+ecr_repo = "pool-runner-arbitrum-sepolia-v2"
+
+[services.arbitrum-sepolia-pool-runner.deploy]
+environment = "arbitrum-sepolia-v2"
+resource = "pool-runner"
 
 [services.base-sepolia-pool-runner]
 [services.base-sepolia-pool-runner.build]
@@ -146,6 +156,24 @@ ecr_repo = "pool-runner-base-sepolia-v2"
 
 [services.base-sepolia-pool-runner.deploy]
 environment = "base-sepolia-v2"
+resource = "pool-runner"
+
+[services.arbitrum-one-pool-runner]
+[services.arbitrum-one-pool-runner.build]
+dockerfile = "pool-runner/Dockerfile"
+ecr_repo = "pool-runner-arbitrum-one-v2"
+
+[services.arbitrum-one-pool-runner.deploy]
+environment = "arbitrum-one-v2"
+resource = "pool-runner"
+
+[services.base-mainnet-pool-runner]
+[services.base-mainnet-pool-runner.build]
+dockerfile = "pool-runner/Dockerfile"
+ecr_repo = "pool-runner-base-mainnet-v2"
+
+[services.base-mainnet-pool-runner.deploy]
+environment = "base-mainnet-v2"
 resource = "pool-runner"
 
 ######################
