@@ -69,3 +69,16 @@ tracing = "0.1"
 
 [patch.crates-io]
 core2 = { git = "https://github.com/tcharding/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }
+
+# DEVELOPMENT-ONLY: redirect renegade.git transitives pulled by
+# renegade-contracts' `abi` crate to a local checkout of renegade.git on
+# wj/pool-runner. Without this, cargo compiles two copies of darkpool-types
+# and trait impls (e.g., From<IDarkpoolV2::Intent> for Intent) resolve
+# against the wrong copy. Mirror in rust-sdk/Cargo.toml. Replace with a fork
+# URL or rev pin once the feature work merges.
+[patch."https://github.com/renegade-fi/renegade"]
+darkpool-types = { path = "/home/di/renegade-fi/renegade/crates/darkpool-types" }
+circuit-types = { path = "/home/di/renegade-fi/renegade/crates/circuits/circuit-types" }
+constants = { path = "/home/di/renegade-fi/renegade/crates/constants" }
+crypto = { path = "/home/di/renegade-fi/renegade/crates/crypto" }
+types-core = { path = "/home/di/renegade-fi/renegade/crates/relayer-types/types-core" }
