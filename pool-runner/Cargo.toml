@@ -11,10 +11,16 @@ tokio = { version = "1", features = ["full"] }
 
 # === Renegade === #
 price-reporter-client = { path = "../price-reporter-client" }
-renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner", default-features = false, features = ["auth", "full-api"] }
-renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner" }
-renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade.git", branch = "wj/pool-runner" }
-renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk.git", branch = "wj/pool-runner", features = ["internal"] }
+# NOTE: the `git` URL omits the `.git` suffix so that cargo treats these as
+# the same source as `renegade-contracts/abi`'s transitive pin on
+# `darkpool-types` (which also uses the no-suffix URL). Otherwise cargo
+# compiles two copies of `darkpool-types` and trait impls
+# (e.g., `From<IDarkpoolV2::Intent> for Intent`) resolve against the wrong
+# copy. Matching URL strings → one canonical source.
+renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade", default-features = false, features = ["auth", "full-api"] }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade" }
+renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade" }
+renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk", features = ["internal"] }
 
 # === AWS === #
 aws-config = "1.5"
