@@ -70,15 +70,23 @@ tracing = "0.1"
 [patch.crates-io]
 core2 = { git = "https://github.com/tcharding/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }
 
-# DEVELOPMENT-ONLY: redirect renegade.git transitives pulled by
-# renegade-contracts' `abi` crate to a local checkout of renegade.git on
-# wj/pool-runner. Without this, cargo compiles two copies of darkpool-types
-# and trait impls (e.g., From<IDarkpoolV2::Intent> for Intent) resolve
-# against the wrong copy. Mirror in rust-sdk/Cargo.toml. Replace with a fork
-# URL or rev pin once the feature work merges.
+# DEVELOPMENT WORKAROUND: redirect renegade.git transitives pulled by
+# renegade-contracts' `abi` crate (which pins darkpool-types to renegade.git
+# default branch with no rev) to a local checkout of renegade.git. Without
+# this, cargo compiles two copies of darkpool-types and trait impls
+# (e.g., From<IDarkpoolV2::Intent> for Intent) resolve against the wrong copy.
+#
+# Paths are relative to this workspace root, assuming a sibling layout:
+#   <parent>/relayer-extensions/   (this repo)
+#   <parent>/renegade/             (renegade.git on the wj/pool-runner branch)
+#
+# Anyone building this branch must clone renegade.git as a sibling directory
+# and check out wj/pool-runner there. Replace with a portable form
+# (e.g., rev pin on renegade-contracts' darkpool-types dep) once the feature
+# work merges back to main and the trait impls are colocated again.
 [patch."https://github.com/renegade-fi/renegade"]
-darkpool-types = { path = "/home/di/renegade-fi/renegade/crates/darkpool-types" }
-circuit-types = { path = "/home/di/renegade-fi/renegade/crates/circuits/circuit-types" }
-constants = { path = "/home/di/renegade-fi/renegade/crates/constants" }
-crypto = { path = "/home/di/renegade-fi/renegade/crates/crypto" }
-types-core = { path = "/home/di/renegade-fi/renegade/crates/relayer-types/types-core" }
+darkpool-types = { path = "../renegade/crates/darkpool-types" }
+circuit-types = { path = "../renegade/crates/circuits/circuit-types" }
+constants = { path = "../renegade/crates/constants" }
+crypto = { path = "../renegade/crates/crypto" }
+types-core = { path = "../renegade/crates/relayer-types/types-core" }
