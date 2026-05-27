@@ -36,7 +36,7 @@ pub fn select_managed_pool<'a>(
     pools.iter().find(|p| {
         p.base_tickers.iter().any(|t| t == base_ticker)
             && value_usd >= p.min_value_usd
-            && p.max_value_usd.map_or(true, |max| value_usd <= max)
+            && p.max_value_usd.is_none_or(|max| value_usd <= max)
     })
 }
 

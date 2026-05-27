@@ -104,8 +104,8 @@ fn build_admin_client(relayer_admin_key: &str, chain_id: u64) -> Result<Renegade
         BASE_SEPOLIA_CHAIN_ID, ETHEREUM_SEPOLIA_CHAIN_ID,
     };
 
-    let hmac_key =
-        HmacKey::from_base64_string(relayer_admin_key).context("Invalid relayer admin key")?;
+    let hmac_key = HmacKey::from_base64_string(relayer_admin_key)
+        .map_err(|e| anyhow::anyhow!("Invalid relayer admin key: {e}"))?;
 
     // A dummy signer is sufficient — admin clients never sign wallet actions
     let dummy_signer = PrivateKeySigner::random();

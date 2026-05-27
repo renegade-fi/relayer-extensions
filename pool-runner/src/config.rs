@@ -41,7 +41,8 @@ async fn load_from_s3(s3_path: &str) -> Result<String> {
         .split_once('/')
         .ok_or_else(|| anyhow!("Invalid S3 path (expected bucket/key): {s3_path}"))?;
 
-    let config = aws_config::load_from_env().await;
+    let config =
+        aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let client = aws_sdk_s3::Client::new(&config);
 
     let response = client
