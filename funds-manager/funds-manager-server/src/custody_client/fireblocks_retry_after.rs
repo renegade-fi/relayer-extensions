@@ -38,12 +38,7 @@ impl RetryAfterCapture {
 
 #[async_trait]
 impl Middleware for RetryAfterCapture {
-    async fn handle(
-        &self,
-        req: Request,
-        ext: &mut Extensions,
-        next: Next<'_>,
-    ) -> Result<Response> {
+    async fn handle(&self, req: Request, ext: &mut Extensions, next: Next<'_>) -> Result<Response> {
         let resp = next.run(req, ext).await?;
         if resp.status() == StatusCode::TOO_MANY_REQUESTS {
             if let Some(duration) = resp.headers().get(RETRY_AFTER).and_then(parse_retry_after) {

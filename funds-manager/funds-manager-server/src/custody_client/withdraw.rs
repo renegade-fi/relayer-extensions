@@ -302,7 +302,8 @@ impl CustodyClient {
             _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };
 
-        if let Some(id) = self.fireblocks_client.read_cached_external_wallet_id(bridge_address).await
+        if let Some(id) =
+            self.fireblocks_client.read_cached_external_wallet_id(bridge_address).await
         {
             return Ok(id);
         }
@@ -331,7 +332,8 @@ impl CustodyClient {
 
         self.fireblocks_client.cache_external_wallet_ids(id_map).await;
 
-        bridge_wallet_id.ok_or_else(|| FundsManagerError::fireblocks(ERR_HYPERLIQUID_BRIDGE_NOT_FOUND))
+        bridge_wallet_id
+            .ok_or_else(|| FundsManagerError::fireblocks(ERR_HYPERLIQUID_BRIDGE_NOT_FOUND))
     }
 
     /// Transfer an asset from a vault to the given destination

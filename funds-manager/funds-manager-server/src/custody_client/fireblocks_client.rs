@@ -87,9 +87,8 @@ impl FireblocksClient {
         // Install the Retry-After capture middleware so 429 cooldowns
         // honor server-directed backoff; the middleware writes into the
         // same `RetryAfterStore` that this limiter's `on_429` consumes.
-        let retry_after_capture =
-            Arc::new(RetryAfterCapture::new(limiter.retry_after_store()))
-                as Arc<dyn reqwest_middleware::Middleware>;
+        let retry_after_capture = Arc::new(RetryAfterCapture::new(limiter.retry_after_store()))
+            as Arc<dyn reqwest_middleware::Middleware>;
         let fireblocks_sdk = ClientBuilder::new(fireblocks_api_key, &fireblocks_api_secret)
             .with_middleware(retry_after_capture)
             .build()
