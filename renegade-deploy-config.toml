@@ -127,6 +127,27 @@ environment = "mainnet"
 resource = "price-reporter"
 region = "ca-central-1"
 
+###################
+### Pool Runner ###
+###################
+
+# Per-chain pool-runner service. Reassigns user arrival flow from the global
+# matching pool into MM-bound pools and back. Chain-agnostic binary (no
+# cargo_features needed) — only the deploy environment differs per chain.
+#
+# Only `base-sepolia` is wired today. Add `arbitrum-sepolia`, `arbitrum-one`,
+# `base-mainnet` entries when those environments are provisioned in
+# `renegade-infra/environments/.../pool-runner/`.
+
+[services.base-sepolia-pool-runner]
+[services.base-sepolia-pool-runner.build]
+dockerfile = "pool-runner/Dockerfile"
+ecr_repo = "pool-runner-base-sepolia-v2"
+
+[services.base-sepolia-pool-runner.deploy]
+environment = "base-sepolia-v2"
+resource = "pool-runner"
+
 ######################
 ### Prover Service ###
 ######################
