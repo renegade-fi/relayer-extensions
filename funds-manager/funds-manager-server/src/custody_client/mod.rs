@@ -2,6 +2,7 @@
 pub mod deposit;
 mod fireblocks_client;
 mod fireblocks_rate_limiter;
+mod fireblocks_retry_after;
 pub mod gas_sponsor;
 pub mod gas_wallets;
 mod hot_wallets;

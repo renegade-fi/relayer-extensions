@@ -16,7 +16,10 @@ use funds_manager_api::hot_wallets::TokenBalance;
 use tokio::sync::RwLock;
 
 use crate::{
-    custody_client::fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
+    custody_client::{
+        fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
+        fireblocks_retry_after::RetryAfterCapture,
+    },
     error::FundsManagerError,
 };
 
@@ -49,6 +52,12 @@ struct FireblocksMetadata {
     /// A mapping from vault name to a recently-fetched balance snapshot.
     /// Expired entries are filtered on read.
     pub vault_balances: HashMap<String, (Instant, Vec<TokenBalance>)>,
+    /// A mapping from a whitelisted-external-wallet asset address
+    /// (lower-cased) to its Fireblocks wallet ID. Populated lazily on the
+    /// first `get_external_wallets` call and reused indefinitely — the
+    /// whitelist is admin-managed and changes rarely; staleness is
+    /// resolved by funds-manager restart.
+    pub external_wallet_ids: HashMap<String, String>,
 }
 
 impl FireblocksMetadata {
@@ -60,6 +69,7 @@ impl FireblocksMetadata {
             deposit_addresses: HashMap::new(),
             asset_onchain_data: HashMap::new(),
             vault_balances: HashMap::new(),
+            external_wallet_ids: HashMap::new(),
         }
     }
 }
@@ -73,14 +83,22 @@ impl FireblocksClient {
         fireblocks_api_secret: &str,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
+        let limiter = global_limiter();
+        // Install the Retry-After capture middleware so 429 cooldowns
+        // honor server-directed backoff; the middleware writes into the
+        // same `RetryAfterStore` that this limiter's `on_429` consumes.
+        let retry_after_capture =
+            Arc::new(RetryAfterCapture::new(limiter.retry_after_store()))
+                as Arc<dyn reqwest_middleware::Middleware>;
         let fireblocks_sdk = ClientBuilder::new(fireblocks_api_key, &fireblocks_api_secret)
+            .with_middleware(retry_after_capture)
             .build()
             .map_err(FundsManagerError::fireblocks)?;
 
         let fireblocks_client = FireblocksClient {
             sdk: fireblocks_sdk,
             metadata: Arc::new(RwLock::new(FireblocksMetadata::new())),
-            limiter: global_limiter(),
+            limiter,
         };
 
         Ok(fireblocks_client)
@@ -155,6 +173,12 @@ impl FireblocksClient {
         }
     }
 
+    /// Read a cached whitelisted-external-wallet ID by its lower-cased asset
+    /// address.
+    pub async fn read_cached_external_wallet_id(&self, address: &str) -> Option<String> {
+        self.metadata.read().await.external_wallet_ids.get(&address.to_lowercase()).cloned()
+    }
+
     // -----------
     // | Setters |
     // -----------
@@ -191,5 +215,13 @@ impl FireblocksClient {
     /// Cache a vault's token balances with the current timestamp
     pub async fn cache_vault_balances(&self, vault_name: String, balances: Vec<TokenBalance>) {
         self.metadata.write().await.vault_balances.insert(vault_name, (Instant::now(), balances));
+    }
+
+    /// Replace the cached whitelisted-external-wallet map. Called after a
+    /// fresh `get_external_wallets` fetch so the cache reflects exactly the
+    /// current Fireblocks whitelist (entries removed upstream stop being
+    /// served from cache).
+    pub async fn cache_external_wallet_ids(&self, ids: HashMap<String, String>) {
+        self.metadata.write().await.external_wallet_ids = ids;
     }
 }

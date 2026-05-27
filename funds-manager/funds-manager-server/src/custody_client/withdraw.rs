@@ -1,4 +1,5 @@
 //! Withdrawal methods for custodied funds
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use super::{CustodyClient, DepositWithdrawSource};
@@ -288,12 +289,23 @@ impl CustodyClient {
     ///
     /// We store the bridge address as an "external wallet" in Fireblocks
     /// to allow ERC20 transfers to it.
+    ///
+    /// Backed by `FireblocksMetadata::external_wallet_ids`: the first call
+    /// (or first call after a miss) fetches the full whitelist from
+    /// Fireblocks and caches the address → wallet-ID map for the lifetime
+    /// of the process. Subsequent calls — including for other whitelisted
+    /// addresses populated by the same fetch — are served from cache.
     async fn get_hyperliquid_bridge_id(&self) -> Result<String, FundsManagerError> {
         let bridge_address = match self.chain {
             Chain::ArbitrumOne => MAINNET_HYPERLIQUID_BRIDGE_ADDRESS,
             Chain::ArbitrumSepolia => TESTNET_HYPERLIQUID_BRIDGE_ADDRESS,
             _ => return Err(FundsManagerError::custom(ERR_UNSUPPORTED_CHAIN)),
         };
+
+        if let Some(id) = self.fireblocks_client.read_cached_external_wallet_id(bridge_address).await
+        {
+            return Ok(id);
+        }
 
         let whitelisted_wallets = self
             .fireblocks_client
@@ -302,18 +314,24 @@ impl CustodyClient {
             })
             .await?;
 
+        let mut id_map: HashMap<String, String> = HashMap::new();
+        let mut bridge_wallet_id: Option<String> = None;
         for wallet in whitelisted_wallets {
             let wallet_id = wallet.id;
             for asset in wallet.assets {
                 if let Some(address) = asset.address {
-                    if address.to_lowercase() == bridge_address.to_lowercase() {
-                        return Ok(wallet_id);
+                    let lower = address.to_lowercase();
+                    if lower == bridge_address.to_lowercase() {
+                        bridge_wallet_id = Some(wallet_id.clone());
                     }
+                    id_map.insert(lower, wallet_id.clone());
                 }
             }
         }
 
-        Err(FundsManagerError::fireblocks(ERR_HYPERLIQUID_BRIDGE_NOT_FOUND))
+        self.fireblocks_client.cache_external_wallet_ids(id_map).await;
+
+        bridge_wallet_id.ok_or_else(|| FundsManagerError::fireblocks(ERR_HYPERLIQUID_BRIDGE_NOT_FOUND))
     }
 
     /// Transfer an asset from a vault to the given destination

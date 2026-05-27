@@ -12,13 +12,14 @@
 //!    `STEADY_STATE_RPS`, up to `BURST_CAPACITY`. Each call consumes one token;
 //!    if none are available, the call awaits the next refill.
 //! 2. On 429 from any call, the limiter enters a cooldown — subsequent
-//!    `acquire` calls block until the cooldown elapses. Cooldown duration grows
-//!    multiplicatively per consecutive 429 (1s, 2s, 4s, 8s, 16s, capped at 30s)
-//!    and resets after any successful call.
+//!    `acquire` calls block until the cooldown elapses.
 //!
-//! Limitation: the Fireblocks Rust SDK's error type does not preserve
-//! response headers, so we cannot read `Retry-After`. The fixed
-//! multiplicative backoff above approximates it.
+//! Cooldown duration is determined as follows: when the response carried a
+//! `Retry-After` header (captured by [`super::fireblocks_retry_after::RetryAfterCapture`]
+//! into the [`RetryAfterStore`] this limiter owns), the limiter honors that
+//! value exactly. When the header is absent or unparseable, the limiter
+//! falls back to a fixed multiplicative backoff (1s, 2s, 4s, 8s, 16s,
+//! capped at 30s) that resets after any successful call.
 //!
 //! Scope: a single global limiter is shared across every `CustodyClient`
 //! in the process. Fireblocks quota is per-workspace, not per-chain, and
@@ -55,6 +56,40 @@ const INITIAL_COOLDOWN_SECS: u64 = 1;
 /// than the limiter holding traffic indefinitely.
 const MAX_COOLDOWN_SECS: u64 = 30;
 
+/// Side channel for `Retry-After` durations observed by the
+/// `RetryAfterCapture` middleware. The middleware records the parsed value
+/// here on every 429; the limiter consumes it in [`FireblocksLimiter::on_429`]
+/// to set the cooldown to exactly what Fireblocks asked for. Multiple
+/// captures coalesce by keeping the latest (largest expiry), so back-to-back
+/// 429s on different in-flight requests don't shorten the cooldown.
+pub struct RetryAfterStore {
+    deadline: std::sync::Mutex<Option<Instant>>,
+}
+
+impl RetryAfterStore {
+    fn new() -> Arc<Self> {
+        Arc::new(Self { deadline: std::sync::Mutex::new(None) })
+    }
+
+    /// Record a `Retry-After` window observed on a 429 response. If a
+    /// previous window is still in the future, the later of the two wins
+    /// (Fireblocks is allowed to extend a cooldown but never shorten one
+    /// we already promised the bucket).
+    pub fn record(&self, duration: Duration) {
+        let new_until = Instant::now() + duration;
+        let mut guard = self.deadline.lock().unwrap();
+        if guard.is_none_or(|existing| existing < new_until) {
+            *guard = Some(new_until);
+        }
+    }
+
+    /// Take any pending Retry-After deadline, clearing the store. Returns
+    /// `None` if no deadline was captured since the last consumer call.
+    fn take(&self) -> Option<Instant> {
+        self.deadline.lock().unwrap().take()
+    }
+}
+
 /// A token-bucket rate limiter for Fireblocks API calls, augmented with a
 /// 429-triggered cooldown gate.
 pub struct FireblocksLimiter {
@@ -73,6 +108,10 @@ pub struct FireblocksLimiter {
     /// Count of consecutive 429s; resets on any success. Drives the
     /// multiplicative backoff in [`Self::on_429`].
     consecutive_429s: AtomicU32,
+    /// `Retry-After` durations published by the middleware that observes
+    /// raw Fireblocks responses. Consulted first in [`Self::on_429`]; when
+    /// the store is empty, the limiter falls back to multiplicative backoff.
+    retry_after: Arc<RetryAfterStore>,
 }
 
 impl FireblocksLimiter {
@@ -84,6 +123,7 @@ impl FireblocksLimiter {
             capacity: burst_capacity,
             cooldown_until: Mutex::new(None),
             consecutive_429s: AtomicU32::new(0),
+            retry_after: RetryAfterStore::new(),
         });
 
         let weak = Arc::downgrade(&me);
@@ -128,13 +168,25 @@ impl FireblocksLimiter {
         permit.forget();
     }
 
-    /// Notify the limiter that a Fireblocks call returned 429. Pushes the
-    /// cooldown deadline forward (multiplicative on consecutive 429s).
+    /// Notify the limiter that a Fireblocks call returned 429. Sets the
+    /// cooldown deadline to the value captured from `Retry-After` if the
+    /// middleware observed one; otherwise falls back to multiplicative
+    /// backoff (1s, 2s, 4s, 8s, 16s, capped at 30s) keyed on the
+    /// consecutive-429 streak length.
     pub async fn on_429(&self) {
         let n = self.consecutive_429s.fetch_add(1, Ordering::Relaxed) + 1;
-        let shift = (n.min(5) - 1) as u64;
-        let secs = std::cmp::min(INITIAL_COOLDOWN_SECS << shift, MAX_COOLDOWN_SECS);
-        let new_until = Instant::now() + Duration::from_secs(secs);
+
+        let (new_until, source, secs) = match self.retry_after.take() {
+            Some(deadline) => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                (deadline, "retry_after_header", remaining.as_secs())
+            },
+            None => {
+                let shift = (n.min(5) - 1) as u64;
+                let secs = std::cmp::min(INITIAL_COOLDOWN_SECS << shift, MAX_COOLDOWN_SECS);
+                (Instant::now() + Duration::from_secs(secs), "multiplicative_backoff", secs)
+            },
+        };
 
         let mut guard = self.cooldown_until.lock().await;
         if guard.is_none_or(|existing| existing < new_until) {
@@ -145,10 +197,19 @@ impl FireblocksLimiter {
             Outcome::Partial,
             cooldown_secs = secs,
             consecutive_429s = n,
-            "Fireblocks 429 received; gating workspace traffic for {}s (consecutive 429s: {})",
+            source = source,
+            "Fireblocks 429 received; gating workspace traffic for {}s (source: {}, consecutive 429s: {})",
             secs,
+            source,
             n
         );
+    }
+
+    /// Handle to the limiter's [`RetryAfterStore`]. Hand this to the
+    /// `RetryAfterCapture` middleware at SDK construction so middleware
+    /// writes flow directly into the bucket this limiter consumes.
+    pub fn retry_after_store(&self) -> Arc<RetryAfterStore> {
+        self.retry_after.clone()
     }
 
     /// Notify the limiter that a Fireblocks call succeeded. Resets the

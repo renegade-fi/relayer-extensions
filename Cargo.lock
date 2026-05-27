@@ -3861,7 +3861,6 @@ checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 [[package]]
 name = "fireblocks-sdk"
 version = "2.0.1"
-source = "git+https://github.com/renegade-fi/fireblocks-sdk-rs.git?branch=v2.0.1#eea687c37b5f0e21115a232cdc0d6a416ba0eec6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3996,6 +3995,7 @@ dependencies = [
  "rand 0.8.5",
  "renegade-crypto 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=v1)",
  "reqwest 0.11.27",
+ "reqwest-middleware",
  "serde",
  "serde_json",
  "serde_qs",
