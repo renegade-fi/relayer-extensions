@@ -3,9 +3,6 @@
 
 use std::time::{Duration, Instant};
 
-use renegade_constants::GLOBAL_MATCHING_POOL;
-use renegade_external_api::types::ApiAdminOrder;
-use renegade_types_core::Token;
 use crate::{
     config::ManagedPool,
     log_task,
@@ -16,6 +13,9 @@ use crate::{
     },
     server::Server,
 };
+use renegade_constants::GLOBAL_MATCHING_POOL;
+use renegade_external_api::types::ApiAdminOrder;
+use renegade_types_core::Token;
 
 /// Timeout for awaiting a fill after assigning to a managed pool
 const FILL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -71,8 +71,7 @@ impl Server {
         // check the size band.
         let value_usd = self.compute_order_value_usd(user_order, &base_ticker).await?;
 
-        let Some(pool) =
-            select_managed_pool(&self.config.managed_pools, &base_ticker, value_usd)
+        let Some(pool) = select_managed_pool(&self.config.managed_pools, &base_ticker, value_usd)
         else {
             // Ticker covered but size out of band. Skip silently.
             return Ok(());
@@ -211,10 +210,7 @@ impl Server {
     /// in-memory; used as the pre-filter to skip unroutable orders before
     /// any network calls.
     fn has_managed_pool_for_ticker(&self, base_ticker: &str) -> bool {
-        self.config
-            .managed_pools
-            .iter()
-            .any(|p| p.base_tickers.iter().any(|t| t == base_ticker))
+        self.config.managed_pools.iter().any(|p| p.base_tickers.iter().any(|t| t == base_ticker))
     }
 
     /// Compute the USD value of an order's matchable amount. Hits the price

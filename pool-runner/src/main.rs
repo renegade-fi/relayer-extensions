@@ -3,12 +3,6 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use renegade_config::setup_token_remaps;
-use renegade_sdk::{
-    ARBITRUM_ONE_CHAIN_ID, ARBITRUM_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID,
-    ETHEREUM_SEPOLIA_CHAIN_ID,
-};
-use renegade_types_core::Chain;
 use pool_runner::{
     admin_ws_listener::AdminWebsocketListener,
     cli::Cli,
@@ -16,6 +10,12 @@ use pool_runner::{
     logger::{Outcome, Task},
     server::Server,
 };
+use renegade_config::setup_token_remaps;
+use renegade_sdk::{
+    ARBITRUM_ONE_CHAIN_ID, ARBITRUM_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID,
+    ETHEREUM_SEPOLIA_CHAIN_ID,
+};
+use renegade_types_core::Chain;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
