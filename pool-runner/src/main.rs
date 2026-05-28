@@ -3,11 +3,12 @@
 use std::sync::Arc;
 
 use clap::Parser;
+use renegade_config::setup_token_remaps;
 use renegade_sdk::{
     ARBITRUM_ONE_CHAIN_ID, ARBITRUM_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID,
     ETHEREUM_SEPOLIA_CHAIN_ID,
 };
-use renegade_types_core::{Chain, set_default_chain};
+use renegade_types_core::Chain;
 use tracing::info;
 
 use pool_runner::{admin_ws_listener::AdminWebsocketListener, cli::Cli, server::Server};
@@ -21,9 +22,13 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    // Set the process-wide default chain before any code path that consults
-    // `default_chain()` runs (token-map operations panic if multiple chains
-    // are loaded and no default is set).
+    // Load the token remap from the canonical token-mappings repo for our
+    // chain, then set the process-wide default chain. Without this:
+    // - `default_chain()` panics on multi-chain registries (token.rs:374).
+    // - `Token::from_ticker("USDC")` panics because the registry is empty.
+    // `setup_token_remaps` is sync (uses `reqwest::blocking`), so run it on
+    // a blocking thread to avoid stalling the tokio runtime. The helper also
+    // calls `set_default_chain` internally, so no separate call is needed.
     let chain = match cli.chain_id {
         ARBITRUM_ONE_CHAIN_ID => Chain::ArbitrumOne,
         ARBITRUM_SEPOLIA_CHAIN_ID => Chain::ArbitrumSepolia,
@@ -32,7 +37,11 @@ async fn main() -> anyhow::Result<()> {
         ETHEREUM_SEPOLIA_CHAIN_ID => Chain::EthereumSepolia,
         other => anyhow::bail!("unknown chain_id: {other}"),
     };
-    set_default_chain(chain);
+    let _disabled_tickers: Vec<String> =
+        tokio::task::spawn_blocking(move || setup_token_remaps(None, chain))
+            .await
+            .map_err(|e| anyhow::anyhow!("setup_token_remaps join error: {e}"))?
+            .map_err(|e| anyhow::anyhow!("setup_token_remaps failed: {e}"))?;
 
     // Build the server
     let server = Server::build_from_cli(&cli).await?;

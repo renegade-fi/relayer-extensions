@@ -20,6 +20,7 @@ price-reporter-client = { path = "../price-reporter-client" }
 renegade-external-api = { package = "external-api", git = "https://github.com/renegade-fi/renegade", default-features = false, features = ["auth", "full-api"] }
 renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade" }
 renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade" }
+renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade" }
 renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk", features = ["internal"] }
 
 # === AWS === #
