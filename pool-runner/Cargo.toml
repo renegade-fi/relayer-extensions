@@ -22,6 +22,7 @@ renegade-constants = { package = "constants", git = "https://github.com/renegade
 renegade-types-core = { package = "types-core", git = "https://github.com/renegade-fi/renegade" }
 renegade-config = { package = "config", git = "https://github.com/renegade-fi/renegade" }
 renegade-sdk = { git = "https://github.com/renegade-fi/rust-sdk", features = ["internal"] }
+renegade-util = { package = "util", git = "https://github.com/renegade-fi/renegade", default-features = false, features = ["telemetry"] }
 
 # === AWS === #
 aws-config = "1.5"

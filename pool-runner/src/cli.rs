@@ -29,4 +29,30 @@ pub struct Cli {
     /// Base URL of the price reporter service (e.g. https://price-reporter.example.com)
     #[arg(long, env = "PRICE_REPORTER_URL")]
     pub price_reporter_url: String,
+
+    // --- Telemetry --- //
+    /// Emit logs as Datadog-formatted JSON (vs. pretty ANSI text). Set true
+    /// in deployed environments so Datadog parses the structured fields.
+    #[arg(long, env = "ENABLE_DATADOG", default_value = "false")]
+    pub enable_datadog: bool,
+
+    /// Export OTLP traces to the collector.
+    #[arg(long, env = "ENABLE_OTLP", default_value = "false")]
+    pub enable_otlp: bool,
+
+    /// Record StatsD metrics.
+    #[arg(long, env = "ENABLE_METRICS", default_value = "false")]
+    pub enable_metrics: bool,
+
+    /// OTLP collector endpoint (only used when `enable_otlp`).
+    #[arg(long, env = "OTLP_COLLECTOR_ENDPOINT", default_value = "")]
+    pub otlp_collector_endpoint: String,
+
+    /// StatsD host (only used when `enable_metrics`).
+    #[arg(long, env = "STATSD_HOST", default_value = "127.0.0.1")]
+    pub statsd_host: String,
+
+    /// StatsD port (only used when `enable_metrics`).
+    #[arg(long, env = "STATSD_PORT", default_value = "8125")]
+    pub statsd_port: u16,
 }

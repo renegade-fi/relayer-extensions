@@ -16,15 +16,26 @@ use renegade_sdk::{
     ETHEREUM_SEPOLIA_CHAIN_ID,
 };
 use renegade_types_core::Chain;
+use renegade_util::telemetry::configure_telemetry;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialise tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     let cli = Cli::parse();
+
+    // Configure logging / tracing / metrics the same way the other v2
+    // services do. With `enable_datadog`, logs are emitted as Datadog-format
+    // JSON (no ANSI), so the `log_task!` `task` / `outcome` / `subject`
+    // fields land as parseable Datadog attributes rather than ANSI-colored
+    // pretty text.
+    configure_telemetry(
+        cli.enable_datadog,
+        cli.enable_otlp,
+        cli.enable_metrics,
+        cli.otlp_collector_endpoint.clone(),
+        &cli.statsd_host,
+        cli.statsd_port,
+    )
+    .map_err(|e| anyhow::anyhow!("failed to configure telemetry: {e}"))?;
 
     // Load the token remap from the canonical token-mappings repo for our
     // chain, then set the process-wide default chain. Without this:
