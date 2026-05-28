@@ -15,9 +15,11 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
+use fireblocks_sdk::models::TransactionResponse;
 use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Sign, RsaPublicKey};
 use sha2::{Digest, Sha512};
 
+use crate::custody_client::tx_webhook::global_tx_listeners;
 use crate::error::ApiError;
 use crate::log_task;
 use crate::logger::{Outcome, Task};
@@ -78,10 +80,12 @@ fn extract_id_and_status(payload: &serde_json::Value) -> (&str, &str) {
 
 /// Handler for `POST /webhooks/fireblocks/transaction-status`.
 ///
-/// Verifies the signature, logs the `(id, status)`, and returns 200. It is a
-/// dead-end in Phase 1: no listener resolution, no DB writes, no chain reads.
-/// Unsigned or bad-signature requests are rejected with 401 before the body is
-/// parsed.
+/// Verifies the signature, deserializes the transaction payload, and dispatches
+/// it to any waiter in the process-wide [`global_tx_listeners`] registry (so a
+/// blocked `poll_fireblocks_transaction` resolves immediately). Always acks with
+/// 200; non-transaction events or payloads no one is awaiting are logged and
+/// dropped. Unsigned or bad-signature requests are rejected with 401 before the
+/// body is parsed. No DB writes, no chain reads.
 pub(crate) async fn fireblocks_tx_status_webhook_handler(
     signature: Option<String>,
     body: Bytes,
@@ -107,20 +111,42 @@ pub(crate) async fn fireblocks_tx_status_webhook_handler(
         return Err(warp::reject::custom(e));
     }
 
-    let payload: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
+    let envelope: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
         warp::reject::custom(ApiError::BadRequest(format!("invalid webhook JSON: {e}")))
     })?;
-    let (tx_id, tx_status) = extract_id_and_status(&payload);
-    let event_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("<none>");
+    let event_type = envelope.get("type").and_then(|v| v.as_str()).unwrap_or("<none>");
 
-    log_task!(
-        Task::FireblocksWebhook,
-        Outcome::Ok,
-        event_type = event_type,
-        tx_id = tx_id,
-        tx_status = tx_status,
-        "received fireblocks webhook"
-    );
+    // The transaction sits under `data`. Deserialize it into the SDK type and
+    // hand it to any waiter in the listener registry. A payload whose `data`
+    // isn't a transaction (other Fireblocks event types) or that no one is
+    // awaiting is acked and dropped — never rejected, so Fireblocks won't retry.
+    match envelope.get("data").cloned().map(serde_json::from_value::<TransactionResponse>) {
+        Some(Ok(tx)) => {
+            let tx_id = tx.id.clone();
+            let tx_status = format!("{:?}", tx.status);
+            let delivered = global_tx_listeners().dispatch(tx);
+            log_task!(
+                Task::FireblocksWebhook,
+                Outcome::Ok,
+                event_type = event_type,
+                tx_id = %tx_id,
+                tx_status = %tx_status,
+                delivered = delivered,
+                "received fireblocks tx webhook"
+            );
+        },
+        _ => {
+            let (tx_id, tx_status) = extract_id_and_status(&envelope);
+            log_task!(
+                Task::FireblocksWebhook,
+                Outcome::Skipped,
+                event_type = event_type,
+                tx_id = tx_id,
+                tx_status = tx_status,
+                "fireblocks webhook ignored (non-transaction or unparseable data)"
+            );
+        },
+    }
 
     Ok(warp::reply::with_status("ok", warp::http::StatusCode::OK))
 }

@@ -9,6 +9,7 @@ mod hot_wallets;
 mod queries;
 pub mod quoter_eoa_topup;
 pub mod rpc_shim;
+pub mod tx_webhook;
 pub mod vaults;
 pub mod withdraw;
 
@@ -276,92 +277,129 @@ impl CustodyClient {
     ) -> Result<TransactionResponse, FundsManagerError> {
         use fireblocks_sdk::models::TransactionStatus;
 
-        // Poll cadence sizing
+        use crate::custody_client::tx_webhook::global_tx_listeners;
+
+        // Webhook-primary resolution (see `custody_client::tx_webhook`).
         //
-        // Each in-flight sign holds a polling fiber that consumes one token
-        // per `interval` from the workspace rate limiter (15 RPS). At
-        // `interval = 1s` and ~13 concurrent signs (≈ steady-state load
-        // across 35 instruments), polls saturate ~87% of the bucket and
-        // starve `create_transaction`. At 3s, the same fan-out consumes
-        // ~29% of the bucket, leaving headroom for new signs.
+        // A terminal-status webhook delivered by Fireblocks resolves this call
+        // in ~ms via the listener registry, so `get_transaction` is now only a
+        // fallback for two tail cases: a webhook that arrived before we
+        // subscribed (cold start, or the transition raced our subscribe) and a
+        // dropped webhook delivery. We therefore poll at a slow 30s cadence
+        // (was 3s) with the first poll delayed a full interval — in the steady
+        // state the fallback fires zero times. That cadence drop removes the
+        // poll volume behind the 2026-05-28 Fireblocks overload.
         //
-        // `timeout` was 60s; tripled in 2026-05-26 incident to give the
-        // Fireblocks queue more headroom under congestion. A shorter
-        // deadline turned every slow sign (status still Queued at 60s)
-        // into a caller-side "error" that propagated up and used to fire
-        // gardener viem retries — each retry = a new Fireblocks tx that
-        // also stuck in Queued, producing geometric growth. The 180s
-        // ceiling is comfortably above all observed pre-incident sign
-        // latencies and below any caller's own outer timeout (gardener
-        // ORDER_MODIFICATION_CRITICAL_SECTION_TIMEOUT_MS = 45s caps the
-        // surface bound regardless; longer here just avoids spurious
-        // funds-manager errors).
+        // `timeout` stays at 180s (raised from 60s in the 2026-05-26
+        // incident): above observed sign latencies and below any caller's own
+        // outer timeout (the gardener's
+        // ORDER_MODIFICATION_CRITICAL_SECTION_TIMEOUT_MS = 45s bounds it
+        // regardless).
         let timeout = Duration::from_secs(180);
-        let interval = Duration::from_secs(3);
-        let deadline = Instant::now() + timeout;
+        let fallback_interval = Duration::from_secs(30);
 
-        // Hand-rolled poll loop so each `get_transaction` call is routed
-        // through the workspace rate limiter; the SDK's own
-        // `Client::poll_transaction` helper is opaque and bypasses the
-        // limiter.
+        let is_terminal = |status: &TransactionStatus| {
+            matches!(
+                status,
+                TransactionStatus::Blocked
+                    | TransactionStatus::Cancelled
+                    | TransactionStatus::Cancelling
+                    | TransactionStatus::Completed
+                    | TransactionStatus::Confirming
+                    | TransactionStatus::Failed
+                    | TransactionStatus::Rejected
+            )
+        };
+
+        // Subscribe before the first poll so a webhook arriving mid-poll is not
+        // missed.
+        let mut subscription = global_tx_listeners().subscribe(transaction_id);
+        let mut webhook_open = true;
+
         let id = transaction_id.to_string();
-        loop {
-            let tx_result = self
-                .fireblocks_client
-                .rate_limited(|sdk| {
-                    let id = id.clone();
-                    async move { sdk.get_transaction(&id).await }
-                })
-                .await;
+        let deadline = tokio::time::sleep(timeout);
+        tokio::pin!(deadline);
+        let first_poll = tokio::time::Instant::now() + fallback_interval;
+        let mut fallback = tokio::time::interval_at(first_poll, fallback_interval);
+        fallback.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            match tx_result {
-                Ok(tx) => {
-                    log_task!(
-                        Task::PollFireblocksTx,
-                        Outcome::Started,
-                        subject = transaction_id,
-                        tx_status = ?tx.status,
-                        "tx {} status {:?}",
-                        transaction_id,
-                        tx.status
-                    );
-                    match tx.status {
-                        TransactionStatus::Blocked
-                        | TransactionStatus::Cancelled
-                        | TransactionStatus::Cancelling
-                        | TransactionStatus::Completed
-                        | TransactionStatus::Confirming
-                        | TransactionStatus::Failed
-                        | TransactionStatus::Rejected => return Ok(tx),
-                        _ => {},
+        loop {
+            tokio::select! {
+                () = &mut deadline => break,
+
+                payload = subscription.recv(), if webhook_open => {
+                    match payload {
+                        Some(tx) if is_terminal(&tx.status) => {
+                            log_task!(
+                                Task::PollFireblocksTx,
+                                Outcome::Ok,
+                                subject = transaction_id,
+                                tx_status = ?tx.status,
+                                resolved_via = "webhook",
+                                "tx {} resolved via webhook: {:?}",
+                                transaction_id,
+                                tx.status
+                            );
+                            return Ok(tx);
+                        },
+                        // Non-terminal webhook: keep waiting.
+                        Some(_) => {},
+                        // Channel closed: stop selecting this branch (avoid a
+                        // busy loop); the fallback poll backstops.
+                        None => webhook_open = false,
                     }
                 },
-                Err(e) => {
-                    // Match the SDK's `poll_transaction` semantics:
-                    // transient errors during polling are tolerated until
-                    // the deadline. The limiter has already paused if the
-                    // error was 429, so the next iteration's `acquire`
-                    // will block until cooldown elapses.
-                    log_task!(
-                        Task::PollFireblocksTx,
-                        Outcome::Retrying,
-                        subject = transaction_id,
-                        error = ?e,
-                        "tx {} poll error (retrying until deadline): {:?}",
-                        transaction_id,
-                        e
-                    );
+
+                _ = fallback.tick() => {
+                    let id = id.clone();
+                    let tx_result = self
+                        .fireblocks_client
+                        .rate_limited(|sdk| {
+                            let id = id.clone();
+                            async move { sdk.get_transaction(&id).await }
+                        })
+                        .await;
+                    match tx_result {
+                        Ok(tx) if is_terminal(&tx.status) => {
+                            log_task!(
+                                Task::PollFireblocksTx,
+                                Outcome::Ok,
+                                subject = transaction_id,
+                                tx_status = ?tx.status,
+                                resolved_via = "poll",
+                                "tx {} resolved via fallback poll: {:?}",
+                                transaction_id,
+                                tx.status
+                            );
+                            return Ok(tx);
+                        },
+                        Ok(_) => {},
+                        Err(e) => {
+                            log_task!(
+                                Task::PollFireblocksTx,
+                                Outcome::Retrying,
+                                subject = transaction_id,
+                                error = ?e,
+                                "tx {} fallback poll error (retrying until deadline): {:?}",
+                                transaction_id,
+                                e
+                            );
+                        },
+                    }
                 },
             }
-
-            if Instant::now() >= deadline {
-                break;
-            }
-            tokio::time::sleep(interval).await;
         }
 
-        // One final attempt past the deadline so the caller sees the most
-        // recent state (mirrors the SDK helper's trailing `get_transaction`).
+        // Deadline reached: one final fetch so the caller sees the freshest
+        // state (mirrors the prior trailing `get_transaction`).
+        log_task!(
+            Task::PollFireblocksTx,
+            Outcome::Partial,
+            subject = transaction_id,
+            resolved_via = "deadline",
+            "tx {} deadline reached; fetching final status",
+            transaction_id
+        );
         let id = transaction_id.to_string();
         self.fireblocks_client
             .rate_limited(|sdk| async move { sdk.get_transaction(&id).await })
