@@ -6225,6 +6225,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "clap",
+ "config",
  "constants",
  "external-api",
  "futures",
@@ -6241,6 +6242,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.23",
  "types-core",
+ "util",
  "uuid",
  "warp 0.3.7",
 ]
