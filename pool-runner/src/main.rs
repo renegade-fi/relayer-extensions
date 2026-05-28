@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use renegade_sdk::{
-    ARBITRUM_ONE_CHAIN_ID, ARBITRUM_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID,
-    BASE_SEPOLIA_CHAIN_ID, ETHEREUM_SEPOLIA_CHAIN_ID,
+    ARBITRUM_ONE_CHAIN_ID, ARBITRUM_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID,
+    ETHEREUM_SEPOLIA_CHAIN_ID,
 };
 use renegade_types_core::{Chain, set_default_chain};
 use tracing::info;
