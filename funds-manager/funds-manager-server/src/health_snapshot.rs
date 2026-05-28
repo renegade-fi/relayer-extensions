@@ -39,6 +39,9 @@ pub fn spawn_health_snapshot_task() {
     });
 }
 
+/// Read the global Fireblocks-rate-limiter counters, reset them, and emit a
+/// single info log line summarising the last interval (request count, hit
+/// count, and any remaining cooldown).
 async fn emit_snapshot() {
     let fb = global_limiter().snapshot_and_reset().await;
     let cooldown_suffix = if fb.cooldown_remaining_ms > 0 {

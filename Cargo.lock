@@ -1376,7 +1376,7 @@ dependencies = [
  "dashmap",
  "diesel",
  "diesel-async",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "eyre",
  "futures-util",
  "http 0.2.12",
@@ -1407,7 +1407,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
  "uuid",
  "warp 0.3.7",
 ]
@@ -1418,7 +1418,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-primitives",
  "circuit-types",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "num-bigint",
  "serde",
  "uuid",
@@ -2417,17 +2417,7 @@ dependencies = [
 [[package]]
 name = "circuit-macros"
 version = "0.1.0"
-dependencies = [
- "itertools 0.10.5",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "circuit-macros"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -2438,6 +2428,7 @@ dependencies = [
 [[package]]
 name = "circuit-types"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -2448,7 +2439,7 @@ dependencies = [
  "async-trait",
  "bigdecimal 0.3.1",
  "byteorder",
- "circuit-macros 0.1.0",
+ "circuit-macros",
  "constants",
  "crypto",
  "futures",
@@ -2470,7 +2461,7 @@ dependencies = [
 [[package]]
 name = "circuits-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy-primitives",
  "ark-crypto-primitives",
@@ -2479,7 +2470,7 @@ dependencies = [
  "ark-mpc",
  "bigdecimal 0.3.1",
  "bitvec",
- "circuit-macros 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "circuit-macros",
  "circuit-types",
  "constants",
  "crypto",
@@ -2495,7 +2486,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
@@ -2615,14 +2606,14 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
  "warp 0.3.7",
 ]
 
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy",
  "base64 0.13.1",
@@ -2643,9 +2634,9 @@ dependencies = [
  "toml",
  "tracing",
  "types-core",
- "types-gossip 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-gossip",
  "url",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
@@ -2702,6 +2693,7 @@ dependencies = [
 [[package]]
 name = "constants"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -2896,6 +2888,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy-primitives",
  "ark-ec",
@@ -3014,7 +3007,7 @@ dependencies = [
 [[package]]
 name = "darkpool-client"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "abi",
  "alloy",
@@ -3039,18 +3032,19 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "tracing",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-account",
  "types-core",
  "types-proofs",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
 name = "darkpool-types"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy-primitives",
- "circuit-macros 0.1.0",
+ "circuit-macros",
  "circuit-types",
  "constants",
  "crypto",
@@ -3634,7 +3628,7 @@ dependencies = [
 [[package]]
 name = "external-api"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "abi",
  "alloy",
@@ -3651,39 +3645,11 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
+ "types-account",
  "types-core",
- "types-gossip 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
- "types-runtime 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
- "uuid",
-]
-
-[[package]]
-name = "external-api"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
-dependencies = [
- "abi",
- "alloy",
- "base64 0.22.1",
- "circuit-types",
- "constants",
- "crypto",
- "darkpool-types",
- "hex",
- "http 1.4.1",
- "itertools 0.10.5",
- "num-bigint",
- "num-traits",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "types-core",
- "types-gossip 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "types-runtime 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-gossip",
+ "types-runtime",
+ "util",
  "uuid",
 ]
 
@@ -3872,7 +3838,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "ethers-core",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "fireblocks-sdk",
  "funds-manager-api",
  "futures",
@@ -3897,7 +3863,7 @@ dependencies = [
  "tokio-postgres",
  "tracing",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
  "uuid",
  "warp 0.3.7",
 ]
@@ -3907,7 +3873,7 @@ name = "funds-manager-api"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "http 0.2.12",
  "itertools 0.13.0",
  "rand 0.8.6",
@@ -5275,16 +5241,16 @@ dependencies = [
 [[package]]
 name = "matching-engine-core"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "circuit-types",
  "crypto",
  "darkpool-types",
  "dashmap",
  "rustc-hash 2.1.2",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-account",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
@@ -6260,7 +6226,7 @@ dependencies = [
  "aws-sdk-s3",
  "clap",
  "constants",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
+ "external-api",
  "futures",
  "metrics 0.24.3",
  "metrics-exporter-prometheus",
@@ -6377,7 +6343,7 @@ version = "0.1.0"
 dependencies = [
  "atomic_float 1.1.0",
  "bigdecimal 0.4.10",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "futures-util",
  "reqwest 0.11.27",
  "serde",
@@ -6548,7 +6514,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-opentelemetry",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
  "warp 0.3.7",
 ]
 
@@ -7090,7 +7056,7 @@ dependencies = [
  "config",
  "crossbeam-skiplist",
  "derivative",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "external-api",
  "futures",
  "futures-util",
  "http-body-util",
@@ -7114,13 +7080,13 @@ dependencies = [
  "tungstenite 0.18.0",
  "types-core",
  "url",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
 name = "renegade-sdk"
 version = "2.0.3"
-source = "git+https://github.com/renegade-fi/rust-sdk.git?branch=wj%2Fpool-runner#99aeff61e3af86b8cb7d6f5d3446ef138d7fc946"
+source = "git+https://github.com/renegade-fi/rust-sdk#7f5b4affc87931b1d0717e3d916534a31bb2fe22"
 dependencies = [
  "abi",
  "alloy",
@@ -7132,7 +7098,7 @@ dependencies = [
  "constants",
  "crypto",
  "darkpool-types",
- "external-api 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
+ "external-api",
  "eyre",
  "futures-util",
  "hex",
@@ -7540,6 +7506,7 @@ dependencies = [
  "aws-lc-rs",
  "log",
  "once_cell",
+ "ring 0.17.14",
  "rustls-pki-types",
  "rustls-webpki 0.103.13",
  "subtle",
@@ -8472,12 +8439,12 @@ dependencies = [
 [[package]]
 name = "system-clock"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "tracing",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
 ]
 
 [[package]]
@@ -9250,7 +9217,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 [[package]]
 name = "types-account"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "abi",
  "alloy",
@@ -9268,38 +9235,14 @@ dependencies = [
  "serde",
  "signature 2.2.0",
  "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
- "uuid",
-]
-
-[[package]]
-name = "types-account"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
-dependencies = [
- "abi",
- "alloy",
- "ark-ff 0.4.2",
- "circuit-types",
- "constants",
- "crypto",
- "darkpool-types",
- "derivative",
- "itertools 0.10.5",
- "k256",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "serde",
- "signature 2.2.0",
- "types-core",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "util",
  "uuid",
 ]
 
 [[package]]
 name = "types-core"
 version = "0.1.0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy",
  "base64 0.22.1",
@@ -9312,14 +9255,14 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "sha2 0.10.9",
- "util 0.1.0",
+ "util",
  "uuid",
 ]
 
 [[package]]
 name = "types-gossip"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "base64 0.22.1",
  "circuit-types",
@@ -9330,56 +9273,28 @@ dependencies = [
  "rand_core 0.5.1",
  "serde",
  "serde_json",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner)",
-]
-
-[[package]]
-name = "types-gossip"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
-dependencies = [
- "base64 0.22.1",
- "circuit-types",
- "derivative",
- "ed25519-dalek 1.0.1",
- "libp2p",
- "libp2p-identity",
- "rand_core 0.5.1",
- "serde",
- "serde_json",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
- "util 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-account",
+ "util",
 ]
 
 [[package]]
 name = "types-proofs"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy-primitives",
  "circuit-types",
  "circuits-core",
  "constants",
  "serde",
- "types-account 0.1.0 (git+https://github.com/renegade-fi/renegade.git)",
+ "types-account",
  "types-core",
 ]
 
 [[package]]
 name = "types-runtime"
 version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
-dependencies = [
- "async-trait",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "types-runtime"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "async-trait",
  "tokio",
@@ -9523,85 +9438,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ec",
- "ark-serialize 0.4.2",
- "base64 0.22.1",
- "chrono",
- "crossbeam",
- "eyre",
- "futures",
- "hex",
- "http 1.4.1",
- "json",
- "libp2p",
- "metrics 0.24.3",
- "metrics-exporter-statsd",
- "metrics-tracing-context",
- "metrics-util 0.20.1",
- "num-bigint",
- "num-traits",
- "opentelemetry",
- "opentelemetry-datadog",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-serde 0.1.3",
- "tracing-subscriber 0.3.23",
-]
-
-[[package]]
-name = "util"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git?branch=wj%2Fpool-runner#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
-dependencies = [
- "alloy",
- "ark-ec",
- "ark-serialize 0.4.2",
- "base64 0.22.1",
- "chrono",
- "circuit-types",
- "constants",
- "crossbeam",
- "crypto",
- "eyre",
- "futures",
- "hex",
- "http 1.4.1",
- "json",
- "libp2p",
- "metrics 0.24.3",
- "metrics-exporter-statsd",
- "metrics-tracing-context",
- "metrics-util 0.20.1",
- "num-bigint",
- "num-traits",
- "opentelemetry",
- "opentelemetry-datadog",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-serde 0.1.3",
- "tracing-subscriber 0.3.23",
-]
-
-[[package]]
-name = "util"
-version = "0.1.0"
-source = "git+https://github.com/renegade-fi/renegade.git#d2ac79c3b66d620d1edb72b3931c1fc2461a9be0"
+source = "git+https://github.com/renegade-fi/renegade.git#aaefd1e56380dce3298ecddbaa71985dbf684e2f"
 dependencies = [
  "alloy",
  "ark-ec",

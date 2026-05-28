@@ -40,6 +40,8 @@ use crate::{
 /// lock. A value of `0` means no real tick has been observed yet.
 type LastRealTick = Arc<AtomicU64>;
 
+/// Current Unix time in milliseconds. Returns `0` if the system clock is
+/// somehow before the epoch (shouldn't happen, but `SystemTime` can fail).
 fn now_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

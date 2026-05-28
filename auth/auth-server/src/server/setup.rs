@@ -141,6 +141,7 @@ async fn setup_token_mapping(args: &Cli) -> Result<(), AuthServerError> {
     tokio::task::spawn_blocking(move || setup_token_remaps(token_remap_file, chain_id))
         .await
         .unwrap()
+        .map(|_loaded_tickers| ())
         .map_err(AuthServerError::setup)
 }
 

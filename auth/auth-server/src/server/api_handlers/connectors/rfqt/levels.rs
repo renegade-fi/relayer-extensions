@@ -78,6 +78,8 @@ impl Server {
     }
 }
 
+/// Return up to the first 200 bytes of an HTTP response body as a lossy UTF-8
+/// string, for inclusion in error logs without dumping the entire body.
 fn body_preview(bytes: &[u8]) -> String {
     let len = bytes.len().min(200);
     String::from_utf8_lossy(&bytes[..len]).into_owned()
