@@ -6,6 +6,9 @@
 #![deny(clippy::needless_pass_by_ref_mut)]
 #![feature(trivial_bounds)]
 #![feature(trait_alias)]
+// The warp route stack is a deeply-nested `Or` filter; computing its type
+// layout exceeds the default recursion limit of 128 in release builds.
+#![recursion_limit = "256"]
 
 pub mod cli;
 pub mod custody_client;

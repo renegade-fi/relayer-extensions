@@ -15,7 +15,8 @@
 //!    `acquire` calls block until the cooldown elapses.
 //!
 //! Cooldown duration is determined as follows: when the response carried a
-//! `Retry-After` header (captured by [`super::fireblocks_retry_after::RetryAfterCapture`]
+//! `Retry-After` header (captured by
+//! [`super::fireblocks_retry_after::RetryAfterCapture`]
 //! into the [`RetryAfterStore`] this limiter owns), the limiter honors that
 //! value exactly. When the header is absent or unparseable, the limiter
 //! falls back to a fixed multiplicative backoff (1s, 2s, 4s, 8s, 16s,

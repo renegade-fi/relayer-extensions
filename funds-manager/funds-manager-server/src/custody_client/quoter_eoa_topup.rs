@@ -20,9 +20,10 @@
 //! next-best safety net: every funds-manager redeploy clears the drained
 //! state.
 //!
-//! Derivation matches `quoters/src/server/quoter_context.rs:derive_quoter_private_key`
-//! exactly so addresses agree between this top-up and the quoter process
-//! using the same EOA. The keccak input is `seed_bytes || quoter_key.as_bytes()`
+//! Derivation matches
+//! `quoters/src/server/quoter_context.rs:derive_quoter_private_key` exactly so
+//! addresses agree between this top-up and the quoter process using the same
+//! EOA. The keccak input is `seed_bytes || quoter_key.as_bytes()`
 //! where `seed_bytes = hex::decode(master_bot_seed)`.
 
 use std::sync::Arc;
@@ -268,7 +269,8 @@ impl CustodyClient {
 // ---------------
 
 /// Derive a v2 quoter EOA from the master bot seed bytes and the quoter
-/// key. Mirrors `quoters/src/server/quoter_context.rs:derive_quoter_private_key`:
+/// key. Mirrors
+/// `quoters/src/server/quoter_context.rs:derive_quoter_private_key`:
 /// `pkey = keccak256(seed_bytes || quoter_key)`, EOA = secp256k1 address of
 /// the resulting private key.
 ///
