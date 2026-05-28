@@ -14,13 +14,14 @@ use price_reporter_client::{PriceReporterClient, PriceReporterClientConfig};
 use renegade_constants::GLOBAL_MATCHING_POOL;
 use renegade_sdk::client::RenegadeClient;
 use renegade_types_core::HmacKey;
-use tracing::{info, warn};
 use warp::Filter;
 
 use crate::{
     cli::Cli,
     config::{RunnerConfig, load_runner_config},
     fill_waiter::FillWaiterRegistry,
+    log_task,
+    logger::{Outcome, Task},
 };
 
 /// Central server state, shared across tasks via `Arc<Server>`
@@ -64,7 +65,12 @@ impl Server {
     /// Fetch all open orders in the global pool and spawn a runner task for
     /// each eligible user order.
     pub async fn process_open_orders(self: &Arc<Self>) -> Result<()> {
-        info!("Fetching open orders in global matching pool");
+        log_task!(
+            Task::PoolRouter,
+            Outcome::Started,
+            subject = "fetch-open-orders",
+            "Fetching open orders in global matching pool"
+        );
 
         let global_orders = self
             .admin_client
@@ -72,13 +78,27 @@ impl Server {
             .await
             .context("Failed to fetch global pool orders")?;
 
-        info!("Found {} orders in global matching pool", global_orders.len());
+        log_task!(
+            Task::PoolRouter,
+            Outcome::Ok,
+            subject = "fetch-open-orders",
+            order_count = global_orders.len(),
+            "Found {} orders in global matching pool",
+            global_orders.len()
+        );
 
         for order in global_orders {
             let server = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = server.try_route_user_order(&order).await {
-                    warn!("Failed to route order {}: {e}", order.order.id);
+                    log_task!(
+                        Task::PoolRouter,
+                        Outcome::Failed,
+                        subject = "route-order",
+                        order_id = %order.order.id,
+                        "Failed to route order {}: {e}",
+                        order.order.id
+                    );
                 }
             });
         }
@@ -92,7 +112,13 @@ impl Server {
             .and(warp::get())
             .map(|| warp::reply::json(&serde_json::json!({"status": "ok"})));
 
-        info!("Starting healthcheck server on port {port}");
+        log_task!(
+            Task::HttpServer,
+            Outcome::Started,
+            subject = "healthcheck-listen",
+            port = port,
+            "Starting healthcheck server on port {port}"
+        );
         warp::serve(route).run(([0, 0, 0, 0], port)).await;
     }
 }

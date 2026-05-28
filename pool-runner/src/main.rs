@@ -9,9 +9,13 @@ use renegade_sdk::{
     ETHEREUM_SEPOLIA_CHAIN_ID,
 };
 use renegade_types_core::Chain;
-use tracing::info;
-
-use pool_runner::{admin_ws_listener::AdminWebsocketListener, cli::Cli, server::Server};
+use pool_runner::{
+    admin_ws_listener::AdminWebsocketListener,
+    cli::Cli,
+    log_task,
+    logger::{Outcome, Task},
+    server::Server,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -45,7 +49,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Build the server
     let server = Server::build_from_cli(&cli).await?;
-    info!("Pool runner started on chain_id={}", cli.chain_id);
+    log_task!(
+        Task::ServiceLifecycle,
+        Outcome::Started,
+        subject = "service-boot",
+        chain_id = cli.chain_id,
+        "Pool runner started on chain_id={}",
+        cli.chain_id
+    );
 
     // Process any orders already in the global pool at startup
     server.process_open_orders().await?;

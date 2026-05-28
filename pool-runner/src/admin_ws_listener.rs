@@ -11,9 +11,7 @@ use renegade_constants::GLOBAL_MATCHING_POOL;
 use renegade_external_api::types::{AdminOrderUpdateMessage, ApiOrderUpdateType};
 use renegade_sdk::client::RenegadeClient;
 use renegade_types_core::HmacKey;
-use tracing::{error, info, warn};
-
-use crate::server::Server;
+use crate::{log_task, logger::{Outcome, Task}, server::Server};
 
 /// Listener for admin websocket order updates
 pub struct AdminWebsocketListener {
@@ -72,28 +70,53 @@ impl AdminWebsocketListener {
 
         // Wait for the order update task (it should run forever)
         let _ = order_handle.await;
-        error!("Admin websocket listener ended unexpectedly");
+        log_task!(
+            Task::AdminWsListener,
+            Outcome::Failed,
+            subject = "ws-listener",
+            "Admin websocket listener ended unexpectedly"
+        );
     }
 
     /// Listen for admin order updates
     async fn listen_order_updates(&self) {
-        info!("Subscribing to admin order updates...");
+        log_task!(
+            Task::AdminWsListener,
+            Outcome::Started,
+            subject = "ws-subscribe",
+            "Subscribing to admin order updates"
+        );
 
         let mut stream = match self.admin_client.subscribe_admin_order_updates().await {
             Ok(s) => s,
             Err(e) => {
-                error!("Failed to subscribe to admin order updates: {e}");
+                log_task!(
+                    Task::AdminWsListener,
+                    Outcome::Failed,
+                    subject = "ws-subscribe",
+                    "Failed to subscribe to admin order updates: {e}"
+                );
                 return;
             },
         };
 
-        info!("Listening for admin order updates...");
+        log_task!(
+            Task::AdminWsListener,
+            Outcome::Ok,
+            subject = "ws-subscribe",
+            "Listening for admin order updates"
+        );
 
         while let Some(message) = stream.next().await {
             self.handle_order_update(message).await;
         }
 
-        error!("Admin order updates stream ended");
+        log_task!(
+            Task::AdminWsListener,
+            Outcome::Failed,
+            subject = "ws-stream",
+            "Admin order updates stream ended"
+        );
     }
 
     /// Route an order update to the appropriate handler
@@ -109,12 +132,24 @@ impl AdminWebsocketListener {
         if message.update_type == ApiOrderUpdateType::Created
             && message.order.matching_pool == GLOBAL_MATCHING_POOL
         {
-            info!("New user order detected: {order_id}");
+            log_task!(
+                Task::AdminWsListener,
+                Outcome::Started,
+                subject = "order-created",
+                order_id = %order_id,
+                "New user order detected: {order_id}"
+            );
             let server = self.server.clone();
             let order = message.order.clone();
             tokio::spawn(async move {
                 if let Err(e) = server.try_route_user_order(&order).await {
-                    warn!("Route attempt failed for order {order_id}: {e}");
+                    log_task!(
+                        Task::PoolRouter,
+                        Outcome::Failed,
+                        subject = "route-order",
+                        order_id = %order_id,
+                        "Route attempt failed for order {order_id}: {e}"
+                    );
                 }
             });
         }
