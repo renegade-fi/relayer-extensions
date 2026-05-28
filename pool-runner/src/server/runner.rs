@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 use renegade_constants::GLOBAL_MATCHING_POOL;
 use renegade_external_api::types::ApiAdminOrder;
 use renegade_types_core::Token;
-use tracing::{error, info, warn};
-
 use crate::{
     config::ManagedPool,
+    log_task,
+    logger::{Outcome, Task},
     metrics::{
         record_fill_latency, record_reassign_attempt, record_reassign_failure,
         record_reassign_success, record_reassign_timeout,
@@ -44,28 +44,49 @@ pub fn select_managed_pool<'a>(
 
 impl Server {
     /// Attempt to route a user order into a managed MM pool.
+    ///
+    /// Returns `Ok(())` for all unroutable orders (no managed pool covers the
+    /// asset, size out of band, can't extract a base ticker, etc.). Those
+    /// arrivals belong to quoters or other services, not pool-runner —
+    /// logging them as routing failures would pollute the log stream
+    /// proportional to non-MM arrival rate. `Err` is reserved for actual
+    /// failure modes (admin API errors, fill timeouts inside the dance).
     pub(crate) async fn try_route_user_order(
         &self,
         user_order: &ApiAdminOrder,
     ) -> anyhow::Result<()> {
         let order_id = user_order.order.id;
 
-        // Resolve the base token and its ticker
-        let (base_ticker, value_usd) = self.resolve_order_metadata(user_order).await?;
+        // Cheap pre-filter: extract the base ticker without hitting the
+        // price reporter. If the order doesn't have a USDC quote, or its
+        // base ticker isn't covered by any managed pool, return silently.
+        let Some(base_ticker) = extract_base_ticker(user_order) else {
+            return Ok(());
+        };
+        if !self.has_managed_pool_for_ticker(&base_ticker) {
+            return Ok(());
+        }
 
-        // Select a managed pool for this order
-        let pool = select_managed_pool(&self.config.managed_pools, &base_ticker, value_usd)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No managed pool for order {order_id} \
-                     (ticker={base_ticker}, value=${value_usd:.2})"
-                )
-            })?;
+        // Ticker matches at least one managed pool; compute USD value to
+        // check the size band.
+        let value_usd = self.compute_order_value_usd(user_order, &base_ticker).await?;
+
+        let Some(pool) =
+            select_managed_pool(&self.config.managed_pools, &base_ticker, value_usd)
+        else {
+            // Ticker covered but size out of band. Skip silently.
+            return Ok(());
+        };
 
         let pool_name = pool.name.clone();
         record_reassign_attempt(&pool_name);
 
-        info!(
+        log_task!(
+            Task::PoolRouter,
+            Outcome::Started,
+            subject = "route-order",
+            order_id = %order_id,
+            pool = pool_name.as_str(),
             "Routing order {order_id} (ticker={base_ticker}, value=${value_usd:.2}) \
              to pool {pool_name}"
         );
@@ -76,15 +97,36 @@ impl Server {
         match &result {
             Ok(()) => {
                 record_reassign_success(&pool_name);
-                info!("Order {order_id} successfully matched in pool {pool_name}");
+                log_task!(
+                    Task::PoolRouter,
+                    Outcome::Ok,
+                    subject = "match-completed",
+                    order_id = %order_id,
+                    pool = pool_name.as_str(),
+                    "Order {order_id} successfully matched in pool {pool_name}"
+                );
             },
             Err(e) if is_timeout_error(e) => {
                 record_reassign_timeout(&pool_name);
-                warn!("Fill timeout for order {order_id} in pool {pool_name}");
+                log_task!(
+                    Task::PoolRouter,
+                    Outcome::Failed,
+                    subject = "fill-timeout",
+                    order_id = %order_id,
+                    pool = pool_name.as_str(),
+                    "Fill timeout for order {order_id} in pool {pool_name}"
+                );
             },
             Err(e) => {
                 record_reassign_failure(&pool_name, &e.to_string());
-                warn!("Match failed for order {order_id} in pool {pool_name}: {e}");
+                log_task!(
+                    Task::PoolRouter,
+                    Outcome::Failed,
+                    subject = "match-error",
+                    order_id = %order_id,
+                    pool = pool_name.as_str(),
+                    "Match failed for order {order_id} in pool {pool_name}: {e}"
+                );
             },
         }
 
@@ -106,7 +148,14 @@ impl Server {
         let assign_time = Instant::now();
 
         // Assign user order into the managed pool
-        info!("Assigning order {user_order_id} to pool {pool_name}");
+        log_task!(
+            Task::PoolRouter,
+            Outcome::Started,
+            subject = "assign-to-pool",
+            order_id = %user_order_id,
+            pool = pool_name,
+            "Assigning order {user_order_id} to pool {pool_name}"
+        );
         if let Err(e) =
             self.admin_client.admin_assign_order_to_pool(user_order_id, pool_name.to_string()).await
         {
@@ -118,13 +167,25 @@ impl Server {
         let fill_result = tokio::time::timeout(FILL_TIMEOUT, fill_rx).await;
 
         // Always reassign back to global pool
-        info!("Reassigning order {user_order_id} back to global pool");
+        log_task!(
+            Task::PoolRouter,
+            Outcome::Started,
+            subject = "reassign-to-global",
+            order_id = %user_order_id,
+            "Reassigning order {user_order_id} back to global pool"
+        );
         if let Err(e) = self
             .admin_client
             .admin_assign_order_to_pool(user_order_id, GLOBAL_MATCHING_POOL.to_string())
             .await
         {
-            error!("Failed to reassign order {user_order_id} to global pool: {e}");
+            log_task!(
+                Task::PoolRouter,
+                Outcome::Failed,
+                subject = "reassign-to-global",
+                order_id = %user_order_id,
+                "Failed to reassign order {user_order_id} to global pool: {e}"
+            );
         }
 
         // Process the fill result
@@ -146,11 +207,24 @@ impl Server {
         }
     }
 
-    /// Resolve the base ticker and USD value of an order.
-    async fn resolve_order_metadata(
+    /// Whether any managed pool covers the given base ticker. Cheap,
+    /// in-memory; used as the pre-filter to skip unroutable orders before
+    /// any network calls.
+    fn has_managed_pool_for_ticker(&self, base_ticker: &str) -> bool {
+        self.config
+            .managed_pools
+            .iter()
+            .any(|p| p.base_tickers.iter().any(|t| t == base_ticker))
+    }
+
+    /// Compute the USD value of an order's matchable amount. Hits the price
+    /// reporter when the input token isn't USDC. Errors if the order has
+    /// zero matchable amount or the price fetch fails.
+    async fn compute_order_value_usd(
         &self,
         user_order: &ApiAdminOrder,
-    ) -> anyhow::Result<(String, f64)> {
+        base_ticker: &str,
+    ) -> anyhow::Result<f64> {
         let order = &user_order.order;
         let matchable_amount = user_order.matchable_amount;
 
@@ -159,24 +233,14 @@ impl Server {
         }
 
         let in_token = Token::from_alloy_address(&order.order.intent.in_token);
-        let out_token = Token::from_alloy_address(&order.order.intent.out_token);
         let usdc = Token::usdc();
-
-        // Determine which token is the base token (non-USDC)
-        let (base_token, quote_is_in) = if in_token == usdc && out_token != usdc {
-            (out_token, true) // buying base with USDC
-        } else if in_token != usdc && out_token == usdc {
-            (in_token, false) // selling base for USDC
+        let quote_is_in = in_token == usdc;
+        let base_token = if quote_is_in {
+            Token::from_alloy_address(&order.order.intent.out_token)
         } else {
-            return Err(anyhow::anyhow!("Cannot resolve base token for order {}", order.id));
+            in_token
         };
 
-        let base_ticker = base_token
-            .get_ticker()
-            .ok_or_else(|| anyhow::anyhow!("Unknown base token for order {}", order.id))?
-            .to_string();
-
-        // Compute USD value of the matchable amount
         let value_usd = if quote_is_in {
             // in_token is USDC → matchable amount is already in USD
             usdc.convert_to_decimal(matchable_amount)
@@ -191,8 +255,28 @@ impl Server {
             matchable_decimal * base_price
         };
 
-        Ok((base_ticker, value_usd))
+        Ok(value_usd)
     }
+}
+
+/// Extract the base (non-USDC) token's ticker from an order. Returns `None`
+/// for orders that don't have a USDC leg, or whose base token isn't in the
+/// token map. Cheap; no network calls.
+fn extract_base_ticker(user_order: &ApiAdminOrder) -> Option<String> {
+    let intent = &user_order.order.order.intent;
+    let in_token = Token::from_alloy_address(&intent.in_token);
+    let out_token = Token::from_alloy_address(&intent.out_token);
+    let usdc = Token::usdc();
+
+    let base_token = if in_token == usdc && out_token != usdc {
+        out_token
+    } else if in_token != usdc && out_token == usdc {
+        in_token
+    } else {
+        return None;
+    };
+
+    base_token.get_ticker().map(|s| s.to_string())
 }
 
 // --- Helpers --- //
