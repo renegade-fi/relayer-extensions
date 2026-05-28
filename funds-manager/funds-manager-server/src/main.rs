@@ -61,6 +61,7 @@ use crate::handlers::fee_indexing::{
     get_fee_hot_wallet_address_handler, get_fee_wallets_handler, get_unredeemed_fee_totals_handler,
     index_fees_handler, redeem_fees_handler, withdraw_fee_balance_handler,
 };
+use crate::handlers::fireblocks_webhook::fireblocks_tx_status_webhook_handler;
 use crate::handlers::gas::{
     create_gas_wallet_handler, get_gas_hot_wallet_address_handler, get_gas_wallets_handler,
     refill_gas_handler, refill_gas_sponsor_handler, register_gas_wallet_handler,
@@ -421,6 +422,18 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(with_server(server.clone()))
         .and_then(rpc_handler);
 
+    // --- Webhooks --- //
+    // Fireblocks tx-status webhook. Authenticated by RSA signature over the
+    // raw body (not HMAC), so it captures `body::bytes()` rather than a parsed
+    // JSON body. Phase 1: verify signature and log only.
+    let fireblocks_webhook = warp::post()
+        .and(warp::path("webhooks"))
+        .and(warp::path("fireblocks"))
+        .and(warp::path("transaction-status"))
+        .and(warp::header::optional::<String>("fireblocks-signature"))
+        .and(warp::body::bytes())
+        .and_then(fireblocks_tx_status_webhook_handler);
+
     let routes = ping
         .or(index_fees)
         .or(redeem_fees)
@@ -448,6 +461,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .or(get_hot_wallet_balances)
         .or(create_hot_wallet)
         .or(rpc)
+        .or(fireblocks_webhook)
         .boxed()
         .with(warp::trace::request())
         .recover(handle_rejection);

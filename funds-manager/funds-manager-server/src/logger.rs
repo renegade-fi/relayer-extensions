@@ -64,6 +64,8 @@ pub enum Task {
     PollFireblocksTx,
     /// The process-wide Fireblocks rate limiter (cooldown gate, etc.).
     FireblocksRateLimit,
+    /// Inbound Fireblocks webhook delivery (signature verification, dispatch).
+    FireblocksWebhook,
     /// Reading vault balances from Fireblocks.
     FetchVaultBalances,
     /// Reading vault account / asset metadata from Fireblocks.
@@ -118,6 +120,7 @@ impl Task {
             Task::SignRpc => "sign-rpc",
             Task::PollFireblocksTx => "poll-fireblocks-tx",
             Task::FireblocksRateLimit => "fireblocks-rate-limit",
+            Task::FireblocksWebhook => "fireblocks-webhook",
             Task::FetchVaultBalances => "fetch-vault-balances",
             Task::FetchFireblocksMetadata => "fetch-fireblocks-metadata",
             Task::CustodyTransfer => "custody-transfer",
