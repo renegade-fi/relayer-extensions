@@ -33,11 +33,9 @@ pub async fn estimate_l1_gas_component(
     _to: alloy::primitives::Address,
     _data: Vec<u8>,
 ) -> Result<GasPriceEstimation, String> {
-    Err(
-        "auth-server built without a chain feature; enable one of `arbitrum`, \
+    Err("auth-server built without a chain feature; enable one of `arbitrum`, \
          `base`, or `ethereum`"
-            .to_string(),
-    )
+        .to_string())
 }
 
 /// Result of the gas price estimation

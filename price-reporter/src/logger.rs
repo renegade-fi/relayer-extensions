@@ -14,17 +14,17 @@
 //! [<task>] [<outcome>] <description>  (+ task, outcome, and any extra fields)
 //! ```
 //!
-//! - **Task** is a closed enum of operations the price-reporter performs.
-//!   New tasks must be added to [`Task`] before use; the closed vocabulary
-//!   is what makes `@task:X` aggregations reliable.
-//! - **Outcome** is closed too: `started | ok | skipped | partial |
-//!   retrying | failed`. The outcome picks the underlying tracing level
-//!   (info / warn / error) so callers do not need to think about it.
-//! - **Description** is the human-readable detail. Any number of
-//!   structured fields can be passed before the description as
-//!   `key = value`. Reserve the field name `subject` for naming WHICH thing
-//!   the log line is about (pair / topic / peer) — that keeps dashboards
-//!   aggregable across call sites that share a task.
+//! - **Task** is a closed enum of operations the price-reporter performs. New
+//!   tasks must be added to [`Task`] before use; the closed vocabulary is what
+//!   makes `@task:X` aggregations reliable.
+//! - **Outcome** is closed too: `started | ok | skipped | partial | retrying |
+//!   failed`. The outcome picks the underlying tracing level (info / warn /
+//!   error) so callers do not need to think about it.
+//! - **Description** is the human-readable detail. Any number of structured
+//!   fields can be passed before the description as `key = value`. Reserve the
+//!   field name `subject` for naming WHICH thing the log line is about (pair /
+//!   topic / peer) — that keeps dashboards aggregable across call sites that
+//!   share a task.
 
 use tracing::Level;
 
@@ -79,8 +79,8 @@ impl Task {
 /// - `Ok`: completed successfully.
 /// - `Skipped`: nothing to do this cycle; not a failure.
 /// - `Partial`: completed with a known degradation.
-/// - `Retrying`: intra-call retry attempt. A failure that propagates back
-///   to the caller for a later retry is `Failed`, not `Retrying`.
+/// - `Retrying`: intra-call retry attempt. A failure that propagates back to
+///   the caller for a later retry is `Failed`, not `Retrying`.
 /// - `Failed`: errored out; the operation did not complete.
 // Reserved variants below (`Skipped`, `Partial`) are part of the shared
 // taxonomy with the other services. Allow them to live unused here so the

@@ -26,8 +26,8 @@ const FILL_TIMEOUT: Duration = Duration::from_secs(30);
 ///
 /// A pool is eligible when:
 /// - Its `base_tickers` list includes the order's base ticker, AND
-/// - The order's USD value is within [`min_value_usd`, `max_value_usd`]
-///   (no upper bound when `max_value_usd` is `None`).
+/// - The order's USD value is within [`min_value_usd`, `max_value_usd`] (no
+///   upper bound when `max_value_usd` is `None`).
 pub fn select_managed_pool<'a>(
     pools: &'a [ManagedPool],
     base_ticker: &str,
