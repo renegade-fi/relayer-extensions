@@ -134,12 +134,8 @@ fn verify_detached_jws(
         .decode(signature_b64)
         .map_err(|e| ApiError::Unauthenticated(format!("invalid JWS signature b64: {e}")))?;
     let signing_input = format!("{protected_b64}.{}", URL_SAFE_NO_PAD.encode(body));
-    key.verify(
-        Pkcs1v15Sign::new::<Sha512>(),
-        &Sha512::digest(signing_input.as_bytes()),
-        &signature,
-    )
-    .map_err(|e| ApiError::Unauthenticated(format!("bad v2 webhook signature: {e}")))
+    key.verify(Pkcs1v15Sign::new::<Sha512>(), &Sha512::digest(signing_input.as_bytes()), &signature)
+        .map_err(|e| ApiError::Unauthenticated(format!("bad v2 webhook signature: {e}")))
 }
 
 /// Verify a Fireblocks Webhooks v2 `Fireblocks-Webhook-Signature` over the raw
@@ -206,13 +202,15 @@ mod tests {
         let key = RsaPrivateKey::new(&mut rng, 2048).expect("keygen");
         let pubkey = key.to_public_key();
 
-        let body = br#"{"eventType":"transaction.status.updated","data":{"id":"x","status":"COMPLETED"}}"#;
+        let body =
+            br#"{"eventType":"transaction.status.updated","data":{"id":"x","status":"COMPLETED"}}"#;
         let (protected_b64, sig_b64) = sign_detached(&key, body);
 
         // Valid signature over the exact body verifies.
         assert!(verify_detached_jws(&pubkey, &protected_b64, &sig_b64, body).is_ok());
         // Tampered body fails.
-        let tampered = br#"{"eventType":"transaction.status.updated","data":{"id":"x","status":"FAILED"}}"#;
+        let tampered =
+            br#"{"eventType":"transaction.status.updated","data":{"id":"x","status":"FAILED"}}"#;
         assert!(verify_detached_jws(&pubkey, &protected_b64, &sig_b64, tampered).is_err());
         // Garbage signature fails.
         assert!(verify_detached_jws(&pubkey, &protected_b64, "not-b64!!", body).is_err());
