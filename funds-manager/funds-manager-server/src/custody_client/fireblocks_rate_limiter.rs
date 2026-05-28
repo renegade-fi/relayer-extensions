@@ -14,13 +14,14 @@
 //! 2. On 429 from any call, the limiter enters a cooldown — subsequent
 //!    `acquire` calls block until the cooldown elapses.
 //!
-//! Cooldown duration is determined as follows: when the response carried a
-//! `Retry-After` header (captured by
-//! [`super::fireblocks_retry_after::RetryAfterCapture`]
-//! into the [`RetryAfterStore`] this limiter owns), the limiter honors that
-//! value exactly. When the header is absent or unparseable, the limiter
-//! falls back to a fixed multiplicative backoff (1s, 2s, 4s, 8s, 16s,
-//! capped at 30s) that resets after any successful call.
+//! Cooldown duration is the LONGER of two values: a multiplicative backoff
+//! (1s, 2s, 4s, 8s, 16s, capped at 30s, keyed on the consecutive-429 streak
+//! and reset after any successful call) and any `Retry-After` captured by
+//! [`super::fireblocks_retry_after::RetryAfterCapture`] into the
+//! [`RetryAfterStore`] this limiter owns. `Retry-After` can only EXTEND the
+//! cooldown (up to the 30s ceiling), never shorten it below the backoff: a
+//! too-short or bogus server value must not pull the gate down and hammer an
+//! already-overloaded Fireblocks. Absent/unparseable header ⇒ pure backoff.
 //!
 //! Scope: a single global limiter is shared across every `CustodyClient`
 //! in the process. Fireblocks quota is per-workspace, not per-chain, and
@@ -170,24 +171,35 @@ impl FireblocksLimiter {
     }
 
     /// Notify the limiter that a Fireblocks call returned 429. Sets the
-    /// cooldown deadline to the value captured from `Retry-After` if the
-    /// middleware observed one; otherwise falls back to multiplicative
-    /// backoff (1s, 2s, 4s, 8s, 16s, capped at 30s) keyed on the
-    /// consecutive-429 streak length.
+    /// cooldown to the longer of the multiplicative backoff (1s, 2s, 4s, 8s,
+    /// 16s, capped at 30s, keyed on the consecutive-429 streak) and any
+    /// captured `Retry-After`. `Retry-After` can only extend the wait, never
+    /// shorten it below the backoff floor, and is clamped to the 30s ceiling;
+    /// a too-short value is ignored in favor of the backoff.
     pub async fn on_429(&self) {
         let n = self.consecutive_429s.fetch_add(1, Ordering::Relaxed) + 1;
 
-        let (new_until, source, secs) = match self.retry_after.take() {
+        // Multiplicative backoff for this streak: 1,2,4,8,16s capped at MAX.
+        let shift = (n.min(5) - 1) as u64;
+        let backoff_secs = std::cmp::min(INITIAL_COOLDOWN_SECS << shift, MAX_COOLDOWN_SECS);
+
+        // `Retry-After` may only EXTEND the cooldown, never shorten it below
+        // the backoff floor. A too-short or bogus value (e.g. 0-1s while the
+        // co-signer is deeply backed up) would otherwise let us retry early
+        // and intensify the overload, so we floor at `backoff_secs` and clamp
+        // to the 30s ceiling.
+        let (secs, source) = match self.retry_after.take() {
             Some(deadline) => {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                (deadline, "retry_after_header", remaining.as_secs())
+                let ra_secs = deadline.saturating_duration_since(Instant::now()).as_secs();
+                if ra_secs > backoff_secs {
+                    (ra_secs.min(MAX_COOLDOWN_SECS), "retry_after_header")
+                } else {
+                    (backoff_secs, "retry_after_floored")
+                }
             },
-            None => {
-                let shift = (n.min(5) - 1) as u64;
-                let secs = std::cmp::min(INITIAL_COOLDOWN_SECS << shift, MAX_COOLDOWN_SECS);
-                (Instant::now() + Duration::from_secs(secs), "multiplicative_backoff", secs)
-            },
+            None => (backoff_secs, "multiplicative_backoff"),
         };
+        let new_until = Instant::now() + Duration::from_secs(secs);
 
         let mut guard = self.cooldown_until.lock().await;
         if guard.is_none_or(|existing| existing < new_until) {
