@@ -48,7 +48,11 @@ impl TxListenerRegistry {
                 .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0);
             sender.subscribe()
         };
-        TxSubscription { registry: Arc::clone(self), tx_id: tx_id.to_string(), receiver: Some(receiver) }
+        TxSubscription {
+            registry: Arc::clone(self),
+            tx_id: tx_id.to_string(),
+            receiver: Some(receiver),
+        }
     }
 
     /// Deliver a webhook payload to the waiter for `payload.id`. Returns `true`
