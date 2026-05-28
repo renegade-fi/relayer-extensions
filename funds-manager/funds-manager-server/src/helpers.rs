@@ -61,6 +61,14 @@ const BASE_MAINNET_DARKPOOL_ADDRESS: Address =
 /// The darkpool address on Base Sepolia
 const BASE_SEPOLIA_DARKPOOL_ADDRESS: Address =
     Address::new(hex!("0x653C95391644EEE16E4975a7ef1f46e0B8276695"));
+/// The darkpool address on Ethereum Mainnet. Placeholder — no darkpool is
+/// deployed on Ethereum Mainnet today; backported from v2 to keep the match
+/// in [`get_darkpool_address`] exhaustive over the `Chain` enum.
+const ETHEREUM_MAINNET_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+/// The darkpool address on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS: Address =
+    Address::new(hex!("0x45537c28F245645CC1E7F7258FCC18A189CE16e3"));
 
 /// The gas sponsor address on Arbitrum One
 const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS: Address =
@@ -74,6 +82,13 @@ const BASE_MAINNET_GAS_SPONSOR_ADDRESS: Address =
 /// The gas sponsor address on Base Sepolia
 const BASE_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
     Address::new(hex!("0x2fDB4e70Db12599b04642b3d023E75f6439c5707"));
+/// The gas sponsor address on Ethereum Mainnet. Placeholder — see the
+/// matching darkpool note above.
+const ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0x0000000000000000000000000000000000000000"));
+/// The gas sponsor address on Ethereum Sepolia
+const ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
+    Address::new(hex!("0x8E330790c68b9462123848e418BaDB3399c7D26F"));
 
 // ---------
 // | ERC20 |
@@ -422,7 +437,9 @@ pub fn get_darkpool_address(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_DARKPOOL_ADDRESS,
         Chain::BaseMainnet => BASE_MAINNET_DARKPOOL_ADDRESS,
         Chain::BaseSepolia => BASE_SEPOLIA_DARKPOOL_ADDRESS,
-        _ => panic!("Invalid chain"),
+        Chain::EthereumMainnet => ETHEREUM_MAINNET_DARKPOOL_ADDRESS,
+        Chain::EthereumSepolia => ETHEREUM_SEPOLIA_DARKPOOL_ADDRESS,
+        _ => panic!("get_darkpool_address: Invalid chain {chain}"),
     }
 }
 
@@ -433,7 +450,9 @@ pub fn get_gas_sponsor_address(chain: Chain) -> Address {
         Chain::ArbitrumSepolia => ARBITRUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
         Chain::BaseMainnet => BASE_MAINNET_GAS_SPONSOR_ADDRESS,
         Chain::BaseSepolia => BASE_SEPOLIA_GAS_SPONSOR_ADDRESS,
-        _ => panic!("Invalid chain"),
+        Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS,
+        Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
+        _ => panic!("get_gas_sponsor_address: Invalid chain {chain}"),
     }
 }
 

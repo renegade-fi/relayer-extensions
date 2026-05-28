@@ -3861,6 +3861,7 @@ checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 [[package]]
 name = "fireblocks-sdk"
 version = "2.0.1"
+source = "git+https://github.com/renegade-fi/fireblocks-sdk-rs.git?branch=wj%2Fclient-builder-with-middleware#c42f56749a2bd4722292e375e746ddc233c790fa"
 dependencies = [
  "anyhow",
  "async-trait",
