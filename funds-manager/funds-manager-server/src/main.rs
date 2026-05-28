@@ -433,6 +433,7 @@ async fn async_main() -> Result<(), Box<dyn Error>> {
         .and(warp::path("webhooks"))
         .and(warp::path("fireblocks"))
         .and(warp::path("transaction-status"))
+        .and(warp::header::optional::<String>("fireblocks-webhook-signature"))
         .and(warp::header::optional::<String>("fireblocks-signature"))
         .and(warp::body::bytes())
         .and_then(fireblocks_tx_status_webhook_handler);

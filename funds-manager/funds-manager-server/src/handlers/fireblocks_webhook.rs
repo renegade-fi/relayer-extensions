@@ -21,6 +21,7 @@ use sha2::{Digest, Sha512};
 
 use crate::custody_client::tx_webhook::global_tx_listeners;
 use crate::error::ApiError;
+use crate::handlers::fireblocks_jwks::verify_fireblocks_v2_signature;
 use crate::log_task;
 use crate::logger::{Outcome, Task};
 
@@ -87,26 +88,27 @@ fn extract_id_and_status(payload: &serde_json::Value) -> (&str, &str) {
 /// dropped. Unsigned or bad-signature requests are rejected with 401 before the
 /// body is parsed. No DB writes, no chain reads.
 pub(crate) async fn fireblocks_tx_status_webhook_handler(
-    signature: Option<String>,
+    v2_signature: Option<String>,
+    legacy_signature: Option<String>,
     body: Bytes,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let signature = signature.ok_or_else(|| {
-        log_task!(
-            Task::FireblocksWebhook,
-            Outcome::Failed,
-            "rejecting webhook: missing Fireblocks-Signature header"
-        );
-        warp::reject::custom(ApiError::Unauthenticated(
-            "missing Fireblocks-Signature header".to_string(),
-        ))
-    })?;
-
-    if let Err(e) = verify_fireblocks_signature(&body, &signature) {
+    // Verify the signature. Webhooks v2 (current; legacy deprecates 2026-06-15)
+    // signs with `Fireblocks-Webhook-Signature` (detached JWS, RS512); legacy
+    // uses `Fireblocks-Signature` (RSA-SHA512). Prefer v2, fall back to legacy,
+    // reject if neither header is present or valid.
+    let verification = if let Some(sig) = v2_signature.as_deref() {
+        verify_fireblocks_v2_signature(sig, &body).await
+    } else if let Some(sig) = legacy_signature.as_deref() {
+        verify_fireblocks_signature(&body, sig)
+    } else {
+        Err(ApiError::Unauthenticated("missing Fireblocks webhook signature header".to_string()))
+    };
+    if let Err(e) = verification {
         log_task!(
             Task::FireblocksWebhook,
             Outcome::Failed,
             error = %e,
-            "rejecting webhook: signature verification failed (check for Fireblocks public key rotation)"
+            "rejecting webhook: signature verification failed (check Fireblocks key rotation / scheme)"
         );
         return Err(warp::reject::custom(e));
     }
@@ -114,7 +116,12 @@ pub(crate) async fn fireblocks_tx_status_webhook_handler(
     let envelope: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
         warp::reject::custom(ApiError::BadRequest(format!("invalid webhook JSON: {e}")))
     })?;
-    let event_type = envelope.get("type").and_then(|v| v.as_str()).unwrap_or("<none>");
+    // Legacy uses `type`; v2 uses `eventType`.
+    let event_type = envelope
+        .get("type")
+        .or_else(|| envelope.get("eventType"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("<none>");
 
     // The transaction sits under `data`. Deserialize it into the SDK type and
     // hand it to any waiter in the listener registry. A payload whose `data`

@@ -1,6 +1,7 @@
 //! Route handlers for the funds manager
 
 pub mod fee_indexing;
+mod fireblocks_jwks;
 pub mod fireblocks_webhook;
 pub mod gas;
 pub mod hot_wallets;
