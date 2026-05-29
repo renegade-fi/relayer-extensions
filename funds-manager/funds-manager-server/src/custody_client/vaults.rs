@@ -10,9 +10,11 @@ use fireblocks_sdk::{
     models::{AssetOnchainBeta, VaultAccount, VaultAsset},
 };
 use funds_manager_api::hot_wallets::TokenBalance;
-use futures::future::try_join_all;
+use futures::future::join_all;
 
 use crate::error::FundsManagerError;
+use crate::log_task;
+use crate::logger::{Outcome, Task};
 
 use super::CustodyClient;
 
@@ -107,11 +109,47 @@ impl CustodyClient {
             .await?
             .ok_or(FundsManagerError::fireblocks(format!("vault {vault_name} not found")))?;
 
-        let futures =
-            vault.assets.into_iter().map(|asset| self.try_get_token_balance_for_asset(asset));
+        // Resolve each asset's balance independently. A single asset that
+        // fails (e.g. a disabled token whose on-chain metadata can't be
+        // fetched) must NOT poison the whole vault-balances response: with
+        // `try_join_all` one failure aborts the call and skips the cache write
+        // below, so every subsequent call re-does the full uncached fan-out and
+        // times out the caller (the 2026-05-29 gardener
+        // fetch-holdings/get-vault-balances failures). Skip and log failed
+        // assets instead; a hard `get_vault_account` failure above still bails.
+        let asset_results = join_all(vault.assets.into_iter().map(|asset| async move {
+            let asset_id = asset.id.clone();
+            (asset_id, self.try_get_token_balance_for_asset(asset).await)
+        }))
+        .await;
 
-        let balances: Vec<TokenBalance> =
-            try_join_all(futures).await?.into_iter().flatten().collect();
+        let mut balances: Vec<TokenBalance> = Vec::new();
+        let mut failed = 0usize;
+        for (asset_id, result) in asset_results {
+            match result {
+                Ok(Some(balance)) => balances.push(balance),
+                Ok(None) => {},
+                Err(e) => {
+                    failed += 1;
+                    log_task!(
+                        Task::FetchVaultBalances,
+                        Outcome::Partial,
+                        subject = %asset_id,
+                        error = %e,
+                        "skipping asset {asset_id} in vault {vault_name}: {e}"
+                    );
+                },
+            }
+        }
+        if failed > 0 {
+            log_task!(
+                Task::FetchVaultBalances,
+                Outcome::Partial,
+                subject = %vault_name,
+                failed = failed,
+                "vault {vault_name} balances returned with {failed} asset(s) skipped"
+            );
+        }
 
         self.fireblocks_client.cache_vault_balances(vault_name.to_string(), balances.clone()).await;
 
