@@ -23,10 +23,13 @@ use crate::{
     error::FundsManagerError,
 };
 
-/// TTL for cached vault-balance responses. Short enough to keep telemetry
-/// fresh; long enough to coalesce retry storms (gardener fetch-holdings
-/// retries ~1/20s per stuck token).
-const VAULT_BALANCES_CACHE_TTL: Duration = Duration::from_secs(3);
+/// TTL for cached vault-balance responses. A cache miss does a live
+/// `get_vault_account` Fireblocks call; at 3s, the gardener's parallel sweep
+/// across many vaults drove `get_vault_account` calls hard enough to saturate
+/// the Fireblocks rate limiter (the 2026-05-29 get-vault-balances 429s). 30s
+/// cuts that call rate ~10x with negligible staleness — the gardener syncs on
+/// a minutes cadence and balances don't move meaningfully in 30s.
+const VAULT_BALANCES_CACHE_TTL: Duration = Duration::from_secs(30);
 
 /// A client for interacting with the Fireblocks API
 #[derive(Clone)]
