@@ -10,13 +10,19 @@ use fireblocks_sdk::{
     models::{AssetOnchainBeta, VaultAccount, VaultAsset},
 };
 use funds_manager_api::hot_wallets::TokenBalance;
-use futures::future::join_all;
+use futures::stream::{self, StreamExt, TryStreamExt};
 
 use crate::error::FundsManagerError;
-use crate::log_task;
-use crate::logger::{Outcome, Task};
 
 use super::CustodyClient;
+
+/// Max concurrent Fireblocks per-asset metadata fetches when warming the vault
+/// balance cache. An unbounded fan-out (one `get_asset_onchain_data` per asset)
+/// thundering-herds the rate limiter on cold cache and triggers 429s (the
+/// 2026-05-29 get-vault-balances failures). On-chain asset data is cached
+/// permanently, so this only throttles the cold-start fetch; warm calls are
+/// served from cache.
+const VAULT_BALANCE_FETCH_CONCURRENCY: usize = 4;
 
 impl CustodyClient {
     /// Get the ID of a vault by name
@@ -109,47 +115,22 @@ impl CustodyClient {
             .await?
             .ok_or(FundsManagerError::fireblocks(format!("vault {vault_name} not found")))?;
 
-        // Resolve each asset's balance independently. A single asset that
-        // fails (e.g. a disabled token whose on-chain metadata can't be
-        // fetched) must NOT poison the whole vault-balances response: with
-        // `try_join_all` one failure aborts the call and skips the cache write
-        // below, so every subsequent call re-does the full uncached fan-out and
-        // times out the caller (the 2026-05-29 gardener
-        // fetch-holdings/get-vault-balances failures). Skip and log failed
-        // assets instead; a hard `get_vault_account` failure above still bails.
-        let asset_results = join_all(vault.assets.into_iter().map(|asset| async move {
-            let asset_id = asset.id.clone();
-            (asset_id, self.try_get_token_balance_for_asset(asset).await)
-        }))
-        .await;
-
-        let mut balances: Vec<TokenBalance> = Vec::new();
-        let mut failed = 0usize;
-        for (asset_id, result) in asset_results {
-            match result {
-                Ok(Some(balance)) => balances.push(balance),
-                Ok(None) => {},
-                Err(e) => {
-                    failed += 1;
-                    log_task!(
-                        Task::FetchVaultBalances,
-                        Outcome::Partial,
-                        subject = %asset_id,
-                        error = %e,
-                        "skipping asset {asset_id} in vault {vault_name}: {e}"
-                    );
-                },
-            }
-        }
-        if failed > 0 {
-            log_task!(
-                Task::FetchVaultBalances,
-                Outcome::Partial,
-                subject = %vault_name,
-                failed = failed,
-                "vault {vault_name} balances returned with {failed} asset(s) skipped"
-            );
-        }
+        // Fetch each asset's balance with bounded concurrency. The per-asset
+        // `get_asset_onchain_data` calls are rate-limited Fireblocks requests;
+        // an unbounded fan-out thundering-herds the limiter on cold cache and
+        // 429s (the 2026-05-29 failures). `try_collect` keeps fail-closed
+        // semantics — one genuinely-failing asset still aborts the whole call,
+        // so the caller's holdings leg fails rather than silently under-counting
+        // (invariant A2). On-chain data is cached permanently, so this fan-out
+        // only runs on a cold cache.
+        let balances: Vec<TokenBalance> = stream::iter(vault.assets)
+            .map(|asset| self.try_get_token_balance_for_asset(asset))
+            .buffer_unordered(VAULT_BALANCE_FETCH_CONCURRENCY)
+            .try_collect::<Vec<_>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect();
 
         self.fireblocks_client.cache_vault_balances(vault_name.to_string(), balances.clone()).await;
 
