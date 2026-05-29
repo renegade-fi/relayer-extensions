@@ -88,9 +88,9 @@ pub struct TxSubscription {
 }
 
 impl TxSubscription {
-    /// Await the next webhook payload for this tx. Returns `None` if the channel
-    /// closed. `Lagged` (a burst overran the buffer) is skipped — the fallback
-    /// poll backstops any genuinely-missed update.
+    /// Await the next webhook payload for this tx. Returns `None` if the
+    /// channel closed. `Lagged` (a burst overran the buffer) is skipped —
+    /// the fallback poll backstops any genuinely-missed update.
     pub async fn recv(&mut self) -> Option<TransactionResponse> {
         let receiver = self.receiver.as_mut()?;
         loop {

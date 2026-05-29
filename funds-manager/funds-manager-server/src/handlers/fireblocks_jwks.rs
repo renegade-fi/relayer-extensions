@@ -83,9 +83,9 @@ impl JwksCache {
     }
 }
 
-/// Fetch and parse the Fireblocks JWKS into a `kid` → RSA key map. Network/parse
-/// failures are `InternalError` (→ 500) so Fireblocks retries the delivery
-/// rather than treating it as permanently rejected.
+/// Fetch and parse the Fireblocks JWKS into a `kid` → RSA key map.
+/// Network/parse failures are `InternalError` (→ 500) so Fireblocks retries the
+/// delivery rather than treating it as permanently rejected.
 async fn fetch_jwks() -> Result<HashMap<String, RsaPublicKey>, ApiError> {
     let response = reqwest::get(FIREBLOCKS_JWKS_URL)
         .await

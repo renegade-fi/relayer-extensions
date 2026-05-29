@@ -83,10 +83,10 @@ fn extract_id_and_status(payload: &serde_json::Value) -> (&str, &str) {
 ///
 /// Verifies the signature, deserializes the transaction payload, and dispatches
 /// it to any waiter in the process-wide [`global_tx_listeners`] registry (so a
-/// blocked `poll_fireblocks_transaction` resolves immediately). Always acks with
-/// 200; non-transaction events or payloads no one is awaiting are logged and
-/// dropped. Unsigned or bad-signature requests are rejected with 401 before the
-/// body is parsed. No DB writes, no chain reads.
+/// blocked `poll_fireblocks_transaction` resolves immediately). Always acks
+/// with 200; non-transaction events or payloads no one is awaiting are logged
+/// and dropped. Unsigned or bad-signature requests are rejected with 401 before
+/// the body is parsed. No DB writes, no chain reads.
 pub(crate) async fn fireblocks_tx_status_webhook_handler(
     v2_signature: Option<String>,
     legacy_signature: Option<String>,
