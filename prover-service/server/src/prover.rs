@@ -460,7 +460,11 @@ where
 {
     use mpc_plonk::errors::{PlonkError, SnarkError};
     use renegade_circuit_types::errors::ProverError;
-    use tracing::error;
+
+    use crate::{
+        log_task,
+        logger::{Outcome, Task},
+    };
 
     run_blocking(move || {
         // Prove the circuit
@@ -476,10 +480,13 @@ where
             // the API
             let witness_json = serde_json::to_string(&witness).unwrap();
             let statement_json = serde_json::to_string(&statement).unwrap();
-            error!(
+            log_task!(
+                Task::Prove,
+                Outcome::Failed,
+                subject = %C::name(),
                 witness = %witness_json,
                 statement = %statement_json,
-                "Invalid witness/statement for circuit {}", C::name(),
+                "invalid witness/statement for circuit {}", C::name(),
             );
         }
 

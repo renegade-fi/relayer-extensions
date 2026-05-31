@@ -46,12 +46,12 @@ use renegade_circuits_core::zk_circuits::{
         output_balance::SizedOutputBalanceValidityCircuit,
     },
 };
-use tracing::{error, info};
 use warp::{Filter, reject::Rejection, reply::Reply};
 
 use crate::{
     cli::Cli,
     error::ProverServiceError,
+    logger::{Outcome, Task},
     middleware::{basic_auth, handle_rejection, propagate_span, with_tracing},
     prover::{
         handle_intent_and_balance_bounded_settlement,
@@ -70,6 +70,7 @@ use crate::{
 
 mod cli;
 mod error;
+mod logger;
 mod middleware;
 mod prover;
 
@@ -95,11 +96,15 @@ async fn async_main() {
     let cli = Cli::parse();
     cli.configure_telemetry().expect("failed to setup telemetry");
 
+    log_task!(Task::ServiceLifecycle, Outcome::Started, "prover-service booting");
+
     // Setup the circuits
-    tokio::task::spawn_blocking(|| {
-        if let Err(e) = preprocess_circuits() {
-            error!("failed to setup circuits: {e}");
-        }
+    log_task!(Task::CircuitSetup, Outcome::Started, "preprocessing circuit keys and layouts");
+    tokio::task::spawn_blocking(|| match preprocess_circuits() {
+        Ok(()) => log_task!(Task::CircuitSetup, Outcome::Ok, "circuit preprocessing complete"),
+        Err(e) => {
+            log_task!(Task::CircuitSetup, Outcome::Failed, error = %e, "failed to setup circuits: {e}")
+        },
     })
     .await
     .expect("failed to setup circuits");
@@ -107,7 +112,7 @@ async fn async_main() {
     // Run the server
     let routes = setup_routes(cli.auth_password);
     let listen_addr: SocketAddr = ([0, 0, 0, 0], cli.port).into();
-    info!("listening on {}", listen_addr);
+    log_task!(Task::ServiceLifecycle, Outcome::Ok, subject = %listen_addr, "listening on {listen_addr}");
     warp::serve(routes).bind(listen_addr).await;
 }
 

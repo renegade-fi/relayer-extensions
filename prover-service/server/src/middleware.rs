@@ -3,7 +3,7 @@
 use http::StatusCode;
 use http_auth_basic::Credentials;
 use std::convert::Infallible;
-use tracing::{Span, error, info_span};
+use tracing::{Span, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use warp::{
     Filter,
@@ -12,7 +12,11 @@ use warp::{
     reply::{Json, WithStatus},
 };
 
-use crate::error::{ProverServiceError, json_error};
+use crate::{
+    error::{ProverServiceError, json_error},
+    log_task,
+    logger::{Outcome, Task},
+};
 
 /// The auth header name
 const HTTP_AUTH_HEADER: &str = "Authorization";
@@ -70,7 +74,7 @@ pub(crate) async fn handle_rejection(err: Rejection) -> Result<WithStatus<Json>,
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         json_error("Method Not Allowed", StatusCode::METHOD_NOT_ALLOWED)
     } else {
-        error!("unhandled rejection: {:?}", err);
+        log_task!(Task::HandleRejection, Outcome::Failed, error = ?err, "unhandled rejection: {err:?}");
         json_error("Internal Server Error", StatusCode::INTERNAL_SERVER_ERROR)
     };
 
