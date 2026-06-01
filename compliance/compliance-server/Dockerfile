@@ -8,7 +8,7 @@ COPY ./rust-toolchain ./rust-toolchain
 RUN cat rust-toolchain | xargs rustup toolchain install
 
 # Install cargo-chef
-RUN cargo install cargo-chef
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && cargo binstall -y cargo-chef
 
 # === Sources === #
 FROM chef AS sources
@@ -21,7 +21,7 @@ COPY ./compliance ./compliance
 FROM chef AS builder
 
 # Disable compiler warnings and enable backtraces for panic debugging
-ENV RUSTFLAGS=-Awarnings
+ENV RUSTFLAGS="-Awarnings -Zthreads=8"
 ENV RUST_BACKTRACE=1
 
 COPY --from=sources /build /build

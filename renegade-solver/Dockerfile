@@ -22,7 +22,7 @@ FROM chef AS builder
 WORKDIR /build
 
 # Disable compiler warnings and enable backtraces for panic debugging
-ENV RUSTFLAGS=-Awarnings
+ENV RUSTFLAGS="-Awarnings -Zthreads=8"
 ENV RUST_BACKTRACE=1
 ENV CARGO_HTTP_CHECK_REVOKE=false
 
