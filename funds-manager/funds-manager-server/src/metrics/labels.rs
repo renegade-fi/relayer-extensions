@@ -14,6 +14,18 @@ pub const SWAP_EXECUTION_COST_ARTIFACT_METRIC_NAME: &str = "swap_execution_cost_
 /// Metric for the gas cost of execution in USD
 pub const SWAP_GAS_COST_METRIC_NAME: &str = "swap_gas_cost";
 
+/// Gauge: number of inbound Fireblocks webhooks currently being verified +
+/// dispatched off the request path. A rising value is the saturation signal —
+/// the in-flight backlog that, when ACK latency rode the shared runtime, drove
+/// the Fireblocks webhook retry storm.
+pub const FIREBLOCKS_WEBHOOK_INFLIGHT_METRIC_NAME: &str = "fireblocks_webhook_inflight";
+
+/// Histogram (milliseconds): time from receiving a Fireblocks webhook to
+/// finishing its verification + dispatch. ACK latency is now decoupled from
+/// this, so a rise here surfaces runtime saturation before it can delay ACKs.
+pub const FIREBLOCKS_WEBHOOK_PROCESS_LATENCY_MS_METRIC_NAME: &str =
+    "fireblocks_webhook_process_latency_ms";
+
 /// Metric for the notional volume of the swap in USD
 pub const SWAP_NOTIONAL_VOLUME_METRIC_NAME: &str = "swap_notional_volume";
 

@@ -24,6 +24,9 @@ use crate::error::ApiError;
 use crate::handlers::fireblocks_jwks::verify_fireblocks_v2_signature;
 use crate::log_task;
 use crate::logger::{Outcome, Task};
+use crate::metrics::labels::{
+    FIREBLOCKS_WEBHOOK_INFLIGHT_METRIC_NAME, FIREBLOCKS_WEBHOOK_PROCESS_LATENCY_MS_METRIC_NAME,
+};
 
 /// Fireblocks' production webhook signing public key (covers both US mainnet
 /// and testnet workspaces). The renegade funds-manager talks to the Fireblocks
@@ -81,21 +84,43 @@ fn extract_id_and_status(payload: &serde_json::Value) -> (&str, &str) {
 
 /// Handler for `POST /webhooks/fireblocks/transaction-status`.
 ///
-/// Verifies the signature, deserializes the transaction payload, and dispatches
-/// it to any waiter in the process-wide [`global_tx_listeners`] registry (so a
-/// blocked `poll_fireblocks_transaction` resolves immediately). Always acks
-/// with 200; non-transaction events or payloads no one is awaiting are logged
-/// and dropped. Unsigned or bad-signature requests are rejected with 401 before
-/// the body is parsed. No DB writes, no chain reads.
+/// ACKs `200` IMMEDIATELY, then verifies the signature and dispatches the
+/// payload to the [`global_tx_listeners`] registry on a spawned task.
+///
+/// Verifying and dispatching inline would put webhook ACK latency on the shared
+/// warp runtime's critical path: under load (a swap/withdraw sweep, or the
+/// signing `/rpc` path awaiting `poll_fireblocks_transaction`) ACKs slow down,
+/// Fireblocks hits its delivery timeout, and RETRIES pile on — amplifying the
+/// very overload that delayed them (the ~2.25x webhook storm observed
+/// 2026-05-28 / 2026-06-01). Acking first makes ACK latency independent of that
+/// backlog and breaks the retry feedback loop.
+///
+/// We always ACK `200`, even for an unverified or non-transaction payload: we
+/// never act on a payload before verifying it in the task, and any non-2xx
+/// would itself trigger a Fireblocks retry. No DB writes, no chain reads.
 pub(crate) async fn fireblocks_tx_status_webhook_handler(
     v2_signature: Option<String>,
     legacy_signature: Option<String>,
     body: Bytes,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    // Verify the signature. Webhooks v2 (current; legacy deprecates 2026-06-15)
-    // signs with `Fireblocks-Webhook-Signature` (detached JWS, RS512); legacy
-    // uses `Fireblocks-Signature` (RSA-SHA512). Prefer v2, fall back to legacy,
-    // reject if neither header is present or valid.
+    tokio::spawn(verify_and_dispatch_webhook(v2_signature, legacy_signature, body));
+    Ok(warp::reply::with_status("ok", warp::http::StatusCode::OK))
+}
+
+/// Verify a webhook's signature and, if valid, dispatch its transaction payload
+/// to any waiter. Runs off the request path (see the handler doc); errors are
+/// logged and dropped, never propagated, since the caller has already ACKed.
+async fn verify_and_dispatch_webhook(
+    v2_signature: Option<String>,
+    legacy_signature: Option<String>,
+    body: Bytes,
+) {
+    // Track in-flight count + total processing latency across every exit path.
+    let _inflight = WebhookInflightGuard::new();
+
+    // Webhooks v2 (current; legacy deprecates 2026-06-15) signs with
+    // `Fireblocks-Webhook-Signature` (detached JWS, RS512); legacy uses
+    // `Fireblocks-Signature` (RSA-SHA512). Prefer v2, fall back to legacy.
     let verification = if let Some(sig) = v2_signature.as_deref() {
         verify_fireblocks_v2_signature(sig, &body).await
     } else if let Some(sig) = legacy_signature.as_deref() {
@@ -108,30 +133,39 @@ pub(crate) async fn fireblocks_tx_status_webhook_handler(
             Task::FireblocksWebhook,
             Outcome::Failed,
             error = %e,
-            "rejecting webhook: signature verification failed (check Fireblocks key rotation / scheme)"
+            "dropping webhook: signature verification failed (check Fireblocks key rotation / scheme)"
         );
-        return Err(warp::reject::custom(e));
+        return;
     }
 
-    let envelope: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
-        warp::reject::custom(ApiError::BadRequest(format!("invalid webhook JSON: {e}")))
-    })?;
+    let envelope: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(e) => {
+            log_task!(
+                Task::FireblocksWebhook,
+                Outcome::Failed,
+                error = %e,
+                "dropping webhook: invalid JSON body"
+            );
+            return;
+        },
+    };
     // Legacy uses `type`; v2 uses `eventType`.
     let event_type = envelope
         .get("type")
         .or_else(|| envelope.get("eventType"))
         .and_then(|v| v.as_str())
-        .unwrap_or("<none>");
+        .unwrap_or("<none>")
+        .to_string();
 
-    // The transaction sits under `data`. Deserialize it into the SDK type and
-    // hand it to any waiter in the listener registry. A payload whose `data`
-    // isn't a transaction (other Fireblocks event types) or that no one is
-    // awaiting is acked and dropped — never rejected, so Fireblocks won't retry.
-    match envelope.get("data").cloned().map(serde_json::from_value::<TransactionResponse>) {
-        Some(Ok(tx)) => {
+    // The transaction sits under `data`. A payload whose `data` isn't a
+    // transaction (other Fireblocks event types) or that no one is awaiting is
+    // logged and dropped.
+    match classify_webhook_data(&envelope) {
+        WebhookData::Transaction(tx) => {
             let tx_id = tx.id.clone();
             let tx_status = format!("{:?}", tx.status);
-            let delivered = global_tx_listeners().dispatch(tx);
+            let delivered = global_tx_listeners().dispatch(*tx);
             log_task!(
                 Task::FireblocksWebhook,
                 Outcome::Ok,
@@ -142,7 +176,7 @@ pub(crate) async fn fireblocks_tx_status_webhook_handler(
                 "received fireblocks tx webhook"
             );
         },
-        _ => {
+        WebhookData::Ignored => {
             let (tx_id, tx_status) = extract_id_and_status(&envelope);
             log_task!(
                 Task::FireblocksWebhook,
@@ -154,8 +188,48 @@ pub(crate) async fn fireblocks_tx_status_webhook_handler(
             );
         },
     }
+}
 
-    Ok(warp::reply::with_status("ok", warp::http::StatusCode::OK))
+/// Result of [`classify_webhook_data`].
+enum WebhookData {
+    /// A transaction-status event with its parsed transaction.
+    Transaction(Box<TransactionResponse>),
+    /// Not a dispatchable transaction (other event type, or unparseable data).
+    Ignored,
+}
+
+/// Classify a webhook envelope's `data` field: a parsed transaction (to
+/// dispatch) or ignored. Pure — unit-tested.
+fn classify_webhook_data(envelope: &serde_json::Value) -> WebhookData {
+    match envelope.get("data").cloned().map(serde_json::from_value::<TransactionResponse>) {
+        Some(Ok(tx)) => WebhookData::Transaction(Box::new(tx)),
+        _ => WebhookData::Ignored,
+    }
+}
+
+/// RAII guard for webhook observability: increments the in-flight gauge on
+/// creation and, on drop, decrements it and records total processing latency.
+/// As a guard it covers every exit path of `verify_and_dispatch_webhook`
+/// (verification failure, bad JSON, dispatch) without per-branch bookkeeping.
+struct WebhookInflightGuard {
+    /// When processing started, used to record latency on drop.
+    start: std::time::Instant,
+}
+
+impl WebhookInflightGuard {
+    /// Mark a webhook as in-flight and start its latency timer.
+    fn new() -> Self {
+        metrics::gauge!(FIREBLOCKS_WEBHOOK_INFLIGHT_METRIC_NAME).increment(1.0);
+        Self { start: std::time::Instant::now() }
+    }
+}
+
+impl Drop for WebhookInflightGuard {
+    fn drop(&mut self) {
+        metrics::gauge!(FIREBLOCKS_WEBHOOK_INFLIGHT_METRIC_NAME).decrement(1.0);
+        metrics::histogram!(FIREBLOCKS_WEBHOOK_PROCESS_LATENCY_MS_METRIC_NAME)
+            .record(self.start.elapsed().as_secs_f64() * 1000.0);
+    }
 }
 
 #[cfg(test)]
@@ -220,6 +294,19 @@ mod tests {
 
         // A signature from a different key fails against the pinned prod key.
         assert!(verify_fireblocks_signature(body, &sig).is_err());
+    }
+
+    #[test]
+    fn classify_ignores_missing_and_non_transaction_data() {
+        use super::{classify_webhook_data, WebhookData};
+
+        // No `data` field at all → Ignored.
+        let no_data = serde_json::json!({"eventType": "PING"});
+        assert!(matches!(classify_webhook_data(&no_data), WebhookData::Ignored));
+
+        // `data` present but not a transaction object → Ignored, not a panic.
+        let non_tx = serde_json::json!({"type": "X", "data": "not-a-transaction"});
+        assert!(matches!(classify_webhook_data(&non_tx), WebhookData::Ignored));
     }
 
     #[test]
