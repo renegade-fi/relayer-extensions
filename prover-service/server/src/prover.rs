@@ -251,6 +251,7 @@ where
 {
     use mpc_plonk::errors::{PlonkError, SnarkError};
     use renegade_circuit_types::errors::ProverError;
+    use tracing::error;
 
     run_blocking(move || {
         // Prove the circuit
