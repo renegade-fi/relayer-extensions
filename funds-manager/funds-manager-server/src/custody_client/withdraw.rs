@@ -310,7 +310,7 @@ impl CustodyClient {
 
         let whitelisted_wallets = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited_read(|sdk| async move {
                 sdk.apis().whitelisted_external_wallets_api().get_external_wallets().await
             })
             .await?;

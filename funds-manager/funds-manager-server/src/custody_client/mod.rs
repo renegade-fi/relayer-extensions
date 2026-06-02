@@ -154,14 +154,20 @@ impl CustodyClient {
         chain_id: u64,
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
+        fireblocks_polling_api_key: String,
+        fireblocks_read_api_key: String,
         base_provider: DynProvider,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
         price_reporter: PriceReporterClient,
     ) -> Result<Self, FundsManagerError> {
-        let fireblocks_client =
-            Arc::new(FireblocksClient::new(&fireblocks_api_key, &fireblocks_api_secret)?);
+        let fireblocks_client = Arc::new(FireblocksClient::new(
+            &fireblocks_api_key,
+            &fireblocks_polling_api_key,
+            &fireblocks_read_api_key,
+            &fireblocks_api_secret,
+        )?);
 
         Ok(Self {
             chain,
@@ -202,7 +208,7 @@ impl CustodyClient {
 
         let arb_assets = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited_read(|sdk| async move {
                 sdk.apis().blockchains_assets_beta_api().list_assets(list_assets_params).await
             })
             .await?;
@@ -254,7 +260,7 @@ impl CustodyClient {
 
         let blockchains = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited_read(|sdk| async move {
                 sdk.apis()
                     .blockchains_assets_beta_api()
                     .list_blockchains(list_blockchains_params)
@@ -354,7 +360,7 @@ impl CustodyClient {
                     let id = id.clone();
                     let tx_result = self
                         .fireblocks_client
-                        .rate_limited(|sdk| {
+                        .rate_limited_poll(|sdk| {
                             let id = id.clone();
                             async move { sdk.get_transaction(&id).await }
                         })
@@ -402,7 +408,7 @@ impl CustodyClient {
         );
         let id = transaction_id.to_string();
         self.fireblocks_client
-            .rate_limited(|sdk| async move { sdk.get_transaction(&id).await })
+            .rate_limited_poll(|sdk| async move { sdk.get_transaction(&id).await })
             .await
             .map_err(FundsManagerError::fireblocks)
     }
@@ -424,7 +430,7 @@ impl CustodyClient {
             let params = params.clone();
             let txs = self
                 .fireblocks_client
-                .rate_limited(|sdk| async move {
+                .rate_limited_poll(|sdk| async move {
                     sdk.apis().transactions_api().get_transactions(params).await
                 })
                 .await?;

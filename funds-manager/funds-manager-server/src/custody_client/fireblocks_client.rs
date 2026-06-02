@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     custody_client::{
-        fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, Is429},
+        fireblocks_rate_limiter::{global_limiter, FireblocksLimiter, FireblocksUserClass, Is429},
         fireblocks_retry_after::RetryAfterCapture,
     },
     error::FundsManagerError,
@@ -31,15 +31,35 @@ use crate::{
 /// a minutes cadence and balances don't move meaningfully in 30s.
 const VAULT_BALANCES_CACHE_TTL: Duration = Duration::from_secs(30);
 
-/// A client for interacting with the Fireblocks API
+/// A single Fireblocks API user: its SDK client plus the process-global
+/// limiter for that user's per-user rate-limit budget. Fireblocks sets rate
+/// limits at the API-user level, so each user (signing / polling / read) has
+/// an independent budget.
+#[derive(Clone)]
+struct FireblocksUser {
+    /// The Fireblocks API client authenticated as this user.
+    sdk: Client,
+    /// Process-global limiter for this user (shared across every chain's
+    /// `FireblocksClient` in this process — the budget is per-user, not
+    /// per-client).
+    limiter: Arc<FireblocksLimiter>,
+}
+
+/// A client for interacting with the Fireblocks API. Wraps three API users
+/// (signing / polling / read) so reads and tx-status polls don't consume the
+/// latency-critical signing user's rate-limit budget (Tip #2). The three users
+/// share one keypair today (registered with the same CSR); the split is by
+/// API-key UUID, which is what the rate limit is keyed on.
 #[derive(Clone)]
 pub struct FireblocksClient {
-    /// The Fireblocks API client
-    pub sdk: Client,
-    /// Cached metadata from the Fireblocks API
+    /// Signing user — POST /v1/transactions (the latency-critical path).
+    signing: FireblocksUser,
+    /// Polling user — GET transaction status reads.
+    polling: FireblocksUser,
+    /// Read user — vault / asset / wallet info reads.
+    read: FireblocksUser,
+    /// Cached metadata from the Fireblocks API, shared across all three users.
     metadata: Arc<RwLock<FireblocksMetadata>>,
-    /// Process-wide rate limiter for Fireblocks calls
-    limiter: Arc<FireblocksLimiter>,
 }
 
 /// Cached metadata from the Fireblocks API
@@ -77,48 +97,32 @@ impl FireblocksMetadata {
     }
 }
 
-impl FireblocksClient {
-    /// Construct a new Fireblocks client. Reuses the process-wide rate
-    /// limiter so every `CustodyClient` shares one token bucket — this
-    /// matches the actual Fireblocks quota, which is per-workspace.
-    pub fn new(
-        fireblocks_api_key: &str,
-        fireblocks_api_secret: &str,
+impl FireblocksUser {
+    /// Build an SDK client for `api_key` / `api_secret`, wired to the
+    /// process-global limiter for `class` (including the Retry-After capture
+    /// middleware that feeds that limiter's 429 cooldown).
+    fn new(
+        api_key: &str,
+        api_secret: &[u8],
+        class: FireblocksUserClass,
     ) -> Result<Self, FundsManagerError> {
-        let fireblocks_api_secret = fireblocks_api_secret.as_bytes().to_vec();
-        let limiter = global_limiter();
-        // Install the Retry-After capture middleware so 429 cooldowns
-        // honor server-directed backoff; the middleware writes into the
-        // same `RetryAfterStore` that this limiter's `on_429` consumes.
+        let limiter = global_limiter(class);
+        // Install the Retry-After capture middleware so 429 cooldowns honor
+        // server-directed backoff; the middleware writes into the same
+        // `RetryAfterStore` that this user's limiter `on_429` consumes.
         let retry_after_capture = Arc::new(RetryAfterCapture::new(limiter.retry_after_store()))
             as Arc<dyn reqwest_middleware::Middleware>;
-        let fireblocks_sdk = ClientBuilder::new(fireblocks_api_key, &fireblocks_api_secret)
+        let sdk = ClientBuilder::new(api_key, api_secret)
             .with_middleware(retry_after_capture)
             .build()
             .map_err(FundsManagerError::fireblocks)?;
-
-        let fireblocks_client = FireblocksClient {
-            sdk: fireblocks_sdk,
-            metadata: Arc::new(RwLock::new(FireblocksMetadata::new())),
-            limiter,
-        };
-
-        Ok(fireblocks_client)
+        Ok(Self { sdk, limiter })
     }
 
-    // -----------------
-    // | Rate limiting |
-    // -----------------
-
-    /// Run a Fireblocks SDK call under the process-wide rate limiter.
-    /// Acquires a token before invoking the closure and reports the
-    /// outcome (429 vs. success vs. other-error) back to the limiter so
-    /// that consecutive-429 backoff state stays correct.
-    ///
-    /// All call sites that touch the Fireblocks API should use this
-    /// helper. Calls that bypass it consume quota without contributing to
-    /// the limiter's view of the workspace load.
-    pub async fn rate_limited<'s, T, E, Fut>(
+    /// Run an SDK call as this user, under its limiter. Acquires a token,
+    /// invokes the closure, and reports 429/success back so the per-user
+    /// consecutive-429 backoff state stays correct.
+    async fn rate_limited<'s, T, E, Fut>(
         &'s self,
         f: impl FnOnce(&'s Client) -> Fut,
     ) -> Result<T, E>
@@ -134,6 +138,71 @@ impl FireblocksClient {
             _ => {},
         }
         result
+    }
+}
+
+impl FireblocksClient {
+    /// Construct a new Fireblocks client with three API users. The three share
+    /// one private key (`fireblocks_api_secret`) but distinct API-key UUIDs;
+    /// the rate-limit budget is per-UUID, so routing reads/polls to their own
+    /// users keeps the signing user's budget free.
+    pub fn new(
+        signing_api_key: &str,
+        polling_api_key: &str,
+        read_api_key: &str,
+        fireblocks_api_secret: &str,
+    ) -> Result<Self, FundsManagerError> {
+        let secret = fireblocks_api_secret.as_bytes().to_vec();
+        Ok(FireblocksClient {
+            signing: FireblocksUser::new(signing_api_key, &secret, FireblocksUserClass::Signing)?,
+            polling: FireblocksUser::new(polling_api_key, &secret, FireblocksUserClass::Polling)?,
+            read: FireblocksUser::new(read_api_key, &secret, FireblocksUserClass::Read)?,
+            metadata: Arc::new(RwLock::new(FireblocksMetadata::new())),
+        })
+    }
+
+    // -----------------
+    // | Rate limiting |
+    // -----------------
+
+    /// Run a Fireblocks SDK call as the SIGNING user (POST /v1/transactions,
+    /// the latency-critical path). Use [`rate_limited_read`](Self::rate_limited_read)
+    /// / [`rate_limited_poll`](Self::rate_limited_poll) for non-signing calls
+    /// so reads and tx-status polls don't consume the signing user's budget.
+    pub async fn rate_limited<'s, T, E, Fut>(
+        &'s self,
+        f: impl FnOnce(&'s Client) -> Fut,
+    ) -> Result<T, E>
+    where
+        Fut: Future<Output = Result<T, E>> + 's,
+        E: Is429,
+    {
+        self.signing.rate_limited(f).await
+    }
+
+    /// Run a Fireblocks SDK call as the READ user (vault / asset / wallet info
+    /// reads).
+    pub async fn rate_limited_read<'s, T, E, Fut>(
+        &'s self,
+        f: impl FnOnce(&'s Client) -> Fut,
+    ) -> Result<T, E>
+    where
+        Fut: Future<Output = Result<T, E>> + 's,
+        E: Is429,
+    {
+        self.read.rate_limited(f).await
+    }
+
+    /// Run a Fireblocks SDK call as the POLLING user (GET transaction status).
+    pub async fn rate_limited_poll<'s, T, E, Fut>(
+        &'s self,
+        f: impl FnOnce(&'s Client) -> Fut,
+    ) -> Result<T, E>
+    where
+        Fut: Future<Output = Result<T, E>> + 's,
+        E: Is429,
+    {
+        self.polling.rate_limited(f).await
     }
 
     // -----------

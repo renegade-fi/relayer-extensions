@@ -233,16 +233,38 @@ impl FireblocksLimiter {
     }
 }
 
-/// The process-wide Fireblocks limiter. Lazily initialized on first
-/// access — funds-manager always runs under a tokio runtime by the time
-/// any custody-client method runs, so spawning the refill task from this
-/// closure is safe.
-static GLOBAL_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
+/// The Fireblocks API user a call is billed to. Fireblocks sets rate limits
+/// at the API-user level (per endpoint, per minute), so each user gets its
+/// own process-global limiter with an independent budget.
+#[derive(Clone, Copy, Debug)]
+pub enum FireblocksUserClass {
+    /// Signing user — POST /v1/transactions (the latency-critical path).
+    Signing,
+    /// Polling user — GET transaction status reads.
+    Polling,
+    /// Read user — vault / asset / wallet info reads.
+    Read,
+}
 
-/// Get a handle to the process-wide Fireblocks limiter, initializing it
-/// on first call.
-pub fn global_limiter() -> Arc<FireblocksLimiter> {
-    GLOBAL_LIMITER.get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY)).clone()
+/// The process-wide Fireblocks limiters, one per API user. Lazily initialized
+/// on first access — funds-manager always runs under a tokio runtime by the
+/// time any custody-client method runs, so spawning the refill task from these
+/// closures is safe. They are process-global (not per-`FireblocksClient`)
+/// because the budget is per-API-user and shared across every chain's client
+/// in this process.
+static SIGNING_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
+static POLLING_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
+static READ_LIMITER: OnceLock<Arc<FireblocksLimiter>> = OnceLock::new();
+
+/// Get a handle to the process-wide Fireblocks limiter for `class`,
+/// initializing it on first call.
+pub fn global_limiter(class: FireblocksUserClass) -> Arc<FireblocksLimiter> {
+    let cell = match class {
+        FireblocksUserClass::Signing => &SIGNING_LIMITER,
+        FireblocksUserClass::Polling => &POLLING_LIMITER,
+        FireblocksUserClass::Read => &READ_LIMITER,
+    };
+    cell.get_or_init(|| FireblocksLimiter::new(STEADY_STATE_RPS, BURST_CAPACITY)).clone()
 }
 
 /// Trait that lets the limiter wrapper recognize a 429 across the two

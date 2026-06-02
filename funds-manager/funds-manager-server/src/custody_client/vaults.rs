@@ -53,7 +53,7 @@ impl CustodyClient {
 
         let vaults_resp = self
             .fireblocks_client
-            .rate_limited(
+            .rate_limited_read(
                 |sdk| async move { sdk.vaults_api().get_paged_vault_accounts(params).await },
             )
             .await?;
@@ -85,7 +85,7 @@ impl CustodyClient {
 
         let vault_asset = self
             .fireblocks_client
-            .rate_limited(
+            .rate_limited_read(
                 |sdk| async move { sdk.vaults_api().get_vault_account_asset(params).await },
             )
             .await?;
@@ -185,7 +185,7 @@ impl CustodyClient {
         let params = GetAssetByIdParams::builder().id(asset_id.to_string()).build();
         let asset_resp = self
             .fireblocks_client
-            .rate_limited(|sdk| async move {
+            .rate_limited_read(|sdk| async move {
                 sdk.apis().blockchains_assets_beta_api().get_asset_by_id(params).await
             })
             .await?;

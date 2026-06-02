@@ -87,6 +87,8 @@ impl Server {
                     chain,
                     args.fireblocks_api_key.clone(),
                     args.fireblocks_api_secret.clone(),
+                    args.fireblocks_polling_api_key.clone(),
+                    args.fireblocks_read_api_key.clone(),
                     arc_pool.clone(),
                     aws_config.clone(),
                     price_reporter.clone(),
