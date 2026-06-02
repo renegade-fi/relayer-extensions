@@ -155,7 +155,9 @@ impl CustodyClient {
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
         fireblocks_polling_api_key: String,
+        fireblocks_polling_api_secret: String,
         fireblocks_read_api_key: String,
+        fireblocks_read_api_secret: String,
         base_provider: DynProvider,
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
@@ -164,9 +166,11 @@ impl CustodyClient {
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_client = Arc::new(FireblocksClient::new(
             &fireblocks_api_key,
-            &fireblocks_polling_api_key,
-            &fireblocks_read_api_key,
             &fireblocks_api_secret,
+            &fireblocks_polling_api_key,
+            &fireblocks_polling_api_secret,
+            &fireblocks_read_api_key,
+            &fireblocks_read_api_secret,
         )?);
 
         Ok(Self {

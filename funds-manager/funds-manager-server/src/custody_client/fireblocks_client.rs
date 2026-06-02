@@ -142,21 +142,37 @@ impl FireblocksUser {
 }
 
 impl FireblocksClient {
-    /// Construct a new Fireblocks client with three API users. The three share
-    /// one private key (`fireblocks_api_secret`) but distinct API-key UUIDs;
-    /// the rate-limit budget is per-UUID, so routing reads/polls to their own
-    /// users keeps the signing user's budget free.
+    /// Construct a new Fireblocks client with three API users, each with its
+    /// own (api-key, api-secret) pair. The secrets are PER-USER, not shared:
+    /// the read/poll users are registered with a different keypair than the
+    /// signing user (mainnet's signing user has its own original key), so
+    /// signing their requests with the signing secret 401s. The rate-limit
+    /// budget is per-UUID, so routing reads/polls to their own users also
+    /// keeps the signing user's budget free.
     pub fn new(
         signing_api_key: &str,
+        signing_api_secret: &str,
         polling_api_key: &str,
+        polling_api_secret: &str,
         read_api_key: &str,
-        fireblocks_api_secret: &str,
+        read_api_secret: &str,
     ) -> Result<Self, FundsManagerError> {
-        let secret = fireblocks_api_secret.as_bytes().to_vec();
         Ok(FireblocksClient {
-            signing: FireblocksUser::new(signing_api_key, &secret, FireblocksUserClass::Signing)?,
-            polling: FireblocksUser::new(polling_api_key, &secret, FireblocksUserClass::Polling)?,
-            read: FireblocksUser::new(read_api_key, &secret, FireblocksUserClass::Read)?,
+            signing: FireblocksUser::new(
+                signing_api_key,
+                signing_api_secret.as_bytes(),
+                FireblocksUserClass::Signing,
+            )?,
+            polling: FireblocksUser::new(
+                polling_api_key,
+                polling_api_secret.as_bytes(),
+                FireblocksUserClass::Polling,
+            )?,
+            read: FireblocksUser::new(
+                read_api_key,
+                read_api_secret.as_bytes(),
+                FireblocksUserClass::Read,
+            )?,
             metadata: Arc::new(RwLock::new(FireblocksMetadata::new())),
         })
     }

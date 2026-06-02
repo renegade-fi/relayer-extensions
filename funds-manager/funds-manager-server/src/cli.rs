@@ -117,15 +117,21 @@ pub struct Cli {
     /// The fireblocks api key
     #[clap(long, env = "FIREBLOCKS_API_KEY")]
     pub fireblocks_api_key: String,
-    /// The fireblocks api secret (shared private key for all three API users)
+    /// The fireblocks api secret for the signing user
     #[clap(long, env = "FIREBLOCKS_API_SECRET")]
     pub fireblocks_api_secret: String,
     /// The fireblocks polling api-user key (read-only; tx-status polls)
     #[clap(long, env = "FIREBLOCKS_POLLING_API_KEY")]
     pub fireblocks_polling_api_key: String,
+    /// The fireblocks polling api-user secret (its own keypair, not the signing secret)
+    #[clap(long, env = "FIREBLOCKS_POLLING_API_SECRET")]
+    pub fireblocks_polling_api_secret: String,
     /// The fireblocks read api-user key (read-only; vault/asset reads)
     #[clap(long, env = "FIREBLOCKS_READ_API_KEY")]
     pub fireblocks_read_api_key: String,
+    /// The fireblocks read api-user secret (its own keypair, not the signing secret)
+    #[clap(long, env = "FIREBLOCKS_READ_API_SECRET")]
+    pub fireblocks_read_api_secret: String,
 
     // --- Server Config --- //
 
@@ -251,7 +257,9 @@ impl ChainConfig {
         fireblocks_api_key: String,
         fireblocks_api_secret: String,
         fireblocks_polling_api_key: String,
+        fireblocks_polling_api_secret: String,
         fireblocks_read_api_key: String,
+        fireblocks_read_api_secret: String,
         db_pool: Arc<DbPool>,
         aws_config: SdkConfig,
         price_reporter: PriceReporterClient,
@@ -286,7 +294,9 @@ impl ChainConfig {
             fireblocks_api_key,
             fireblocks_api_secret,
             fireblocks_polling_api_key,
+            fireblocks_polling_api_secret,
             fireblocks_read_api_key,
+            fireblocks_read_api_secret,
             base_provider.clone(),
             db_pool.clone(),
             aws_config.clone(),
