@@ -141,6 +141,8 @@ pub struct CustodyClient {
     aws_config: AwsConfig,
     /// The gas sponsor contract address
     gas_sponsor_address: Address,
+    /// The v2 gas sponsor contract address, if one is deployed on this chain
+    gas_sponsor_address_v2: Option<Address>,
     /// The price reporter client
     price_reporter: PriceReporterClient,
 }
@@ -162,6 +164,7 @@ impl CustodyClient {
         db_pool: Arc<DbPool>,
         aws_config: AwsConfig,
         gas_sponsor_address: Address,
+        gas_sponsor_address_v2: Option<Address>,
         price_reporter: PriceReporterClient,
     ) -> Result<Self, FundsManagerError> {
         let fireblocks_client = Arc::new(FireblocksClient::new(
@@ -181,6 +184,7 @@ impl CustodyClient {
             db_pool,
             aws_config,
             gas_sponsor_address,
+            gas_sponsor_address_v2,
             price_reporter,
         })
     }
@@ -193,6 +197,15 @@ impl CustodyClient {
     /// Get the gas sponsor contract address as a string
     pub fn gas_sponsor_address(&self) -> String {
         format!("{:#x}", self.gas_sponsor_address)
+    }
+
+    /// Get every gas sponsor address to refill on this chain (v1, plus v2 if present)
+    pub fn gas_sponsor_addresses(&self) -> Vec<String> {
+        let mut addrs = vec![self.gas_sponsor_address()];
+        if let Some(v2) = self.gas_sponsor_address_v2 {
+            addrs.push(format!("{v2:#x}"));
+        }
+        addrs
     }
 
     // --- Fireblocks --- //

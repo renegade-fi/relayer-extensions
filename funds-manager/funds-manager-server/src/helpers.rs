@@ -90,6 +90,13 @@ const ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS: Address =
 const ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS: Address =
     Address::new(hex!("0x8E330790c68b9462123848e418BaDB3399c7D26F"));
 
+/// The v2 gas sponsor address on Arbitrum One
+const ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0xcE7a8D45daa9a5B29f6d255552F577d53fF9EBcf"));
+/// The v2 gas sponsor address on Base Mainnet
+const BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2: Address =
+    Address::new(hex!("0xd9e0507d706408d0f14e22e50880189fd915be80"));
+
 // ---------
 // | ERC20 |
 // ---------
@@ -455,6 +462,18 @@ pub fn get_gas_sponsor_address(chain: Chain) -> Address {
         Chain::EthereumMainnet => ETHEREUM_MAINNET_GAS_SPONSOR_ADDRESS,
         Chain::EthereumSepolia => ETHEREUM_SEPOLIA_GAS_SPONSOR_ADDRESS,
         _ => panic!("get_gas_sponsor_address: Invalid chain {chain}"),
+    }
+}
+
+/// Get the v2 gas sponsor address for a chain, if one is deployed.
+///
+/// Returns `None` for chains that have no separate v2 sponsor, so those
+/// chains keep refilling only their v1 sponsor.
+pub fn get_gas_sponsor_address_v2(chain: Chain) -> Option<Address> {
+    match chain {
+        Chain::ArbitrumOne => Some(ARBITRUM_ONE_GAS_SPONSOR_ADDRESS_V2),
+        Chain::BaseMainnet => Some(BASE_MAINNET_GAS_SPONSOR_ADDRESS_V2),
+        _ => None,
     }
 }
 
