@@ -10,9 +10,12 @@ use diesel_async::{
 };
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
-use tracing::error;
 
-use crate::db::error::DbError;
+use crate::{
+    db::error::DbError,
+    log_task,
+    logger::{Outcome, Task},
+};
 
 // ---------
 // | Types |
@@ -64,7 +67,7 @@ impl DbClient {
         // Spawn the connection handle in a separate task
         tokio::spawn(async move {
             if let Err(e) = conn.await {
-                error!("Database connection error: {}", e);
+                log_task!(Task::Db, Outcome::Failed, error = %e, "database connection error: {e}");
             }
         });
 

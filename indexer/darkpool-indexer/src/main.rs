@@ -12,12 +12,12 @@ use std::collections::HashMap;
 use aws_sdk_sqs::types::{Message, MessageSystemAttributeName};
 use clap::Parser;
 use tokio::task::JoinSet;
-use tracing::{error, warn};
 
 use crate::{
     api::handlers::sqs::handle_sqs_message,
     cli::Cli,
     indexer::{Indexer, error::IndexerError},
+    logger::{Outcome, Task},
 };
 
 mod api;
@@ -25,6 +25,7 @@ mod cli;
 mod crypto_mocks;
 mod db;
 mod indexer;
+mod logger;
 mod types;
 
 // -------------
@@ -41,6 +42,9 @@ const MAX_RECV_MESSAGES: i32 = 10;
 #[tokio::main]
 async fn main() -> Result<(), IndexerError> {
     let cli = Cli::parse();
+    cli.configure_telemetry();
+
+    log_task!(Task::ServiceLifecycle, Outcome::Started, "darkpool-indexer booting");
 
     let indexer = Indexer::build_from_cli(&cli).await?;
 
@@ -49,9 +53,15 @@ async fn main() -> Result<(), IndexerError> {
 
     // TODO: Spawn HTTP server
     match tasks.join_next().await.expect("No tasks spawned") {
-        Err(e) => error!("Error joining indexer task: {e}"),
-        Ok(Ok(())) => warn!("Indexer task exited"),
-        Ok(Err(e)) => error!("Indexer task error: {e}"),
+        Err(e) => {
+            log_task!(Task::ServiceLifecycle, Outcome::Failed, error = %e, "error joining indexer task: {e}")
+        },
+        Ok(Ok(())) => {
+            log_task!(Task::ServiceLifecycle, Outcome::Partial, "indexer task exited unexpectedly")
+        },
+        Ok(Err(e)) => {
+            log_task!(Task::ServiceLifecycle, Outcome::Failed, error = %e, "indexer task error: {e}")
+        },
     }
 
     Ok(())
@@ -72,7 +82,7 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
         {
             Ok(messages) => messages,
             Err(e) => {
-                error!("Error receiving messages from SQS: {e}");
+                log_task!(Task::ReceiveSqsMessages, Outcome::Failed, error = %e, "error receiving messages from SQS: {e}");
                 continue;
             },
         };
@@ -89,9 +99,12 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
                 .and_then(|a| a.get(&MessageSystemAttributeName::MessageGroupId).cloned());
 
             if message_group_id.is_none() {
-                warn!(
-                    "Message {} from SQS has no message group ID, skipping",
-                    message.message_id().unwrap_or_default()
+                let message_id = message.message_id().unwrap_or_default();
+                log_task!(
+                    Task::HandleSqsMessage,
+                    Outcome::Partial,
+                    subject = %message_id,
+                    "SQS message {message_id} has no message group ID, skipping"
                 );
                 continue;
             }
@@ -109,7 +122,7 @@ async fn run_sqs_consumer(indexer: Indexer, sqs_queue_url: String) -> Result<(),
                     if let Err(e) =
                         handle_sqs_message(message, &indexer_clone, &sqs_queue_url_clone).await
                     {
-                        error!("Error handling SQS message: {e}")
+                        log_task!(Task::HandleSqsMessage, Outcome::Failed, error = %e, "error handling SQS message: {e}")
                     }
                 }
             });

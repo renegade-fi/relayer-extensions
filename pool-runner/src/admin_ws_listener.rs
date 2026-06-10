@@ -3,7 +3,7 @@
 //! Subscribes to order updates from the relayer admin websocket and triggers
 //! pool routing when new user orders appear in the global matching pool.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     log_task,
@@ -16,6 +16,9 @@ use renegade_constants::GLOBAL_MATCHING_POOL;
 use renegade_external_api::types::{AdminOrderUpdateMessage, ApiOrderUpdateType};
 use renegade_sdk::client::RenegadeClient;
 use renegade_types_core::HmacKey;
+
+/// Delay before re-subscribing after the admin WS stream drops.
+const RECONNECT_DELAY_SECS: u64 = 5;
 
 /// Listener for admin websocket order updates
 pub struct AdminWebsocketListener {
@@ -67,19 +70,29 @@ impl AdminWebsocketListener {
 
     /// Subscribe to admin websocket streams and run forever.
     pub async fn listen(self: Arc<Self>) {
-        let self_clone = self.clone();
-        let order_handle = tokio::spawn(async move {
-            self_clone.listen_order_updates().await;
-        });
+        // Reconnect loop. The admin WS can drop (relayer restart, network
+        // blip, or a panic in the stream task). Without this, the listener
+        // would exit permanently on the first disconnect while `main` keeps
+        // the healthcheck — and thus ECS — green, so routing dies silently.
+        // Re-subscribe after a short delay, forever.
+        loop {
+            let self_clone = self.clone();
+            let order_handle = tokio::spawn(async move {
+                self_clone.listen_order_updates().await;
+            });
 
-        // Wait for the order update task (it should run forever)
-        let _ = order_handle.await;
-        log_task!(
-            Task::AdminWsListener,
-            Outcome::Failed,
-            subject = "ws-listener",
-            "Admin websocket listener ended unexpectedly"
-        );
+            // Returns when the stream ends (Ok) or the task panics (Err);
+            // either way, fall through and reconnect.
+            let _ = order_handle.await;
+
+            log_task!(
+                Task::AdminWsListener,
+                Outcome::Failed,
+                subject = "ws-reconnect",
+                "Admin websocket listener disconnected; reconnecting in {RECONNECT_DELAY_SECS}s"
+            );
+            tokio::time::sleep(Duration::from_secs(RECONNECT_DELAY_SECS)).await;
+        }
     }
 
     /// Listen for admin order updates
@@ -110,6 +123,20 @@ impl AdminWebsocketListener {
             subject = "ws-subscribe",
             "Listening for admin order updates"
         );
+
+        // Re-scan the global pool on every (re)connect to pick up orders that
+        // arrived while disconnected — the WS only delivers events going
+        // forward. Subscribing first (above) then scanning avoids missing
+        // orders that land during the scan. Non-fatal: a failed scan is retried
+        // on the next reconnect, and the stream still catches new arrivals.
+        if let Err(e) = self.server.process_open_orders().await {
+            log_task!(
+                Task::AdminWsListener,
+                Outcome::Failed,
+                subject = "reconnect-rescan",
+                "Failed to re-scan open orders on connect: {e}"
+            );
+        }
 
         while let Some(message) = stream.next().await {
             self.handle_order_update(message).await;

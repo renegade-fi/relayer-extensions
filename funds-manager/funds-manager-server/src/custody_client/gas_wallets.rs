@@ -22,6 +22,14 @@ use super::CustodyClient;
 pub const DEFAULT_GAS_REFILL_TOLERANCE: f64 = 0.1; // 10%
 /// The amount to top up a newly registered gas wallet
 pub const DEFAULT_TOP_UP_AMOUNT: f64 = 0.01; // ETH
+/// The minimum age a gas wallet must reach before a report cycle may begin
+/// transitioning it toward inactive.
+///
+/// This protects a slow-booting relayer worker: a wallet that was just
+/// registered but whose peer has not yet appeared in the active-peers list is
+/// not reclaimed out from under it within one report cycle. This is what makes
+/// a short (e.g. 2-minute) report cadence safe.
+pub const GAS_WALLET_RECLAIM_GRACE: std::time::Duration = std::time::Duration::from_secs(180); // 3 min
 
 impl CustodyClient {
     // ------------
@@ -78,17 +86,34 @@ impl CustodyClient {
 
     /// Register a gas wallet for a peer
     ///
-    /// Returns the private key the client should use for gas
+    /// Returns the private key the client should use for gas.
+    ///
+    /// Registration is idempotent per peer-id: if the peer already owns an
+    /// active gas wallet we return that wallet's existing key rather than
+    /// allocating a fresh inactive wallet. Returning the existing key is safe
+    /// because it is the same key the peer was already issued. This prevents
+    /// every relayer reboot (new peer-id consumes a wallet) from draining the
+    /// inactive pool, which previously exhausted the pool and caused the
+    /// `find_inactive_gas_wallet` "Record not found" 500 crash-loop.
     pub(crate) async fn register_gas_wallet(
         &self,
         peer_id: &str,
     ) -> Result<String, FundsManagerError> {
-        let gas_wallet = self.find_inactive_gas_wallet().await?;
+        // If this peer already has an active wallet, return its key (idempotent)
+        let gas_wallet = match self.find_active_gas_wallet_for_peer(peer_id).await? {
+            Some(existing) => existing,
+            None => {
+                // Otherwise allocate a fresh inactive wallet for the peer
+                let wallet = self.find_inactive_gas_wallet().await?;
+                self.mark_gas_wallet_active(&wallet.address, peer_id).await?;
+                wallet
+            },
+        };
+
         let secret_name = Self::gas_wallet_secret_name(&gas_wallet.address);
         let secret_value = get_secret(&secret_name, &self.aws_config).await?;
 
-        // Update the gas wallet to be active, top up wallets, and return the key
-        self.mark_gas_wallet_active(&gas_wallet.address, peer_id).await?;
+        // Top up wallets and return the key
         self.refill_gas_wallets(self.gas_top_up_amount).await?;
         Ok(secret_value)
     }
@@ -113,6 +138,21 @@ impl CustodyClient {
             };
 
             if !active_peers.contains(&peer_id) {
+                // Grace period: do not begin reclaiming a wallet that was registered
+                // within the last `GAS_WALLET_RECLAIM_GRACE`. This protects a
+                // slow-booting worker whose peer has not yet reported. Only the
+                // Active->Pending step is gated; once a wallet is already Pending it
+                // is older than the grace and may proceed toward Inactive.
+                if state == GasWalletStatus::Active
+                    && wallet
+                        .created_at
+                        .elapsed()
+                        .map(|age| age < GAS_WALLET_RECLAIM_GRACE)
+                        .unwrap_or(false)
+                {
+                    continue;
+                }
+
                 match state.transition_inactive() {
                     GasWalletStatus::Pending => {
                         self.mark_gas_wallet_pending(&wallet.address).await?;

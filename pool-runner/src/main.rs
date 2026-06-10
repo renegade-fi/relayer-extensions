@@ -69,8 +69,8 @@ async fn main() -> anyhow::Result<()> {
         cli.chain_id
     );
 
-    // Process any orders already in the global pool at startup
-    server.process_open_orders().await?;
+    // Note: the initial global-pool scan is done by the admin WS listener on
+    // its first (re)connect, so it always pairs with a live subscription.
 
     // Spawn the admin WS listener
     let listener = Arc::new(AdminWebsocketListener::new(

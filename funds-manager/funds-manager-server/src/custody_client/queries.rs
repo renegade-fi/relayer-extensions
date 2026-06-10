@@ -1,6 +1,6 @@
 //! Queries for managing custody data
 
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use renegade_util::err_str;
 use uuid::Uuid;
@@ -41,6 +41,27 @@ impl CustodyClient {
             .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain)))
             .load::<GasWallet>(&mut conn)
             .await
+            .map_err(err_str!(FundsManagerError::Db))
+    }
+
+    /// Find the active gas wallet already assigned to the given peer, if any
+    ///
+    /// Used to make registration idempotent per peer-id: a relayer that
+    /// re-registers (e.g. on reboot) should be handed back its existing wallet
+    /// rather than draining a fresh inactive wallet from the pool.
+    pub async fn find_active_gas_wallet_for_peer(
+        &self,
+        peer_id: &str,
+    ) -> Result<Option<GasWallet>, FundsManagerError> {
+        let mut conn = self.get_db_conn().await?;
+        let active = GasWalletStatus::Active.to_string();
+        gas_wallets::table
+            .filter(gas_wallets::status.eq(active))
+            .filter(gas_wallets::peer_id.eq(peer_id))
+            .filter(gas_wallets::chain.eq(to_env_agnostic_name(self.chain)))
+            .first::<GasWallet>(&mut conn)
+            .await
+            .optional()
             .map_err(err_str!(FundsManagerError::Db))
     }
 

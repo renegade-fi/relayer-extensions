@@ -1,7 +1,17 @@
 //! Command-line interface for the darkpool indexer
 
 use clap::Parser;
-use renegade_common::types::chain::Chain;
+use renegade_types_core::Chain;
+use renegade_util::telemetry::{configure_telemetry_with_metrics_config, metrics::MetricsConfig};
+
+/// The prefix for all metrics emitted by the service
+const METRICS_PREFIX: &str = "darkpool_indexer";
+/// The statsd host to use for metrics
+const DEFAULT_STATSD_HOST: &str = "127.0.0.1";
+/// The statsd port to use for metrics
+const DEFAULT_STATSD_PORT: u16 = 8125;
+/// The default OTLP collector endpoint
+const DEFAULT_OTLP_COLLECTOR_ENDPOINT: &str = "http://localhost:4317";
 
 /// The darkpool indexer CLI
 #[rustfmt::skip]
@@ -61,4 +71,26 @@ pub struct Cli {
     /// Whether or not to forward telemetry to Datadog
     #[clap(long, env = "ENABLE_DATADOG")]
     pub datadog_enabled: bool,
+}
+
+impl Cli {
+    /// Configure telemetry (logging subscriber, traces, metrics) for the indexer
+    /// from the parsed arguments. Must be called before any `log_task!` line so
+    /// that the global tracing subscriber is installed.
+    pub fn configure_telemetry(&self) {
+        let metrics_config =
+            MetricsConfig { metrics_prefix: METRICS_PREFIX.to_string(), ..Default::default() };
+
+        // The single `datadog_enabled` flag gates all telemetry sinks here.
+        configure_telemetry_with_metrics_config(
+            self.datadog_enabled,                        // datadog_enabled
+            self.datadog_enabled,                        // otlp_enabled
+            self.datadog_enabled,                        // metrics_enabled
+            DEFAULT_OTLP_COLLECTOR_ENDPOINT.to_string(), // collector_endpoint
+            DEFAULT_STATSD_HOST,                         // statsd_host
+            DEFAULT_STATSD_PORT,                         // statsd_port
+            Some(metrics_config),
+        )
+        .expect("failed to setup telemetry");
+    }
 }

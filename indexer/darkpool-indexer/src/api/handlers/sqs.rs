@@ -5,12 +5,13 @@ use aws_sdk_sqs::types::Message;
 use darkpool_indexer_api::types::sqs::{MasterViewSeedMessage, NullifierSpendMessage, SqsMessage};
 use diesel_async::{AsyncConnection, scoped_futures::ScopedFutureExt};
 use renegade_constants::Scalar;
-use tracing::warn;
 
 use crate::{
     api::handlers::error::HandlerError,
     db::{client::DbConn, error::DbError},
     indexer::Indexer,
+    log_task,
+    logger::{Outcome, Task},
     types::{ExpectedStateObject, GenericStateObject, MasterViewSeed, StateObjectType},
 };
 
@@ -118,6 +119,7 @@ pub async fn handle_master_view_seed_message(
 
     // TODO: Kick off backfill
 
+    log_task!(Task::RegisterMasterViewSeed, Outcome::Ok, subject = %account_id, "registered master view seed for account {account_id}");
     Ok(())
 }
 
@@ -140,7 +142,7 @@ pub async fn handle_nullifier_spend_message(
             // Check if the nullifier has already been processed
             let nullifier_processed = indexer.db.check_nullifier_processed(nullifier, conn).await?;
             if nullifier_processed {
-                warn!("Nullifier {} has already been processed", nullifier);
+                log_task!(Task::ProcessNullifierSpend, Outcome::Skipped, subject = %nullifier, "nullifier {nullifier} has already been processed");
                 return Ok(());
             }
 
